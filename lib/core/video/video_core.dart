@@ -12,13 +12,16 @@ abstract class VideoCore {
   PlaybackState _state;
   final StreamController<PlaybackState> _controller =
       StreamController<PlaybackState>.broadcast();
+  bool _disposed = false;
 
   PlaybackState get state => _state;
   Stream<PlaybackState> get stateStream => _controller.stream;
 
   /// Emit a new state. Implementations call this from their backend listeners.
+  /// No-op after [dispose] to avoid late callbacks racing teardown.
   @protected
   void emit(PlaybackState next) {
+    if (_disposed) return;
     _state = next;
     _controller.add(next);
   }
@@ -28,7 +31,20 @@ abstract class VideoCore {
   Future<void> pause();
   Future<void> seek(Duration position);
   Future<void> setVolume(double volume);
-  Future<void> dispose();
+
+  /// Tear down backend resources. Subclasses override this; the base
+  /// [dispose] closes the state stream.
+  @protected
+  Future<void> disposeBackend();
+
+  /// Final teardown. Closes the state stream after backend cleanup.
+  @mustCallSuper
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    await disposeBackend();
+    await _controller.close();
+  }
 
   Future<void> togglePlay() async {
     if (state.status == PlaybackStatus.playing) {

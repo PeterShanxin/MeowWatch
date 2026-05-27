@@ -30,5 +30,32 @@ void main() {
       expect(a, equals(b));
       expect(a.hashCode, equals(b.hashCode));
     });
+
+    test('states with differing fields are not equal', () {
+      const a = PlaybackState(status: PlaybackStatus.playing);
+      const b = PlaybackState(status: PlaybackStatus.paused);
+      expect(a, isNot(equals(b)));
+      expect(a.hashCode, isNot(equals(b.hashCode)));
+    });
+
+    test('copyWith can explicitly clear nullable fields', () {
+      const initial = PlaybackState(
+        fileName: 'movie.mkv',
+        errorMessage: 'boom',
+      );
+      final cleared = initial.copyWith(fileName: null, errorMessage: null);
+      expect(cleared.fileName, isNull);
+      expect(cleared.errorMessage, isNull);
+    });
+
+    test('copyWith leaves nullable fields untouched when omitted', () {
+      const initial = PlaybackState(
+        fileName: 'movie.mkv',
+        errorMessage: 'boom',
+      );
+      final updated = initial.copyWith(status: PlaybackStatus.playing);
+      expect(updated.fileName, 'movie.mkv');
+      expect(updated.errorMessage, 'boom');
+    });
   });
 }

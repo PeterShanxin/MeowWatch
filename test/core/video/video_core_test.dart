@@ -34,7 +34,7 @@ class FakeVideoCore extends VideoCore {
   }
 
   @override
-  Future<void> dispose() async {}
+  Future<void> disposeBackend() async {}
 }
 
 void main() {

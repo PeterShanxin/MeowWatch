@@ -37,9 +37,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _browse() async {
-    const typeGroup = XTypeGroup(
+    final typeGroup = XTypeGroup(
       label: 'Video',
-      extensions: ['mkv', 'mp4', 'avi', 'webm', 'mov', 'm4v'],
+      extensions: videoExtensions.toList(),
     );
     final file = await openFile(acceptedTypeGroups: [typeGroup]);
     if (file != null) {

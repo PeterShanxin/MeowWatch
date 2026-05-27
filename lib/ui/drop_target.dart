@@ -2,12 +2,16 @@ import 'package:desktop_drop/desktop_drop.dart' as dd;
 import 'package:flutter/widgets.dart';
 import 'package:path/path.dart' as p;
 
-const _videoExtensions = <String>{
-  '.mkv', '.mp4', '.avi', '.webm', '.mov', '.m4v', '.flv', '.ts', '.mpg', '.mpeg',
+/// Bare (no leading dot) video extensions accepted by both drag-drop and
+/// file picker. Single source of truth so the two surfaces stay in sync.
+const videoExtensions = <String>{
+  'mkv', 'mp4', 'avi', 'webm', 'mov', 'm4v', 'flv', 'ts', 'mpg', 'mpeg',
 };
 
 bool isVideoFile(String path) {
-  return _videoExtensions.contains(p.extension(path).toLowerCase());
+  final ext = p.extension(path).toLowerCase();
+  if (ext.isEmpty) return false;
+  return videoExtensions.contains(ext.substring(1));
 }
 
 class VideoDropTarget extends StatelessWidget {

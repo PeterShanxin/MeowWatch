@@ -12,7 +12,7 @@ class MediaKitVideoCore extends VideoCore {
   }
 
   final Player _player;
-  late final List<StreamSubscription<dynamic>> _subs;
+  late final List<StreamSubscription<Object?>> _subs;
 
   Player get player => _player;
 
@@ -70,7 +70,7 @@ class MediaKitVideoCore extends VideoCore {
       _player.setVolume((volume.clamp(0.0, 1.0)) * 100.0);
 
   @override
-  Future<void> dispose() async {
+  Future<void> disposeBackend() async {
     for (final s in _subs) {
       await s.cancel();
     }

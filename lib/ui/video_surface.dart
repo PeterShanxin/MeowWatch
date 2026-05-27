@@ -39,11 +39,11 @@ class _VideoSurfaceState extends State<VideoSurface> {
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      core.seek(s.position + const Duration(seconds: 5));
+      core.seek(_clampSeek(s.position + const Duration(seconds: 5), s.duration));
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      core.seek(s.position - const Duration(seconds: 5));
+      core.seek(_clampSeek(s.position - const Duration(seconds: 5), s.duration));
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
@@ -55,6 +55,14 @@ class _VideoSurfaceState extends State<VideoSurface> {
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
+  }
+
+  /// Clamp [target] to `[Duration.zero, duration]`. If [duration] is zero
+  /// (unknown yet) only clamp the lower bound.
+  Duration _clampSeek(Duration target, Duration duration) {
+    if (target < Duration.zero) return Duration.zero;
+    if (duration > Duration.zero && target > duration) return duration;
+    return target;
   }
 
   @override
