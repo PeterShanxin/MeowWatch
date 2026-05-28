@@ -49,6 +49,7 @@ class MediaKitVideoCore extends VideoCore {
     emit(state.copyWith(
       status: PlaybackStatus.loading,
       fileName: p.basename(filePath),
+      filePath: filePath,
       position: Duration.zero,
       duration: Duration.zero,
       errorMessage: null,

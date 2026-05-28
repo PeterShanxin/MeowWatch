@@ -48,6 +48,13 @@ void main() {
       expect(cleared.errorMessage, isNull);
     });
 
+    test('stores optional filePath and copyWith can clear it', () {
+      const s = PlaybackState(filePath: r'C:\v\movie.mkv');
+      expect(s.filePath, r'C:\v\movie.mkv');
+      final cleared = s.copyWith(filePath: null);
+      expect(cleared.filePath, isNull);
+    });
+
     test('copyWith leaves nullable fields untouched when omitted', () {
       const initial = PlaybackState(
         fileName: 'movie.mkv',

@@ -14,6 +14,7 @@ class PlaybackState {
     this.duration = Duration.zero,
     this.volume = 1.0,
     this.fileName,
+    this.filePath,
     this.errorMessage,
   });
 
@@ -22,6 +23,7 @@ class PlaybackState {
   final Duration duration;
   final double volume;
   final String? fileName;
+  final String? filePath;
   final String? errorMessage;
 
   PlaybackState copyWith({
@@ -30,6 +32,7 @@ class PlaybackState {
     Duration? duration,
     double? volume,
     Object? fileName = _unset,
+    Object? filePath = _unset,
     Object? errorMessage = _unset,
   }) {
     return PlaybackState(
@@ -38,6 +41,7 @@ class PlaybackState {
       duration: duration ?? this.duration,
       volume: volume ?? this.volume,
       fileName: identical(fileName, _unset) ? this.fileName : fileName as String?,
+      filePath: identical(filePath, _unset) ? this.filePath : filePath as String?,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
@@ -53,6 +57,7 @@ class PlaybackState {
         other.duration == duration &&
         other.volume == volume &&
         other.fileName == fileName &&
+        other.filePath == filePath &&
         other.errorMessage == errorMessage;
   }
 
@@ -63,6 +68,7 @@ class PlaybackState {
         duration,
         volume,
         fileName,
+        filePath,
         errorMessage,
       );
 }
