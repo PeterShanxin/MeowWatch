@@ -80,8 +80,32 @@ class PresenceEvent {
 
 @immutable
 class ChatMessage {
-  const ChatMessage({required this.username, required this.text});
+  const ChatMessage({
+    required this.username,
+    required this.text,
+    this.timestamp,
+  });
 
   final String username;
   final String text;
+
+  /// When the message arrived locally. The Syncplay protocol carries no
+  /// timestamp, so the chat store stamps this on receipt; null until then.
+  final DateTime? timestamp;
+
+  ChatMessage copyWith({DateTime? timestamp}) => ChatMessage(
+        username: username,
+        text: text,
+        timestamp: timestamp ?? this.timestamp,
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChatMessage &&
+      other.username == username &&
+      other.text == text &&
+      other.timestamp == timestamp;
+
+  @override
+  int get hashCode => Object.hash(username, text, timestamp);
 }
