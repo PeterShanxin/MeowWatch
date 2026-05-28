@@ -53,18 +53,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return VideoDropTarget(
-      onFileDropped: _handleDropped,
-      child: StreamBuilder<PlaybackState>(
-        stream: _core.stateStream,
-        initialData: _core.state,
-        builder: (context, snapshot) {
-          final state = snapshot.data!;
-          if (state.fileName == null) {
-            return EmptyState(onBrowse: _browse);
-          }
-          return VideoSurface(core: _core);
-        },
+    // Scaffold provides the Material ancestor that descendant widgets
+    // (EmptyState buttons, PlaybackBar slider/buttons) require.
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: VideoDropTarget(
+        onFileDropped: _handleDropped,
+        child: StreamBuilder<PlaybackState>(
+          stream: _core.stateStream,
+          initialData: _core.state,
+          builder: (context, snapshot) {
+            final state = snapshot.data!;
+            if (state.fileName == null) {
+              return EmptyState(onBrowse: _browse);
+            }
+            return VideoSurface(core: _core);
+          },
+        ),
       ),
     );
   }
