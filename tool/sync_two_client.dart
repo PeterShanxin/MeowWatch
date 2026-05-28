@@ -25,9 +25,11 @@ class TickingVideoCore extends VideoCore {
     ));
   }
 
+  // Mimic libmpv: state changes land asynchronously, not synchronously.
   @override
   Future<void> play() async {
     if (state.status == PlaybackStatus.playing) return;
+    await Future<void>.delayed(const Duration(milliseconds: 60));
     emit(state.copyWith(status: PlaybackStatus.playing));
     _timer ??= Timer.periodic(const Duration(milliseconds: 250), (_) {
       if (state.status == PlaybackStatus.playing) {
@@ -40,12 +42,15 @@ class TickingVideoCore extends VideoCore {
   @override
   Future<void> pause() async {
     if (state.status == PlaybackStatus.paused) return;
+    await Future<void>.delayed(const Duration(milliseconds: 60));
     emit(state.copyWith(status: PlaybackStatus.paused));
   }
 
   @override
-  Future<void> seek(Duration position) async =>
-      emit(state.copyWith(position: position));
+  Future<void> seek(Duration position) async {
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    emit(state.copyWith(position: position));
+  }
 
   @override
   Future<void> setVolume(double volume) async =>
@@ -94,7 +99,20 @@ void main() {
     log('TEST', '--- A presses play ---');
     await videoA.play();
 
-    await Future<void>.delayed(const Duration(seconds: 6));
+    await Future<void>.delayed(const Duration(seconds: 4));
+    log('TEST', '--- B presses pause ---');
+    await videoB.pause();
+
+    await Future<void>.delayed(const Duration(seconds: 3));
+    log('TEST',
+        '--- after B pause: A=${videoA.state.position.inMilliseconds / 1000}s '
+        '${videoA.state.status.name}, B=${videoB.state.position.inMilliseconds / 1000}s '
+        '${videoB.state.status.name} ---');
+
+    log('TEST', '--- B seeks to 100s ---');
+    await videoB.seek(const Duration(seconds: 100));
+
+    await Future<void>.delayed(const Duration(seconds: 3));
     log('TEST', '--- final: A=${videoA.state.position.inMilliseconds / 1000}s '
         '${videoA.state.status.name}, B=${videoB.state.position.inMilliseconds / 1000}s '
         '${videoB.state.status.name} ---');
