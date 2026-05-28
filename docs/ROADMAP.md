@@ -4,8 +4,8 @@ Six phases. Each phase ends with working, shippable software. One plan per phase
 
 | Phase | Name | Deliverable | Plan |
 |---|---|---|---|
-| 1 | Foundation | Flutter scaffold + libmpv playback. Drag-drop video file → plays in window. Keyboard controls (space, ←→, ↑↓). | [2026-05-28-phase-1-foundation.md](superpowers/plans/2026-05-28-phase-1-foundation.md) |
-| 2 | Sync core | Custom Dart client for Syncplay text protocol. Two app instances on same room sync play/pause/seek. No chat UI yet. | _TBD — write after Phase 1 ships_ |
+| 1 ✅ | Foundation | **Shipped (tag `phase-1-complete`).** Drag-drop or Browse → plays via libmpv. Keyboard (space, ←→, ↑↓). Bonus polish landed early: auto-hiding control bar + scrubber, play/pause center flash, held-seek pill (marching chevrons + accumulated time), volume level indicator, click-to-pause, double-click fullscreen (`window_manager`). | [2026-05-28-phase-1-foundation.md](superpowers/plans/2026-05-28-phase-1-foundation.md) |
+| 2 | Sync core | Custom Dart client for Syncplay text protocol. Two app instances on same room sync play/pause/seek. No chat UI yet. | _next — ready to plan_ |
 | 3 | Chat overlay | Glass-card chat overlay: drag, snap to corners, drop-on-edge collapse to peek tab. Hotkey toggle. Basic text chat over Syncplay chat channel. | _TBD_ |
 | 4 | Connect flow + profiles | Connect screen with saved profile cards + "Start new room" auto room-code + "Enter code" field + Advanced collapsible. SQLite via `drift`. | _TBD_ |
 | 5 | Themes | Three preset themes: Cozy (default), Cinema Noir, Glass Aurora. Switcher in settings. Applied to chat overlay, controls, connect screen. | _TBD_ |
