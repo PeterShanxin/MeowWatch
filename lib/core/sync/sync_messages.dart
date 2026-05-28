@@ -161,6 +161,13 @@ class ErrorMessage extends ServerMessage {
   final String message;
 }
 
+/// The full room roster sent by the server (in response to our List, and on
+/// joins). Used to learn about users who were already present before us.
+class RosterMessage extends ServerMessage {
+  const RosterMessage(this.usernames);
+  final List<String> usernames;
+}
+
 class UnknownMessage extends ServerMessage {
   const UnknownMessage();
 }
@@ -169,6 +176,7 @@ ServerMessage decodeServerMessage(Map<dynamic, dynamic> message) {
   if (message.containsKey('Hello')) return const HelloMessage();
   if (message.containsKey('State')) return _decodeState(message['State'] as Map);
   if (message.containsKey('Set')) return _decodeSet(message['Set'] as Map);
+  if (message.containsKey('List')) return _decodeList(message['List']);
   if (message.containsKey('Chat')) {
     final chat = message['Chat'] as Map;
     return ChatServerMessage(ChatMessage(
@@ -222,6 +230,21 @@ StateMessage _decodeState(Map<dynamic, dynamic> state) {
     clientIgnore: clientIgnore,
     serverIgnore: serverIgnore,
   );
+}
+
+ServerMessage _decodeList(Object? list) {
+  // Shape: {"List": {roomName: {username: {...}}}}
+  final names = <String>[];
+  if (list is Map) {
+    for (final room in list.values) {
+      if (room is Map) {
+        for (final name in room.keys) {
+          if (name is String) names.add(name);
+        }
+      }
+    }
+  }
+  return RosterMessage(names);
 }
 
 ServerMessage _decodeSet(Map<dynamic, dynamic> set) {

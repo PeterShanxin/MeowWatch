@@ -37,8 +37,14 @@ FollowAction decideFollow({
 }) {
   final isSelf = global.setBy != null && global.setBy == username;
 
-  // 1. Pause/play flip — compare to local, so self-changes (already applied
-  //    locally) produce no action.
+  // Never follow a state we ourselves set. During the brief window after we
+  // change play/pause but before the server acknowledges, the server keeps
+  // echoing the OLD global state stamped with our name; applying it would undo
+  // our own change and start the ping-pong fight.
+  if (isSelf) return const FollowAction.none();
+
+  // 1. Pause/play flip — compare to local, so once we match, steady
+  //    heartbeats produce no action.
   if (global.paused != localPaused) {
     return FollowAction.apply(position: global.position, paused: global.paused);
   }

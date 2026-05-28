@@ -186,6 +186,18 @@ void main() {
       expect(m.message, 'bad');
     });
 
+    test('classifies List into a roster of usernames', () {
+      final m = decodeServerMessage({
+        'List': {
+          'room': {
+            'A': {'position': 0},
+            'B': {'position': 0},
+          },
+        },
+      }) as RosterMessage;
+      expect(m.usernames, containsAll(<String>['A', 'B']));
+    });
+
     test('unknown command yields UnknownMessage', () {
       final m = decodeServerMessage({'Whatever': 1});
       expect(m, isA<UnknownMessage>());

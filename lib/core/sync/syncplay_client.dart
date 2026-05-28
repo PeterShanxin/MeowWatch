@@ -12,6 +12,11 @@ import 'sync_messages.dart';
 /// Concrete SyncCore speaking the Syncplay text protocol over a TCP socket
 /// upgraded to TLS. One JSON object per line, terminated `\r\n`.
 class SyncplayClient extends SyncCore {
+  SyncplayClient({this.onLog});
+
+  /// Optional debug sink for raw protocol traffic and follow decisions.
+  final void Function(String line)? onLog;
+
   Socket? _socket;
   final LineFramer _framer = LineFramer();
   final PingService _ping = PingService();
@@ -130,6 +135,7 @@ class SyncplayClient extends SyncCore {
   void _onChunk(List<int> chunk) {
     for (final line in _framer.addChunk(chunk)) {
       if (line.isEmpty) continue;
+      onLog?.call('<< $line');
       late ServerMessage msg;
       try {
         msg = decodeServerMessage(json.decode(line) as Map<dynamic, dynamic>);
@@ -158,6 +164,13 @@ class SyncplayClient extends SyncCore {
       case PresenceMessage(:final events):
         for (final e in events) {
           emitPresence(e);
+        }
+      case RosterMessage(:final usernames):
+        for (final name in usernames) {
+          if (name != _username) {
+            emitPresence(PresenceEvent(
+                username: name, kind: PresenceKind.joined));
+          }
         }
       case ChatServerMessage(:final message):
         emitChat(message);
@@ -189,8 +202,11 @@ class SyncplayClient extends SyncCore {
     }
 
     // Decide whether the local player should follow the room's global state.
-    // Skipped while mid-handshake on our own change.
-    final ignoringOwnChange = _clientIgnore != 0 && _serverIgnore == 0;
+    // Skipped while mid-handshake on our own change, OR while we have a local
+    // change queued but not yet sent (it would otherwise be clobbered by the
+    // stale global state the server is still echoing).
+    final ignoringOwnChange =
+        _pendingStateChange || (_clientIgnore != 0 && _serverIgnore == 0);
     if (msg.peer != null && !ignoringOwnChange) {
       // Advance position by the one-way delay if the room is playing.
       final global = msg.peer!.paused
@@ -208,7 +224,19 @@ class SyncplayClient extends SyncCore {
         localPosition: _localPosition,
         username: _username,
       );
+      onLog?.call(
+          'FOLLOW global(pos=${global.positionSeconds}s paused=${global.paused} '
+          'doSeek=${global.doSeek} setBy=${global.setBy}) '
+          'local(pos=${_localPosition.inMilliseconds / 1000}s paused=$_localPaused) '
+          '=> apply=${action.shouldApply}');
       if (action.shouldApply) {
+        // Adopt the applied state into our local cache immediately. The video
+        // applies it asynchronously, so without this the very next heartbeat
+        // would report the STALE pre-apply state (e.g. pos=0 paused=true) and
+        // the server would treat that as a brand-new change — the root of the
+        // ping-pong fight.
+        _localPosition = action.position;
+        _localPaused = action.paused;
         emitPeerState(PeerPlayState(
           position: action.position,
           paused: action.paused,
@@ -248,7 +276,9 @@ class SyncplayClient extends SyncCore {
   void _send(Map<String, Object?> message) {
     final socket = _socket;
     if (socket == null) return;
-    socket.add(utf8.encode('${json.encode(message)}\r\n'));
+    final line = json.encode(message);
+    onLog?.call('>> $line');
+    socket.add(utf8.encode('$line\r\n'));
   }
 
   void _sendRaw(Socket socket, Map<String, Object?> message) {
