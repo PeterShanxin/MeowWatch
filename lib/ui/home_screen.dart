@@ -52,9 +52,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _loadAndPlay(String path) async {
+  /// Load (but do not auto-play). In a room, hitting play yourself starts both
+  /// of you in sync; auto-playing on load made the two clients fight at 0.
+  Future<void> _load(String path) async {
     await _core.load(path);
-    await _core.play();
     await _announceCurrentFile();
   }
 
@@ -82,12 +83,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     final file = await openFile(acceptedTypeGroups: [typeGroup]);
     if (file != null) {
-      await _loadAndPlay(file.path);
+      await _load(file.path);
     }
   }
 
   void _handleDropped(String path) {
-    unawaited(_loadAndPlay(path));
+    unawaited(_load(path));
   }
 
   void _connect({

@@ -15,14 +15,12 @@ class PlaybackSyncBridge {
     required this.video,
     required this.sync,
     this.seekDetectThreshold = SyncplayConstants.seekDetectThreshold,
-    this.followSeekThreshold = SyncplayConstants.seekThreshold,
     this.remoteApplyWindow = const Duration(milliseconds: 800),
   });
 
   final VideoCore video;
   final SyncCore sync;
   final Duration seekDetectThreshold;
-  final Duration followSeekThreshold;
 
   /// After applying a remote state we ignore local-change detection for this
   /// long. The real VideoCore emits play/pause/seek asynchronously (from the
@@ -39,6 +37,12 @@ class PlaybackSyncBridge {
   bool? _lastPaused;
   Duration _lastPosition = Duration.zero;
   DateTime _lastTick = DateTime.now();
+
+  /// Last paused-state we saw from the peer, used to detect transitions. The
+  /// server relays the room's *global* playstate on every heartbeat (~1/s); we
+  /// must only act on real changes, not chase the steady-state position — that
+  /// chase is what made the two clients fight and snap back to 0.
+  bool? _lastPeerPaused;
 
   void start() {
     _videoSub = video.stateStream.listen(_onLocalState);
@@ -82,20 +86,27 @@ class PlaybackSyncBridge {
   }
 
   Future<void> _onPeerState(PeerPlayState peer) async {
+    // Only react to genuine transitions: the first state we ever see (adopt the
+    // room), a pause<->play flip, or an explicit seek. Steady heartbeats with
+    // an unchanged paused flag are ignored so we never chase position and fight.
+    final firstEver = _lastPeerPaused == null;
+    final pausedFlipped = _lastPeerPaused != null && peer.paused != _lastPeerPaused;
+    final transition = firstEver || pausedFlipped || peer.doSeek;
+    _lastPeerPaused = peer.paused;
+
+    if (!transition) return;
+
     _applyingRemote = true;
     try {
-      // Match pause/play.
+      // Align to the peer's frame on every transition (join/pause/play/seek)
+      // so both land on the same position; never seek on steady drift.
+      await video.seek(peer.position);
+
       final localPaused = video.state.status != PlaybackStatus.playing;
       if (peer.paused && !localPaused) {
         await video.pause();
       } else if (!peer.paused && localPaused) {
         await video.play();
-      }
-
-      // Match position when the peer explicitly seeked or drifted too far.
-      final diff = (video.state.position - peer.position).abs();
-      if (peer.doSeek || diff > followSeekThreshold) {
-        await video.seek(peer.position);
       }
     } finally {
       _applyingRemote = false;

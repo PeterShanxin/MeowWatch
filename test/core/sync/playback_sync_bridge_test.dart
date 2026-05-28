@@ -121,13 +121,33 @@ void main() {
     expect(video.state.position, const Duration(seconds: 10));
   });
 
-  test('remote paused state pauses the local video', () async {
+  test('remote paused transition pauses and aligns the local video', () async {
     video.push(
         const PlaybackState(status: PlaybackStatus.playing, fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
+    // First peer state (playing) is the initial adopt; then a pause flip.
+    sync.pushPeer(
+        const PeerPlayState(position: Duration(seconds: 4), paused: false));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
     sync.pushPeer(
         const PeerPlayState(position: Duration(seconds: 5), paused: true));
     await Future<void>.delayed(const Duration(milliseconds: 10));
     expect(video.state.status, PlaybackStatus.paused);
+    expect(video.state.position, const Duration(seconds: 5));
+  });
+
+  test('steady peer heartbeats with unchanged paused flag do not seek',
+      () async {
+    // First state adopts position 10 (playing).
+    sync.pushPeer(
+        const PeerPlayState(position: Duration(seconds: 10), paused: false));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(video.state.position, const Duration(seconds: 10));
+    // A later heartbeat reports a drifted position but no transition — the
+    // bridge must NOT chase it (that chasing caused the fighting loop).
+    sync.pushPeer(
+        const PeerPlayState(position: Duration(seconds: 13), paused: false));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(video.state.position, const Duration(seconds: 10));
   });
 }
