@@ -3,12 +3,16 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../core/chat/chat_store.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
 import '../core/sync/syncplay_client.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/playback_state.dart';
+import 'chat/chat_overlay.dart';
+import 'chat/chat_overlay_layout.dart';
 import 'dev_connect_bar.dart';
 import 'drop_target.dart';
 import 'empty_state.dart';
@@ -31,12 +35,26 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<SyncConnectionState>? _connSub;
   StreamSubscription<PresenceEvent>? _presenceSub;
 
+  late final ChatStore _chat;
+  ChatOverlayLayout _chatLayout = const ChatOverlayLayout();
+  List<ChatMessage> _messages = const <ChatMessage>[];
+  String _username = '';
+  bool _peekPulsing = false;
+  Timer? _peekTimer;
+  StreamSubscription<List<ChatMessage>>? _chatSub;
+
   @override
   void initState() {
     super.initState();
     _core = MediaKitVideoCore();
     _sync = SyncplayClient();
     _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
+    _chat = ChatStore(sync: _sync);
+    _chatSub = _chat.stream.listen((msgs) {
+      if (!mounted) return;
+      setState(() => _messages = msgs);
+      if (_chatLayout.collapsed) _pulsePeek();
+    });
     _connSub = _sync.connectionState.listen((s) {
       if (mounted) {
         setState(() {
@@ -62,12 +80,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _peekTimer?.cancel();
+    unawaited(_chatSub?.cancel());
+    unawaited(_chat.dispose());
     unawaited(_connSub?.cancel());
     unawaited(_presenceSub?.cancel());
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
     unawaited(_core.dispose());
     super.dispose();
+  }
+
+  void _pulsePeek() {
+    setState(() => _peekPulsing = true);
+    _peekTimer?.cancel();
+    _peekTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _peekPulsing = false);
+    });
   }
 
   /// Advisory hint shown over the video, or null when everything is ready.
@@ -126,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required String username,
     required String room,
   }) {
+    _username = username;
     unawaited(_sync.connect(
       server: server,
       port: port,
@@ -145,29 +175,52 @@ class _HomeScreenState extends State<HomeScreen> {
             onConnect: _connect,
           ),
           Expanded(
-            child: VideoDropTarget(
-              onFileDropped: _handleDropped,
-              child: StreamBuilder<PlaybackState>(
-                stream: _core.stateStream,
-                initialData: _core.state,
-                builder: (context, snapshot) {
-                  final state = snapshot.data!;
-                  if (state.fileName == null) {
-                    return EmptyState(onBrowse: _browse);
-                  }
-                  final hint = _syncHint;
-                  return Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      VideoSurface(core: _core),
-                      if (hint != null)
-                        Align(
-                          alignment: const Alignment(0, -0.8),
-                          child: _SyncHintBanner(text: hint),
+            child: Focus(
+              autofocus: true,
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent &&
+                    event.logicalKey == LogicalKeyboardKey.tab) {
+                  setState(() => _chatLayout = _chatLayout.toggle());
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: VideoDropTarget(
+                onFileDropped: _handleDropped,
+                child: StreamBuilder<PlaybackState>(
+                  stream: _core.stateStream,
+                  initialData: _core.state,
+                  builder: (context, snapshot) {
+                    final state = snapshot.data!;
+                    if (state.fileName == null) {
+                      return EmptyState(onBrowse: _browse);
+                    }
+                    final hint = _syncHint;
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        VideoSurface(core: _core),
+                        if (hint != null)
+                          Align(
+                            alignment: const Alignment(0, -0.8),
+                            child: _SyncHintBanner(text: hint),
+                          ),
+                        ChatOverlay(
+                          messages: _messages,
+                          myUsername: _username,
+                          collapsed: _chatLayout.collapsed,
+                          corner: _chatLayout.corner,
+                          pulsing: _peekPulsing,
+                          onSend: _chat.send,
+                          onToggleCollapsed: () => setState(
+                              () => _chatLayout = _chatLayout.toggle()),
+                          onSnap: (result) => setState(
+                              () => _chatLayout = _chatLayout.applySnap(result)),
                         ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),

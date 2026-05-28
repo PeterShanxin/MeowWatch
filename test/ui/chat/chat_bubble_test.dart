@@ -21,13 +21,13 @@ void main() {
   });
 
   testWidgets('mine aligns right, friend aligns left', (tester) async {
-    await tester.pumpWidget(host(Column(children: [
+    await tester.pumpWidget(host(const Column(children: [
       ChatBubble(
-        message: const ChatMessage(username: 'me', text: 'mine'),
+        message: ChatMessage(username: 'me', text: 'mine'),
         myUsername: 'me',
       ),
       ChatBubble(
-        message: const ChatMessage(username: 'lin', text: 'theirs'),
+        message: ChatMessage(username: 'lin', text: 'theirs'),
         myUsername: 'me',
       ),
     ])));

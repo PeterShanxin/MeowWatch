@@ -9,6 +9,9 @@ import '../sync/sync_core.dart';
 /// echoes our own message back on the same channel, so it lands in the list
 /// through the normal receive path — no optimistic local insert.
 class ChatStore {
+  // Fields are private; named params cannot start with an underscore, so
+  // initializing formals don't apply here.
+  // ignore_for_file: prefer_initializing_formals
   ChatStore({required SyncCore sync, DateTime Function() now = DateTime.now})
       : _sync = sync,
         _now = now {
