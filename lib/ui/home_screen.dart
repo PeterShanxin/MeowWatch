@@ -27,7 +27,9 @@ class _HomeScreenState extends State<HomeScreen> {
   late final PlaybackSyncBridge _bridge;
 
   SyncConnectionStatus _syncStatus = SyncConnectionStatus.disconnected;
+  final Set<String> _peers = <String>{};
   StreamSubscription<SyncConnectionState>? _connSub;
+  StreamSubscription<PresenceEvent>? _presenceSub;
 
   @override
   void initState() {
@@ -36,20 +38,47 @@ class _HomeScreenState extends State<HomeScreen> {
     _sync = SyncplayClient();
     _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
     _connSub = _sync.connectionState.listen((s) {
-      if (mounted) setState(() => _syncStatus = s.status);
+      if (mounted) {
+        setState(() {
+          _syncStatus = s.status;
+          if (s.status != SyncConnectionStatus.connected) _peers.clear();
+        });
+      }
       if (s.status == SyncConnectionStatus.connected) {
         unawaited(_announceCurrentFile());
       }
+    });
+    _presenceSub = _sync.presence.listen((e) {
+      if (!mounted) return;
+      setState(() {
+        if (e.kind == PresenceKind.joined) {
+          _peers.add(e.username);
+        } else {
+          _peers.remove(e.username);
+        }
+      });
     });
   }
 
   @override
   void dispose() {
     unawaited(_connSub?.cancel());
+    unawaited(_presenceSub?.cancel());
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
     unawaited(_core.dispose());
     super.dispose();
+  }
+
+  /// Advisory hint shown over the video, or null when everything is ready.
+  String? get _syncHint {
+    if (_syncStatus != SyncConnectionStatus.connected) {
+      return 'Connect to a room to watch together';
+    }
+    if (_peers.isEmpty) {
+      return 'Waiting for a friend to join…';
+    }
+    return null;
   }
 
   /// Load (but do not auto-play). In a room, hitting play yourself starts both
@@ -126,12 +155,47 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (state.fileName == null) {
                     return EmptyState(onBrowse: _browse);
                   }
-                  return VideoSurface(core: _core);
+                  final hint = _syncHint;
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      VideoSurface(core: _core),
+                      if (hint != null)
+                        Align(
+                          alignment: const Alignment(0, -0.8),
+                          child: _SyncHintBanner(text: hint),
+                        ),
+                    ],
+                  );
                 },
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SyncHintBanner extends StatelessWidget {
+  const _SyncHintBanner({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xCC1A1410),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0x55D4A574)),
+        ),
+        child: Text(
+          text,
+          style: const TextStyle(color: Color(0xFFF5E6D3), fontSize: 14),
+        ),
       ),
     );
   }

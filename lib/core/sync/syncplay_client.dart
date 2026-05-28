@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'peer_state.dart';
 import 'ping_service.dart';
 import 'sync_core.dart';
+import 'sync_follow.dart';
 import 'sync_messages.dart';
 
 /// Concrete SyncCore speaking the Syncplay text protocol over a TCP socket
@@ -187,11 +188,12 @@ class SyncplayClient extends SyncCore {
       _serverLatencyCalculation = msg.latencyCalculation;
     }
 
-    // Apply the peer's state unless we're mid-handshake on our own change.
+    // Decide whether the local player should follow the room's global state.
+    // Skipped while mid-handshake on our own change.
     final ignoringOwnChange = _clientIgnore != 0 && _serverIgnore == 0;
     if (msg.peer != null && !ignoringOwnChange) {
-      // Advance position by the one-way delay if the peer is playing.
-      final adjusted = msg.peer!.paused
+      // Advance position by the one-way delay if the room is playing.
+      final global = msg.peer!.paused
           ? msg.peer!
           : PeerPlayState(
               position: msg.peer!.position +
@@ -200,7 +202,20 @@ class SyncplayClient extends SyncCore {
               doSeek: msg.peer!.doSeek,
               setBy: msg.peer!.setBy,
             );
-      emitPeerState(adjusted);
+      final action = decideFollow(
+        global: global,
+        localPaused: _localPaused,
+        localPosition: _localPosition,
+        username: _username,
+      );
+      if (action.shouldApply) {
+        emitPeerState(PeerPlayState(
+          position: action.position,
+          paused: action.paused,
+          doSeek: global.doSeek,
+          setBy: global.setBy,
+        ));
+      }
     }
 
     _replyState();

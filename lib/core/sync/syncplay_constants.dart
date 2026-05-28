@@ -24,11 +24,13 @@ class SyncplayConstants {
     'setOthersReadiness': false,
   };
 
-  /// If the local position differs from the latency-adjusted peer position by
-  /// more than this while following, hard-seek to match. Upstream uses ~1s.
-  static const seekThreshold = Duration(milliseconds: 1500);
+  /// If the local player runs AHEAD of the room's global position by more than
+  /// this, rewind it back to the global position (upstream DEFAULT_REWIND_
+  /// THRESHOLD = 4s). One-directional: only the ahead client corrects, which
+  /// is what stops two clients fighting over position.
+  static const rewindThreshold = Duration(seconds: 4);
 
-  /// Below this, a position change is treated as natural playback drift rather
-  /// than a user seek.
+  /// Below this, a local position change is treated as natural playback drift
+  /// rather than a user seek when deciding what to broadcast.
   static const seekDetectThreshold = Duration(milliseconds: 1000);
 }
