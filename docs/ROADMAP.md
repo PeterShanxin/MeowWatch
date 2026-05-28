@@ -15,6 +15,11 @@ Six phases. Each phase ends with working, shippable software. One plan per phase
 
 [superpowers/specs/2026-05-28-meowwatch-design.md](superpowers/specs/2026-05-28-meowwatch-design.md) — full design covering all six phases.
 
+## Backlog / future tuning
+
+- **Seek-collision smoothing** — when both peers seek near-simultaneously (or during an RTT spike), positions briefly fight before converging. Add debounce / "syncing…" indicator to smooth the transition. (Observed Phase 2; not blocking.)
+- **Streaming from URL** — drop a video link instead of a local file. (Also listed out-of-v1 below.)
+
 ## Out of v1 scope
 
 - Voice chat
