@@ -49,8 +49,10 @@ class _SeekIndicatorState extends State<SeekIndicator>
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {
-            // Stagger each chevron's brightness so they appear to march.
-            final phase = (_controller.value * 3 - i) % 3;
+            // Stagger each chevron's brightness so they appear to march in the
+            // seek direction: left-to-right for forward, right-to-left for back.
+            final idx = widget.forward ? i : (2 - i);
+            final phase = (_controller.value * 3 - idx) % 3;
             final lit = phase >= 0 && phase < 1;
             return Icon(
               icon,
