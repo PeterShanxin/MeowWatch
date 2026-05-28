@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'peer_state.dart';
 import 'ping_service.dart';
@@ -67,15 +68,25 @@ class SyncplayClient extends SyncCore {
 
   /// Listen on the plain socket only long enough to receive the TLS answer,
   /// then upgrade to a SecureSocket and (re)attach the main listener.
+  ///
+  /// The existing subscription is *paused* (not cancelled) and handed to
+  /// [SecureSocket.secure] via `subscription:`, so any bytes already buffered
+  /// for that subscription are carried into the TLS handshake. Cancelling
+  /// instead would drop them and break the handshake.
   void _attachPlainForTlsNegotiation(Socket plain, String server) {
-    late StreamSubscription<List<int>> sub;
+    var upgraded = false;
+    late StreamSubscription<Uint8List> sub;
     sub = plain.listen((chunk) async {
+      if (upgraded) return;
       for (final line in _framer.addChunk(chunk)) {
         if (line.isEmpty) continue;
-        final decoded = decodeServerMessage(
-            json.decode(line) as Map<dynamic, dynamic>);
+        final decoded =
+            decodeServerMessage(json.decode(line) as Map<dynamic, dynamic>);
         if (decoded is TlsMessage && decoded.startTls) {
-          await sub.cancel();
+          upgraded = true;
+          // Pause (don't cancel) so SecureSocket.secure can detach this
+          // subscription and carry any buffered bytes into the handshake.
+          sub.pause();
           final secure = await SecureSocket.secure(
             plain,
             host: server,
@@ -86,6 +97,7 @@ class SyncplayClient extends SyncCore {
           return;
         } else if (decoded is ErrorMessage) {
           // Server doesn't support TLS — fall back to the plain socket.
+          upgraded = true;
           await sub.cancel();
           _bindSocket(plain);
           _sendHello();
