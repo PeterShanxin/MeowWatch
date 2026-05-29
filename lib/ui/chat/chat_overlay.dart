@@ -113,7 +113,7 @@ class _ChatOverlayState extends State<ChatOverlay> {
     return Align(
       alignment: _alignmentFor(widget.corner),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 64),
         child: card,
       ),
     );
@@ -143,21 +143,32 @@ class _GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          width: width,
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          decoration: BoxDecoration(
-            color: const Color(0xCC1A1410),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0x55D4A574)),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x99000000),
+            blurRadius: 24,
+            offset: Offset(0, 8),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            width: width,
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            decoration: BoxDecoration(
+              color: const Color(0xF2241B14),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xCCD4A574), width: 1.5),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onPanUpdate: (d) => onHeaderDragUpdate(d.delta),
@@ -184,17 +195,29 @@ class _GlassCard extends StatelessWidget {
                 ),
               ),
               Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  children: [
-                    for (final m in messages)
-                      ChatBubble(message: m, myUsername: myUsername),
-                  ],
-                ),
+                child: messages.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 24),
+                        child: Text(
+                          'No messages yet — say hi 🐾',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: Color(0x99F5E6D3), fontSize: 13),
+                        ),
+                      )
+                    : ListView(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        children: [
+                          for (final m in messages)
+                            ChatBubble(message: m, myUsername: myUsername),
+                        ],
+                      ),
               ),
               ChatInput(onSend: onSend),
             ],
+            ),
           ),
         ),
       ),
