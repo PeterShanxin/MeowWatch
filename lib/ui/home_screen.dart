@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../core/chat/chat_store.dart';
 import '../core/connect/room_config.dart';
 import '../core/data/stores.dart';
+import '../core/sync/auto_pause.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
 import '../core/sync/syncplay_client.dart';
@@ -50,6 +51,14 @@ class _HomeScreenState extends State<HomeScreen> {
   final Set<String> _peers = <String>{};
   StreamSubscription<SyncConnectionState>? _connSub;
   StreamSubscription<PresenceEvent>? _presenceSub;
+  StreamSubscription<PlaybackState>? _noticeSub;
+
+  /// Was the session in sync (connected + a peer present) at the last check?
+  /// Used to detect the healthy -> unhealthy edge that triggers auto-pause.
+  bool _syncHealthy = false;
+
+  /// True while we've auto-paused because sync dropped; drives the banner.
+  bool _autoPausedNotice = false;
 
   late final ChatStore _chat;
   ChatOverlayLayout _chatLayout = const ChatOverlayLayout();
@@ -77,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _syncStatus = s.status;
           if (s.status != SyncConnectionStatus.connected) _peers.clear();
+          _evaluateSyncHealth();
         });
       }
       if (s.status == SyncConnectionStatus.connected) {
@@ -91,7 +101,15 @@ class _HomeScreenState extends State<HomeScreen> {
         } else {
           _peers.remove(e.username);
         }
+        _evaluateSyncHealth();
       });
+    });
+    // Clear the auto-pause banner once the user manually resumes playback.
+    _noticeSub = _core.stateStream.listen((s) {
+      if (!mounted) return;
+      if (_autoPausedNotice && s.status == PlaybackStatus.playing) {
+        setState(() => _autoPausedNotice = false);
+      }
     });
 
     _username = widget.config.username;
@@ -120,6 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_chat.dispose());
     unawaited(_connSub?.cancel());
     unawaited(_presenceSub?.cancel());
+    unawaited(_noticeSub?.cancel());
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
     unawaited(_core.dispose());
@@ -133,6 +152,29 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _peekPulsing = false);
     });
   }
+
+  /// Recompute sync health and auto-pause on the healthy -> unhealthy edge.
+  /// Call inside setState after [_syncStatus] / [_peers] change.
+  void _evaluateSyncHealth() {
+    final nowHealthy = SyncHealth(
+      connected: _syncStatus == SyncConnectionStatus.connected,
+      hasPeer: _peers.isNotEmpty,
+    ).healthy;
+    final isPlaying = _core.state.status == PlaybackStatus.playing;
+    if (decideAutoPause(
+        wasHealthy: _syncHealthy, nowHealthy: nowHealthy, isPlaying: isPlaying)) {
+      unawaited(_core.pause());
+      _autoPausedNotice = true;
+    }
+    // Stay paused on restore, but the reason banner is no longer true.
+    if (nowHealthy) _autoPausedNotice = false;
+    _syncHealthy = nowHealthy;
+  }
+
+  /// Banner text shown over the video, or null when nothing to say. The
+  /// auto-pause notice takes priority over the plain waiting/connect hint.
+  String? get _banner =>
+      _autoPausedNotice ? '⏸ Paused — lost sync with your friend' : _syncHint;
 
   /// Advisory hint shown over the video, or null when everything is ready.
   String? get _syncHint {
@@ -251,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
             initialData: _core.state,
             builder: (context, snapshot) {
               final state = snapshot.data!;
-              final hint = _syncHint;
+              final hint = _banner;
               return Stack(
                 fit: StackFit.expand,
                 children: [
