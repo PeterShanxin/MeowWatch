@@ -27,7 +27,7 @@ void main() {
     expect(snap(const Offset(20, 20)).corner, ChatCorner.topLeft);
   });
 
-  test('right-edge drop collapses into the dock', () {
+  test('right-edge drop near the middle collapses into the dock', () {
     final r = snap(const Offset(690, 300));
     expect(r.collapsed, isTrue);
     expect(r.corner, isNull);
@@ -35,5 +35,17 @@ void main() {
 
   test('a left-side drop never collapses', () {
     expect(snap(const Offset(20, 300)).collapsed, isFalse);
+  });
+
+  test('top-right corner snaps to topRight, not collapse', () {
+    final r = snap(const Offset(690, 20));
+    expect(r.collapsed, isFalse);
+    expect(r.corner, ChatCorner.topRight);
+  });
+
+  test('bottom-right corner snaps to bottomRight, not collapse', () {
+    final r = snap(const Offset(690, 580));
+    expect(r.collapsed, isFalse);
+    expect(r.corner, ChatCorner.bottomRight);
   });
 }

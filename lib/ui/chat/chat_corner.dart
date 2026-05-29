@@ -29,9 +29,11 @@ class SnapResult {
 
 /// Decide where the card lands when released at [dropTopLeft].
 ///
-/// Rule: if the card's right edge reaches into the [edgeDockZone] strip along
-/// the window's right edge, it collapses. Otherwise it snaps to whichever
-/// corner the card's center is nearest (left/right by x, top/bottom by y).
+/// Rule: collapse to the peek tab only when the card is tucked against the
+/// right edge AND dropped near the vertical middle (where the peek tab
+/// lives). A drop aimed at a right corner snaps to that corner instead — the
+/// edge-collapse strip used to swallow the top/bottom-right corners. Anywhere
+/// else snaps to whichever corner the card's center is nearest.
 SnapResult computeSnap({
   required Offset dropTopLeft,
   required Size cardSize,
@@ -39,11 +41,16 @@ SnapResult computeSnap({
   double edgeDockZone = 48,
 }) {
   final cardRight = dropTopLeft.dx + cardSize.width;
-  if (windowSize.width - cardRight <= edgeDockZone) {
-    return const SnapResult.collapse();
-  }
   final centerX = dropTopLeft.dx + cardSize.width / 2;
   final centerY = dropTopLeft.dy + cardSize.height / 2;
+
+  final againstRightEdge = windowSize.width - cardRight <= edgeDockZone;
+  final nearVerticalMiddle = centerY > windowSize.height * 0.33 &&
+      centerY < windowSize.height * 0.67;
+  if (againstRightEdge && nearVerticalMiddle) {
+    return const SnapResult.collapse();
+  }
+
   final left = centerX < windowSize.width / 2;
   final top = centerY < windowSize.height / 2;
   if (top) {
