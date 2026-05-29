@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/sync/peer_state.dart';
+import 'package:meowwatch/core/theme/meow_context.dart';
+import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/chat/chat_overlay.dart';
 
 void main() {
@@ -12,6 +14,7 @@ void main() {
     // Replicate home_screen: black backdrop, Stack(fit: expand), overlay on top.
     await tester.pumpWidget(MaterialApp(
       debugShowCheckedModeBanner: false,
+      theme: themeDataFor(MeowThemeId.cozy),
       home: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
@@ -48,6 +51,7 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(
       debugShowCheckedModeBanner: false,
+      theme: themeDataFor(MeowThemeId.cozy),
       home: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(

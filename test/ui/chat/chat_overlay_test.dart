@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/sync/peer_state.dart';
+import 'package:meowwatch/core/theme/meow_context.dart';
+import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/chat/chat_input.dart';
 import 'package:meowwatch/ui/chat/chat_overlay.dart';
 import 'package:meowwatch/ui/chat/peek_tab.dart';
 
 void main() {
   Widget host(Widget child) => MaterialApp(
+        theme: themeDataFor(MeowThemeId.cozy),
         home: Scaffold(
           body: Stack(children: [child]),
         ),
