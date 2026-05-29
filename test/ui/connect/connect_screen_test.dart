@@ -6,6 +6,7 @@ import 'package:meowwatch/core/connect/room_config.dart';
 import 'package:meowwatch/core/data/history_entry.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
 import 'package:meowwatch/core/data/stores.dart';
+import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/connect/connect_screen.dart';
 
@@ -74,6 +75,7 @@ void main() {
   Future<void> pump(WidgetTester tester) async {
     connected = null;
     await tester.pumpWidget(MaterialApp(
+      theme: themeDataFor(MeowThemeId.cozy),
       home: ConnectScreen(
         profiles: profiles,
         history: history,

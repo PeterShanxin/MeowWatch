@@ -7,15 +7,9 @@ import '../../core/data/history_entry.dart';
 import '../../core/data/saved_profile.dart';
 import '../../core/data/stores.dart';
 import '../../core/sync/syncplay_constants.dart';
+import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_theme.dart';
-
-// Cozy theme (hardcoded until Phase 5).
-const _bg = Color(0xFF1A1410);
-const _card = Color(0xF2241B14);
-const _amber = Color(0xFFD4A574);
-const _cream = Color(0xFFF5E6D3);
-const _dim = Color(0x99F5E6D3);
-const _border = Color(0x55D4A574);
+import '../theme/theme_swatches.dart';
 
 class ConnectScreen extends StatefulWidget {
   const ConnectScreen({
@@ -134,8 +128,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: m.background,
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 460),
@@ -151,14 +146,21 @@ class _ConnectScreenState extends State<ConnectScreen> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text('MeowWatch',
+                    Text('MeowWatch',
                         style: TextStyle(
-                            color: _cream,
+                            color: m.textPrimary,
                             fontSize: 30,
-                            fontWeight: FontWeight.w600)),
+                            fontWeight: FontWeight.w600,
+                            fontFamily: m.titleFontFamily)),
                     const SizedBox(height: 4),
-                    const Text('Watch together, in sync.',
-                        style: TextStyle(color: _dim, fontSize: 14)),
+                    Text('Watch together, in sync.',
+                        style: TextStyle(color: m.textDim, fontSize: 14)),
+                    const SizedBox(height: 16),
+                    _label('Theme'),
+                    ThemeSwatches(
+                      current: widget.currentTheme,
+                      onChanged: widget.onThemeChanged,
+                    ),
                     const SizedBox(height: 24),
                     _label('Your name'),
                     _textField(
@@ -169,8 +171,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
                     FilledButton(
                       key: const Key('connect-start-new'),
                       style: FilledButton.styleFrom(
-                        backgroundColor: _amber,
-                        foregroundColor: _bg,
+                        backgroundColor: m.accent,
+                        foregroundColor: m.background,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
                       onPressed: _startNewRoom,
@@ -178,8 +180,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
                           style: TextStyle(fontWeight: FontWeight.w700)),
                     ),
                     const SizedBox(height: 8),
-                    const Text('A code is generated and copied to clipboard.',
-                        style: TextStyle(color: _dim, fontSize: 12)),
+                    Text('A code is generated and copied to clipboard.',
+                        style: TextStyle(color: m.textDim, fontSize: 12)),
                     const SizedBox(height: 20),
                     _label('Enter code from friend'),
                     Row(children: [
@@ -193,7 +195,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
                       FilledButton(
                         key: const Key('connect-join'),
                         style: FilledButton.styleFrom(
-                            backgroundColor: _card, foregroundColor: _cream),
+                            backgroundColor: m.surface,
+                            foregroundColor: m.textPrimary),
                         onPressed: _joinTypedCode,
                         child: const Text('Join'),
                       ),
@@ -220,10 +223,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
     );
   }
 
-  Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(text, style: const TextStyle(color: _dim, fontSize: 13)),
-      );
+  Widget _label(String text) {
+    final m = context.meow;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(text, style: TextStyle(color: m.textDim, fontSize: 13)),
+    );
+  }
 
   Widget _textField({
     required TextEditingController controller,
@@ -231,46 +237,48 @@ class _ConnectScreenState extends State<ConnectScreen> {
     Key? key,
     bool obscure = false,
   }) {
+    final m = context.meow;
     return TextField(
       key: key,
       controller: controller,
       obscureText: obscure,
-      style: const TextStyle(color: _cream),
+      style: TextStyle(color: m.textPrimary),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: _dim),
+        hintStyle: TextStyle(color: m.textDim),
         filled: true,
-        fillColor: _card,
+        fillColor: m.surface,
         isDense: true,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: _border),
+          borderSide: BorderSide(color: m.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: _amber),
+          borderSide: BorderSide(color: m.accent),
         ),
       ),
     );
   }
 
   Widget _profileCard(SavedProfile p, {required bool isMostRecent}) {
+    final m = context.meow;
     return Card(
-      color: _card,
+      color: m.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: _border),
+        side: BorderSide(color: m.border),
       ),
       child: ListTile(
         onTap: () => _connectProfile(p),
         leading: Icon(Icons.circle,
-            size: 10, color: isMostRecent ? const Color(0xFF7BC47F) : _dim),
-        title: Text(p.name, style: const TextStyle(color: _cream)),
+            size: 10, color: isMostRecent ? m.online : m.textDim),
+        title: Text(p.name, style: TextStyle(color: m.textPrimary)),
         subtitle: Text('${p.username} · ${p.server}',
-            style: const TextStyle(color: _dim, fontSize: 12)),
+            style: TextStyle(color: m.textDim, fontSize: 12)),
         trailing: IconButton(
           key: Key('connect-delete-${p.id}'),
-          icon: const Icon(Icons.close, color: _dim, size: 18),
+          icon: Icon(Icons.close, color: m.textDim, size: 18),
           onPressed: () => widget.profiles.delete(p.id),
         ),
       ),
@@ -278,13 +286,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Widget _advancedSection() {
+    final m = context.meow;
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         key: const Key('connect-advanced'),
         initiallyExpanded: _advancedOpen,
         onExpansionChanged: (v) => setState(() => _advancedOpen = v),
-        title: const Text('Advanced', style: TextStyle(color: _dim)),
+        title: Text('Advanced', style: TextStyle(color: m.textDim)),
         tilePadding: EdgeInsets.zero,
         childrenPadding: const EdgeInsets.only(bottom: 8),
         children: [
@@ -310,6 +319,7 @@ class _ContinueWatching extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     return StreamBuilder<List<HistoryEntry>>(
       stream: history.watchRecent(),
       initialData: const [],
@@ -320,26 +330,26 @@ class _ContinueWatching extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 24),
-            const Padding(
-              padding: EdgeInsets.only(bottom: 6),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
               child: Text('Continue watching',
-                  style: TextStyle(color: _dim, fontSize: 13)),
+                  style: TextStyle(color: m.textDim, fontSize: 13)),
             ),
             ...recent.map(
               (e) => Card(
-                color: _card,
+                color: m.surface,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: _border),
+                  side: BorderSide(color: m.border),
                 ),
                 child: ListTile(
                   key: Key('continue-${e.id}'),
                   onTap: () => onResume(e),
-                  leading: const Icon(Icons.play_circle, color: _amber),
+                  leading: Icon(Icons.play_circle, color: m.accent),
                   title: Text(e.fileName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: _cream)),
+                      style: TextStyle(color: m.textPrimary)),
                 ),
               ),
             ),
