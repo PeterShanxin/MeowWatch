@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme/meow_context.dart';
+import '../core/theme/meow_theme.dart';
 import '../core/video/playback_state.dart';
 
 /// Bottom overlay bar: current time, a draggable scrubber, total duration,
@@ -10,12 +11,16 @@ class PlaybackBar extends StatelessWidget {
     required this.state,
     required this.onSeek,
     required this.onTogglePlay,
+    this.currentTheme,
+    this.onThemeChanged,
     super.key,
   });
 
   final PlaybackState state;
   final ValueChanged<Duration> onSeek;
   final VoidCallback onTogglePlay;
+  final MeowThemeId? currentTheme;
+  final ValueChanged<MeowThemeId>? onThemeChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +74,17 @@ class PlaybackBar extends StatelessWidget {
           ),
           Text(_fmt(state.duration),
               style: TextStyle(color: m.textPrimary, fontSize: 12)),
+          if (currentTheme != null && onThemeChanged != null)
+            IconButton(
+              key: const Key('playback-theme-toggle'),
+              tooltip: 'Theme',
+              icon: Icon(Icons.palette_outlined, color: m.textPrimary),
+              onPressed: () {
+                final ids = MeowThemeId.values;
+                final next = ids[(currentTheme!.index + 1) % ids.length];
+                onThemeChanged!(next);
+              },
+            ),
         ],
       ),
     );

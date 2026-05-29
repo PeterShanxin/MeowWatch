@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../core/theme/meow_theme.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/playback_state.dart';
 import 'action_feedback_overlay.dart';
@@ -14,9 +15,16 @@ import 'seek_indicator.dart';
 import 'volume_indicator.dart';
 
 class VideoSurface extends StatefulWidget {
-  const VideoSurface({required this.core, super.key});
+  const VideoSurface({
+    required this.core,
+    this.currentTheme,
+    this.onThemeChanged,
+    super.key,
+  });
 
   final MediaKitVideoCore core;
+  final MeowThemeId? currentTheme;
+  final ValueChanged<MeowThemeId>? onThemeChanged;
 
   @override
   State<VideoSurface> createState() => _VideoSurfaceState();
@@ -237,6 +245,8 @@ class _VideoSurfaceState extends State<VideoSurface> {
                         state: state,
                         onSeek: widget.core.seek,
                         onTogglePlay: _togglePlay,
+                        currentTheme: widget.currentTheme,
+                        onThemeChanged: widget.onThemeChanged,
                       ),
                     );
                   },

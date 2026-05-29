@@ -262,7 +262,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (state.fileName == null)
                     EmptyState(onBrowse: _browse)
                   else
-                    VideoSurface(core: _core),
+                    VideoSurface(
+                      core: _core,
+                      currentTheme: widget.currentTheme,
+                      onThemeChanged: widget.onThemeChanged,
+                    ),
                   if (state.fileName != null && hint != null)
                     Align(
                       alignment: const Alignment(0, -0.8),
