@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/meow_context.dart';
 import '../core/video/playback_state.dart';
 
 /// Bottom overlay bar: current time, a draggable scrubber, total duration,
@@ -16,11 +17,9 @@ class PlaybackBar extends StatelessWidget {
   final ValueChanged<Duration> onSeek;
   final VoidCallback onTogglePlay;
 
-  static const _cream = Color(0xFFF5E6D3);
-  static const _amber = Color(0xFFD4A574);
-
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     final durationMs = state.duration.inMilliseconds;
     final hasDuration = durationMs > 0;
     final positionMs =
@@ -29,11 +28,11 @@ class PlaybackBar extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 24, 16, 8),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [Color(0xCC000000), Color(0x00000000)],
+          colors: [m.scrim.withValues(alpha: 0.80), Colors.transparent],
         ),
       ),
       child: Row(
@@ -42,20 +41,22 @@ class PlaybackBar extends StatelessWidget {
             onPressed: onTogglePlay,
             icon: Icon(
               isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              color: _cream,
+              color: m.textPrimary,
             ),
           ),
           Text(_fmt(state.position),
-              style: const TextStyle(color: _cream, fontSize: 12)),
+              style: TextStyle(color: m.textPrimary, fontSize: 12)),
           Expanded(
             child: SliderTheme(
-              data: const SliderThemeData(
+              data: SliderThemeData(
                 trackHeight: 3,
-                activeTrackColor: _amber,
-                inactiveTrackColor: Color(0x55F5E6D3),
-                thumbColor: _amber,
-                thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape: RoundSliderOverlayShape(overlayRadius: 12),
+                activeTrackColor: m.accent,
+                inactiveTrackColor: m.textPrimary.withValues(alpha: 0.33),
+                thumbColor: m.accent,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape:
+                    const RoundSliderOverlayShape(overlayRadius: 12),
               ),
               child: Slider(
                 value: hasDuration ? positionMs.toDouble() : 0,
@@ -67,7 +68,7 @@ class PlaybackBar extends StatelessWidget {
             ),
           ),
           Text(_fmt(state.duration),
-              style: const TextStyle(color: _cream, fontSize: 12)),
+              style: TextStyle(color: m.textPrimary, fontSize: 12)),
         ],
       ),
     );

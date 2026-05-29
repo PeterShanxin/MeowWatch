@@ -11,6 +11,7 @@ import '../core/data/stores.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
 import '../core/sync/syncplay_client.dart';
+import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/playback_state.dart';
@@ -223,8 +224,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: m.background,
       // A non-focusable ancestor handler: it must NOT autofocus, or it
       // would steal primary focus from VideoSurface and kill its
       // space/arrow keys. Tab still reaches it by bubbling up from the
@@ -252,6 +254,11 @@ class _HomeScreenState extends State<HomeScreen> {
               return Stack(
                 fit: StackFit.expand,
                 children: [
+                  DecoratedBox(
+                    decoration: m.backgroundGradient != null
+                        ? BoxDecoration(gradient: m.backgroundGradient)
+                        : BoxDecoration(color: m.background),
+                  ),
                   if (state.fileName == null)
                     EmptyState(onBrowse: _browse)
                   else
@@ -296,17 +303,18 @@ class _SyncHintBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     return IgnorePointer(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xCC1A1410),
+          color: m.background.withValues(alpha: 0.80),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0x55D4A574)),
+          border: Border.all(color: m.border),
         ),
         child: Text(
           text,
-          style: const TextStyle(color: Color(0xFFF5E6D3), fontSize: 14),
+          style: TextStyle(color: m.textPrimary, fontSize: 14),
         ),
       ),
     );
@@ -320,24 +328,25 @@ class _LeaveButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     return Material(
-      color: const Color(0xCC1A1410),
+      color: m.background.withValues(alpha: 0.80),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: Color(0x55D4A574)),
+        side: BorderSide(color: m.border),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: onLeave,
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.arrow_back, size: 16, color: Color(0xFFF5E6D3)),
-              SizedBox(width: 6),
+              Icon(Icons.arrow_back, size: 16, color: m.textPrimary),
+              const SizedBox(width: 6),
               Text('Leave',
-                  style: TextStyle(color: Color(0xFFF5E6D3), fontSize: 13)),
+                  style: TextStyle(color: m.textPrimary, fontSize: 13)),
             ],
           ),
         ),
