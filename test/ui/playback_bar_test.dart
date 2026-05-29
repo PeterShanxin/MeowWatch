@@ -13,7 +13,7 @@ const _sample = PlaybackState(
 );
 
 void main() {
-  testWidgets('no theme toggle when theme params are absent', (tester) async {
+  testWidgets('shows current position and total duration', (tester) async {
     await tester.pumpWidget(MaterialApp(
       theme: themeDataFor(MeowThemeId.cozy),
       home: Scaffold(
@@ -24,42 +24,23 @@ void main() {
         ),
       ),
     ));
-    expect(find.byKey(const Key('playback-theme-toggle')), findsNothing);
+    expect(find.text('01:00'), findsOneWidget);
+    expect(find.text('05:00'), findsOneWidget);
   });
 
-  testWidgets('theme button cycles to the next preset', (tester) async {
-    MeowThemeId? next;
+  testWidgets('play/pause button fires onTogglePlay', (tester) async {
+    var toggled = false;
     await tester.pumpWidget(MaterialApp(
       theme: themeDataFor(MeowThemeId.cozy),
       home: Scaffold(
         body: PlaybackBar(
           state: _sample,
           onSeek: (_) {},
-          onTogglePlay: () {},
-          currentTheme: MeowThemeId.cozy,
-          onThemeChanged: (id) => next = id,
+          onTogglePlay: () => toggled = true,
         ),
       ),
     ));
-    await tester.tap(find.byKey(const Key('playback-theme-toggle')));
-    expect(next, MeowThemeId.noir); // cozy -> noir -> aurora -> cozy
-  });
-
-  testWidgets('theme button wraps aurora back to cozy', (tester) async {
-    MeowThemeId? next;
-    await tester.pumpWidget(MaterialApp(
-      theme: themeDataFor(MeowThemeId.aurora),
-      home: Scaffold(
-        body: PlaybackBar(
-          state: _sample,
-          onSeek: (_) {},
-          onTogglePlay: () {},
-          currentTheme: MeowThemeId.aurora,
-          onThemeChanged: (id) => next = id,
-        ),
-      ),
-    ));
-    await tester.tap(find.byKey(const Key('playback-theme-toggle')));
-    expect(next, MeowThemeId.cozy);
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    expect(toggled, isTrue);
   });
 }

@@ -20,6 +20,7 @@ import 'chat/chat_overlay.dart';
 import 'chat/chat_overlay_layout.dart';
 import 'drop_target.dart';
 import 'empty_state.dart';
+import 'player_menu_button.dart';
 import 'video_surface.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -262,11 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (state.fileName == null)
                     EmptyState(onBrowse: _browse)
                   else
-                    VideoSurface(
-                      core: _core,
-                      currentTheme: widget.currentTheme,
-                      onThemeChanged: widget.onThemeChanged,
-                    ),
+                    VideoSurface(core: _core),
                   if (state.fileName != null && hint != null)
                     Align(
                       alignment: const Alignment(0, -0.8),
@@ -288,7 +285,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   Positioned(
                     top: 12,
                     left: 12,
-                    child: _LeaveButton(onLeave: _leave),
+                    child: PlayerMenuButton(
+                      currentTheme: widget.currentTheme,
+                      onThemeChanged: widget.onThemeChanged,
+                      onLeave: _leave,
+                    ),
                   ),
                 ],
               );
@@ -325,36 +326,3 @@ class _SyncHintBanner extends StatelessWidget {
   }
 }
 
-class _LeaveButton extends StatelessWidget {
-  const _LeaveButton({required this.onLeave});
-
-  final VoidCallback onLeave;
-
-  @override
-  Widget build(BuildContext context) {
-    final m = context.meow;
-    return Material(
-      color: m.background.withValues(alpha: 0.80),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: m.border),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onLeave,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.arrow_back, size: 16, color: m.textPrimary),
-              const SizedBox(width: 6),
-              Text('Leave',
-                  style: TextStyle(color: m.textPrimary, fontSize: 13)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
