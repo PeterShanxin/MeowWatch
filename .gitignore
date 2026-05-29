@@ -14,3 +14,4 @@ build/
 windows/flutter/ephemeral/
 linux/flutter/ephemeral/
 macos/Flutter/ephemeral/
+test/ui/chat/failures/
