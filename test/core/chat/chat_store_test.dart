@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:meowwatch/core/chat/chat_signals.dart';
 import 'package:meowwatch/core/chat/chat_store.dart';
 import 'package:meowwatch/core/sync/peer_state.dart';
 import 'package:meowwatch/core/sync/sync_core.dart';
@@ -87,6 +88,39 @@ void main() {
     store.send('hello');
 
     expect(sync.sent, ['hello']);
+    await store.dispose();
+    await sync.dispose();
+  });
+
+  test('control messages are routed, not shown in history', () async {
+    final sync = FakeSync();
+    final store = ChatStore(sync: sync);
+    final reaction = store.reactions.first;
+    final typing = store.typing.first;
+
+    sync.incoming(ChatMessage(username: 'lin', text: encodeReaction('🎉')));
+    sync.incoming(ChatMessage(username: 'lin', text: encodeTyping(true)));
+    sync.incoming(const ChatMessage(username: 'lin', text: 'real msg'));
+    await Future<void>.delayed(Duration.zero);
+
+    expect((await reaction).emoji, '🎉');
+    expect((await reaction).username, 'lin');
+    expect((await typing).isTyping, isTrue);
+    // Only the real message reaches chat history.
+    expect(store.messages.map((m) => m.text), ['real msg']);
+
+    await store.dispose();
+    await sync.dispose();
+  });
+
+  test('sendReaction / sendTyping emit encoded control messages', () async {
+    final sync = FakeSync();
+    final store = ChatStore(sync: sync);
+
+    store.sendReaction('👍');
+    store.sendTyping(isTyping: true);
+
+    expect(sync.sent, [encodeReaction('👍'), encodeTyping(true)]);
     await store.dispose();
     await sync.dispose();
   });
