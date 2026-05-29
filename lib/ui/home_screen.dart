@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/chat/chat_store.dart';
+import '../core/connect/room_config.dart';
+import '../core/data/stores.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
 import '../core/sync/syncplay_client.dart';
@@ -13,13 +15,19 @@ import '../core/video/media_kit_video_core.dart';
 import '../core/video/playback_state.dart';
 import 'chat/chat_overlay.dart';
 import 'chat/chat_overlay_layout.dart';
-import 'dev_connect_bar.dart';
 import 'drop_target.dart';
 import 'empty_state.dart';
 import 'video_surface.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    required this.config,
+    required this.history,
+    super.key,
+  });
+
+  final RoomConfig config;
+  final HistoryStore history;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -38,9 +46,10 @@ class _HomeScreenState extends State<HomeScreen> {
   late final ChatStore _chat;
   ChatOverlayLayout _chatLayout = const ChatOverlayLayout();
   List<ChatMessage> _messages = const <ChatMessage>[];
-  String _username = '';
+  late String _username;
   bool _peekPulsing = false;
   Timer? _peekTimer;
+  Timer? _historyTimer;
   StreamSubscription<List<ChatMessage>>? _chatSub;
 
   @override
@@ -76,10 +85,28 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       });
     });
+
+    _username = widget.config.username;
+    _historyTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      unawaited(_saveResumePosition());
+    });
+    unawaited(_sync.connect(
+      server: widget.config.server,
+      port: widget.config.port,
+      username: widget.config.username,
+      room: widget.config.room,
+      password: widget.config.password,
+    ));
+    final resume = widget.config.resumeFilePath;
+    if (resume != null) {
+      unawaited(_resume(resume, widget.config.resumePositionMs));
+    }
   }
 
   @override
   void dispose() {
+    _historyTimer?.cancel();
+    unawaited(_saveResumePosition());
     _peekTimer?.cancel();
     unawaited(_chatSub?.cancel());
     unawaited(_chat.dispose());
@@ -115,6 +142,47 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _load(String path) async {
     await _core.load(path);
     await _announceCurrentFile();
+    await _recordOpen(path);
+  }
+
+  Future<void> _resume(String path, int positionMs) async {
+    await _load(path);
+    if (positionMs > 0) {
+      await _core.seek(Duration(milliseconds: positionMs));
+    }
+  }
+
+  Future<void> _recordOpen(String path) async {
+    final state = _core.state;
+    var size = 0;
+    try {
+      size = await File(path).length();
+    } on FileSystemException {
+      size = 0;
+    }
+    await widget.history.recordOpen(
+      filePath: path,
+      fileName: state.fileName ?? path,
+      fileSizeBytes: size,
+      durationMs: state.duration.inMilliseconds,
+    );
+  }
+
+  Future<void> _saveResumePosition() async {
+    final state = _core.state;
+    final path = state.filePath;
+    if (path == null) return;
+    await widget.history.updatePosition(
+      filePath: path,
+      positionMs: state.position.inMilliseconds,
+    );
+  }
+
+  Future<void> _leave() async {
+    _historyTimer?.cancel();
+    await _saveResumePosition();
+    await _sync.disconnect();
+    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _announceCurrentFile() async {
@@ -149,88 +217,69 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_load(path));
   }
 
-  void _connect({
-    required String server,
-    required int port,
-    required String username,
-    required String room,
-  }) {
-    _username = username;
-    unawaited(_sync.connect(
-      server: server,
-      port: port,
-      username: username,
-      room: room,
-    ));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Column(
-        children: [
-          DevConnectBar(
-            connectionStatus: _syncStatus,
-            onConnect: _connect,
+      // A non-focusable ancestor handler: it must NOT autofocus, or it
+      // would steal primary focus from VideoSurface and kill its
+      // space/arrow keys. Tab still reaches it by bubbling up from the
+      // focused video surface, and skipTraversal stops the framework's
+      // default Tab focus-traversal from swallowing it first.
+      body: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.tab) {
+            setState(() => _chatLayout = _chatLayout.toggle());
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: VideoDropTarget(
+          onFileDropped: _handleDropped,
+          child: StreamBuilder<PlaybackState>(
+            stream: _core.stateStream,
+            initialData: _core.state,
+            builder: (context, snapshot) {
+              final state = snapshot.data!;
+              final hint = _syncHint;
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (state.fileName == null)
+                    EmptyState(onBrowse: _browse)
+                  else
+                    VideoSurface(core: _core),
+                  if (state.fileName != null && hint != null)
+                    Align(
+                      alignment: const Alignment(0, -0.8),
+                      child: _SyncHintBanner(text: hint),
+                    ),
+                  if (state.fileName != null)
+                    ChatOverlay(
+                      messages: _messages,
+                      myUsername: _username,
+                      collapsed: _chatLayout.collapsed,
+                      corner: _chatLayout.corner,
+                      pulsing: _peekPulsing,
+                      onSend: _chat.send,
+                      onToggleCollapsed: () =>
+                          setState(() => _chatLayout = _chatLayout.toggle()),
+                      onSnap: (result) => setState(
+                          () => _chatLayout = _chatLayout.applySnap(result)),
+                    ),
+                  Positioned(
+                    top: 12,
+                    left: 12,
+                    child: _LeaveButton(onLeave: _leave),
+                  ),
+                ],
+              );
+            },
           ),
-          Expanded(
-            // A non-focusable ancestor handler: it must NOT autofocus, or it
-            // would steal primary focus from VideoSurface and kill its
-            // space/arrow keys. Tab still reaches it by bubbling up from the
-            // focused video surface, and skipTraversal stops the framework's
-            // default Tab focus-traversal from swallowing it first.
-            child: Focus(
-              canRequestFocus: false,
-              skipTraversal: true,
-              onKeyEvent: (node, event) {
-                if (event is KeyDownEvent &&
-                    event.logicalKey == LogicalKeyboardKey.tab) {
-                  setState(() => _chatLayout = _chatLayout.toggle());
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              child: VideoDropTarget(
-                onFileDropped: _handleDropped,
-                child: StreamBuilder<PlaybackState>(
-                  stream: _core.stateStream,
-                  initialData: _core.state,
-                  builder: (context, snapshot) {
-                    final state = snapshot.data!;
-                    if (state.fileName == null) {
-                      return EmptyState(onBrowse: _browse);
-                    }
-                    final hint = _syncHint;
-                    return Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        VideoSurface(core: _core),
-                        if (hint != null)
-                          Align(
-                            alignment: const Alignment(0, -0.8),
-                            child: _SyncHintBanner(text: hint),
-                          ),
-                        ChatOverlay(
-                          messages: _messages,
-                          myUsername: _username,
-                          collapsed: _chatLayout.collapsed,
-                          corner: _chatLayout.corner,
-                          pulsing: _peekPulsing,
-                          onSend: _chat.send,
-                          onToggleCollapsed: () => setState(
-                              () => _chatLayout = _chatLayout.toggle()),
-                          onSnap: (result) => setState(
-                              () => _chatLayout = _chatLayout.applySnap(result)),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -254,6 +303,39 @@ class _SyncHintBanner extends StatelessWidget {
         child: Text(
           text,
           style: const TextStyle(color: Color(0xFFF5E6D3), fontSize: 14),
+        ),
+      ),
+    );
+  }
+}
+
+class _LeaveButton extends StatelessWidget {
+  const _LeaveButton({required this.onLeave});
+
+  final VoidCallback onLeave;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xCC1A1410),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: Color(0x55D4A574)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onLeave,
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.arrow_back, size: 16, color: Color(0xFFF5E6D3)),
+              SizedBox(width: 6),
+              Text('Leave',
+                  style: TextStyle(color: Color(0xFFF5E6D3), fontSize: 13)),
+            ],
+          ),
         ),
       ),
     );
