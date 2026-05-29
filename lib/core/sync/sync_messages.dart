@@ -155,6 +155,12 @@ class PresenceMessage extends ServerMessage {
   final List<PresenceEvent> events;
 }
 
+/// One or more peers announced (or changed) the file they have loaded.
+class PeerFileMessage extends ServerMessage {
+  const PeerFileMessage(this.files);
+  final List<PeerFile> files;
+}
+
 class ChatServerMessage extends ServerMessage {
   const ChatServerMessage(this.message);
   final ChatMessage message;
@@ -173,8 +179,9 @@ class ErrorMessage extends ServerMessage {
 /// The full room roster sent by the server (in response to our List, and on
 /// joins). Used to learn about users who were already present before us.
 class RosterMessage extends ServerMessage {
-  const RosterMessage(this.usernames);
+  const RosterMessage(this.usernames, {this.files = const []});
   final List<String> usernames;
+  final List<PeerFile> files;
 }
 
 class UnknownMessage extends ServerMessage {
@@ -245,48 +252,74 @@ StateMessage _decodeState(Map<dynamic, dynamic> state) {
   );
 }
 
+/// Parse a `file` block (`{name, size, duration}`) for [username]; null if the
+/// entry carries no usable file name.
+PeerFile? _parsePeerFile(String username, Object? fileValue) {
+  if (fileValue is! Map) return null;
+  final name = fileValue['name'];
+  if (name is! String || name.isEmpty) return null;
+  final size = fileValue['size'];
+  final dur = fileValue['duration'];
+  return PeerFile(
+    username: username,
+    name: name,
+    sizeBytes: size is num ? size.toInt() : null,
+    duration: dur is num
+        ? Duration(milliseconds: (dur.toDouble() * 1000).round())
+        : null,
+  );
+}
+
 ServerMessage _decodeList(Object? list) {
-  // Shape: {"List": {roomName: {username: {...}}}}
+  // Shape: {"List": {roomName: {username: {file: {...}, ...}}}}
   final names = <String>[];
+  final files = <PeerFile>[];
   if (list is Map) {
     for (final room in list.values) {
       if (room is Map) {
-        for (final name in room.keys) {
-          if (name is String) names.add(name);
-        }
+        room.forEach((name, entry) {
+          if (name is! String) return;
+          names.add(name);
+          if (entry is Map) {
+            final file = _parsePeerFile(name, entry['file']);
+            if (file != null) files.add(file);
+          }
+        });
       }
     }
   }
-  return RosterMessage(names);
+  return RosterMessage(names, files: files);
 }
 
 ServerMessage _decodeSet(Map<dynamic, dynamic> set) {
   if (set['user'] is Map) {
     final events = <PresenceEvent>[];
+    final files = <PeerFile>[];
     (set['user'] as Map).forEach((name, value) {
-      if (value is! Map) return;
+      if (value is! Map || name is! String) return;
       final room =
           value['room'] is Map ? (value['room'] as Map)['name'] as String? : null;
-      final fileName =
-          value['file'] is Map ? (value['file'] as Map)['name'] as String? : null;
+      final file = _parsePeerFile(name, value['file']);
+      if (file != null) files.add(file);
       final event = value['event'];
       if (event is Map && event['left'] != null) {
         events.add(PresenceEvent(
-          username: name as String,
+          username: name,
           kind: PresenceKind.left,
           room: room,
-          fileName: fileName,
+          fileName: file?.name,
         ));
       } else if (event is Map && event['joined'] != null) {
         events.add(PresenceEvent(
-          username: name as String,
+          username: name,
           kind: PresenceKind.joined,
           room: room,
-          fileName: fileName,
+          fileName: file?.name,
         ));
       }
     });
     if (events.isNotEmpty) return PresenceMessage(events);
+    if (files.isNotEmpty) return PeerFileMessage(files);
   }
   return const UnknownMessage();
 }

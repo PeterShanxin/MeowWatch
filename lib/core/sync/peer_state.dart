@@ -61,6 +61,35 @@ class PeerPlayState {
   int get hashCode => Object.hash(position, paused, doSeek, setBy);
 }
 
+/// A file a peer has announced loading. Used to warn about mismatches (you and
+/// your friend watching different files). [sizeBytes] is the strongest match
+/// signal (same file ⇒ same bytes); [name]/[duration] are softer fallbacks.
+@immutable
+class PeerFile {
+  const PeerFile({
+    required this.username,
+    required this.name,
+    this.sizeBytes,
+    this.duration,
+  });
+
+  final String username;
+  final String name;
+  final int? sizeBytes;
+  final Duration? duration;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PeerFile &&
+      other.username == username &&
+      other.name == name &&
+      other.sizeBytes == sizeBytes &&
+      other.duration == duration;
+
+  @override
+  int get hashCode => Object.hash(username, name, sizeBytes, duration);
+}
+
 enum PresenceKind { joined, left }
 
 @immutable

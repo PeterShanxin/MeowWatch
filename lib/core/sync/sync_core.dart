@@ -16,12 +16,18 @@ abstract class SyncCore {
       StreamController<PresenceEvent>.broadcast();
   final StreamController<ChatMessage> _chat =
       StreamController<ChatMessage>.broadcast();
+  final StreamController<PeerFile> _peerFile =
+      StreamController<PeerFile>.broadcast();
   bool _disposed = false;
 
   Stream<SyncConnectionState> get connectionState => _connection.stream;
   Stream<PeerPlayState> get peerState => _peer.stream;
   Stream<PresenceEvent> get presence => _presence.stream;
   Stream<ChatMessage> get chat => _chat.stream;
+
+  /// Files announced by peers (on join, on the roster, and on mid-session file
+  /// changes). Drives the file-mismatch warning.
+  Stream<PeerFile> get peerFile => _peerFile.stream;
 
   @protected
   void emitConnectionState(SyncConnectionState s) {
@@ -41,6 +47,11 @@ abstract class SyncCore {
   @protected
   void emitChat(ChatMessage m) {
     if (!_disposed) _chat.add(m);
+  }
+
+  @protected
+  void emitPeerFile(PeerFile f) {
+    if (!_disposed) _peerFile.add(f);
   }
 
   Future<void> connect({
@@ -83,5 +94,6 @@ abstract class SyncCore {
     await _peer.close();
     await _presence.close();
     await _chat.close();
+    await _peerFile.close();
   }
 }

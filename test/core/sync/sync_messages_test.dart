@@ -207,6 +207,55 @@ void main() {
       expect(m.usernames, containsAll(<String>['A', 'B']));
     });
 
+    test('roster carries peer files', () {
+      final m = decodeServerMessage({
+        'List': {
+          'room': {
+            'A': {
+              'file': {'name': 'movie.mkv', 'size': 1000, 'duration': 60.0},
+            },
+            'B': {'position': 0},
+          },
+        },
+      }) as RosterMessage;
+      final fileA = m.files.singleWhere((f) => f.username == 'A');
+      expect(fileA.name, 'movie.mkv');
+      expect(fileA.sizeBytes, 1000);
+      expect(fileA.duration, const Duration(seconds: 60));
+      expect(m.files.where((f) => f.username == 'B'), isEmpty);
+    });
+
+    test('classifies a standalone Set file as PeerFileMessage', () {
+      final m = decodeServerMessage({
+        'Set': {
+          'user': {
+            'lin': {
+              'file': {'name': 'show.mp4', 'size': 2048, 'duration': 12.5},
+            },
+          },
+        },
+      }) as PeerFileMessage;
+      expect(m.files.single.username, 'lin');
+      expect(m.files.single.name, 'show.mp4');
+      expect(m.files.single.sizeBytes, 2048);
+      expect(m.files.single.duration, const Duration(milliseconds: 12500));
+    });
+
+    test('Set with join event still classifies as presence', () {
+      final m = decodeServerMessage({
+        'Set': {
+          'user': {
+            'lin': {
+              'event': {'joined': true},
+              'file': {'name': 'show.mp4', 'size': 2048},
+            },
+          },
+        },
+      });
+      expect(m, isA<PresenceMessage>());
+      expect((m as PresenceMessage).events.single.fileName, 'show.mp4');
+    });
+
     test('unknown command yields UnknownMessage', () {
       final m = decodeServerMessage({'Whatever': 1});
       expect(m, isA<UnknownMessage>());

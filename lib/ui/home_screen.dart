@@ -9,6 +9,7 @@ import '../core/chat/chat_store.dart';
 import '../core/connect/room_config.dart';
 import '../core/data/stores.dart';
 import '../core/sync/auto_pause.dart';
+import '../core/sync/file_match.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
 import '../core/sync/syncplay_client.dart';
@@ -52,6 +53,12 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<SyncConnectionState>? _connSub;
   StreamSubscription<PresenceEvent>? _presenceSub;
   StreamSubscription<PlaybackState>? _noticeSub;
+  StreamSubscription<PeerFile>? _peerFileSub;
+
+  /// Most recent file a peer announced, and our own loaded file's byte size —
+  /// together they drive the file-mismatch warning.
+  PeerFile? _peerFile;
+  int? _localFileSizeBytes;
 
   /// Was the session in sync (connected + a peer present) at the last check?
   /// Used to detect the healthy -> unhealthy edge that triggers auto-pause.
@@ -111,9 +118,13 @@ class _HomeScreenState extends State<HomeScreen> {
           _showPresenceNotice('🐾 ${e.username} joined');
         } else {
           _peers.remove(e.username);
+          if (_peerFile?.username == e.username) _peerFile = null;
         }
         _evaluateSyncHealth();
       });
+    });
+    _peerFileSub = _sync.peerFile.listen((f) {
+      if (mounted) setState(() => _peerFile = f);
     });
     // Clear the auto-pause banner once the user manually resumes playback.
     _noticeSub = _core.stateStream.listen((s) {
@@ -150,6 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_connSub?.cancel());
     unawaited(_presenceSub?.cancel());
     unawaited(_noticeSub?.cancel());
+    unawaited(_peerFileSub?.cancel());
     _presenceTimer?.cancel();
     _autoPauseTimer?.cancel();
     unawaited(_bridge.dispose());
@@ -216,12 +228,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Banner text shown over the video, or null when nothing to say. Priority:
-  /// a fresh "friend joined" notice, then the auto-pause reason, then the
-  /// plain waiting/connect hint.
+  /// a fresh "friend joined" notice, then a file-mismatch warning, then the
+  /// auto-pause reason, then the plain waiting/connect hint.
   String? get _banner {
     if (_presenceNotice != null) return _presenceNotice;
+    final mismatch = _fileMismatchBanner;
+    if (mismatch != null) return mismatch;
     if (_autoPausedNotice) return '⏸ Paused — lost sync with your friend';
     return _syncHint;
+  }
+
+  /// Warn when the peer's loaded file clearly differs from ours.
+  String? get _fileMismatchBanner {
+    final peer = _peerFile;
+    if (peer == null) return null;
+    final result = compareFiles(
+      localName: _core.state.fileName,
+      localSize: _localFileSizeBytes,
+      peerName: peer.name,
+      peerSize: peer.sizeBytes,
+    );
+    if (result != FileMatch.mismatch) return null;
+    return '⚠ Different file — ${peer.username} has "${peer.name}"';
   }
 
   /// Advisory hint shown over the video, or null when everything is ready.
@@ -256,6 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } on FileSystemException {
       size = 0;
     }
+    if (mounted) setState(() => _localFileSizeBytes = size);
     await widget.history.recordOpen(
       filePath: path,
       fileName: state.fileName ?? path,

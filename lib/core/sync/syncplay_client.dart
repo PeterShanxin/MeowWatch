@@ -165,12 +165,19 @@ class SyncplayClient extends SyncCore {
         for (final e in events) {
           emitPresence(e);
         }
-      case RosterMessage(:final usernames):
+      case PeerFileMessage(:final files):
+        for (final f in files) {
+          if (f.username != _username) emitPeerFile(f);
+        }
+      case RosterMessage(:final usernames, :final files):
         for (final name in usernames) {
           if (name != _username) {
             emitPresence(PresenceEvent(
                 username: name, kind: PresenceKind.joined));
           }
+        }
+        for (final f in files) {
+          if (f.username != _username) emitPeerFile(f);
         }
       case ChatServerMessage(:final message):
         emitChat(message);
