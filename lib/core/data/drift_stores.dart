@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import 'app_database.dart';
 import 'history_entry.dart';
 import 'saved_profile.dart';
+import 'settings_store.dart';
 import 'stores.dart';
 
 class DriftProfileStore implements ProfileStore {
@@ -144,4 +145,25 @@ class DriftHistoryStore implements HistoryStore {
         lastPositionMs: r.lastPositionMs,
         playedAt: r.playedAt,
       );
+}
+
+class DriftSettingsStore implements SettingsStore {
+  DriftSettingsStore(this._db);
+
+  final AppDatabase _db;
+
+  @override
+  Future<String?> get(String key) async {
+    final row = await (_db.select(_db.settings)
+          ..where((t) => t.key.equals(key)))
+        .getSingleOrNull();
+    return row?.value;
+  }
+
+  @override
+  Future<void> set(String key, String value) {
+    return _db.into(_db.settings).insertOnConflictUpdate(
+          SettingsCompanion.insert(key: key, value: value),
+        );
+  }
 }
