@@ -64,6 +64,12 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _presenceNotice;
   Timer? _presenceTimer;
 
+  /// Debounce before auto-pausing: a brief blip (e.g. a heartbeat timeout that
+  /// recovers a second later, common when two instances share one PC) should
+  /// NOT pause — only a sustained loss of sync.
+  Timer? _autoPauseTimer;
+  static const _autoPauseDelay = Duration(seconds: 2);
+
   late final ChatStore _chat;
   ChatOverlayLayout _chatLayout = const ChatOverlayLayout();
   List<ChatMessage> _messages = const <ChatMessage>[];
@@ -145,6 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_presenceSub?.cancel());
     unawaited(_noticeSub?.cancel());
     _presenceTimer?.cancel();
+    _autoPauseTimer?.cancel();
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
     unawaited(_core.dispose());
@@ -169,22 +176,41 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// Recompute sync health and auto-pause on the healthy -> unhealthy edge.
-  /// Call inside setState after [_syncStatus] / [_peers] change.
+  bool get _syncHealthyNow => SyncHealth(
+        connected: _syncStatus == SyncConnectionStatus.connected,
+        hasPeer: _peers.isNotEmpty,
+      ).healthy;
+
+  /// Recompute sync health and (after a debounce) auto-pause on a sustained
+  /// healthy -> unhealthy drop. Call inside setState after [_syncStatus] /
+  /// [_peers] change.
   void _evaluateSyncHealth() {
-    final nowHealthy = SyncHealth(
-      connected: _syncStatus == SyncConnectionStatus.connected,
-      hasPeer: _peers.isNotEmpty,
-    ).healthy;
+    final nowHealthy = _syncHealthyNow;
     final isPlaying = _core.state.status == PlaybackStatus.playing;
-    if (decideAutoPause(
-        wasHealthy: _syncHealthy, nowHealthy: nowHealthy, isPlaying: isPlaying)) {
-      unawaited(_core.pause());
-      _autoPausedNotice = true;
+
+    if (nowHealthy) {
+      // Recovered (or never lost) — cancel any pending pause, clear banner.
+      _autoPauseTimer?.cancel();
+      _autoPauseTimer = null;
+      _autoPausedNotice = false;
+    } else if (decideAutoPause(
+            wasHealthy: _syncHealthy, nowHealthy: nowHealthy, isPlaying: isPlaying) &&
+        _autoPauseTimer == null) {
+      // Edge into unhealthy while playing — arm the debounce, confirm later.
+      _autoPauseTimer = Timer(_autoPauseDelay, _confirmAutoPause);
     }
-    // Stay paused on restore, but the reason banner is no longer true.
-    if (nowHealthy) _autoPausedNotice = false;
     _syncHealthy = nowHealthy;
+  }
+
+  /// Fires after the debounce: pause only if sync is STILL down and we're
+  /// still playing. A blip that already recovered cancelled this timer.
+  void _confirmAutoPause() {
+    _autoPauseTimer = null;
+    if (!mounted) return;
+    if (!_syncHealthyNow && _core.state.status == PlaybackStatus.playing) {
+      unawaited(_core.pause());
+      setState(() => _autoPausedNotice = true);
+    }
   }
 
   /// Banner text shown over the video, or null when nothing to say. Priority:

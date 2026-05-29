@@ -122,6 +122,23 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
   Future<void> _copy() async {
     await Clipboard.setData(ClipboardData(text: widget.code));
     if (!mounted) return;
+    final m = context.meow;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: m.surface,
+        duration: const Duration(seconds: 2),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle, size: 18, color: m.online),
+            const SizedBox(width: 10),
+            Text('Room code ${widget.code} copied',
+                style: TextStyle(color: m.textPrimary)),
+          ],
+        ),
+      ));
     setState(() => _copied = true);
     _resetTimer?.cancel();
     _resetTimer = Timer(const Duration(milliseconds: 1500), () {
