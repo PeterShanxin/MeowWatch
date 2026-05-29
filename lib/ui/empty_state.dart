@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme/meow_context.dart';
+import 'idle_mascot.dart';
 
 class EmptyState extends StatelessWidget {
   const EmptyState({required this.onBrowse, super.key});
@@ -16,8 +17,8 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.movie_outlined, size: 64, color: m.accent),
-            const SizedBox(height: 16),
+            const IdleMascot(size: 104),
+            const SizedBox(height: 20),
             Text(
               'Drop a video file to start',
               style: TextStyle(color: m.textPrimary, fontSize: 18),
