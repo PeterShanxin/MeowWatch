@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
@@ -12,6 +13,7 @@ Widget _host(Widget child) => MaterialApp(
 void main() {
   testWidgets('menu is closed until the gear is tapped', (tester) async {
     await tester.pumpWidget(_host(PlayerMenuButton(
+      roomCode: 'MEOW42',
       currentTheme: MeowThemeId.cozy,
       onThemeChanged: (_) {},
       onLeave: () {},
@@ -26,6 +28,7 @@ void main() {
   testWidgets('tapping a swatch fires onThemeChanged', (tester) async {
     MeowThemeId? picked;
     await tester.pumpWidget(_host(PlayerMenuButton(
+      roomCode: 'MEOW42',
       currentTheme: MeowThemeId.cozy,
       onThemeChanged: (id) => picked = id,
       onLeave: () {},
@@ -39,6 +42,7 @@ void main() {
   testWidgets('tapping Leave fires onLeave', (tester) async {
     var left = false;
     await tester.pumpWidget(_host(PlayerMenuButton(
+      roomCode: 'MEOW42',
       currentTheme: MeowThemeId.cozy,
       onThemeChanged: (_) {},
       onLeave: () => left = true,
@@ -47,5 +51,34 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('player-menu-leave')));
     expect(left, isTrue);
+  });
+
+  testWidgets('shows the room code and copies it to the clipboard',
+      (tester) async {
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+
+    await tester.pumpWidget(_host(PlayerMenuButton(
+      roomCode: 'MEOW42',
+      currentTheme: MeowThemeId.cozy,
+      onThemeChanged: (_) {},
+      onLeave: () {},
+    )));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('MEOW42'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('player-menu-room-code')));
+    await tester.pump();
+    expect(copied, 'MEOW42');
+    expect(find.text('Copied!'), findsOneWidget);
   });
 }

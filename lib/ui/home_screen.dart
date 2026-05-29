@@ -60,6 +60,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// True while we've auto-paused because sync dropped; drives the banner.
   bool _autoPausedNotice = false;
 
+  /// Transient banner when a friend joins/rejoins the room (auto-clears).
+  String? _presenceNotice;
+  Timer? _presenceTimer;
+
   late final ChatStore _chat;
   ChatOverlayLayout _chatLayout = const ChatOverlayLayout();
   List<ChatMessage> _messages = const <ChatMessage>[];
@@ -98,6 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         if (e.kind == PresenceKind.joined) {
           _peers.add(e.username);
+          _showPresenceNotice('🐾 ${e.username} joined');
         } else {
           _peers.remove(e.username);
         }
@@ -139,6 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_connSub?.cancel());
     unawaited(_presenceSub?.cancel());
     unawaited(_noticeSub?.cancel());
+    _presenceTimer?.cancel();
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
     unawaited(_core.dispose());
@@ -150,6 +156,16 @@ class _HomeScreenState extends State<HomeScreen> {
     _peekTimer?.cancel();
     _peekTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) setState(() => _peekPulsing = false);
+    });
+  }
+
+  /// Show a transient banner (e.g. "X joined"); auto-clears after a few
+  /// seconds. Call inside setState.
+  void _showPresenceNotice(String text) {
+    _presenceNotice = text;
+    _presenceTimer?.cancel();
+    _presenceTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _presenceNotice = null);
     });
   }
 
@@ -171,10 +187,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _syncHealthy = nowHealthy;
   }
 
-  /// Banner text shown over the video, or null when nothing to say. The
-  /// auto-pause notice takes priority over the plain waiting/connect hint.
-  String? get _banner =>
-      _autoPausedNotice ? '⏸ Paused — lost sync with your friend' : _syncHint;
+  /// Banner text shown over the video, or null when nothing to say. Priority:
+  /// a fresh "friend joined" notice, then the auto-pause reason, then the
+  /// plain waiting/connect hint.
+  String? get _banner {
+    if (_presenceNotice != null) return _presenceNotice;
+    if (_autoPausedNotice) return '⏸ Paused — lost sync with your friend';
+    return _syncHint;
+  }
 
   /// Advisory hint shown over the video, or null when everything is ready.
   String? get _syncHint {
@@ -328,6 +348,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     top: 12,
                     left: 12,
                     child: PlayerMenuButton(
+                      roomCode: widget.config.room,
                       currentTheme: widget.currentTheme,
                       onThemeChanged: widget.onThemeChanged,
                       onLeave: _leave,

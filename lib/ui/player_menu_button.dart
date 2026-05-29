@@ -1,21 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
 import 'theme/theme_swatches.dart';
 
 /// Top-left in-player control: a gear button that opens a small anchored
-/// popover holding the theme swatches and a "Leave room" action. Replaces the
-/// bare Leave button so theme switching is a deliberate pick (not a blind
-/// cycle) while watching.
+/// popover holding the room code (copyable), theme swatches, and a
+/// "Leave room" action. Replaces the bare Leave button so theme switching is a
+/// deliberate pick (not a blind cycle) while watching.
 class PlayerMenuButton extends StatelessWidget {
   const PlayerMenuButton({
+    required this.roomCode,
     required this.currentTheme,
     required this.onThemeChanged,
     required this.onLeave,
     super.key,
   });
 
+  final String roomCode;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
   final VoidCallback onLeave;
@@ -54,6 +59,14 @@ class PlayerMenuButton extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('Room code',
+                  style: TextStyle(color: m.textDim, fontSize: 13)),
+            ),
+            _RoomCodeRow(code: roomCode),
+            const SizedBox(height: 8),
+            Divider(color: m.border, height: 16),
+            Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Text('Theme',
                   style: TextStyle(color: m.textDim, fontSize: 13)),
@@ -81,6 +94,73 @@ class PlayerMenuButton extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// The room code shown in monospace next to a copy button that briefly flips
+/// to a check + "Copied!" so the tap feels acknowledged.
+class _RoomCodeRow extends StatefulWidget {
+  const _RoomCodeRow({required this.code});
+
+  final String code;
+
+  @override
+  State<_RoomCodeRow> createState() => _RoomCodeRowState();
+}
+
+class _RoomCodeRowState extends State<_RoomCodeRow> {
+  bool _copied = false;
+  Timer? _resetTimer;
+
+  @override
+  void dispose() {
+    _resetTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.code));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    _resetTimer?.cancel();
+    _resetTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return InkWell(
+      key: const Key('player-menu-room-code'),
+      borderRadius: BorderRadius.circular(8),
+      onTap: _copy,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              widget.code,
+              style: TextStyle(
+                color: m.textPrimary,
+                fontSize: 15,
+                fontFamily: 'monospace',
+                letterSpacing: 1.5,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Icon(_copied ? Icons.check : Icons.copy,
+                size: 15, color: _copied ? m.online : m.accent),
+            if (_copied) ...[
+              const SizedBox(width: 4),
+              Text('Copied!',
+                  style: TextStyle(color: m.online, fontSize: 12)),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
