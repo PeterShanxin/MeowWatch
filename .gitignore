@@ -1,5 +1,6 @@
 .superpowers/
 *.log
+.tmp_*
 build/
 .dart_tool/
 .flutter-plugins
