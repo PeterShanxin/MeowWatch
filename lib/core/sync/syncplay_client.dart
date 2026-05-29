@@ -201,6 +201,15 @@ class SyncplayClient extends SyncCore {
       _serverLatencyCalculation = msg.latencyCalculation;
     }
 
+    // Measure our RTT: the server echoes the clientLatencyCalculation we sent
+    // last, so the round trip is now - that timestamp. Without this, _ping.rtt
+    // stays 0 and forwardDelay never compensates for network latency.
+    final rtt = rttSampleFromEcho(
+      echoedTimestamp: msg.clientLatencyCalculation,
+      nowEpochSeconds: _ping.newTimestamp(),
+    );
+    if (rtt != null) _ping.recordRtt(rtt);
+
     // Decide whether the local player should follow the room's global state.
     // Skipped while mid-handshake on our own change, OR while we have a local
     // change queued but not yet sent (it would otherwise be clobbered by the

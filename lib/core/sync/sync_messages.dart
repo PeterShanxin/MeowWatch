@@ -130,13 +130,22 @@ class StateMessage extends ServerMessage {
   const StateMessage({
     this.peer,
     this.latencyCalculation,
+    this.clientLatencyCalculation,
     this.clientIgnore,
     this.serverIgnore,
   });
 
   /// Peer playstate, or null if this State carried no playstate block.
   final PeerPlayState? peer;
+
+  /// The server's own timestamp; we echo it back so the server can measure its
+  /// RTT to us.
   final double? latencyCalculation;
+
+  /// Our previously sent timestamp, echoed back by the server, so we can
+  /// measure our own RTT (now - this).
+  final double? clientLatencyCalculation;
+
   final int? clientIgnore;
   final int? serverIgnore;
 }
@@ -212,10 +221,13 @@ StateMessage _decodeState(Map<dynamic, dynamic> state) {
     }
   }
   double? latency;
+  double? clientLatency;
   if (state['ping'] is Map) {
     final ping = state['ping'] as Map;
     final lc = ping['latencyCalculation'];
     if (lc is num) latency = lc.toDouble();
+    final clc = ping['clientLatencyCalculation'];
+    if (clc is num) clientLatency = clc.toDouble();
   }
   int? clientIgnore;
   int? serverIgnore;
@@ -227,6 +239,7 @@ StateMessage _decodeState(Map<dynamic, dynamic> state) {
   return StateMessage(
     peer: peer,
     latencyCalculation: latency,
+    clientLatencyCalculation: clientLatency,
     clientIgnore: clientIgnore,
     serverIgnore: serverIgnore,
   );

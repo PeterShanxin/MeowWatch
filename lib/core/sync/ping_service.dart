@@ -26,3 +26,18 @@ class PingService {
   /// echo lets us measure RTT on the next State.
   double newTimestamp() => DateTime.now().millisecondsSinceEpoch / 1000.0;
 }
+
+/// Round-trip time sample (seconds) derived from the server echoing back the
+/// clientLatencyCalculation timestamp we previously sent: the round trip is
+/// simply `now - echoed`. Returns null when there is no echo, or when the
+/// result is negative (clock skew or a stale echo), mirroring upstream
+/// Syncplay's guard so a bad sample never pollutes the moving average.
+double? rttSampleFromEcho({
+  required double? echoedTimestamp,
+  required double nowEpochSeconds,
+}) {
+  if (echoedTimestamp == null) return null;
+  final rtt = nowEpochSeconds - echoedTimestamp;
+  if (rtt < 0) return null;
+  return rtt;
+}

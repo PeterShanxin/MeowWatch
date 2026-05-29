@@ -140,6 +140,15 @@ void main() {
       expect(m.latencyCalculation, 99.0);
     });
 
+    test('extracts the echoed clientLatencyCalculation from a State ping', () {
+      final m = decodeServerMessage({
+        'State': {
+          'ping': {'latencyCalculation': 99.0, 'clientLatencyCalculation': 222.5},
+        },
+      }) as StateMessage;
+      expect(m.clientLatencyCalculation, 222.5);
+    });
+
     test('classifies a State carrying ignoringOnTheFly', () {
       final m = decodeServerMessage({
         'State': {

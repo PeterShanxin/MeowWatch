@@ -29,4 +29,26 @@ void main() {
       expect(a, greaterThan(0));
     });
   });
+
+  group('rttSampleFromEcho', () {
+    test('returns round-trip seconds from an echoed timestamp', () {
+      final sample =
+          rttSampleFromEcho(echoedTimestamp: 100.0, nowEpochSeconds: 100.25);
+      expect(sample, closeTo(0.25, 1e-9));
+    });
+
+    test('returns null when there is no echo', () {
+      expect(
+        rttSampleFromEcho(echoedTimestamp: null, nowEpochSeconds: 100.0),
+        isNull,
+      );
+    });
+
+    test('returns null on a negative result (clock skew / stale echo)', () {
+      expect(
+        rttSampleFromEcho(echoedTimestamp: 100.0, nowEpochSeconds: 99.5),
+        isNull,
+      );
+    });
+  });
 }
