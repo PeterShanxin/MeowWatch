@@ -20,6 +20,23 @@ void main() {
     expect(find.text('09:05'), findsOneWidget);
   });
 
+  testWidgets('friend bubble shows sender name, mine does not', (tester) async {
+    await tester.pumpWidget(host(const Column(children: [
+      ChatBubble(
+        message: ChatMessage(username: 'lin', text: 'theirs'),
+        myUsername: 'me',
+      ),
+      ChatBubble(
+        message: ChatMessage(username: 'me', text: 'mine'),
+        myUsername: 'me',
+      ),
+    ])));
+
+    // Friend's name labels their bubble; my own name is not repeated.
+    expect(find.text('lin'), findsOneWidget);
+    expect(find.text('me'), findsNothing);
+  });
+
   testWidgets('mine aligns right, friend aligns left', (tester) async {
     await tester.pumpWidget(host(const Column(children: [
       ChatBubble(

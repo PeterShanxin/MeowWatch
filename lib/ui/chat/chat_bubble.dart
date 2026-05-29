@@ -37,6 +37,18 @@ class ChatBubble extends StatelessWidget {
               _mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (!_mine)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(
+                  message.username,
+                  style: const TextStyle(
+                    color: Color(0xFFD4A574),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             Text(
               message.text,
               style: const TextStyle(color: Color(0xFFF5E6D3), fontSize: 14),
