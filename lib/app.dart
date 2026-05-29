@@ -1,39 +1,61 @@
 import 'package:flutter/material.dart';
 
 import 'core/connect/room_config.dart';
+import 'core/data/settings_store.dart';
 import 'core/data/stores.dart';
+import 'core/theme/meow_context.dart';
+import 'core/theme/meow_theme.dart';
 import 'ui/connect/connect_screen.dart';
 import 'ui/home_screen.dart';
 
-class MeowWatchApp extends StatelessWidget {
+class MeowWatchApp extends StatefulWidget {
   const MeowWatchApp({
     required this.profiles,
     required this.history,
+    required this.settings,
+    required this.initialTheme,
     super.key,
   });
 
   final ProfileStore profiles;
   final HistoryStore history;
+  final SettingsStore settings;
+  final MeowThemeId initialTheme;
+
+  @override
+  State<MeowWatchApp> createState() => _MeowWatchAppState();
+}
+
+class _MeowWatchAppState extends State<MeowWatchApp> {
+  late MeowThemeId _theme = widget.initialTheme;
+
+  void _setTheme(MeowThemeId id) {
+    if (id == _theme) return;
+    setState(() => _theme = id);
+    // Fire-and-forget persistence; UI already updated.
+    widget.settings.set(kThemeSettingKey, id.name);
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'MeowWatch',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFD4A574),
-          brightness: Brightness.dark,
-        ),
-      ),
+      theme: themeDataFor(_theme),
       home: Builder(
         builder: (context) => ConnectScreen(
-          profiles: profiles,
-          history: history,
+          profiles: widget.profiles,
+          history: widget.history,
+          currentTheme: _theme,
+          onThemeChanged: _setTheme,
           onConnect: (RoomConfig config) => Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => HomeScreen(config: config, history: history),
+              builder: (_) => HomeScreen(
+                config: config,
+                history: widget.history,
+                currentTheme: _theme,
+                onThemeChanged: _setTheme,
+              ),
             ),
           ),
         ),

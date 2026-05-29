@@ -6,6 +6,7 @@ import 'package:meowwatch/core/connect/room_config.dart';
 import 'package:meowwatch/core/data/history_entry.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
 import 'package:meowwatch/core/data/stores.dart';
+import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/connect/connect_screen.dart';
 
 class _FakeProfileStore implements ProfileStore {
@@ -76,6 +77,8 @@ void main() {
       home: ConnectScreen(
         profiles: profiles,
         history: history,
+        currentTheme: MeowThemeId.cozy,
+        onThemeChanged: (_) {},
         onConnect: (config) async => connected = config,
       ),
     ));

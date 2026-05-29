@@ -7,6 +7,7 @@ import '../../core/data/history_entry.dart';
 import '../../core/data/saved_profile.dart';
 import '../../core/data/stores.dart';
 import '../../core/sync/syncplay_constants.dart';
+import '../../core/theme/meow_theme.dart';
 
 // Cozy theme (hardcoded until Phase 5).
 const _bg = Color(0xFF1A1410);
@@ -20,12 +21,16 @@ class ConnectScreen extends StatefulWidget {
   const ConnectScreen({
     required this.profiles,
     required this.history,
+    required this.currentTheme,
+    required this.onThemeChanged,
     required this.onConnect,
     super.key,
   });
 
   final ProfileStore profiles;
   final HistoryStore history;
+  final MeowThemeId currentTheme;
+  final ValueChanged<MeowThemeId> onThemeChanged;
   final Future<void> Function(RoomConfig config) onConnect;
 
   @override

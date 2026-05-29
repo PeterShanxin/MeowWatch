@@ -11,6 +11,7 @@ import '../core/data/stores.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
 import '../core/sync/syncplay_client.dart';
+import '../core/theme/meow_theme.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/playback_state.dart';
 import '../core/video/seek_when_ready.dart';
@@ -24,11 +25,15 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.config,
     required this.history,
+    required this.currentTheme,
+    required this.onThemeChanged,
     super.key,
   });
 
   final RoomConfig config;
   final HistoryStore history;
+  final MeowThemeId currentTheme;
+  final ValueChanged<MeowThemeId> onThemeChanged;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
