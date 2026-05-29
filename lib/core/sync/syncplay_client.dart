@@ -161,9 +161,12 @@ class SyncplayClient extends SyncCore {
         emitConnectionState(
           const SyncConnectionState(status: SyncConnectionStatus.connected),
         );
-      case PresenceMessage(:final events):
+      case PresenceMessage(:final events, :final files):
         for (final e in events) {
           emitPresence(e);
+        }
+        for (final f in files) {
+          if (f.username != _username) emitPeerFile(f);
         }
       case PeerFileMessage(:final files):
         for (final f in files) {

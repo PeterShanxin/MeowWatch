@@ -241,7 +241,7 @@ void main() {
       expect(m.files.single.duration, const Duration(milliseconds: 12500));
     });
 
-    test('Set with join event still classifies as presence', () {
+    test('Set with join event keeps presence AND surfaces the file', () {
       final m = decodeServerMessage({
         'Set': {
           'user': {
@@ -253,7 +253,11 @@ void main() {
         },
       });
       expect(m, isA<PresenceMessage>());
-      expect((m as PresenceMessage).events.single.fileName, 'show.mp4');
+      final pm = m as PresenceMessage;
+      expect(pm.events.single.fileName, 'show.mp4');
+      // A peer joining with a file already loaded must not lose that file.
+      expect(pm.files.single.name, 'show.mp4');
+      expect(pm.files.single.sizeBytes, 2048);
     });
 
     test('unknown command yields UnknownMessage', () {

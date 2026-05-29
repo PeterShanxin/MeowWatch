@@ -44,5 +44,10 @@ FileMatch compareFiles({
   return FileMatch.unknown;
 }
 
-String _normalize(String? name) =>
-    (name ?? '').trim().toLowerCase();
+/// Lower-cased base filename — strips any directory part so a full path on one
+/// side and a bare filename on the other still compare equal.
+String _normalize(String? name) {
+  if (name == null) return '';
+  final base = name.split(RegExp(r'[/\\]')).last;
+  return base.trim().toLowerCase();
+}

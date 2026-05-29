@@ -58,7 +58,9 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<PeerFile>? _peerFileSub;
 
   /// Most recent file a peer announced, and our own loaded file's byte size —
-  /// together they drive the file-mismatch warning.
+  /// together they drive the file-mismatch warning. MeowWatch is a two-person
+  /// app, so tracking a single peer file is sufficient; a later announcement
+  /// (or the peer leaving) replaces/clears it.
   PeerFile? _peerFile;
   int? _localFileSizeBytes;
 
@@ -113,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_chatLayout.collapsed) _pulsePeek();
     });
     _reactionSub = _chat.reactions.listen((e) {
-      if (mounted) _reactionFeed.add(e.emoji);
+      if (mounted && !_reactionFeed.isClosed) _reactionFeed.add(e.emoji);
     });
     _typingSub = _chat.typing.listen(_onTyping);
     _connSub = _sync.connectionState.listen((s) {

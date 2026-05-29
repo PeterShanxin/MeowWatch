@@ -151,8 +151,12 @@ class StateMessage extends ServerMessage {
 }
 
 class PresenceMessage extends ServerMessage {
-  const PresenceMessage(this.events);
+  const PresenceMessage(this.events, {this.files = const []});
   final List<PresenceEvent> events;
+
+  /// Files announced in the same Set (e.g. a peer joining with a file already
+  /// loaded carries both its join event and its file).
+  final List<PeerFile> files;
 }
 
 /// One or more peers announced (or changed) the file they have loaded.
@@ -318,7 +322,7 @@ ServerMessage _decodeSet(Map<dynamic, dynamic> set) {
         ));
       }
     });
-    if (events.isNotEmpty) return PresenceMessage(events);
+    if (events.isNotEmpty) return PresenceMessage(events, files: files);
     if (files.isNotEmpty) return PeerFileMessage(files);
   }
   return const UnknownMessage();

@@ -5,13 +5,15 @@
 /// showing it in the chat history.
 ///
 /// Both peers run MeowWatch (the app assumes this), so the sentinel — which
-/// starts with a SOH control character (U+0001) that cannot be typed — never
-/// collides with real chat. A non-MeowWatch client would just see a short odd
-/// line.
+/// starts with a SOH control character (U+0001) that cannot be typed into a
+/// chat box — never collides with real chat. A non-MeowWatch client would at
+/// worst see a short odd line.
 library;
 
-/// Prefix marking a chat line as a MeowWatch control message.
-const String chatControlSentinel = 'MW:';
+/// SOH (U+0001) + tag. Built from a char code so the source carries no
+/// invisible control character (which made earlier readers think the sentinel
+/// was the plain string "MW:").
+final String chatControlSentinel = '${String.fromCharCode(1)}MW:';
 
 /// A decoded control signal.
 sealed class ChatSignal {
