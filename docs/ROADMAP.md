@@ -17,7 +17,21 @@ Six phases. Each phase ends with working, shippable software. One plan per phase
 
 ## Backlog / future tuning
 
-- **Sync activity notifications** — surface play/pause/seek-forward/seek-back events (who did what) as a transient toast on the chat card or over the video, so each peer sees why playback jumped. (Requested Phase 3; fits Phase 6 extras.)
+### Deferred from Phase 6 (with rationale)
+
+- **Picture-in-Picture (always-on-top mini player)** — deferred. Flutter Windows has no built-in PiP; needs a second borderless always-on-top OS window (or a platform-channel/native-window approach) plus its own video surface. That's a self-contained mini-project, not a same-session extra — give it its own spec.
+- **Per-message reactions** — deferred. The Syncplay chat channel carries no stable per-message ID, so "react to _that_ message" can't be addressed reliably across peers. Would need a local message-id scheme exchanged over the control channel (the sentinel channel from this phase is the right foundation). Floating reactions cover the quick-emoji urge for now.
+
+### New ideas (surfaced while building Phase 6)
+
+- **Mascot reacts to events** — the idle cat could wave/perk up when a friend joins, or nap when alone. Cheap delight; reuse the `IdleMascot` painter with extra poses.
+- **Reaction keyboard shortcuts** — number keys / a hotkey fire the top emoji without opening the palette.
+- **Soft chime on friend join/leave** — optional audio cue paired with the existing "🐾 X joined" banner.
+- **"Friend is buffering" hint** — distinct from auto-pause: show when a peer stalls so you know to wait (needs a buffering signal over the control channel).
+
+### Earlier tuning notes
+
+- **Sync activity notifications** — surface play/pause/seek-forward/seek-back events (who did what) as a transient toast on the chat card or over the video, so each peer sees why playback jumped. (Requested Phase 3; the control channel + banner from Phase 6 make this straightforward now.)
 - **Seek-collision smoothing** — when both peers seek near-simultaneously (or during an RTT spike), positions briefly fight before converging. Add debounce / "syncing…" indicator to smooth the transition. (Observed Phase 2; not blocking.)
 - **Streaming from URL** — drop a video link instead of a local file. (Also listed out-of-v1 below.)
 
