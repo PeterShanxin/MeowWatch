@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../core/sync/peer_state.dart';
@@ -39,8 +40,14 @@ class ChatOverlay extends StatefulWidget {
 }
 
 class _ChatOverlayState extends State<ChatOverlay> {
-  // While dragging, a free top-left offset overrides corner placement.
+  // While dragging, a free top-left offset (relative to this overlay's own
+  // box) overrides corner placement. Captured from the card's real rect at
+  // drag start so the first grab never teleports.
   Offset? _dragTopLeft;
+  // Real card + overlay sizes captured at drag start, used for snap math.
+  Size? _dragCardSize;
+  Size? _overlaySize;
+  final GlobalKey _cardKey = GlobalKey();
 
   Alignment _alignmentFor(ChatCorner c) {
     switch (c) {
@@ -55,15 +62,19 @@ class _ChatOverlayState extends State<ChatOverlay> {
     }
   }
 
-  Offset _cornerTopLeft(ChatCorner c, Size window, Size card) {
-    const m = 12.0;
-    final left = (c == ChatCorner.topLeft || c == ChatCorner.bottomLeft)
-        ? m
-        : window.width - card.width - m;
-    final top = (c == ChatCorner.topLeft || c == ChatCorner.topRight)
-        ? m
-        : window.height - card.height - m;
-    return Offset(left, top);
+  /// Seed the free-drag offset from where the card actually sits right now.
+  /// Converts the card's global top-left into this overlay's local space so
+  /// the following [Positioned] keeps it under the cursor (no jump).
+  void _startHeaderDrag() {
+    final cardBox = _cardKey.currentContext?.findRenderObject() as RenderBox?;
+    final selfBox = context.findRenderObject() as RenderBox?;
+    if (cardBox == null || selfBox == null) return;
+    final origin = selfBox.localToGlobal(Offset.zero);
+    setState(() {
+      _dragTopLeft = cardBox.localToGlobal(Offset.zero) - origin;
+      _dragCardSize = cardBox.size;
+      _overlaySize = selfBox.size;
+    });
   }
 
   @override
@@ -80,25 +91,31 @@ class _ChatOverlayState extends State<ChatOverlay> {
     final cardSize = Size(media.width * 0.3, media.height * 0.5);
 
     final card = _GlassCard(
+      key: _cardKey,
       width: cardSize.width,
       maxHeight: cardSize.height,
+      onHeaderDragStart: _startHeaderDrag,
       onHeaderDragUpdate: (delta) {
-        setState(() {
-          final base = _dragTopLeft ??
-              _cornerTopLeft(widget.corner, media, cardSize);
-          _dragTopLeft = base + delta;
-        });
+        final base = _dragTopLeft;
+        if (base == null) return;
+        setState(() => _dragTopLeft = base + delta);
       },
       onHeaderDragEnd: () {
         final topLeft = _dragTopLeft;
-        if (topLeft != null) {
+        final card = _dragCardSize;
+        final window = _overlaySize;
+        if (topLeft != null && card != null && window != null) {
           widget.onSnap(computeSnap(
             dropTopLeft: topLeft,
-            cardSize: cardSize,
-            windowSize: media,
+            cardSize: card,
+            windowSize: window,
           ));
         }
-        setState(() => _dragTopLeft = null);
+        setState(() {
+          _dragTopLeft = null;
+          _dragCardSize = null;
+          _overlaySize = null;
+        });
       },
       onCollapse: widget.onToggleCollapsed,
       messages: widget.messages,
@@ -122,8 +139,10 @@ class _ChatOverlayState extends State<ChatOverlay> {
 
 class _GlassCard extends StatelessWidget {
   const _GlassCard({
+    super.key,
     required this.width,
     required this.maxHeight,
+    required this.onHeaderDragStart,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
     required this.onCollapse,
@@ -134,6 +153,7 @@ class _GlassCard extends StatelessWidget {
 
   final double width;
   final double maxHeight;
+  final VoidCallback onHeaderDragStart;
   final void Function(Offset delta) onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
   final VoidCallback onCollapse;
@@ -171,6 +191,8 @@ class _GlassCard extends StatelessWidget {
               children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
+                dragStartBehavior: DragStartBehavior.down,
+                onPanStart: (_) => onHeaderDragStart(),
                 onPanUpdate: (d) => onHeaderDragUpdate(d.delta),
                 onPanEnd: (_) => onHeaderDragEnd(),
                 child: Container(

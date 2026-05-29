@@ -61,4 +61,41 @@ void main() {
     await tester.pump();
     expect(toggled, isTrue);
   });
+
+  testWidgets('dragging the header moves the card by the drag delta '
+      '(no first-grab teleport)', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(host(ChatOverlay(
+      messages: const [
+        ChatMessage(username: 'lin', text: 'hi'),
+        ChatMessage(username: 'me', text: 'yo'),
+      ],
+      myUsername: 'me',
+      collapsed: false,
+      onSend: (_) {},
+      onToggleCollapsed: () {},
+      onSnap: (_) {},
+    )));
+    await tester.pump();
+
+    // The drag handle anchors the header; grabbing it should move the card
+    // rigidly, not jump it to a recomputed corner on the first update.
+    final handle = find.byIcon(Icons.drag_indicator);
+    final before = tester.getTopLeft(handle);
+
+    const move = Offset(40, -30);
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await gesture.moveBy(move);
+    await tester.pump();
+    final after = tester.getTopLeft(handle);
+
+    expect((after - before).dx, closeTo(move.dx, 1.0));
+    expect((after - before).dy, closeTo(move.dy, 1.0));
+
+    await gesture.up();
+    await tester.pump();
+  });
 }

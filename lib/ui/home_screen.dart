@@ -175,8 +175,14 @@ class _HomeScreenState extends State<HomeScreen> {
             onConnect: _connect,
           ),
           Expanded(
+            // A non-focusable ancestor handler: it must NOT autofocus, or it
+            // would steal primary focus from VideoSurface and kill its
+            // space/arrow keys. Tab still reaches it by bubbling up from the
+            // focused video surface, and skipTraversal stops the framework's
+            // default Tab focus-traversal from swallowing it first.
             child: Focus(
-              autofocus: true,
+              canRequestFocus: false,
+              skipTraversal: true,
               onKeyEvent: (node, event) {
                 if (event is KeyDownEvent &&
                     event.logicalKey == LogicalKeyboardKey.tab) {
