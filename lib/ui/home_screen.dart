@@ -13,6 +13,7 @@ import '../core/sync/playback_sync_bridge.dart';
 import '../core/sync/syncplay_client.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/playback_state.dart';
+import '../core/video/seek_when_ready.dart';
 import 'chat/chat_overlay.dart';
 import 'chat/chat_overlay_layout.dart';
 import 'drop_target.dart';
@@ -147,9 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _resume(String path, int positionMs) async {
     await _load(path);
-    if (positionMs > 0) {
-      await _core.seek(Duration(milliseconds: positionMs));
-    }
+    await seekWhenReady(_core, Duration(milliseconds: positionMs));
   }
 
   Future<void> _recordOpen(String path) async {
