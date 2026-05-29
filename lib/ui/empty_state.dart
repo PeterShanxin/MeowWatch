@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/meow_context.dart';
+
 class EmptyState extends StatelessWidget {
   const EmptyState({required this.onBrowse, super.key});
 
@@ -7,24 +9,24 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     return Container(
-      color: const Color(0xFF1A1410),
+      color: m.background,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.movie_outlined,
-                size: 64, color: Color(0xFFD4A574)),
+            Icon(Icons.movie_outlined, size: 64, color: m.accent),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Drop a video file to start',
-              style: TextStyle(color: Color(0xFFF5E6D3), fontSize: 18),
+              style: TextStyle(color: m.textPrimary, fontSize: 18),
             ),
             const SizedBox(height: 24),
             OutlinedButton(
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFD4A574),
-                side: const BorderSide(color: Color(0xFFD4A574)),
+                foregroundColor: m.accent,
+                side: BorderSide(color: m.accent),
               ),
               onPressed: onBrowse,
               child: const Text('Browse…'),

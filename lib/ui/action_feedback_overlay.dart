@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/meow_context.dart';
 import 'playback_action.dart';
 
 /// Flashes a translucent icon in the center of the video when an action is
@@ -52,6 +53,7 @@ class _ActionFeedbackOverlayState extends State<ActionFeedbackOverlay>
 
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     final action = widget.action;
     if (action == null) return const SizedBox.shrink();
     return IgnorePointer(
@@ -70,14 +72,14 @@ class _ActionFeedbackOverlayState extends State<ActionFeedbackOverlay>
           },
           child: Container(
             padding: const EdgeInsets.all(22),
-            decoration: const BoxDecoration(
-              color: Color(0x99000000),
+            decoration: BoxDecoration(
+              color: m.scrim.withValues(alpha: 0.60),
               shape: BoxShape.circle,
             ),
             child: Icon(
               iconForAction(action),
               size: 56,
-              color: const Color(0xFFF5E6D3),
+              color: m.textPrimary,
             ),
           ),
         ),

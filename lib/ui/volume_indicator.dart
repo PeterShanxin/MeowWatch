@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/meow_context.dart';
+
 /// Transient volume level indicator shown while the user adjusts volume:
 /// a speaker icon, a horizontal level bar, and the percentage.
 class VolumeIndicator extends StatelessWidget {
@@ -7,9 +9,6 @@ class VolumeIndicator extends StatelessWidget {
 
   /// Volume in the range 0.0–1.0.
   final double volume;
-
-  static const _cream = Color(0xFFF5E6D3);
-  static const _amber = Color(0xFFD4A574);
 
   IconData get _icon {
     if (volume <= 0.0) return Icons.volume_off_rounded;
@@ -19,6 +18,7 @@ class VolumeIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     final pct = (volume.clamp(0.0, 1.0) * 100).round();
     return IgnorePointer(
       child: Align(
@@ -26,13 +26,13 @@ class VolumeIndicator extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           decoration: BoxDecoration(
-            color: const Color(0x99000000),
+            color: m.scrim.withValues(alpha: 0.60),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(_icon, size: 26, color: _cream),
+              Icon(_icon, size: 26, color: m.textPrimary),
               const SizedBox(width: 12),
               SizedBox(
                 width: 120,
@@ -41,8 +41,8 @@ class VolumeIndicator extends StatelessWidget {
                   child: LinearProgressIndicator(
                     value: volume.clamp(0.0, 1.0),
                     minHeight: 6,
-                    backgroundColor: const Color(0x55F5E6D3),
-                    valueColor: const AlwaysStoppedAnimation<Color>(_amber),
+                    backgroundColor: m.textPrimary.withValues(alpha: 0.33),
+                    valueColor: AlwaysStoppedAnimation<Color>(m.accent),
                   ),
                 ),
               ),
@@ -52,8 +52,8 @@ class VolumeIndicator extends StatelessWidget {
                 child: Text(
                   '$pct%',
                   textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    color: _cream,
+                  style: TextStyle(
+                    color: m.textPrimary,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),

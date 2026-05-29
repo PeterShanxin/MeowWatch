@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/meow_context.dart';
+
 /// Persistent indicator shown while the user holds the seek keys. Three
 /// chevrons march in the seek direction and the accumulated jump is shown.
 class SeekIndicator extends StatefulWidget {
@@ -20,9 +22,6 @@ class _SeekIndicatorState extends State<SeekIndicator>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
-  static const _cream = Color(0xFFF5E6D3);
-  static const _amber = Color(0xFFD4A574);
-
   @override
   void initState() {
     super.initState();
@@ -40,6 +39,7 @@ class _SeekIndicatorState extends State<SeekIndicator>
 
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     final icon =
         widget.forward ? Icons.chevron_right_rounded : Icons.chevron_left_rounded;
     final label = '${widget.forward ? '+' : '-'}${widget.seconds}s';
@@ -57,7 +57,7 @@ class _SeekIndicatorState extends State<SeekIndicator>
             return Icon(
               icon,
               size: 30,
-              color: lit ? _amber : _cream.withValues(alpha: 0.35),
+              color: lit ? m.accent : m.textPrimary.withValues(alpha: 0.35),
             );
           }),
         );
@@ -69,7 +69,7 @@ class _SeekIndicatorState extends State<SeekIndicator>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           decoration: BoxDecoration(
-            color: const Color(0x99000000),
+            color: m.scrim.withValues(alpha: 0.60),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
@@ -82,8 +82,8 @@ class _SeekIndicatorState extends State<SeekIndicator>
               Text(
                 label,
                 textDirection: TextDirection.ltr,
-                style: const TextStyle(
-                  color: _cream,
+                style: TextStyle(
+                  color: m.textPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                 ),
