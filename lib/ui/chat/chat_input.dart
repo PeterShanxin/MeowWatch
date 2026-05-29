@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/meow_context.dart';
+
 /// Message composer: a text field plus a send button. Fires [onSend] with the
 /// trimmed text (never blank) and clears itself.
 class ChatInput extends StatefulWidget {
@@ -29,6 +31,7 @@ class _ChatInputState extends State<ChatInput> {
 
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       child: Row(
@@ -37,25 +40,26 @@ class _ChatInputState extends State<ChatInput> {
             child: TextField(
               controller: _controller,
               onSubmitted: (_) => _submit(),
-              style: const TextStyle(color: Color(0xFFF5E6D3), fontSize: 14),
-              decoration: const InputDecoration(
+              style: TextStyle(color: m.textPrimary, fontSize: 14),
+              decoration: InputDecoration(
                 hintText: 'Message…',
-                hintStyle: TextStyle(color: Color(0x66F5E6D3)),
+                hintStyle:
+                    TextStyle(color: m.textPrimary.withValues(alpha: 0.40)),
                 isDense: true,
                 border: OutlineInputBorder(
-                  borderSide: BorderSide(color: Color(0x55D4A574)),
+                  borderSide: BorderSide(color: m.border),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Color(0x55D4A574)),
+                  borderSide: BorderSide(color: m.border),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Color(0xFFD4A574)),
+                  borderSide: BorderSide(color: m.accent),
                 ),
               ),
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.send, color: Color(0xFFD4A574)),
+            icon: Icon(Icons.send, color: m.accent),
             onPressed: _submit,
           ),
         ],

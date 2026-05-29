@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/sync/peer_state.dart';
+import '../../core/theme/meow_context.dart';
 
 /// One chat message. Own messages sit right (amber); the friend's sit left
 /// (dark). A dim HH:MM time shows under the text.
@@ -21,6 +22,7 @@ class ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     final ts = message.timestamp;
     return Align(
       alignment: _mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -28,9 +30,9 @@ class ChatBubble extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: _mine ? const Color(0x33D4A574) : const Color(0x55241B14),
+          color: _mine ? m.myBubble : m.peerBubble,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0x33D4A574)),
+          border: Border.all(color: m.accent.withValues(alpha: 0.20)),
         ),
         child: Column(
           crossAxisAlignment:
@@ -42,24 +44,24 @@ class ChatBubble extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 2),
                 child: Text(
                   message.username,
-                  style: const TextStyle(
-                    color: Color(0xFFD4A574),
+                  style: TextStyle(
+                    color: m.accent,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
+                    fontFamily: m.titleFontFamily,
                   ),
                 ),
               ),
             Text(
               message.text,
-              style: const TextStyle(color: Color(0xFFF5E6D3), fontSize: 14),
+              style: TextStyle(color: m.textPrimary, fontSize: 14),
             ),
             if (ts != null)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(
                   _hhmm(ts),
-                  style:
-                      const TextStyle(color: Color(0x99F5E6D3), fontSize: 10),
+                  style: TextStyle(color: m.textDim, fontSize: 10),
                 ),
               ),
           ],

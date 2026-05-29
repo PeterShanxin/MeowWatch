@@ -1,9 +1,10 @@
-import 'dart:ui' as ui;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../core/sync/peer_state.dart';
+import '../../core/theme/meow_context.dart';
 import 'chat_bubble.dart';
 import 'chat_corner.dart';
 import 'chat_input.dart';
@@ -161,34 +162,49 @@ class _GlassCard extends StatelessWidget {
   final String myUsername;
   final void Function(String text) onSend;
 
+  /// Wrap [child] in a frosted-glass blur when the active theme asks for it
+  /// (`glassBlur > 0`, e.g. Aurora). Returns [child] unchanged otherwise, so
+  /// Cozy/Noir render with no BackdropFilter at all.
+  Widget _frosted(BuildContext context, Widget child) {
+    final blur = context.meow.glassBlur;
+    if (blur <= 0) return child;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: child,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final m = context.meow;
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x99000000),
+            color: m.scrim.withValues(alpha: 0.60),
             blurRadius: 24,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            width: width,
-            constraints: BoxConstraints(maxHeight: maxHeight),
-            decoration: BoxDecoration(
-              color: const Color(0xF2241B14),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xCCD4A574), width: 1.5),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+      child: _frosted(
+        context,
+        Container(
+          width: width,
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          decoration: BoxDecoration(
+            color: m.surface,
+            borderRadius: BorderRadius.circular(16),
+            border:
+                Border.all(color: m.accent.withValues(alpha: 0.80), width: 1.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 dragStartBehavior: DragStartBehavior.down,
@@ -200,17 +216,15 @@ class _GlassCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Row(
                     children: [
-                      const Icon(Icons.drag_indicator,
-                          size: 16, color: Color(0x99F5E6D3)),
+                      Icon(Icons.drag_indicator, size: 16, color: m.textDim),
                       const Spacer(),
-                      const Text('Chat',
-                          style: TextStyle(
-                              color: Color(0xFFF5E6D3), fontSize: 13)),
+                      Text('Chat',
+                          style: TextStyle(color: m.textPrimary, fontSize: 13)),
                       const Spacer(),
                       GestureDetector(
                         onTap: onCollapse,
-                        child: const Icon(Icons.chevron_right,
-                            size: 18, color: Color(0xFFD4A574)),
+                        child: Icon(Icons.chevron_right,
+                            size: 18, color: m.accent),
                       ),
                     ],
                   ),
@@ -218,28 +232,26 @@ class _GlassCard extends StatelessWidget {
               ),
               Flexible(
                 child: messages.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.symmetric(
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 24),
                         child: Text(
                           'No messages yet — say hi 🐾',
                           textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: Color(0x99F5E6D3), fontSize: 13),
+                          style: TextStyle(color: m.textDim, fontSize: 13),
                         ),
                       )
                     : ListView(
                         shrinkWrap: true,
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         children: [
-                          for (final m in messages)
-                            ChatBubble(message: m, myUsername: myUsername),
+                          for (final msg in messages)
+                            ChatBubble(message: msg, myUsername: myUsername),
                         ],
                       ),
               ),
               ChatInput(onSend: onSend),
             ],
-            ),
           ),
         ),
       ),
