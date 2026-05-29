@@ -23,6 +23,8 @@ import 'chat/chat_overlay_layout.dart';
 import 'drop_target.dart';
 import 'empty_state.dart';
 import 'player_menu_button.dart';
+import 'reactions/floating_reactions.dart';
+import 'reactions/reaction_bar.dart';
 import 'video_surface.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -85,6 +87,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _peekTimer;
   Timer? _historyTimer;
   StreamSubscription<List<ChatMessage>>? _chatSub;
+  StreamSubscription<ReactionEvent>? _reactionSub;
+  StreamSubscription<TypingEvent>? _typingSub;
+
+  /// Feeds the floating-reactions overlay. Both our own and peers' reactions
+  /// flow through here (via the chat echo) so everyone sees the same burst.
+  final StreamController<String> _reactionFeed =
+      StreamController<String>.broadcast();
+
+  /// Peers currently typing, each with a watchdog timer that clears them if a
+  /// "stopped" signal is lost.
+  final Set<String> _typingUsers = <String>{};
+  final Map<String, Timer> _typingTimers = <String, Timer>{};
 
   @override
   void initState() {
@@ -98,6 +112,10 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _messages = msgs);
       if (_chatLayout.collapsed) _pulsePeek();
     });
+    _reactionSub = _chat.reactions.listen((e) {
+      if (mounted) _reactionFeed.add(e.emoji);
+    });
+    _typingSub = _chat.typing.listen(_onTyping);
     _connSub = _sync.connectionState.listen((s) {
       if (mounted) {
         setState(() {
@@ -157,6 +175,12 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_saveResumePosition());
     _peekTimer?.cancel();
     unawaited(_chatSub?.cancel());
+    unawaited(_reactionSub?.cancel());
+    unawaited(_typingSub?.cancel());
+    for (final t in _typingTimers.values) {
+      t.cancel();
+    }
+    unawaited(_reactionFeed.close());
     unawaited(_chat.dispose());
     unawaited(_connSub?.cancel());
     unawaited(_presenceSub?.cancel());
@@ -168,6 +192,35 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_sync.dispose());
     unawaited(_core.dispose());
     super.dispose();
+  }
+
+  /// Track a peer's typing state (ignoring our own echoed signal). A 5s
+  /// watchdog clears them in case the "stopped" signal is dropped.
+  void _onTyping(TypingEvent e) {
+    if (!mounted || e.username == _username) return;
+    setState(() {
+      _typingTimers[e.username]?.cancel();
+      _typingTimers.remove(e.username);
+      if (e.isTyping) {
+        _typingUsers.add(e.username);
+        _typingTimers[e.username] = Timer(const Duration(seconds: 5), () {
+          if (!mounted) return;
+          setState(() {
+            _typingUsers.remove(e.username);
+            _typingTimers.remove(e.username);
+          });
+        });
+      } else {
+        _typingUsers.remove(e.username);
+      }
+    });
+  }
+
+  /// "lin is typing…" / "2 people are typing…", or null when nobody is.
+  String? get _typingLabel {
+    if (_typingUsers.isEmpty) return null;
+    if (_typingUsers.length == 1) return '${_typingUsers.first} is typing…';
+    return '${_typingUsers.length} people are typing…';
   }
 
   void _pulsePeek() {
@@ -383,6 +436,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     EmptyState(onBrowse: _browse)
                   else
                     VideoSurface(core: _core),
+                  if (state.fileName != null)
+                    Positioned.fill(
+                      child: FloatingReactionsOverlay(
+                          emojis: _reactionFeed.stream),
+                    ),
                   if (state.fileName != null && hint != null)
                     Align(
                       alignment: const Alignment(0, -0.8),
@@ -396,6 +454,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       corner: _chatLayout.corner,
                       pulsing: _peekPulsing,
                       onSend: _chat.send,
+                      typingLabel: _typingLabel,
+                      onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
                       onToggleCollapsed: () =>
                           setState(() => _chatLayout = _chatLayout.toggle()),
                       onSnap: (result) => setState(
@@ -411,6 +471,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       onLeave: _leave,
                     ),
                   ),
+                  if (state.fileName != null)
+                    Positioned(
+                      right: 16,
+                      bottom: 84,
+                      child: ReactionBar(onReact: _chat.sendReaction),
+                    ),
                 ],
               );
             },

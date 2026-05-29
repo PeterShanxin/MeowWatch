@@ -33,4 +33,34 @@ void main() {
 
     expect(sent, isEmpty);
   });
+
+  testWidgets('typing pulses onTypingChanged true then false on idle',
+      (tester) async {
+    final events = <bool>[];
+    await tester.pumpWidget(host(ChatInput(
+      onSend: (_) {},
+      onTypingChanged: events.add,
+    )));
+
+    await tester.enterText(find.byType(TextField), 'h');
+    expect(events, [true]);
+
+    // After the idle delay (1800ms) it reports stopped.
+    await tester.pump(const Duration(milliseconds: 2000));
+    expect(events, [true, false]);
+  });
+
+  testWidgets('sending clears the typing state', (tester) async {
+    final events = <bool>[];
+    await tester.pumpWidget(host(ChatInput(
+      onSend: (_) {},
+      onTypingChanged: events.add,
+    )));
+
+    await tester.enterText(find.byType(TextField), 'hi');
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
+
+    expect(events, [true, false]);
+  });
 }

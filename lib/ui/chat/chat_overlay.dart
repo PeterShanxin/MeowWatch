@@ -25,6 +25,8 @@ class ChatOverlay extends StatefulWidget {
     required this.onSnap,
     this.corner = ChatCorner.bottomLeft,
     this.pulsing = false,
+    this.typingLabel,
+    this.onTypingChanged,
   });
 
   final List<ChatMessage> messages;
@@ -35,6 +37,10 @@ class ChatOverlay extends StatefulWidget {
   final void Function(String text) onSend;
   final VoidCallback onToggleCollapsed;
   final void Function(SnapResult result) onSnap;
+
+  /// e.g. "lin is typing…"; null when nobody is typing.
+  final String? typingLabel;
+  final ValueChanged<bool>? onTypingChanged;
 
   @override
   State<ChatOverlay> createState() => _ChatOverlayState();
@@ -122,6 +128,8 @@ class _ChatOverlayState extends State<ChatOverlay> {
       messages: widget.messages,
       myUsername: widget.myUsername,
       onSend: widget.onSend,
+      typingLabel: widget.typingLabel,
+      onTypingChanged: widget.onTypingChanged,
     );
 
     final topLeft = _dragTopLeft;
@@ -150,6 +158,8 @@ class _GlassCard extends StatelessWidget {
     required this.messages,
     required this.myUsername,
     required this.onSend,
+    required this.typingLabel,
+    required this.onTypingChanged,
   });
 
   final double width;
@@ -161,6 +171,8 @@ class _GlassCard extends StatelessWidget {
   final List<ChatMessage> messages;
   final String myUsername;
   final void Function(String text) onSend;
+  final String? typingLabel;
+  final ValueChanged<bool>? onTypingChanged;
 
   /// Wrap [child] in a frosted-glass blur when the active theme asks for it
   /// (`glassBlur > 0`, e.g. Aurora). Returns [child] unchanged otherwise, so
@@ -250,7 +262,22 @@ class _GlassCard extends StatelessWidget {
                         ],
                       ),
               ),
-              ChatInput(onSend: onSend),
+              if (typingLabel != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+                    child: Text(
+                      typingLabel!,
+                      style: TextStyle(
+                        color: m.textDim,
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ),
+              ChatInput(onSend: onSend, onTypingChanged: onTypingChanged),
             ],
           ),
         ),
