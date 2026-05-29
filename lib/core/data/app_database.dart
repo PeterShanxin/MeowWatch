@@ -36,7 +36,16 @@ class HistoryEntries extends Table {
   DateTimeColumn get playedAt => dateTime()();
 }
 
-@DriftDatabase(tables: [Profiles, HistoryEntries])
+@DataClassName('SettingRow')
+class Settings extends Table {
+  TextColumn get key => text()();
+  TextColumn get value => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {key};
+}
+
+@DriftDatabase(tables: [Profiles, HistoryEntries, Settings])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
@@ -44,7 +53,15 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) await m.createTable(settings);
+        },
+      );
 }
 
 /// Opens the on-disk database under the app's support directory
