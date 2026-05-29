@@ -9,12 +9,26 @@ import 'video_core.dart';
 class MediaKitVideoCore extends VideoCore {
   MediaKitVideoCore() : _player = Player() {
     _wireListeners();
+    _configureDecoding();
   }
 
   final Player _player;
   late final List<StreamSubscription<Object?>> _subs;
 
   Player get player => _player;
+
+  /// Force software video decoding. Two app instances on one PC contend for the
+  /// single hardware decoder session, freezing whichever opens its file second
+  /// (seen in two-instance testing: the second client stalls at frame 0). With
+  /// software decode each instance decodes independently — one local stream per
+  /// instance is light. On real two-machine use there is only one decoder per
+  /// machine, so this changes nothing there.
+  void _configureDecoding() {
+    final platform = _player.platform;
+    if (platform is NativePlayer) {
+      unawaited(platform.setProperty('hwdec', 'no'));
+    }
+  }
 
   void _wireListeners() {
     _subs = [

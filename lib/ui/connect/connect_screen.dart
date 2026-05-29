@@ -81,6 +81,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
     // Copy without blocking the join — clipboard is a convenience, and on a
     // headless test binding the platform channel never replies.
     Clipboard.setData(ClipboardData(text: room)).ignore();
+    _showCopiedSnack(room);
     await _connect(RoomConfig(
       server: _serverValue,
       port: _portValue,
@@ -88,6 +89,30 @@ class _ConnectScreenState extends State<ConnectScreen> {
       username: _username,
       password: _passwordValue,
     ));
+  }
+
+  /// Confirm the new room code was copied. Shown on the app-level messenger so
+  /// it stays visible after we navigate into the watch screen.
+  void _showCopiedSnack(String room) {
+    final m = context.meow;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: m.surface,
+        duration: const Duration(seconds: 3),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle, size: 18, color: m.online),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text('Room code $room copied — share it with your friend',
+                  style: TextStyle(color: m.textPrimary)),
+            ),
+          ],
+        ),
+      ));
   }
 
   Future<void> _joinTypedCode() async {

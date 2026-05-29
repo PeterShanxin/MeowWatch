@@ -207,7 +207,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _confirmAutoPause() {
     _autoPauseTimer = null;
     if (!mounted) return;
-    if (!_syncHealthyNow && _core.state.status == PlaybackStatus.playing) {
+    final stillDown = !_syncHealthyNow;
+    final playing = _core.state.status == PlaybackStatus.playing;
+    if (stillDown && playing) {
       unawaited(_core.pause());
       setState(() => _autoPausedNotice = true);
     }
