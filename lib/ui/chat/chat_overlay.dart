@@ -297,7 +297,6 @@ class _ChatOverlayState extends State<ChatOverlay>
         inputFocusNode: _inputFocus,
         typingLabel: widget.typingLabel,
         onTypingChanged: widget.onTypingChanged,
-        corner: widget.corner,
         onResetSize: widget.onResetSize ?? () {},
         onResizeStart: _startResize,
         onResizeUpdate: _updateResize,
@@ -376,7 +375,6 @@ class _GlassCard extends StatelessWidget {
     required this.inputFocusNode,
     required this.typingLabel,
     required this.onTypingChanged,
-    required this.corner,
     required this.onResetSize,
     required this.onResizeStart,
     required this.onResizeUpdate,
@@ -395,7 +393,6 @@ class _GlassCard extends StatelessWidget {
   final FocusNode inputFocusNode;
   final String? typingLabel;
   final ValueChanged<bool>? onTypingChanged;
-  final ChatCorner corner;
   final VoidCallback onResetSize;
   final VoidCallback onResizeStart;
   final void Function(Offset delta) onResizeUpdate;
