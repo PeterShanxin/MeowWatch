@@ -7,6 +7,7 @@ import 'core/data/app_database.dart';
 import 'core/data/drift_stores.dart';
 import 'core/data/settings_store.dart';
 import 'core/theme/meow_theme.dart';
+import 'ui/chat/chat_overlay_layout.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,11 +17,15 @@ Future<void> main() async {
   final db = await openAppDatabase();
   final settings = DriftSettingsStore(db);
   final savedTheme = MeowThemeId.fromName(await settings.get(kThemeSettingKey));
+  final (cardW, cardH) =
+      parseCardSizeFraction(await settings.get(kChatCardSizeSettingKey));
 
   runApp(MeowWatchApp(
     profiles: DriftProfileStore(db),
     history: DriftHistoryStore(db),
     settings: settings,
     initialTheme: savedTheme,
+    initialCardWidthFrac: cardW,
+    initialCardHeightFrac: cardH,
   ));
 }

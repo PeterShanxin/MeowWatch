@@ -14,6 +14,8 @@ class MeowWatchApp extends StatefulWidget {
     required this.history,
     required this.settings,
     required this.initialTheme,
+    this.initialCardWidthFrac,
+    this.initialCardHeightFrac,
     super.key,
   });
 
@@ -21,6 +23,8 @@ class MeowWatchApp extends StatefulWidget {
   final HistoryStore history;
   final SettingsStore settings;
   final MeowThemeId initialTheme;
+  final double? initialCardWidthFrac;
+  final double? initialCardHeightFrac;
 
   @override
   State<MeowWatchApp> createState() => _MeowWatchAppState();
@@ -53,6 +57,9 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
               builder: (_) => HomeScreen(
                 config: config,
                 history: widget.history,
+                settings: widget.settings,
+                initialWidthFrac: widget.initialCardWidthFrac,
+                initialHeightFrac: widget.initialCardHeightFrac,
                 currentTheme: _theme,
                 onThemeChanged: _setTheme,
               ),
