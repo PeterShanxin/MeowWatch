@@ -134,7 +134,23 @@ class _ChatOverlayState extends State<ChatOverlay> {
 
     final topLeft = _dragTopLeft;
     if (topLeft != null) {
-      return Positioned(left: topLeft.dx, top: topLeft.dy, child: card);
+      // While dragging, paint the five dock targets (4 corners + the right-edge
+      // collapse pill) and highlight whichever one this drop would snap to, so
+      // the landing spot is never a surprise. Hints sit BELOW the card so the
+      // card stays under the cursor.
+      return Positioned.fill(
+        child: Stack(
+          children: [
+            if (_overlaySize != null && _dragCardSize != null)
+              _DropZoneHints(
+                overlaySize: _overlaySize!,
+                cardSize: _dragCardSize!,
+                dragTopLeft: topLeft,
+              ),
+            Positioned(left: topLeft.dx, top: topLeft.dy, child: card),
+          ],
+        ),
+      );
     }
     return Align(
       alignment: _alignmentFor(widget.corner),
@@ -281,6 +297,128 @@ class _GlassCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The five landing targets shown while the chat card is being dragged: one
+/// chip per corner plus a right-edge pill for the collapse dock. The chip that
+/// the current drop would snap to (per [computeSnap]) is highlighted, so the
+/// outcome matches what the user sees before they let go.
+class _DropZoneHints extends StatelessWidget {
+  const _DropZoneHints({
+    required this.overlaySize,
+    required this.cardSize,
+    required this.dragTopLeft,
+  });
+
+  final Size overlaySize;
+  final Size cardSize;
+  final Offset dragTopLeft;
+
+  @override
+  Widget build(BuildContext context) {
+    final snap = computeSnap(
+      dropTopLeft: dragTopLeft,
+      cardSize: cardSize,
+      windowSize: overlaySize,
+    );
+    final corner = snap.corner;
+    final w = overlaySize.width;
+    final h = overlaySize.height;
+    const chipW = 60.0;
+    const chipH = 44.0;
+    const inset = 18.0;
+    // Keep the bottom chips clear of the auto-hiding control bar.
+    const bottomInset = 84.0;
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Stack(
+          children: [
+            Positioned(
+              left: inset,
+              top: inset,
+              child: _HintChip(
+                  icon: Icons.north_west,
+                  active: corner == ChatCorner.topLeft),
+            ),
+            Positioned(
+              left: w - inset - chipW,
+              top: inset,
+              child: _HintChip(
+                  icon: Icons.north_east,
+                  active: corner == ChatCorner.topRight),
+            ),
+            Positioned(
+              left: inset,
+              top: h - bottomInset - chipH,
+              child: _HintChip(
+                  icon: Icons.south_west,
+                  active: corner == ChatCorner.bottomLeft),
+            ),
+            Positioned(
+              left: w - inset - chipW,
+              top: h - bottomInset - chipH,
+              child: _HintChip(
+                  icon: Icons.south_east,
+                  active: corner == ChatCorner.bottomRight),
+            ),
+            // Collapse dock — a tall pill hugging the right edge, vertical mid.
+            Positioned(
+              right: 8,
+              top: h / 2 - 40,
+              child: _HintChip(
+                width: 24,
+                height: 80,
+                icon: Icons.chevron_right,
+                active: snap.collapsed,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One dock target marker. Fills with the accent when [active].
+class _HintChip extends StatelessWidget {
+  const _HintChip({
+    required this.icon,
+    required this.active,
+    this.width = 60,
+    this.height = 44,
+  });
+
+  final IconData icon;
+  final bool active;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      width: width,
+      height: height,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: active
+            ? m.accent.withValues(alpha: 0.85)
+            : m.surface.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: m.accent.withValues(alpha: active ? 1.0 : 0.45),
+          width: active ? 2 : 1,
+        ),
+      ),
+      child: Icon(
+        icon,
+        size: active ? 22 : 18,
+        color: active ? m.background : m.accent,
       ),
     );
   }

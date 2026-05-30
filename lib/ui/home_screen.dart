@@ -53,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final DebugLog _syncLog = DebugLog.temp('meowwatch_sync.log');
 
   SyncConnectionStatus _syncStatus = SyncConnectionStatus.disconnected;
+  String? _syncError;
   final Set<String> _peers = <String>{};
   StreamSubscription<SyncConnectionState>? _connSub;
   StreamSubscription<PresenceEvent>? _presenceSub;
@@ -125,6 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _syncStatus = s.status;
+          _syncError = s.message;
           if (s.status != SyncConnectionStatus.connected) _peers.clear();
           _evaluateSyncHealth();
         });
@@ -319,14 +321,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Advisory hint shown over the video, or null when everything is ready.
+  /// Reflects the live connection status (so the user sees "Connecting to room
+  /// X…" instead of a generic prompt while the socket is still negotiating).
   String? get _syncHint {
-    if (_syncStatus != SyncConnectionStatus.connected) {
-      return 'Connect to a room to watch together';
+    final room = widget.config.room;
+    switch (_syncStatus) {
+      case SyncConnectionStatus.connecting:
+      case SyncConnectionStatus.handshaking:
+        return 'Connecting to room $room…';
+      case SyncConnectionStatus.error:
+        return _syncError ?? 'Couldn\'t connect to room $room';
+      case SyncConnectionStatus.disconnected:
+        return 'Disconnected from room $room';
+      case SyncConnectionStatus.connected:
+        if (_peers.isEmpty) return 'Waiting for a friend to join…';
+        return null;
     }
-    if (_peers.isEmpty) {
-      return 'Waiting for a friend to join…';
-    }
-    return null;
   }
 
   /// Load (but do not auto-play). In a room, hitting play yourself starts both

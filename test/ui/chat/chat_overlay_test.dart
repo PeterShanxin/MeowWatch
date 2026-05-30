@@ -101,4 +101,41 @@ void main() {
     await gesture.up();
     await tester.pump();
   });
+
+  testWidgets('shows the five dock hints only while dragging', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(host(ChatOverlay(
+      messages: const [ChatMessage(username: 'lin', text: 'hi')],
+      myUsername: 'me',
+      collapsed: false,
+      onSend: (_) {},
+      onToggleCollapsed: () {},
+      onSnap: (_) {},
+    )));
+    await tester.pump();
+
+    // No hints at rest.
+    expect(find.byIcon(Icons.north_west), findsNothing);
+    expect(find.byIcon(Icons.south_east), findsNothing);
+
+    final handle = find.byIcon(Icons.drag_indicator);
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await gesture.moveBy(const Offset(40, -30));
+    await tester.pump();
+
+    // All four corner targets are present mid-drag.
+    expect(find.byIcon(Icons.north_west), findsOneWidget);
+    expect(find.byIcon(Icons.north_east), findsOneWidget);
+    expect(find.byIcon(Icons.south_west), findsOneWidget);
+    expect(find.byIcon(Icons.south_east), findsOneWidget);
+
+    await gesture.up();
+    await tester.pump();
+
+    // Hints clear on release.
+    expect(find.byIcon(Icons.north_west), findsNothing);
+  });
 }
