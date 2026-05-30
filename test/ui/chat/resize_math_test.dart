@@ -68,7 +68,7 @@ void main() {
       windowSize: window,
     );
     expect(r.size, const Size(kMinCardWidth, kMinCardHeight));
-    expect(r.topLeft, Offset(400 - kMinCardWidth, 500 - kMinCardHeight));
+    expect(r.topLeft, const Offset(400 - kMinCardWidth, 500 - kMinCardHeight));
   });
 
   test('clamps to maximum fraction of window', () {
