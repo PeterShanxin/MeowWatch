@@ -100,6 +100,7 @@ jobs:
           secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
           endpoint = https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
           acl = private
+          no_check_bucket = true
           EOF
 
       - name: Upload to R2
