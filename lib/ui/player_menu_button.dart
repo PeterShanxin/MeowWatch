@@ -84,7 +84,7 @@ class PlayerMenuButton extends StatelessWidget {
             ),
           ),
           child: SizedBox(
-            width: 300,
+            width: 264,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               // Stretch so rows/actions fill the card width (bigger tap targets)
@@ -108,7 +108,10 @@ class PlayerMenuButton extends StatelessWidget {
               ),
               Divider(color: m.border, height: 16),
               label('Theme'),
-              ThemeSwatches(current: currentTheme, onChanged: onThemeChanged),
+              Center(
+                child:
+                    ThemeSwatches(current: currentTheme, onChanged: onThemeChanged),
+              ),
               const SizedBox(height: 8),
               Divider(color: m.border, height: 16),
               _MenuAction(
@@ -155,6 +158,7 @@ class _MenuAction extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 20, color: m.textPrimary),
             const SizedBox(width: 12),
@@ -179,6 +183,7 @@ class _MemberRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
             width: 8,
@@ -257,8 +262,7 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
         child: Row(
-          // Fill the card width: code on the left, copy affordance on the right.
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Flexible(
               child: Text(
