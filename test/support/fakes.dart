@@ -55,6 +55,7 @@ class FakeHistoryStore implements HistoryStore {
   Future<void> updatePosition({
     required String filePath,
     required int positionMs,
+    int? durationMs,
   }) async {}
 
   @override

@@ -59,6 +59,22 @@ void main() {
     expect(list.single.lastPositionMs, 42000);
   });
 
+  test('updatePosition backfills duration but never clobbers it with 0',
+      () async {
+    // Opened before mpv knew the runtime → duration 0.
+    await store.recordOpen(
+        filePath: 'a', fileName: 'a', fileSizeBytes: 1, durationMs: 0);
+    // Later tick once the runtime is known fills it in.
+    await store.updatePosition(
+        filePath: 'a', positionMs: 1000, durationMs: 600000);
+    var single = (await store.watchRecent().first).single;
+    expect(single.durationMs, 600000);
+    // A subsequent 0 (e.g. a reload frame) must not wipe the known runtime.
+    await store.updatePosition(filePath: 'a', positionMs: 2000, durationMs: 0);
+    single = (await store.watchRecent().first).single;
+    expect(single.durationMs, 600000);
+  });
+
   test('updatePosition on an unknown path is a no-op', () async {
     await store.updatePosition(filePath: r'D:\nope.mkv', positionMs: 100);
     expect(await store.watchRecent().first, isEmpty);

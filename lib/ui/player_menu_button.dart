@@ -38,7 +38,7 @@ class PlayerMenuButton extends StatelessWidget {
     Widget label(String text) => Padding(
           padding: const EdgeInsets.only(bottom: 6),
           child:
-              Text(text, style: TextStyle(color: m.textDim, fontSize: 13)),
+              Text(text, style: TextStyle(color: m.textDim, fontSize: 14)),
         );
 
     return MenuAnchor(
@@ -84,10 +84,12 @@ class PlayerMenuButton extends StatelessWidget {
             ),
           ),
           child: SizedBox(
-            width: 232,
+            width: 300,
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              // Stretch so rows/actions fill the card width (bigger tap targets)
+              // instead of hugging the left as half-width nubs.
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 label('Room code'),
               _RoomCodeRow(code: roomCode),
@@ -141,7 +143,7 @@ class _MenuAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(10),
       onTap: () {
         // Close the popover first: a raw InkWell (unlike MenuItemButton) leaves
         // the menu open, and the open menu's FocusScope traps keyboard focus —
@@ -151,13 +153,12 @@ class _MenuAction extends StatelessWidget {
         onTap();
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: m.textPrimary),
-            const SizedBox(width: 8),
-            Text(text, style: TextStyle(color: m.textPrimary, fontSize: 13)),
+            Icon(icon, size: 20, color: m.textPrimary),
+            const SizedBox(width: 12),
+            Text(text, style: TextStyle(color: m.textPrimary, fontSize: 15)),
           ],
         ),
       ),
@@ -176,20 +177,20 @@ class _MemberRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
       child: Row(
         children: [
           Container(
-            width: 7,
-            height: 7,
+            width: 8,
+            height: 8,
             decoration: BoxDecoration(color: m.online, shape: BoxShape.circle),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Flexible(
             child: Text(
               isMe ? '$name (you)' : name,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: m.textPrimary, fontSize: 13),
+              style: TextStyle(color: m.textPrimary, fontSize: 15),
             ),
           ),
         ],
@@ -254,23 +255,27 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
       borderRadius: BorderRadius.circular(8),
       onTap: _copy,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          // Fill the card width: code on the left, copy affordance on the right.
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              widget.code,
-              style: TextStyle(
-                color: m.textPrimary,
-                fontSize: 15,
-                fontFamily: 'monospace',
-                letterSpacing: 1.5,
+            Flexible(
+              child: Text(
+                widget.code,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: m.textPrimary,
+                  fontSize: 18,
+                  fontFamily: 'monospace',
+                  letterSpacing: 1.5,
+                ),
               ),
             ),
             const SizedBox(width: 10),
             // Fixed-size slot so flipping copy→check never reflows the row.
             Icon(_copied ? Icons.check : Icons.copy,
-                size: 15, color: _copied ? m.online : m.accent),
+                size: 18, color: _copied ? m.online : m.accent),
           ],
         ),
       ),

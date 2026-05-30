@@ -139,9 +139,17 @@ class DriftHistoryStore implements HistoryStore {
   Future<void> updatePosition({
     required String filePath,
     required int positionMs,
+    int? durationMs,
   }) =>
       (_db.update(_db.historyEntries)..where((t) => t.filePath.equals(filePath)))
-          .write(HistoryEntriesCompanion(lastPositionMs: Value(positionMs)));
+          .write(HistoryEntriesCompanion(
+        lastPositionMs: Value(positionMs),
+        // Only write a real, positive runtime — never clobber a known duration
+        // with a 0 from a not-yet-probed frame.
+        durationMs: (durationMs != null && durationMs > 0)
+            ? Value(durationMs)
+            : const Value.absent(),
+      ));
 
   @override
   Future<void> delete(int id) =>

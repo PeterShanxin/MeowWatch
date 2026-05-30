@@ -420,6 +420,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await widget.history.updatePosition(
       filePath: path,
       positionMs: state.position.inMilliseconds,
+      durationMs: state.duration.inMilliseconds,
     );
   }
 

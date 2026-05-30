@@ -39,9 +39,13 @@ abstract class HistoryStore {
   });
 
   /// Update the resume position for an already-recorded file (no-op if absent).
+  /// Also backfills [durationMs] when given — duration is often unknown at
+  /// open time (mpv hasn't probed the file yet), so the periodic position save
+  /// is where the runtime — and thus the progress bar — gets filled in.
   Future<void> updatePosition({
     required String filePath,
     required int positionMs,
+    int? durationMs,
   });
 
   /// Remove a single history entry.

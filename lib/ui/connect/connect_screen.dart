@@ -165,106 +165,157 @@ class _ConnectScreenState extends State<ConnectScreen> {
       // actual scroll (and only shows when there's overflow), instead of a
       // stray bar floating beside the narrow centered content.
       body: LayoutBuilder(
-        builder: (context, constraints) => Scrollbar(
-          controller: _scroll,
-          child: SingleChildScrollView(
+        builder: (context, constraints) {
+          // Past a comfortable width the single phone-like column wastes the
+          // screen — split the form and the room library into two columns.
+          final wide = constraints.maxWidth >= 880;
+          return Scrollbar(
             controller: _scroll,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 460),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: StreamBuilder<List<SavedProfile>>(
-              stream: widget.profiles.watchProfiles(),
-              initialData: const [],
-              builder: (context, profileSnap) {
-                final savedProfiles = profileSnap.data ?? const [];
-                final mostRecent =
-                    savedProfiles.isEmpty ? null : savedProfiles.first;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('MeowWatch',
-                        style: TextStyle(
-                            color: m.textPrimary,
-                            fontSize: 30,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: m.titleFontFamily)),
-                    const SizedBox(height: 4),
-                    Text('Watch together, in sync.',
-                        style: TextStyle(color: m.textDim, fontSize: 14)),
-                    const SizedBox(height: 16),
-                    _label('Theme'),
-                    ThemeSwatches(
-                      current: widget.currentTheme,
-                      onChanged: widget.onThemeChanged,
-                    ),
-                    const SizedBox(height: 24),
-                    _label('Your name'),
-                    _textField(
-                        key: const Key('connect-name'),
-                        controller: _name,
-                        hint: 'e.g. lin'),
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      key: const Key('connect-start-new'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: m.accent,
-                        foregroundColor: m.background,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      onPressed: _startNewRoom,
-                      child: const Text('Start new room',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
-                    ),
-                    const SizedBox(height: 8),
-                    Text('A code is generated and copied to clipboard.',
-                        style: TextStyle(color: m.textDim, fontSize: 12)),
-                    const SizedBox(height: 20),
-                    _label('Enter code from friend'),
-                    Row(children: [
-                      Expanded(
-                        child: _textField(
-                            key: const Key('connect-code'),
-                            controller: _code,
-                            hint: 'cozy-fox-42'),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        key: const Key('connect-join'),
-                        style: FilledButton.styleFrom(
-                            backgroundColor: m.surface,
-                            foregroundColor: m.textPrimary),
-                        onPressed: _joinTypedCode,
-                        child: const Text('Join'),
-                      ),
-                    ]),
-                    if (savedProfiles.isNotEmpty) ...[
-                      const SizedBox(height: 24),
-                      _label('Saved rooms'),
-                      ...savedProfiles.map((p) =>
-                          _profileCard(p, isMostRecent: p == mostRecent)),
-                    ],
-                    _ContinueWatching(
-                      history: widget.history,
-                      onResume: (entry) => _resumeHistory(entry, mostRecent),
-                    ),
-                    const SizedBox(height: 16),
-                    _advancedSection(),
-                  ],
-                );
+            child: SingleChildScrollView(
+              controller: _scroll,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: StreamBuilder<List<SavedProfile>>(
+                    stream: widget.profiles.watchProfiles(),
+                    initialData: const [],
+                    builder: (context, profileSnap) {
+                      final savedProfiles = profileSnap.data ?? const [];
+                      final mostRecent =
+                          savedProfiles.isEmpty ? null : savedProfiles.first;
+                      // Only go two-column when there's a library to fill the
+                      // right side; first-run (no saved rooms) stays centered.
+                      final twoColumn = wide && savedProfiles.isNotEmpty;
+                      return ConstrainedBox(
+                        constraints: BoxConstraints(
+                            maxWidth: twoColumn ? 920 : 460),
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: twoColumn
+                              ? Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          ..._formColumn(),
+                                          const SizedBox(height: 16),
+                                          _advancedSection(),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 40),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children:
+                                            _libraryColumn(savedProfiles, mostRecent),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    ..._formColumn(),
+                                    ..._libraryColumn(savedProfiles, mostRecent),
+                                    const SizedBox(height: 16),
+                                    _advancedSection(),
+                                  ],
+                                ),
+                        ),
+                      );
                     },
-                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
+  }
+
+  /// The connect form (brand, theme, name, start/join) — shared by the single-
+  /// and two-column layouts.
+  List<Widget> _formColumn() {
+    final m = context.meow;
+    return [
+      Text('MeowWatch',
+          style: TextStyle(
+              color: m.textPrimary,
+              fontSize: 30,
+              fontWeight: FontWeight.w600,
+              fontFamily: m.titleFontFamily)),
+      const SizedBox(height: 4),
+      Text('Watch together, in sync.',
+          style: TextStyle(color: m.textDim, fontSize: 14)),
+      const SizedBox(height: 16),
+      _label('Theme'),
+      ThemeSwatches(
+        current: widget.currentTheme,
+        onChanged: widget.onThemeChanged,
+      ),
+      const SizedBox(height: 24),
+      _label('Your name'),
+      _textField(
+          key: const Key('connect-name'), controller: _name, hint: 'e.g. lin'),
+      const SizedBox(height: 20),
+      FilledButton(
+        key: const Key('connect-start-new'),
+        style: FilledButton.styleFrom(
+          backgroundColor: m.accent,
+          foregroundColor: m.background,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+        ),
+        onPressed: _startNewRoom,
+        child: const Text('Start new room',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+      ),
+      const SizedBox(height: 8),
+      Text('A code is generated and copied to clipboard.',
+          style: TextStyle(color: m.textDim, fontSize: 12)),
+      const SizedBox(height: 20),
+      _label('Enter code from friend'),
+      Row(children: [
+        Expanded(
+          child: _textField(
+              key: const Key('connect-code'),
+              controller: _code,
+              hint: 'cozy-fox-42'),
+        ),
+        const SizedBox(width: 8),
+        FilledButton(
+          key: const Key('connect-join'),
+          style: FilledButton.styleFrom(
+              backgroundColor: m.surface, foregroundColor: m.textPrimary),
+          onPressed: _joinTypedCode,
+          child: const Text('Join'),
+        ),
+      ]),
+    ];
+  }
+
+  /// Saved rooms + continue-watching — the right column when wide, appended
+  /// below the form when narrow.
+  List<Widget> _libraryColumn(
+      List<SavedProfile> savedProfiles, SavedProfile? mostRecent) {
+    return [
+      if (savedProfiles.isNotEmpty) ...[
+        const SizedBox(height: 24),
+        _label('Saved rooms'),
+        ...savedProfiles
+            .map((p) => _profileCard(p, isMostRecent: p == mostRecent)),
+      ],
+      _ContinueWatching(
+        history: widget.history,
+        onResume: (entry) => _resumeHistory(entry, mostRecent),
+      ),
+    ];
   }
 
   Widget _label(String text) {
