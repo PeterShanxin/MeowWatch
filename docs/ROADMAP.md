@@ -37,6 +37,12 @@ All six planned phases are shipped. The items below are out of the v1 plan — d
 - **Seek-collision smoothing** — when both peers seek near-simultaneously (or during an RTT spike), positions briefly fight before converging. Add debounce / "syncing…" indicator to smooth the transition. (Observed Phase 2; not blocking.)
 - **Streaming from URL** — drop a video link instead of a local file. (Also listed out-of-v1 below.)
 
+### Infrastructure & distribution
+
+- **Windows ARM64 CI** — native ARM64 builds via `windows-11-arm` GitHub Actions runner. Blocked on: repo is private; ARM64 runners are free only for public repos (or available as paid larger runners). Unblock: make repo public or purchase larger runners.
+- **Cloudflare R2 release hosting** — CI workflow has commented-out R2 upload steps ready to activate once the R2 bucket is provisioned and secrets (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`) are configured in GitHub repo settings.
+- **MSIX installer** — Windows Store distribution with system-managed updates. Requires a code-signing certificate.
+
 ## Out of v1 scope
 
 - Voice chat

@@ -10,6 +10,7 @@ import '../../core/sync/syncplay_constants.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_theme.dart';
 import '../theme/theme_swatches.dart';
+import '../version_badge.dart';
 import 'history_format.dart';
 
 class ConnectScreen extends StatefulWidget {
@@ -159,83 +160,94 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final m = context.meow;
     return Scaffold(
       backgroundColor: m.background,
-      // LayoutBuilder + minHeight lets the column center vertically when it
-      // fits and switch to a normal top-aligned scroll when it's taller than
-      // the window. The Scrollbar shares the controller so the track tracks the
-      // actual scroll (and only shows when there's overflow), instead of a
-      // stray bar floating beside the narrow centered content.
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // Past a comfortable width the single phone-like column wastes the
-          // screen — split the form and the room library into two columns.
-          final wide = constraints.maxWidth >= 880;
-          return Scrollbar(
-            controller: _scroll,
-            child: SingleChildScrollView(
-              controller: _scroll,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Center(
-                  child: StreamBuilder<List<SavedProfile>>(
-                    stream: widget.profiles.watchProfiles(),
-                    initialData: const [],
-                    builder: (context, profileSnap) {
-                      final savedProfiles = profileSnap.data ?? const [];
-                      final mostRecent =
-                          savedProfiles.isEmpty ? null : savedProfiles.first;
-                      // Only go two-column when there's a library to fill the
-                      // right side; first-run (no saved rooms) stays centered.
-                      final twoColumn = wide && savedProfiles.isNotEmpty;
-                      return ConstrainedBox(
-                        constraints: BoxConstraints(
-                            maxWidth: twoColumn ? 920 : 460),
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: twoColumn
-                              ? Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          ..._formColumn(),
-                                          const SizedBox(height: 16),
-                                          _advancedSection(),
-                                        ],
-                                      ),
+      // Stack wraps the scrollable form + the version badge pinned bottom-right.
+      body: Stack(
+        children: [
+          // LayoutBuilder + minHeight lets the column center vertically when it
+          // fits and switch to a normal top-aligned scroll when it's taller than
+          // the window. The Scrollbar shares the controller so the track tracks the
+          // actual scroll (and only shows when there's overflow), instead of a
+          // stray bar floating beside the narrow centered content.
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Past a comfortable width the single phone-like column wastes the
+              // screen — split the form and the room library into two columns.
+              final wide = constraints.maxWidth >= 880;
+              return Scrollbar(
+                controller: _scroll,
+                child: SingleChildScrollView(
+                  controller: _scroll,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: Center(
+                      child: StreamBuilder<List<SavedProfile>>(
+                        stream: widget.profiles.watchProfiles(),
+                        initialData: const [],
+                        builder: (context, profileSnap) {
+                          final savedProfiles = profileSnap.data ?? const [];
+                          final mostRecent =
+                              savedProfiles.isEmpty ? null : savedProfiles.first;
+                          // Only go two-column when there's a library to fill the
+                          // right side; first-run (no saved rooms) stays centered.
+                          final twoColumn = wide && savedProfiles.isNotEmpty;
+                          return ConstrainedBox(
+                            constraints: BoxConstraints(
+                                maxWidth: twoColumn ? 920 : 460),
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: twoColumn
+                                  ? Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.stretch,
+                                            children: [
+                                              ..._formColumn(),
+                                              const SizedBox(height: 16),
+                                              _advancedSection(),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 40),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.stretch,
+                                            children:
+                                                _libraryColumn(savedProfiles, mostRecent),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        ..._formColumn(),
+                                        ..._libraryColumn(savedProfiles, mostRecent),
+                                        const SizedBox(height: 16),
+                                        _advancedSection(),
+                                      ],
                                     ),
-                                    const SizedBox(width: 40),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children:
-                                            _libraryColumn(savedProfiles, mostRecent),
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    ..._formColumn(),
-                                    ..._libraryColumn(savedProfiles, mostRecent),
-                                    const SizedBox(height: 16),
-                                    _advancedSection(),
-                                  ],
-                                ),
-                        ),
-                      );
-                    },
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          );
-        },
+              );
+            },
+          ),
+          // Version badge — bottom-right, always visible on connect screen.
+          const Positioned(
+            right: 12,
+            bottom: 12,
+            child: VersionBadge(),
+          ),
+        ],
       ),
     );
   }
