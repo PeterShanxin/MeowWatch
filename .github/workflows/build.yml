@@ -83,50 +83,47 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── Upload to Cloudflare R2 (when R2 credentials are configured) ──
-      # Uncomment and configure secrets: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,
-      # R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_URL
-      #
-      # - name: Install rclone
-      #   run: |
-      #     curl -O https://downloads.rclone.org/current/rclone-current-linux-amd64.deb
-      #     sudo dpkg -i rclone-current-linux-amd64.deb
-      #
-      # - name: Configure rclone for R2
-      #   run: |
-      #     mkdir -p ~/.config/rclone
-      #     cat > ~/.config/rclone/rclone.conf << EOF
-      #     [r2]
-      #     type = s3
-      #     provider = Cloudflare
-      #     access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
-      #     secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      #     endpoint = https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-      #     acl = private
-      #     EOF
-      #
-      # - name: Upload to R2
-      #   run: |
-      #     TAG="${GITHUB_REF#refs/tags/}"
-      #     rclone copy artifacts/MeowWatch-windows-x64/MeowWatch-windows-x64.zip \
-      #       r2:${{ secrets.R2_BUCKET_NAME }}/releases/$TAG/
-      #
-      # - name: Update latest.json on R2
-      #   run: |
-      #     TAG="${GITHUB_REF#refs/tags/}"
-      #     VERSION="${TAG#v}"
-      #     SHA=$(sha256sum artifacts/MeowWatch-windows-x64/MeowWatch-windows-x64.zip | cut -d' ' -f1)
-      #     cat > latest.json << EOF
-      #     {
-      #       "version": "$VERSION",
-      #       "release_date": "$(date -u +%Y-%m-%d)",
-      #       "assets": {
-      #         "windows-x64": {
-      #           "url": "${{ secrets.R2_PUBLIC_URL }}/releases/$TAG/MeowWatch-windows-x64.zip",
-      #           "sha256": "$SHA"
-      #         }
-      #       },
-      #       "release_notes": "Release $TAG"
-      #     }
-      #     EOF
-      #     rclone copyto latest.json r2:${{ secrets.R2_BUCKET_NAME }}/releases/latest.json
+      # ── Upload to Cloudflare R2 ──
+      - name: Install rclone
+        run: |
+          curl -O https://downloads.rclone.org/current/rclone-current-linux-amd64.deb
+          sudo dpkg -i rclone-current-linux-amd64.deb
+
+      - name: Configure rclone for R2
+        run: |
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf << EOF
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          endpoint = https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          acl = private
+          EOF
+
+      - name: Upload to R2
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          rclone copy artifacts/MeowWatch-windows-x64/MeowWatch-windows-x64.zip \
+            r2:${{ secrets.R2_BUCKET_NAME }}/releases/$TAG/
+
+      - name: Update latest.json on R2
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          SHA=$(sha256sum artifacts/MeowWatch-windows-x64/MeowWatch-windows-x64.zip | cut -d' ' -f1)
+          cat > latest.json << EOF
+          {
+            "version": "$VERSION",
+            "release_date": "$(date -u +%Y-%m-%d)",
+            "assets": {
+              "windows-x64": {
+                "url": "${{ secrets.R2_PUBLIC_URL }}/releases/$TAG/MeowWatch-windows-x64.zip",
+                "sha256": "$SHA"
+              }
+            },
+            "release_notes": "Release $TAG"
+          }
+          EOF
+          rclone copyto latest.json r2:${{ secrets.R2_BUCKET_NAME }}/releases/latest.json
