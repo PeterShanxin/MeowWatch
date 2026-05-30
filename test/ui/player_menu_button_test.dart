@@ -45,22 +45,29 @@ void main() {
     expect(picked, MeowThemeId.aurora);
   });
 
-  testWidgets('tapping Leave fires onLeave', (tester) async {
+  testWidgets('tapping Leave fires onLeave and closes the menu',
+      (tester) async {
     var left = false;
     await tester.pumpWidget(_host(_button(onLeave: () => left = true)));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('player-menu-leave')));
+    await tester.pumpAndSettle();
     expect(left, isTrue);
+    // Menu dismissed — otherwise its FocusScope keeps trapping keyboard focus.
+    expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 
-  testWidgets('tapping Load video fires onLoadVideo', (tester) async {
+  testWidgets('tapping Load video fires onLoadVideo and closes the menu',
+      (tester) async {
     var loaded = false;
     await tester.pumpWidget(_host(_button(onLoadVideo: () => loaded = true)));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('player-menu-load')));
+    await tester.pumpAndSettle();
     expect(loaded, isTrue);
+    expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 
   testWidgets('lists room members with "(you)" for self', (tester) async {

@@ -125,7 +125,14 @@ class _MenuAction extends StatelessWidget {
     final m = context.meow;
     return InkWell(
       borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
+      onTap: () {
+        // Close the popover first: a raw InkWell (unlike MenuItemButton) leaves
+        // the menu open, and the open menu's FocusScope traps keyboard focus —
+        // so after "Load video…" the video can't receive space/play. Dismissing
+        // returns focus to the player.
+        MenuController.maybeOf(context)?.close();
+        onTap();
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         child: Row(

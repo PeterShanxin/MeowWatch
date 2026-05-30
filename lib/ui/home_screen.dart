@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../core/chat/chat_store.dart';
 import '../core/connect/room_config.dart';
 import '../core/data/stores.dart';
+import '../core/debug/debug_log.dart';
 import '../core/sync/auto_pause.dart';
 import '../core/sync/file_match.dart';
 import '../core/sync/peer_state.dart';
@@ -49,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final MediaKitVideoCore _core;
   late final SyncplayClient _sync;
   late final PlaybackSyncBridge _bridge;
+  final DebugLog _syncLog = DebugLog.temp('meowwatch_sync.log');
 
   SyncConnectionStatus _syncStatus = SyncConnectionStatus.disconnected;
   final Set<String> _peers = <String>{};
@@ -105,8 +107,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _syncLog.start();
     _core = MediaKitVideoCore();
-    _sync = SyncplayClient();
+    _sync = SyncplayClient(onLog: _syncLog.call);
     _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
     _chat = ChatStore(sync: _sync);
     _chatSub = _chat.stream.listen((msgs) {
@@ -200,6 +203,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
     unawaited(_core.dispose());
+    unawaited(_syncLog.close());
     super.dispose();
   }
 
@@ -450,13 +454,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: FloatingReactionsOverlay(
                           emojis: _reactionFeed.stream),
                     ),
-                  if (state.fileName != null && hint != null)
+                  // Banner + chat show even before a video is loaded, so the
+                  // "waiting / friend joined" notices and chat history are
+                  // visible on the load-video screen (not just while watching).
+                  if (hint != null)
                     Align(
                       alignment: const Alignment(0, -0.8),
                       child: _SyncHintBanner(text: hint),
                     ),
-                  if (state.fileName != null)
-                    ChatOverlay(
+                  ChatOverlay(
                       messages: _messages,
                       myUsername: _username,
                       collapsed: _chatLayout.collapsed,
