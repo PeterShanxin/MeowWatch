@@ -79,9 +79,12 @@ class _ChatOverlayState extends State<ChatOverlay>
   Size? _overlaySize;
   final GlobalKey _cardKey = GlobalKey();
 
-  // Active resize: size captured at grip-drag start + accumulated grip delta.
+  // Active resize: rect captured at grip-drag start + accumulated grip delta +
+  // which corner is being dragged.
   Size? _resizeStartSize;
+  Offset? _resizeStartTopLeft;
   Offset _resizeDelta = Offset.zero;
+  ChatCorner _resizeGrip = ChatCorner.bottomRight;
 
   // Post-release snap glide: tween _dragTopLeft from where it was dropped to
   // the resting corner, so docking eases in instead of teleporting.
@@ -203,35 +206,43 @@ class _ChatOverlayState extends State<ChatOverlay>
     widget.onDraggingChanged?.call(true);
   }
 
-  /// Begin a grip resize: pin the card's current top-left (free-float) and
-  /// capture its current rendered size to grow from.
-  void _startResize() {
+  /// Begin a grip resize from corner [grip]: pin the card's current rect and
+  /// remember which corner is being dragged.
+  void _startResize(ChatCorner grip) {
     if (_snapCtrl.isAnimating) _snapCtrl.stop();
     final cardBox = _cardKey.currentContext?.findRenderObject() as RenderBox?;
     final selfBox = context.findRenderObject() as RenderBox?;
     if (cardBox == null || selfBox == null) return;
     final origin = selfBox.localToGlobal(Offset.zero);
+    final topLeft = cardBox.localToGlobal(Offset.zero) - origin;
     setState(() {
-      _dragTopLeft = cardBox.localToGlobal(Offset.zero) - origin;
+      _dragTopLeft = topLeft;
       _dragCardSize = cardBox.size;
       _overlaySize = selfBox.size;
       _resizeStartSize = cardBox.size;
+      _resizeStartTopLeft = topLeft;
       _resizeDelta = Offset.zero;
+      _resizeGrip = grip;
     });
     widget.onDraggingChanged?.call(true);
   }
 
   void _updateResize(Offset delta) {
     final start = _resizeStartSize;
+    final startTL = _resizeStartTopLeft;
     final window = _overlaySize;
-    if (start == null || window == null) return;
+    if (start == null || startTL == null || window == null) return;
     _resizeDelta += delta;
+    final r = computeCornerResize(
+      startTopLeft: startTL,
+      startSize: start,
+      dragDelta: _resizeDelta,
+      grip: _resizeGrip,
+      windowSize: window,
+    );
     setState(() {
-      _dragCardSize = computeResize(
-        startSize: start,
-        dragDelta: _resizeDelta,
-        windowSize: window,
-      );
+      _dragTopLeft = r.topLeft;
+      _dragCardSize = r.size;
     });
   }
 
@@ -241,6 +252,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     final topLeft = _dragTopLeft;
     final window = _overlaySize;
     _resizeStartSize = null;
+    _resizeStartTopLeft = null;
     _resizeDelta = Offset.zero;
     if (size == null || topLeft == null || window == null) {
       _clearDrag();
@@ -282,7 +294,7 @@ class _ChatOverlayState extends State<ChatOverlay>
   Widget _buildCard(Size cardSize) => _GlassCard(
         key: _cardKey,
         width: cardSize.width,
-        maxHeight: cardSize.height,
+        height: cardSize.height,
         onHeaderDragStart: _startHeaderDrag,
         onHeaderDragUpdate: (delta) {
           final base = _dragTopLeft;
@@ -364,7 +376,7 @@ class _GlassCard extends StatelessWidget {
   const _GlassCard({
     super.key,
     required this.width,
-    required this.maxHeight,
+    required this.height,
     required this.onHeaderDragStart,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
@@ -382,7 +394,7 @@ class _GlassCard extends StatelessWidget {
   });
 
   final double width;
-  final double maxHeight;
+  final double height;
   final VoidCallback onHeaderDragStart;
   final void Function(Offset delta) onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
@@ -394,7 +406,7 @@ class _GlassCard extends StatelessWidget {
   final String? typingLabel;
   final ValueChanged<bool>? onTypingChanged;
   final VoidCallback onResetSize;
-  final VoidCallback onResizeStart;
+  final void Function(ChatCorner corner) onResizeStart;
   final void Function(Offset delta) onResizeUpdate;
   final VoidCallback onResizeEnd;
 
@@ -409,6 +421,32 @@ class _GlassCard extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: child,
+      ),
+    );
+  }
+
+  /// A corner resize grip. Reports its own [corner] on drag start so the
+  /// controller can pin the opposite corner.
+  ///
+  /// Uses a raw [Listener] rather than a pan [GestureDetector]: the bottom grips
+  /// sit over the chat input, and a focused `TextField` would otherwise win the
+  /// gesture arena and steal the drag (selecting text instead of resizing).
+  /// Listener pointer events bypass the arena, so the grip always resizes.
+  Widget _grip(BuildContext context, ChatCorner corner) {
+    final m = context.meow;
+    return Listener(
+      key: ValueKey('chat-resize-grip-${corner.name}'),
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (_) => onResizeStart(corner),
+      onPointerMove: (e) => onResizeUpdate(e.delta),
+      onPointerUp: (_) => onResizeEnd(),
+      onPointerCancel: (_) => onResizeEnd(),
+      child: Tooltip(
+        message: 'Drag to resize',
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(Icons.open_in_full, size: 14, color: m.accent),
+        ),
       ),
     );
   }
@@ -434,7 +472,7 @@ class _GlassCard extends StatelessWidget {
             context,
             Container(
               width: width,
-              constraints: BoxConstraints(maxHeight: maxHeight),
+              height: height,
               decoration: BoxDecoration(
                 color: m.surface,
                 borderRadius: BorderRadius.circular(16),
@@ -442,7 +480,6 @@ class _GlassCard extends StatelessWidget {
                     Border.all(color: m.accent.withValues(alpha: 0.80), width: 1.5),
               ),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
@@ -455,7 +492,11 @@ class _GlassCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: Row(
                         children: [
-                          Icon(Icons.drag_indicator, size: 16, color: m.textDim),
+                          Tooltip(
+                            message: 'Drag to move',
+                            child: Icon(Icons.drag_indicator,
+                                size: 16, color: m.textDim),
+                          ),
                           const Spacer(),
                           Text('Chat',
                               style: TextStyle(color: m.textPrimary, fontSize: 13)),
@@ -464,11 +505,14 @@ class _GlassCard extends StatelessWidget {
                             key: const ValueKey('chat-reset-size'),
                             behavior: HitTestBehavior.opaque,
                             onTap: onResetSize,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 8),
-                              child: Icon(Icons.crop_free,
-                                  size: 16, color: m.textDim),
+                            child: Tooltip(
+                              message: 'Reset size',
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 8),
+                                child: Icon(Icons.crop_free,
+                                    size: 16, color: m.textDim),
+                              ),
                             ),
                           ),
                           // Opaque, padded hit target — an 18px icon alone is too
@@ -476,30 +520,34 @@ class _GlassCard extends StatelessWidget {
                           GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: onCollapse,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 8),
-                              child: Icon(Icons.chevron_right,
-                                  size: 18, color: m.accent),
+                            child: Tooltip(
+                              message: 'Hide chat',
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8),
+                                child: Icon(Icons.chevron_right,
+                                    size: 18, color: m.accent),
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
-                  Flexible(
+                  Expanded(
                     child: messages.isEmpty
-                        ? Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 24),
-                            child: Text(
-                              'No messages yet — say hi 🐾',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: m.textDim, fontSize: 13),
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 24),
+                              child: Text(
+                                'No messages yet — say hi 🐾',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: m.textDim, fontSize: 13),
+                              ),
                             ),
                           )
                         : ListView(
-                            shrinkWrap: true,
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             children: [
                               for (final msg in messages)
@@ -532,22 +580,12 @@ class _GlassCard extends StatelessWidget {
             ),
           ),
         ),
+        Positioned(left: 0, top: 0, child: _grip(context, ChatCorner.topLeft)),
+        Positioned(right: 0, top: 0, child: _grip(context, ChatCorner.topRight)),
         Positioned(
-          right: 0,
-          bottom: 0,
-          child: GestureDetector(
-            key: const ValueKey('chat-resize-grip'),
-            behavior: HitTestBehavior.opaque,
-            dragStartBehavior: DragStartBehavior.down,
-            onPanStart: (_) => onResizeStart(),
-            onPanUpdate: (d) => onResizeUpdate(d.delta),
-            onPanEnd: (_) => onResizeEnd(),
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Icon(Icons.open_in_full, size: 14, color: m.accent),
-            ),
-          ),
-        ),
+            left: 0, bottom: 0, child: _grip(context, ChatCorner.bottomLeft)),
+        Positioned(
+            right: 0, bottom: 0, child: _grip(context, ChatCorner.bottomRight)),
       ],
     );
   }
