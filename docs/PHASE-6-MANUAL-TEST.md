@@ -1,7 +1,35 @@
 # Phase 6 — Manual Test Checklist
 
-Built overnight 2026-05-30. All automated tests pass (173) and the Release build
-is ready. Below is what to verify by hand before tagging `phase-6-complete`.
+Updated 2026-05-30 after the polish round (presence, gear roster, load-video,
+mascot, bridge seek guard). All automated tests pass and the Release build is
+ready. Verify by hand before tagging `phase-6-complete`.
+
+## Polish round (new — verify these)
+- [ ] **Leave message**: friend leaves → banner "👋 X left" (no longer jumps to
+      "waiting for a friend" first), and a centered "X left the room" line in the
+      chat card.
+- [ ] **Rejoin**: when you (B) re-enter a room where A is already present, you do
+      NOT see a spurious "A joined" — A is just listed as present. A sees
+      "🐾 B joined".
+- [ ] **Chat event lines**: real joins/leaves show as dim centered lines in the
+      chat card (not bubbles).
+- [ ] **Gear → In the room**: lists everyone with a green dot; you show "(you)".
+- [ ] **Gear → Load video…**: opens the file picker; pick a new file → it loads
+      without leaving the room.
+- [ ] **Room code copy**: tapping the code only flips the icon to a check +
+      SnackBar; the gear card no longer stretches sideways.
+- [ ] **Mascot**: fuller sitting cat — breathes, tail wags, ear twitches, blinks.
+- [ ] **Play smoothness**: a pause/resume no longer causes a tiny backward jump
+      (bridge skips micro-seeks).
+
+## Known intermittent (point #1) — watch for it
+- After a **long idle** then first play, the follower sometimes doesn't sync until
+  you leave + rejoin. Couldn't reproduce reliably; the bridge change may help. If
+  it recurs, note the exact timing — it likely needs a fresh diagnostic log run.
+
+---
+
+Below is the original feature checklist.
 
 **Launch:** `build\windows\x64\runner\Release\meowwatch.exe` (open two copies for
 two-instance tests; use two different usernames so each is its own peer).
