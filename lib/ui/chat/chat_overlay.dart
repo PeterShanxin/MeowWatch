@@ -76,6 +76,9 @@ class _ChatOverlayState extends State<ChatOverlay>
   // Focus the message box when the card is opened (peek tab → card).
   final FocusNode _inputFocus = FocusNode();
 
+  // Scrolls the chat list to the bottom on new messages.
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -92,12 +95,24 @@ class _ChatOverlayState extends State<ChatOverlay>
         if (mounted) _inputFocus.requestFocus();
       });
     }
+    if (old.messages.length < widget.messages.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     _snapCtrl.dispose();
     _inputFocus.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -229,6 +244,7 @@ class _ChatOverlayState extends State<ChatOverlay>
         inputFocusNode: _inputFocus,
         typingLabel: widget.typingLabel,
         onTypingChanged: widget.onTypingChanged,
+        scrollController: _scrollController,
       );
 
   @override
@@ -299,6 +315,7 @@ class _GlassCard extends StatelessWidget {
     required this.inputFocusNode,
     required this.typingLabel,
     required this.onTypingChanged,
+    required this.scrollController,
   });
 
   final double width;
@@ -313,6 +330,7 @@ class _GlassCard extends StatelessWidget {
   final FocusNode inputFocusNode;
   final String? typingLabel;
   final ValueChanged<bool>? onTypingChanged;
+  final ScrollController scrollController;
 
   /// Wrap [child] in a frosted-glass blur when the active theme asks for it
   /// (`glassBlur > 0`, e.g. Aurora). Returns [child] unchanged otherwise, so
@@ -401,6 +419,7 @@ class _GlassCard extends StatelessWidget {
                         ),
                       )
                     : ListView(
+                        controller: scrollController,
                         shrinkWrap: true,
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         children: [

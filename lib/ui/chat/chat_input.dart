@@ -62,6 +62,7 @@ class _ChatInputState extends State<ChatInput> {
     _controller.clear();
     _typingIdle?.cancel();
     _setTyping(false);
+    widget.focusNode?.requestFocus();
   }
 
   @override
