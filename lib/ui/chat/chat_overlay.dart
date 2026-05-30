@@ -46,15 +46,54 @@ class ChatOverlay extends StatefulWidget {
   State<ChatOverlay> createState() => _ChatOverlayState();
 }
 
-class _ChatOverlayState extends State<ChatOverlay> {
+class _ChatOverlayState extends State<ChatOverlay>
+    with SingleTickerProviderStateMixin {
   // While dragging, a free top-left offset (relative to this overlay's own
   // box) overrides corner placement. Captured from the card's real rect at
-  // drag start so the first grab never teleports.
+  // drag start so the first grab never teleports. Also driven by [_snapCtrl]
+  // during the post-release glide to a corner.
   Offset? _dragTopLeft;
   // Real card + overlay sizes captured at drag start, used for snap math.
   Size? _dragCardSize;
   Size? _overlaySize;
   final GlobalKey _cardKey = GlobalKey();
+
+  // Post-release snap glide: tween _dragTopLeft from where it was dropped to
+  // the resting corner, so docking eases in instead of teleporting.
+  late final AnimationController _snapCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+  );
+  Offset? _snapFrom;
+  Offset? _snapTo;
+
+  // Focus the message box when the card is opened (peek tab → card).
+  final FocusNode _inputFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _snapCtrl
+      ..addListener(_onSnapTick)
+      ..addStatusListener(_onSnapStatus);
+  }
+
+  @override
+  void didUpdateWidget(ChatOverlay old) {
+    super.didUpdateWidget(old);
+    if (old.collapsed && !widget.collapsed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _inputFocus.requestFocus();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _snapCtrl.dispose();
+    _inputFocus.dispose();
+    super.dispose();
+  }
 
   Alignment _alignmentFor(ChatCorner c) {
     switch (c) {
@@ -69,10 +108,54 @@ class _ChatOverlayState extends State<ChatOverlay> {
     }
   }
 
+  /// Resting top-left for [c], matching the Align + padding used below so the
+  /// glide ends exactly where the docked card will sit (no settle-jump).
+  Offset _cornerTopLeft(ChatCorner c, Size card, Size win) {
+    const pad = 12.0;
+    const bottomPad = 64.0;
+    final left = pad;
+    final right = win.width - pad - card.width;
+    final top = pad;
+    final bottom = win.height - bottomPad - card.height;
+    switch (c) {
+      case ChatCorner.topLeft:
+        return Offset(left, top);
+      case ChatCorner.topRight:
+        return Offset(right, top);
+      case ChatCorner.bottomLeft:
+        return Offset(left, bottom);
+      case ChatCorner.bottomRight:
+        return Offset(right, bottom);
+    }
+  }
+
+  void _onSnapTick() {
+    final from = _snapFrom;
+    final to = _snapTo;
+    if (from == null || to == null) return;
+    setState(() => _dragTopLeft =
+        Offset.lerp(from, to, Curves.easeOutCubic.transform(_snapCtrl.value)));
+  }
+
+  void _onSnapStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) _clearDrag();
+  }
+
+  void _clearDrag() {
+    setState(() {
+      _dragTopLeft = null;
+      _dragCardSize = null;
+      _overlaySize = null;
+      _snapFrom = null;
+      _snapTo = null;
+    });
+  }
+
   /// Seed the free-drag offset from where the card actually sits right now.
   /// Converts the card's global top-left into this overlay's local space so
   /// the following [Positioned] keeps it under the cursor (no jump).
   void _startHeaderDrag() {
+    if (_snapCtrl.isAnimating) _snapCtrl.stop();
     final cardBox = _cardKey.currentContext?.findRenderObject() as RenderBox?;
     final selfBox = context.findRenderObject() as RenderBox?;
     if (cardBox == null || selfBox == null) return;
@@ -84,80 +167,101 @@ class _ChatOverlayState extends State<ChatOverlay> {
     });
   }
 
+  void _endHeaderDrag() {
+    final topLeft = _dragTopLeft;
+    final card = _dragCardSize;
+    final window = _overlaySize;
+    if (topLeft == null || card == null || window == null) {
+      _clearDrag();
+      return;
+    }
+    final result = computeSnap(
+      dropTopLeft: topLeft,
+      cardSize: card,
+      windowSize: window,
+    );
+    widget.onSnap(result);
+    final corner = result.corner;
+    if (corner != null) {
+      // Glide to the docked corner, then settle into the Align placement.
+      _snapFrom = topLeft;
+      _snapTo = _cornerTopLeft(corner, card, window);
+      _snapCtrl.forward(from: 0);
+    } else {
+      // Collapse — the peek/card cross-fade carries the transition.
+      _clearDrag();
+    }
+  }
+
+  Widget _buildCard(Size cardSize) => _GlassCard(
+        key: _cardKey,
+        width: cardSize.width,
+        maxHeight: cardSize.height,
+        onHeaderDragStart: _startHeaderDrag,
+        onHeaderDragUpdate: (delta) {
+          final base = _dragTopLeft;
+          if (base == null) return;
+          setState(() => _dragTopLeft = base + delta);
+        },
+        onHeaderDragEnd: _endHeaderDrag,
+        onCollapse: widget.onToggleCollapsed,
+        messages: widget.messages,
+        myUsername: widget.myUsername,
+        onSend: widget.onSend,
+        inputFocusNode: _inputFocus,
+        typingLabel: widget.typingLabel,
+        onTypingChanged: widget.onTypingChanged,
+      );
+
   @override
   Widget build(BuildContext context) {
-    if (widget.collapsed) {
-      return Align(
-        alignment: Alignment.centerRight,
-        child:
-            PeekTab(pulsing: widget.pulsing, onTap: widget.onToggleCollapsed),
-      );
-    }
-
     final media = MediaQuery.of(context).size;
     final cardSize = Size(media.width * 0.3, media.height * 0.5);
 
-    final card = _GlassCard(
-      key: _cardKey,
-      width: cardSize.width,
-      maxHeight: cardSize.height,
-      onHeaderDragStart: _startHeaderDrag,
-      onHeaderDragUpdate: (delta) {
-        final base = _dragTopLeft;
-        if (base == null) return;
-        setState(() => _dragTopLeft = base + delta);
-      },
-      onHeaderDragEnd: () {
-        final topLeft = _dragTopLeft;
-        final card = _dragCardSize;
-        final window = _overlaySize;
-        if (topLeft != null && card != null && window != null) {
-          widget.onSnap(computeSnap(
-            dropTopLeft: topLeft,
-            cardSize: card,
-            windowSize: window,
-          ));
-        }
-        setState(() {
-          _dragTopLeft = null;
-          _dragCardSize = null;
-          _overlaySize = null;
-        });
-      },
-      onCollapse: widget.onToggleCollapsed,
-      messages: widget.messages,
-      myUsername: widget.myUsername,
-      onSend: widget.onSend,
-      typingLabel: widget.typingLabel,
-      onTypingChanged: widget.onTypingChanged,
-    );
-
+    // Active drag, or the post-release snap glide, renders a free-floating card.
     final topLeft = _dragTopLeft;
     if (topLeft != null) {
-      // While dragging, paint the five dock targets (4 corners + the right-edge
-      // collapse pill) and highlight whichever one this drop would snap to, so
-      // the landing spot is never a surprise. Hints sit BELOW the card so the
-      // card stays under the cursor.
+      // Dock hints show only during the live drag, not the settling glide.
+      final showHints = !_snapCtrl.isAnimating &&
+          _overlaySize != null &&
+          _dragCardSize != null;
       return Positioned.fill(
         child: Stack(
           children: [
-            if (_overlaySize != null && _dragCardSize != null)
+            if (showHints)
               _DropZoneHints(
                 overlaySize: _overlaySize!,
                 cardSize: _dragCardSize!,
                 dragTopLeft: topLeft,
               ),
-            Positioned(left: topLeft.dx, top: topLeft.dy, child: card),
+            Positioned(left: topLeft.dx, top: topLeft.dy, child: _buildCard(cardSize)),
           ],
         ),
       );
     }
-    return Align(
-      alignment: _alignmentFor(widget.corner),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 64),
-        child: card,
-      ),
+
+    // Resting: cross-fade between the peek tab and the docked card so
+    // collapse/expand eases instead of snapping instantly.
+    final Widget resting = widget.collapsed
+        ? Align(
+            key: const ValueKey<String>('peek'),
+            alignment: Alignment.centerRight,
+            child:
+                PeekTab(pulsing: widget.pulsing, onTap: widget.onToggleCollapsed),
+          )
+        : Align(
+            key: const ValueKey<String>('card'),
+            alignment: _alignmentFor(widget.corner),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 64),
+              child: _buildCard(cardSize),
+            ),
+          );
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: resting,
     );
   }
 }
@@ -174,6 +278,7 @@ class _GlassCard extends StatelessWidget {
     required this.messages,
     required this.myUsername,
     required this.onSend,
+    required this.inputFocusNode,
     required this.typingLabel,
     required this.onTypingChanged,
   });
@@ -187,6 +292,7 @@ class _GlassCard extends StatelessWidget {
   final List<ChatMessage> messages;
   final String myUsername;
   final void Function(String text) onSend;
+  final FocusNode inputFocusNode;
   final String? typingLabel;
   final ValueChanged<bool>? onTypingChanged;
 
@@ -293,7 +399,11 @@ class _GlassCard extends StatelessWidget {
                     ),
                   ),
                 ),
-              ChatInput(onSend: onSend, onTypingChanged: onTypingChanged),
+              ChatInput(
+                onSend: onSend,
+                focusNode: inputFocusNode,
+                onTypingChanged: onTypingChanged,
+              ),
             ],
           ),
         ),

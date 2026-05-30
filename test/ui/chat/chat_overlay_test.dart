@@ -138,4 +138,26 @@ void main() {
     // Hints clear on release.
     expect(find.byIcon(Icons.north_west), findsNothing);
   });
+
+  testWidgets('opening the card focuses the message box', (tester) async {
+    Widget overlay(bool collapsed) => host(ChatOverlay(
+          messages: const [],
+          myUsername: 'me',
+          collapsed: collapsed,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        ));
+
+    // Start collapsed (peek tab) — no text field, nothing focused.
+    await tester.pumpWidget(overlay(true));
+    await tester.pump();
+
+    // Expand (peek → card): the message box should grab focus on its own.
+    await tester.pumpWidget(overlay(false));
+    await tester.pumpAndSettle();
+
+    final editable = tester.widget<EditableText>(find.byType(EditableText));
+    expect(editable.focusNode.hasFocus, isTrue);
+  });
 }

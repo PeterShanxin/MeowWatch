@@ -8,10 +8,18 @@ import '../../core/theme/meow_context.dart';
 /// trimmed text (never blank) and clears itself. While the user is typing it
 /// pulses [onTypingChanged] true, then false after a short idle (or on send).
 class ChatInput extends StatefulWidget {
-  const ChatInput({super.key, required this.onSend, this.onTypingChanged});
+  const ChatInput({
+    super.key,
+    required this.onSend,
+    this.onTypingChanged,
+    this.focusNode,
+  });
 
   final void Function(String text) onSend;
   final ValueChanged<bool>? onTypingChanged;
+
+  /// Supplied by the overlay so it can focus the field when the card is opened.
+  final FocusNode? focusNode;
 
   @override
   State<ChatInput> createState() => _ChatInputState();
@@ -66,6 +74,7 @@ class _ChatInputState extends State<ChatInput> {
           Expanded(
             child: TextField(
               controller: _controller,
+              focusNode: widget.focusNode,
               onChanged: _onChanged,
               onSubmitted: (_) => _submit(),
               style: TextStyle(color: m.textPrimary, fontSize: 14),
