@@ -1,42 +1,49 @@
+import 'package:flutter/widgets.dart' show Size;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/ui/chat/chat_corner.dart';
 import 'package:meowwatch/ui/chat/chat_overlay_layout.dart';
 
 void main() {
-  test('defaults to bottomLeft, expanded', () {
+  test('defaults have null size fractions', () {
     const l = ChatOverlayLayout();
-    expect(l.corner, ChatCorner.bottomLeft);
-    expect(l.collapsed, isFalse);
+    expect(l.widthFrac, isNull);
+    expect(l.heightFrac, isNull);
   });
 
-  test('applySnap to a corner moves there and stays expanded', () {
-    final l = const ChatOverlayLayout()
-        .applySnap(const SnapResult.corner(ChatCorner.topRight));
-    expect(l.corner, ChatCorner.topRight);
-    expect(l.collapsed, isFalse);
+  test('applyResize derives fractions from px over window', () {
+    const l = ChatOverlayLayout();
+    final r = l.applyResize(const Size(300, 400), const Size(1000, 800));
+    expect(r.widthFrac, closeTo(0.30, 1e-9));
+    expect(r.heightFrac, closeTo(0.50, 1e-9));
   });
 
-  test('applySnap collapse remembers the current corner', () {
+  test('resetSize clears fractions but keeps corner', () {
     final l = const ChatOverlayLayout(corner: ChatCorner.topRight)
-        .applySnap(const SnapResult.collapse());
-    expect(l.collapsed, isTrue);
-    expect(l.lastCorner, ChatCorner.topRight);
+        .applyResize(const Size(500, 600), const Size(1000, 800));
+    final r = l.resetSize();
+    expect(r.widthFrac, isNull);
+    expect(r.heightFrac, isNull);
+    expect(r.corner, ChatCorner.topRight);
   });
 
-  test('toggle collapses an expanded card, remembering corner', () {
-    final l = const ChatOverlayLayout(corner: ChatCorner.bottomRight).toggle();
-    expect(l.collapsed, isTrue);
-    expect(l.lastCorner, ChatCorner.bottomRight);
+  test('format and parse round-trip', () {
+    expect(formatCardSizeFraction(0.42, 0.63), '0.42,0.63');
+    expect(parseCardSizeFraction('0.42,0.63'), (0.42, 0.63));
   });
 
-  test('toggle expands a collapsed card back to lastCorner', () {
-    const collapsed = ChatOverlayLayout(
-      corner: ChatCorner.bottomLeft,
-      collapsed: true,
-      lastCorner: ChatCorner.topRight,
-    );
-    final l = collapsed.toggle();
-    expect(l.collapsed, isFalse);
-    expect(l.corner, ChatCorner.topRight);
+  test('parse returns nulls for empty or malformed input', () {
+    expect(parseCardSizeFraction(null), (null, null));
+    expect(parseCardSizeFraction(''), (null, null));
+    expect(parseCardSizeFraction('garbage'), (null, null));
+    expect(parseCardSizeFraction('1.5,0.5'), (null, null)); // out of range
+  });
+
+  test('equality includes size fractions', () {
+    final a = const ChatOverlayLayout()
+        .applyResize(const Size(300, 400), const Size(1000, 800));
+    final b = const ChatOverlayLayout()
+        .applyResize(const Size(300, 400), const Size(1000, 800));
+    expect(a, b);
+    expect(a, isNot(const ChatOverlayLayout()));
   });
 }
