@@ -19,6 +19,11 @@ Six phases. Each phase ends with working, shippable software. One plan per phase
 
 All six planned phases are shipped. The items below are out of the v1 plan — deferred extras, new ideas surfaced while building, and tuning notes — kept for a future iteration.
 
+### Post-v1 shipped
+
+- **Auto-update pipeline** — version badge + in-app updater checking a Cloudflare R2 bucket; CI builds tagged releases and uploads the zip + `latest.json` to R2.
+- **Resizable chat card** — bottom-right drag grip resizes the card (free width/height, clamped); a reset button restores the default; the chosen size persists locally and is re-applied on next launch. (`v0.1.1-alpha`)
+
 ### Deferred from Phase 6 (with rationale)
 
 - **Picture-in-Picture (always-on-top mini player)** — deferred. Flutter Windows has no built-in PiP; needs a second borderless always-on-top OS window (or a platform-channel/native-window approach) plus its own video surface. That's a self-contained mini-project, not a same-session extra — give it its own spec.
