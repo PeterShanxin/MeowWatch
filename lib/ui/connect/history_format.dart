@@ -38,12 +38,25 @@ double? progressFraction(HistoryEntry e) {
   return (e.lastPositionMs / dur).clamp(0.0, 1.0);
 }
 
-/// One-line summary: resume position, total runtime, percent, and last-played.
-/// Falls back to just the last-played label when the duration is unknown.
+/// Human file size (`1.4 GB`, `720 MB`, `512 KB`), or `''` when unknown (0).
+String formatFileSize(int bytes) {
+  if (bytes <= 0) return '';
+  const unit = 1024.0;
+  final mb = bytes / (unit * unit);
+  if (mb >= 1024) return '${(mb / 1024).toStringAsFixed(1)} GB';
+  if (mb >= 1) return '${mb.toStringAsFixed(0)} MB';
+  return '${(bytes / unit).toStringAsFixed(0)} KB';
+}
+
+/// One-line summary: resume position, total runtime, percent, last-played, and
+/// file size when known. Falls back to last-played (+ size) when duration is
+/// unknown.
 String historySubtitle(HistoryEntry e, DateTime now) {
   final played = relativeTime(e.playedAt, now);
+  final size = formatFileSize(e.fileSizeBytes);
+  final tail = size.isEmpty ? played : '$played · $size';
   final frac = progressFraction(e);
-  if (frac == null) return played;
+  if (frac == null) return tail;
   final pct = (frac * 100).round();
-  return '${formatRuntime(e.lastPositionMs)} / ${formatRuntime(e.durationMs!)} · $pct% · $played';
+  return '${formatRuntime(e.lastPositionMs)} / ${formatRuntime(e.durationMs!)} · $pct% · $tail';
 }

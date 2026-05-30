@@ -94,6 +94,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// root and the next Tab is wasted just re-acquiring it (the "press Tab twice"
   /// bug). With focus always on a descendant, the Tab handler fires every press.
   final FocusNode _videoFocus = FocusNode(debugLabel: 'video-surface');
+
+  /// Fallback keyboard-focus holder for when no video is loaded (so the empty /
+  /// "waiting" screen still has a focused descendant for the Tab handler to fire
+  /// from). skipTraversal keeps it out of Tab focus-traversal; we only ever
+  /// focus it programmatically when restoring focus with no VideoSurface mounted.
+  final FocusNode _rootFocus =
+      FocusNode(debugLabel: 'home-root', skipTraversal: true);
   List<ChatMessage> _messages = const <ChatMessage>[];
   late String _username;
   bool _peekPulsing = false;
@@ -215,6 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_core.dispose());
     unawaited(_syncLog.close());
     _videoFocus.dispose();
+    _rootFocus.dispose();
     super.dispose();
   }
 
@@ -251,11 +259,25 @@ class _HomeScreenState extends State<HomeScreen> {
   /// the keyboard shortcut (Tab) and space/arrows keep working on one press.
   void _toggleChat() {
     setState(() => _chatLayout = _chatLayout.toggle());
-    if (_chatLayout.collapsed) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _videoFocus.requestFocus();
-      });
-    }
+    if (_chatLayout.collapsed) _restorePlayerFocus();
+  }
+
+  /// Hand keyboard focus back to a focused descendant after the chat collapses
+  /// (which removes its auto-focused text field). The video surface when one is
+  /// loaded, else the invisible root holder — either way the top-level Tab
+  /// handler always has a focused node to bubble from, so Tab toggles on a
+  /// single press. Called from BOTH the chevron toggle and the drag-to-hide
+  /// snap — the drag path used to skip this, which is why hiding-by-drag then
+  /// needed two Tab presses.
+  void _restorePlayerFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_core.state.fileName != null) {
+        _videoFocus.requestFocus();
+      } else {
+        _rootFocus.requestFocus();
+      }
+    });
   }
 
   void _pulsePeek() {
@@ -449,7 +471,10 @@ class _HomeScreenState extends State<HomeScreen> {
       // focused video surface, and skipTraversal stops the framework's
       // default Tab focus-traversal from swallowing it first.
       body: Focus(
-        canRequestFocus: false,
+        // Holds focus only when no VideoSurface is mounted (empty/waiting
+        // screen) so the Tab handler always has a focused descendant. Never
+        // autofocuses, so it won't steal the video's space/arrow keys.
+        focusNode: _rootFocus,
         skipTraversal: true,
         onKeyEvent: (node, event) {
           if (event is KeyDownEvent &&
@@ -502,8 +527,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       typingLabel: _typingLabel,
                       onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
                       onToggleCollapsed: _toggleChat,
-                      onSnap: (result) => setState(
-                          () => _chatLayout = _chatLayout.applySnap(result)),
+                      onSnap: (result) {
+                        setState(
+                            () => _chatLayout = _chatLayout.applySnap(result));
+                        if (_chatLayout.collapsed) _restorePlayerFocus();
+                      },
                       onDraggingChanged: (d) =>
                           setState(() => _chatDragging = d),
                     ),

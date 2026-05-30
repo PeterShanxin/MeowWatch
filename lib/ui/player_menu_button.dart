@@ -42,6 +42,8 @@ class PlayerMenuButton extends StatelessWidget {
         );
 
     return MenuAnchor(
+      // Drop the popover a touch below the gear so it doesn't crowd the button.
+      alignmentOffset: const Offset(0, 8),
       style: MenuStyle(
         backgroundColor: WidgetStatePropertyAll<Color>(m.surface),
         side: WidgetStatePropertyAll<BorderSide>(BorderSide(color: m.border)),
@@ -67,13 +69,27 @@ class PlayerMenuButton extends StatelessWidget {
         ),
       ),
       menuChildren: [
-        SizedBox(
-          width: 232,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              label('Room code'),
+        // Entrance: fade + a small downward slide each time the menu opens (the
+        // overlay remounts on open, so the tween replays). MenuAnchor itself
+        // pops the panel in with no transition otherwise.
+        TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          builder: (context, t, child) => Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset(0, (1 - t) * -6),
+              child: child,
+            ),
+          ),
+          child: SizedBox(
+            width: 232,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                label('Room code'),
               _RoomCodeRow(code: roomCode),
               const SizedBox(height: 8),
               Divider(color: m.border, height: 16),
@@ -99,7 +115,8 @@ class PlayerMenuButton extends StatelessWidget {
                 text: 'Leave room',
                 onTap: onLeave,
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ],

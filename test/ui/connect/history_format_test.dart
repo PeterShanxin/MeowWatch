@@ -6,12 +6,13 @@ HistoryEntry entry({
   int? durationMs,
   int lastPositionMs = 0,
   DateTime? playedAt,
+  int fileSizeBytes = 0,
 }) =>
     HistoryEntry(
       id: 1,
       filePath: '/x.mkv',
       fileName: 'x.mkv',
-      fileSizeBytes: 0,
+      fileSizeBytes: fileSizeBytes,
       durationMs: durationMs,
       lastPositionMs: lastPositionMs,
       playedAt: playedAt ?? DateTime(2026, 5, 30),
@@ -68,6 +69,16 @@ void main() {
     });
   });
 
+  group('formatFileSize', () {
+    test('empty when unknown', () => expect(formatFileSize(0), ''));
+    test('KB / MB / GB buckets', () {
+      expect(formatFileSize(512 * 1024), '512 KB');
+      expect(formatFileSize(720 * 1024 * 1024), '720 MB');
+      expect(
+          formatFileSize((1.4 * 1024 * 1024 * 1024).round()), '1.4 GB');
+    });
+  });
+
   group('historySubtitle', () {
     final now = DateTime(2026, 5, 30, 12, 0, 0);
     test('full line with percent when duration known', () {
@@ -77,6 +88,17 @@ void main() {
         playedAt: now.subtract(const Duration(days: 2)),
       );
       expect(historySubtitle(e, now), '47:32 / 1:45:00 · 45% · 2 days ago');
+    });
+
+    test('appends file size when known', () {
+      final e = entry(
+        durationMs: (1 * 3600 + 45 * 60) * 1000,
+        lastPositionMs: 47 * 60 * 1000 + 32 * 1000,
+        playedAt: now.subtract(const Duration(days: 2)),
+        fileSizeBytes: 720 * 1024 * 1024,
+      );
+      expect(historySubtitle(e, now),
+          '47:32 / 1:45:00 · 45% · 2 days ago · 720 MB');
     });
 
     test('just the played label when duration unknown', () {
