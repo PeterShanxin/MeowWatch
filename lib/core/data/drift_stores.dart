@@ -136,6 +136,13 @@ class DriftHistoryStore implements HistoryStore {
       (_db.update(_db.historyEntries)..where((t) => t.filePath.equals(filePath)))
           .write(HistoryEntriesCompanion(lastPositionMs: Value(positionMs)));
 
+  @override
+  Future<void> delete(int id) =>
+      (_db.delete(_db.historyEntries)..where((t) => t.id.equals(id))).go();
+
+  @override
+  Future<void> clearAll() => _db.delete(_db.historyEntries).go();
+
   HistoryEntry _toModel(HistoryRow r) => HistoryEntry(
         id: r.id,
         filePath: r.filePath,

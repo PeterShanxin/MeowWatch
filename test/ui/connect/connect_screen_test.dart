@@ -46,10 +46,14 @@ class _FakeProfileStore implements ProfileStore {
 
 class _FakeHistoryStore implements HistoryStore {
   final List<HistoryEntry> recent = [];
+  final _ctrl = StreamController<List<HistoryEntry>>.broadcast();
+
+  void emit() => _ctrl.add(List.unmodifiable(recent));
 
   @override
   Stream<List<HistoryEntry>> watchRecent({int limit = 6}) async* {
     yield List.unmodifiable(recent);
+    yield* _ctrl.stream;
   }
 
   @override
@@ -65,6 +69,18 @@ class _FakeHistoryStore implements HistoryStore {
     required String filePath,
     required int positionMs,
   }) async {}
+
+  @override
+  Future<void> delete(int id) async {
+    recent.removeWhere((e) => e.id == id);
+    emit();
+  }
+
+  @override
+  Future<void> clearAll() async {
+    recent.clear();
+    emit();
+  }
 }
 
 void main() {
@@ -147,5 +163,48 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-delete-7')));
     await tester.pump();
     expect(profiles.deleted, [7]);
+  });
+
+  HistoryEntry historyEntry(int id, String name) => HistoryEntry(
+        id: id,
+        filePath: '/$name.mkv',
+        fileName: '$name.mkv',
+        fileSizeBytes: 1,
+        durationMs: 600000,
+        lastPositionMs: 120000,
+        playedAt: DateTime(2026, 5, 29),
+      );
+
+  testWidgets('continue-watching row shows progress and can be deleted',
+      (tester) async {
+    history.recent
+      ..add(historyEntry(1, 'ep1'))
+      ..add(historyEntry(2, 'ep2'));
+    await pump(tester);
+
+    // Rich subtitle: 2:00 / 10:00 · 20% · ...
+    expect(find.textContaining('2:00 / 10:00 · 20%'), findsNWidgets(2));
+
+    await tester.ensureVisible(find.byKey(const Key('continue-delete-1')));
+    await tester.tap(find.byKey(const Key('continue-delete-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('continue-1')), findsNothing);
+    expect(find.byKey(const Key('continue-2')), findsOneWidget);
+  });
+
+  testWidgets('Clear all empties continue-watching', (tester) async {
+    history.recent
+      ..add(historyEntry(1, 'ep1'))
+      ..add(historyEntry(2, 'ep2'));
+    await pump(tester);
+
+    await tester.ensureVisible(find.byKey(const Key('continue-clear-all')));
+    await tester.tap(find.byKey(const Key('continue-clear-all')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('continue-1')), findsNothing);
+    expect(find.byKey(const Key('continue-2')), findsNothing);
+    expect(find.text('Continue watching'), findsNothing);
   });
 }

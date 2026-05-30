@@ -50,4 +50,25 @@ void main() {
     final list = await store.watchRecent(limit: 1).first;
     expect(list.map((e) => e.fileName).toList(), ['b']);
   });
+
+  test('delete removes a single entry', () async {
+    await store.recordOpen(filePath: 'a', fileName: 'a', fileSizeBytes: 1);
+    await store.recordOpen(filePath: 'b', fileName: 'b', fileSizeBytes: 1);
+    final before = await store.watchRecent().first;
+    final idA = before.firstWhere((e) => e.fileName == 'a').id;
+
+    await store.delete(idA);
+
+    final after = await store.watchRecent().first;
+    expect(after.map((e) => e.fileName).toList(), ['b']);
+  });
+
+  test('clearAll empties the history', () async {
+    await store.recordOpen(filePath: 'a', fileName: 'a', fileSizeBytes: 1);
+    await store.recordOpen(filePath: 'b', fileName: 'b', fileSizeBytes: 1);
+
+    await store.clearAll();
+
+    expect(await store.watchRecent().first, isEmpty);
+  });
 }

@@ -27,6 +27,7 @@ class ChatOverlay extends StatefulWidget {
     this.pulsing = false,
     this.typingLabel,
     this.onTypingChanged,
+    this.onDraggingChanged,
   });
 
   final List<ChatMessage> messages;
@@ -41,6 +42,11 @@ class ChatOverlay extends StatefulWidget {
   /// e.g. "lin is typing…"; null when nobody is typing.
   final String? typingLabel;
   final ValueChanged<bool>? onTypingChanged;
+
+  /// Fires true while the card is being dragged (or gliding to its dock), false
+  /// once it settles — lets the parent hide controls (e.g. the gear) that would
+  /// otherwise sit under the dock hints.
+  final ValueChanged<bool>? onDraggingChanged;
 
   @override
   State<ChatOverlay> createState() => _ChatOverlayState();
@@ -149,6 +155,7 @@ class _ChatOverlayState extends State<ChatOverlay>
       _snapFrom = null;
       _snapTo = null;
     });
+    widget.onDraggingChanged?.call(false);
   }
 
   /// Seed the free-drag offset from where the card actually sits right now.
@@ -165,6 +172,7 @@ class _ChatOverlayState extends State<ChatOverlay>
       _dragCardSize = cardBox.size;
       _overlaySize = selfBox.size;
     });
+    widget.onDraggingChanged?.call(true);
   }
 
   void _endHeaderDrag() {
@@ -182,15 +190,16 @@ class _ChatOverlayState extends State<ChatOverlay>
     );
     widget.onSnap(result);
     final corner = result.corner;
+    _snapFrom = topLeft;
     if (corner != null) {
       // Glide to the docked corner, then settle into the Align placement.
-      _snapFrom = topLeft;
       _snapTo = _cornerTopLeft(corner, card, window);
-      _snapCtrl.forward(from: 0);
     } else {
-      // Collapse — the peek/card cross-fade carries the transition.
-      _clearDrag();
+      // Collapse: slide the card off the right edge, then it becomes the peek
+      // tab — so docking to the edge isn't an abrupt disappearance.
+      _snapTo = Offset(window.width, topLeft.dy);
     }
+    _snapCtrl.forward(from: 0);
   }
 
   Widget _buildCard(Size cardSize) => _GlassCard(
@@ -412,10 +421,10 @@ class _GlassCard extends StatelessWidget {
   }
 }
 
-/// The five landing targets shown while the chat card is being dragged: one
-/// chip per corner plus a right-edge pill for the collapse dock. The chip that
-/// the current drop would snap to (per [computeSnap]) is highlighted, so the
-/// outcome matches what the user sees before they let go.
+/// The five landing targets shown while the chat card is being dragged: four
+/// big quadrant areas (one per corner) plus a slim, tall bar on the right edge
+/// for the collapse dock. Whichever zone the current drop would snap to (per
+/// [computeSnap]) is highlighted, so the outcome is clear before release.
 class _DropZoneHints extends StatelessWidget {
   const _DropZoneHints({
     required this.overlaySize,
@@ -437,55 +446,44 @@ class _DropZoneHints extends StatelessWidget {
     final corner = snap.corner;
     final w = overlaySize.width;
     final h = overlaySize.height;
-    const chipW = 60.0;
-    const chipH = 44.0;
-    const inset = 18.0;
-    // Keep the bottom chips clear of the auto-hiding control bar.
-    const bottomInset = 84.0;
+
+    const margin = 16.0;
+    const gap = 14.0;
+    const barW = 52.0; // slim right-edge collapse bar
+    const bottomClear = 72.0; // keep clear of the auto-hiding control bar
+
+    final top = margin;
+    final bottom = h - bottomClear;
+    final left = margin;
+    final right = w - barW - gap; // quadrants stop before the collapse bar
+    final midX = (left + right) / 2;
+    final midY = (top + bottom) / 2;
+
+    Widget zone(double l, double t, double r, double b, IconData icon,
+            bool active) =>
+        Positioned(
+          left: l,
+          top: t,
+          width: (r - l).clamp(0, w),
+          height: (b - t).clamp(0, h),
+          child: _HintZone(icon: icon, active: active),
+        );
 
     return Positioned.fill(
       child: IgnorePointer(
         child: Stack(
           children: [
-            Positioned(
-              left: inset,
-              top: inset,
-              child: _HintChip(
-                  icon: Icons.north_west,
-                  active: corner == ChatCorner.topLeft),
-            ),
-            Positioned(
-              left: w - inset - chipW,
-              top: inset,
-              child: _HintChip(
-                  icon: Icons.north_east,
-                  active: corner == ChatCorner.topRight),
-            ),
-            Positioned(
-              left: inset,
-              top: h - bottomInset - chipH,
-              child: _HintChip(
-                  icon: Icons.south_west,
-                  active: corner == ChatCorner.bottomLeft),
-            ),
-            Positioned(
-              left: w - inset - chipW,
-              top: h - bottomInset - chipH,
-              child: _HintChip(
-                  icon: Icons.south_east,
-                  active: corner == ChatCorner.bottomRight),
-            ),
-            // Collapse dock — a tall pill hugging the right edge, vertical mid.
-            Positioned(
-              right: 8,
-              top: h / 2 - 40,
-              child: _HintChip(
-                width: 24,
-                height: 80,
-                icon: Icons.chevron_right,
-                active: snap.collapsed,
-              ),
-            ),
+            zone(left, top, midX - gap / 2, midY - gap / 2, Icons.north_west,
+                corner == ChatCorner.topLeft),
+            zone(midX + gap / 2, top, right, midY - gap / 2, Icons.north_east,
+                corner == ChatCorner.topRight),
+            zone(left, midY + gap / 2, midX - gap / 2, bottom, Icons.south_west,
+                corner == ChatCorner.bottomLeft),
+            zone(midX + gap / 2, midY + gap / 2, right, bottom,
+                Icons.south_east, corner == ChatCorner.bottomRight),
+            // Slim, tall collapse bar hugging the right edge.
+            zone(w - barW, top, w - 8, bottom, Icons.chevron_right,
+                snap.collapsed),
           ],
         ),
       ),
@@ -493,42 +491,34 @@ class _DropZoneHints extends StatelessWidget {
   }
 }
 
-/// One dock target marker. Fills with the accent when [active].
-class _HintChip extends StatelessWidget {
-  const _HintChip({
-    required this.icon,
-    required this.active,
-    this.width = 60,
-    this.height = 44,
-  });
+/// One dock target region. A soft translucent panel that fills with the accent
+/// when it is the active drop target.
+class _HintZone extends StatelessWidget {
+  const _HintZone({required this.icon, required this.active});
 
   final IconData icon;
   final bool active;
-  final double width;
-  final double height;
 
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 120),
-      width: width,
-      height: height,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: active
-            ? m.accent.withValues(alpha: 0.85)
-            : m.surface.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(12),
+            ? m.accent.withValues(alpha: 0.30)
+            : m.surface.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: m.accent.withValues(alpha: active ? 1.0 : 0.45),
-          width: active ? 2 : 1,
+          color: m.accent.withValues(alpha: active ? 1.0 : 0.40),
+          width: active ? 2.5 : 1,
         ),
       ),
       child: Icon(
         icon,
-        size: active ? 22 : 18,
-        color: active ? m.background : m.accent,
+        size: active ? 40 : 30,
+        color: m.accent.withValues(alpha: active ? 1.0 : 0.65),
       ),
     );
   }

@@ -10,6 +10,7 @@ import '../../core/sync/syncplay_constants.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_theme.dart';
 import '../theme/theme_swatches.dart';
+import 'history_format.dart';
 
 class ConnectScreen extends StatefulWidget {
   const ConnectScreen({
@@ -355,32 +356,102 @@ class _ContinueWatching extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 24),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text('Continue watching',
-                  style: TextStyle(color: m.textDim, fontSize: 13)),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Continue watching',
+                      style: TextStyle(color: m.textDim, fontSize: 13)),
+                ),
+                TextButton(
+                  key: const Key('continue-clear-all'),
+                  onPressed: () => history.clearAll(),
+                  style: TextButton.styleFrom(
+                    foregroundColor: m.textDim,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('Clear all', style: TextStyle(fontSize: 12)),
+                ),
+              ],
             ),
+            const SizedBox(height: 4),
             ...recent.map(
-              (e) => Card(
-                color: m.surface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: m.border),
-                ),
-                child: ListTile(
-                  key: Key('continue-${e.id}'),
-                  onTap: () => onResume(e),
-                  leading: Icon(Icons.play_circle, color: m.accent),
-                  title: Text(e.fileName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: m.textPrimary)),
-                ),
+              (e) => _HistoryCard(
+                entry: e,
+                onResume: () => onResume(e),
+                onDelete: () => history.delete(e.id),
               ),
             ),
           ],
         );
       },
+    );
+  }
+}
+
+/// One "Continue watching" row: filename, resume progress + last-played, a thin
+/// progress bar, and a delete button.
+class _HistoryCard extends StatelessWidget {
+  const _HistoryCard({
+    required this.entry,
+    required this.onResume,
+    required this.onDelete,
+  });
+
+  final HistoryEntry entry;
+  final VoidCallback onResume;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    final frac = progressFraction(entry);
+    return Card(
+      color: m.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: m.border),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            key: Key('continue-${entry.id}'),
+            onTap: onResume,
+            leading: Icon(Icons.play_circle, color: m.accent),
+            title: Text(entry.fileName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: m.textPrimary)),
+            subtitle: Text(
+              historySubtitle(entry, DateTime.now()),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: m.textDim, fontSize: 12),
+            ),
+            trailing: IconButton(
+              key: Key('continue-delete-${entry.id}'),
+              icon: Icon(Icons.close, color: m.textDim, size: 18),
+              tooltip: 'Remove',
+              onPressed: onDelete,
+            ),
+          ),
+          if (frac != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  value: frac,
+                  minHeight: 4,
+                  backgroundColor: m.border,
+                  valueColor: AlwaysStoppedAnimation<Color>(m.accent),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

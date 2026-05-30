@@ -10,15 +10,23 @@ void main() {
         home: Scaffold(body: child),
       );
 
-  testWidgets('is 14px wide and taps to expand', (tester) async {
+  testWidgets('shows a slim 14px tab with a wider tap target', (tester) async {
     var tapped = false;
     await tester.pumpWidget(host(PeekTab(
       pulsing: false,
       onTap: () => tapped = true,
     )));
 
-    final box = tester.getSize(find.byType(PeekTab));
-    expect(box.width, 14);
+    // The visible tab stays slim (14px)...
+    final visible = tester.getSize(find.descendant(
+      of: find.byType(PeekTab),
+      matching: find.byType(AnimatedContainer),
+    ));
+    expect(visible.width, 14);
+
+    // ...but the tappable area is padded out so a near-miss still hits.
+    final hit = tester.getSize(find.byType(PeekTab));
+    expect(hit.width, greaterThanOrEqualTo(36));
 
     await tester.tap(find.byType(PeekTab));
     await tester.pump();

@@ -31,10 +31,14 @@ class FakeProfileStore implements ProfileStore {
 
 class FakeHistoryStore implements HistoryStore {
   final List<HistoryEntry> recent = [];
+  final _ctrl = StreamController<List<HistoryEntry>>.broadcast();
+
+  void _emit() => _ctrl.add(List.unmodifiable(recent));
 
   @override
   Stream<List<HistoryEntry>> watchRecent({int limit = 6}) async* {
     yield List.unmodifiable(recent);
+    yield* _ctrl.stream;
   }
 
   @override
@@ -50,6 +54,18 @@ class FakeHistoryStore implements HistoryStore {
     required String filePath,
     required int positionMs,
   }) async {}
+
+  @override
+  Future<void> delete(int id) async {
+    recent.removeWhere((e) => e.id == id);
+    _emit();
+  }
+
+  @override
+  Future<void> clearAll() async {
+    recent.clear();
+    _emit();
+  }
 }
 
 class FakeSettingsStore implements SettingsStore {

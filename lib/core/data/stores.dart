@@ -39,4 +39,10 @@ abstract class HistoryStore {
     required String filePath,
     required int positionMs,
   });
+
+  /// Remove a single history entry.
+  Future<void> delete(int id);
+
+  /// Remove every history entry.
+  Future<void> clearAll();
 }

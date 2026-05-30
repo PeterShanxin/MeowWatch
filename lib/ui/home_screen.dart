@@ -86,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   late final ChatStore _chat;
   ChatOverlayLayout _chatLayout = const ChatOverlayLayout();
+  bool _chatDragging = false;
   List<ChatMessage> _messages = const <ChatMessage>[];
   late String _username;
   bool _peekPulsing = false;
@@ -485,18 +486,29 @@ class _HomeScreenState extends State<HomeScreen> {
                           setState(() => _chatLayout = _chatLayout.toggle()),
                       onSnap: (result) => setState(
                           () => _chatLayout = _chatLayout.applySnap(result)),
+                      onDraggingChanged: (d) =>
+                          setState(() => _chatDragging = d),
                     ),
                   Positioned(
                     top: 12,
                     left: 12,
-                    child: PlayerMenuButton(
-                      roomCode: widget.config.room,
-                      members: <String>[_username, ..._peers],
-                      myUsername: _username,
-                      currentTheme: widget.currentTheme,
-                      onThemeChanged: widget.onThemeChanged,
-                      onLoadVideo: _browse,
-                      onLeave: _leave,
+                    // Fade the gear out while the chat card is being dragged so
+                    // it never covers the top-left dock hint.
+                    child: AnimatedOpacity(
+                      opacity: _chatDragging ? 0.0 : 1.0,
+                      duration: const Duration(milliseconds: 150),
+                      child: IgnorePointer(
+                        ignoring: _chatDragging,
+                        child: PlayerMenuButton(
+                          roomCode: widget.config.room,
+                          members: <String>[_username, ..._peers],
+                          myUsername: _username,
+                          currentTheme: widget.currentTheme,
+                          onThemeChanged: widget.onThemeChanged,
+                          onLoadVideo: _browse,
+                          onLeave: _leave,
+                        ),
+                      ),
                     ),
                   ),
                   if (state.fileName != null)
