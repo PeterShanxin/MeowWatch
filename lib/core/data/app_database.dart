@@ -34,6 +34,8 @@ class HistoryEntries extends Table {
   IntColumn get durationMs => integer().nullable()();
   IntColumn get lastPositionMs => integer().withDefault(const Constant(0))();
   DateTimeColumn get playedAt => dateTime()();
+  TextColumn get room => text().nullable()();
+  TextColumn get username => text().nullable()();
 }
 
 @DataClassName('SettingRow')
@@ -53,13 +55,17 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
         onUpgrade: (m, from, to) async {
           if (from < 2) await m.createTable(settings);
+          if (from < 3) {
+            await m.addColumn(historyEntries, historyEntries.room);
+            await m.addColumn(historyEntries, historyEntries.username);
+          }
         },
       );
 }

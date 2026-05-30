@@ -38,6 +38,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   final _server = TextEditingController(text: SyncplayConstants.defaultServer);
   final _port = TextEditingController(text: '${SyncplayConstants.defaultPort}');
   final _password = TextEditingController();
+  final _scroll = ScrollController();
   bool _advancedOpen = false;
 
   @override
@@ -47,6 +48,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
     _server.dispose();
     _port.dispose();
     _password.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -157,12 +159,24 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final m = context.meow;
     return Scaffold(
       backgroundColor: m.background,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 460),
+      // LayoutBuilder + minHeight lets the column center vertically when it
+      // fits and switch to a normal top-aligned scroll when it's taller than
+      // the window. The Scrollbar shares the controller so the track tracks the
+      // actual scroll (and only shows when there's overflow), instead of a
+      // stray bar floating beside the narrow centered content.
+      body: LayoutBuilder(
+        builder: (context, constraints) => Scrollbar(
+          controller: _scroll,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: StreamBuilder<List<SavedProfile>>(
+            controller: _scroll,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: StreamBuilder<List<SavedProfile>>(
               stream: widget.profiles.watchProfiles(),
               initialData: const [],
               builder: (context, profileSnap) {
@@ -241,7 +255,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
                     _advancedSection(),
                   ],
                 );
-              },
+                    },
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -407,6 +425,7 @@ class _HistoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     final frac = progressFraction(entry);
+    final roomLine = historyRoomLine(entry);
     return Card(
       color: m.surface,
       shape: RoundedRectangleBorder(
@@ -424,11 +443,35 @@ class _HistoryCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: m.textPrimary)),
-            subtitle: Text(
-              historySubtitle(entry, DateTime.now()),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: m.textDim, fontSize: 12),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  historySubtitle(entry, DateTime.now()),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: m.textDim, fontSize: 12),
+                ),
+                if (roomLine != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Row(
+                      children: [
+                        Icon(Icons.groups, size: 12, color: m.accent),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            roomLine,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: m.accent, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
             trailing: IconButton(
               key: Key('continue-delete-${entry.id}'),

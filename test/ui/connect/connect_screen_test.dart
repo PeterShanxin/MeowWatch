@@ -62,6 +62,8 @@ class _FakeHistoryStore implements HistoryStore {
     required String fileName,
     required int fileSizeBytes,
     int? durationMs,
+    String? room,
+    String? username,
   }) async {}
 
   @override

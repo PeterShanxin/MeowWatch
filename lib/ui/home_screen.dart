@@ -408,6 +408,8 @@ class _HomeScreenState extends State<HomeScreen> {
       fileName: state.fileName ?? path,
       fileSizeBytes: size,
       durationMs: state.duration.inMilliseconds,
+      room: widget.config.room,
+      username: widget.config.username,
     );
   }
 

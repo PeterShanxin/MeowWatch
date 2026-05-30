@@ -48,6 +48,16 @@ String formatFileSize(int bytes) {
   return '${(bytes / unit).toStringAsFixed(0)} KB';
 }
 
+/// Second card line: where it was watched — `in <room> as <name>`. Null when
+/// no room was recorded (pre-schema or watched solo).
+String? historyRoomLine(HistoryEntry e) {
+  final room = e.room;
+  if (room == null || room.isEmpty) return null;
+  final name = e.username;
+  if (name == null || name.isEmpty) return 'in $room';
+  return 'in $room as $name';
+}
+
 /// One-line summary: resume position, total runtime, percent, last-played, and
 /// file size when known. Falls back to last-played (+ size) when duration is
 /// unknown.

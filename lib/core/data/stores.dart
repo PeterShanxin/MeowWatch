@@ -26,12 +26,16 @@ abstract class HistoryStore {
   Stream<List<HistoryEntry>> watchRecent({int limit = 6});
 
   /// Record (or refresh) that [filePath] was opened. Keeps the existing
-  /// [lastPositionMs]; updates name/size/duration and bumps playedAt.
+  /// [lastPositionMs]; updates name/size/duration/room/username and bumps
+  /// playedAt. [room]/[username] capture where it was watched (null outside a
+  /// room).
   Future<void> recordOpen({
     required String filePath,
     required String fileName,
     required int fileSizeBytes,
     int? durationMs,
+    String? room,
+    String? username,
   });
 
   /// Update the resume position for an already-recorded file (no-op if absent).

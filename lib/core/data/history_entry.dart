@@ -11,6 +11,8 @@ class HistoryEntry {
     required this.durationMs,
     required this.lastPositionMs,
     required this.playedAt,
+    this.room,
+    this.username,
   });
 
   final int id;
@@ -21,6 +23,11 @@ class HistoryEntry {
   final int lastPositionMs;
   final DateTime playedAt;
 
+  /// Room code and the name used when this file was last opened in a room.
+  /// Null for entries recorded before the schema added them (or outside a room).
+  final String? room;
+  final String? username;
+
   HistoryEntry copyWith({
     int? id,
     String? filePath,
@@ -29,6 +36,8 @@ class HistoryEntry {
     int? durationMs,
     int? lastPositionMs,
     DateTime? playedAt,
+    String? room,
+    String? username,
   }) {
     return HistoryEntry(
       id: id ?? this.id,
@@ -38,6 +47,8 @@ class HistoryEntry {
       durationMs: durationMs ?? this.durationMs,
       lastPositionMs: lastPositionMs ?? this.lastPositionMs,
       playedAt: playedAt ?? this.playedAt,
+      room: room ?? this.room,
+      username: username ?? this.username,
     );
   }
 
@@ -50,9 +61,11 @@ class HistoryEntry {
       other.fileSizeBytes == fileSizeBytes &&
       other.durationMs == durationMs &&
       other.lastPositionMs == lastPositionMs &&
-      other.playedAt == playedAt;
+      other.playedAt == playedAt &&
+      other.room == room &&
+      other.username == username;
 
   @override
   int get hashCode => Object.hash(id, filePath, fileName, fileSizeBytes,
-      durationMs, lastPositionMs, playedAt);
+      durationMs, lastPositionMs, playedAt, room, username);
 }

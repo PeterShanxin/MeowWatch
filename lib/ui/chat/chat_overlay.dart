@@ -156,6 +156,15 @@ class _ChatOverlayState extends State<ChatOverlay>
       _snapTo = null;
     });
     widget.onDraggingChanged?.call(false);
+    // A corner-dock leaves the card open but un-focused, so the next Tab was
+    // wasted re-acquiring focus ("press twice"). Hand focus back to the input
+    // so Tab toggles on one press (and the user can type straight away). On a
+    // collapse the parent restores player focus instead, so skip it here.
+    if (!widget.collapsed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _dragTopLeft == null) _inputFocus.requestFocus();
+      });
+    }
   }
 
   /// Seed the free-drag offset from where the card actually sits right now.

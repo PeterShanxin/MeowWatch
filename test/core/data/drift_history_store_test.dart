@@ -26,6 +26,27 @@ void main() {
     expect(list.single.lastPositionMs, 0);
   });
 
+  test('recordOpen persists room + username; later solo open keeps them',
+      () async {
+    await store.recordOpen(
+      filePath: r'D:\v\ep1.mkv',
+      fileName: 'ep1.mkv',
+      fileSizeBytes: 1,
+      room: 'breezy-crow-66',
+      username: 'meow',
+    );
+    var single = (await store.watchRecent().first).single;
+    expect(single.room, 'breezy-crow-66');
+    expect(single.username, 'meow');
+
+    // Re-opening without a room must not wipe the recorded room/username.
+    await store.recordOpen(
+        filePath: r'D:\v\ep1.mkv', fileName: 'ep1.mkv', fileSizeBytes: 1);
+    single = (await store.watchRecent().first).single;
+    expect(single.room, 'breezy-crow-66');
+    expect(single.username, 'meow');
+  });
+
   test('recordOpen on the same path keeps last position, refreshes playedAt',
       () async {
     await store.recordOpen(

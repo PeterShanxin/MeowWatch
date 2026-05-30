@@ -645,6 +645,26 @@ class $HistoryEntriesTable extends HistoryEntries
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _roomMeta = const VerificationMeta('room');
+  @override
+  late final GeneratedColumn<String> room = GeneratedColumn<String>(
+    'room',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _usernameMeta = const VerificationMeta(
+    'username',
+  );
+  @override
+  late final GeneratedColumn<String> username = GeneratedColumn<String>(
+    'username',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -654,6 +674,8 @@ class $HistoryEntriesTable extends HistoryEntries
     durationMs,
     lastPositionMs,
     playedAt,
+    room,
+    username,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -718,6 +740,18 @@ class $HistoryEntriesTable extends HistoryEntries
     } else if (isInserting) {
       context.missing(_playedAtMeta);
     }
+    if (data.containsKey('room')) {
+      context.handle(
+        _roomMeta,
+        room.isAcceptableOrUnknown(data['room']!, _roomMeta),
+      );
+    }
+    if (data.containsKey('username')) {
+      context.handle(
+        _usernameMeta,
+        username.isAcceptableOrUnknown(data['username']!, _usernameMeta),
+      );
+    }
     return context;
   }
 
@@ -755,6 +789,14 @@ class $HistoryEntriesTable extends HistoryEntries
         DriftSqlType.dateTime,
         data['${effectivePrefix}played_at'],
       )!,
+      room: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}room'],
+      ),
+      username: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}username'],
+      ),
     );
   }
 
@@ -772,6 +814,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
   final int? durationMs;
   final int lastPositionMs;
   final DateTime playedAt;
+  final String? room;
+  final String? username;
   const HistoryRow({
     required this.id,
     required this.filePath,
@@ -780,6 +824,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     this.durationMs,
     required this.lastPositionMs,
     required this.playedAt,
+    this.room,
+    this.username,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -793,6 +839,12 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     }
     map['last_position_ms'] = Variable<int>(lastPositionMs);
     map['played_at'] = Variable<DateTime>(playedAt);
+    if (!nullToAbsent || room != null) {
+      map['room'] = Variable<String>(room);
+    }
+    if (!nullToAbsent || username != null) {
+      map['username'] = Variable<String>(username);
+    }
     return map;
   }
 
@@ -807,6 +859,10 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           : Value(durationMs),
       lastPositionMs: Value(lastPositionMs),
       playedAt: Value(playedAt),
+      room: room == null && nullToAbsent ? const Value.absent() : Value(room),
+      username: username == null && nullToAbsent
+          ? const Value.absent()
+          : Value(username),
     );
   }
 
@@ -823,6 +879,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
       durationMs: serializer.fromJson<int?>(json['durationMs']),
       lastPositionMs: serializer.fromJson<int>(json['lastPositionMs']),
       playedAt: serializer.fromJson<DateTime>(json['playedAt']),
+      room: serializer.fromJson<String?>(json['room']),
+      username: serializer.fromJson<String?>(json['username']),
     );
   }
   @override
@@ -836,6 +894,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
       'durationMs': serializer.toJson<int?>(durationMs),
       'lastPositionMs': serializer.toJson<int>(lastPositionMs),
       'playedAt': serializer.toJson<DateTime>(playedAt),
+      'room': serializer.toJson<String?>(room),
+      'username': serializer.toJson<String?>(username),
     };
   }
 
@@ -847,6 +907,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     Value<int?> durationMs = const Value.absent(),
     int? lastPositionMs,
     DateTime? playedAt,
+    Value<String?> room = const Value.absent(),
+    Value<String?> username = const Value.absent(),
   }) => HistoryRow(
     id: id ?? this.id,
     filePath: filePath ?? this.filePath,
@@ -855,6 +917,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     durationMs: durationMs.present ? durationMs.value : this.durationMs,
     lastPositionMs: lastPositionMs ?? this.lastPositionMs,
     playedAt: playedAt ?? this.playedAt,
+    room: room.present ? room.value : this.room,
+    username: username.present ? username.value : this.username,
   );
   HistoryRow copyWithCompanion(HistoryEntriesCompanion data) {
     return HistoryRow(
@@ -871,6 +935,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           ? data.lastPositionMs.value
           : this.lastPositionMs,
       playedAt: data.playedAt.present ? data.playedAt.value : this.playedAt,
+      room: data.room.present ? data.room.value : this.room,
+      username: data.username.present ? data.username.value : this.username,
     );
   }
 
@@ -883,7 +949,9 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           ..write('fileSizeBytes: $fileSizeBytes, ')
           ..write('durationMs: $durationMs, ')
           ..write('lastPositionMs: $lastPositionMs, ')
-          ..write('playedAt: $playedAt')
+          ..write('playedAt: $playedAt, ')
+          ..write('room: $room, ')
+          ..write('username: $username')
           ..write(')'))
         .toString();
   }
@@ -897,6 +965,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     durationMs,
     lastPositionMs,
     playedAt,
+    room,
+    username,
   );
   @override
   bool operator ==(Object other) =>
@@ -908,7 +978,9 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           other.fileSizeBytes == this.fileSizeBytes &&
           other.durationMs == this.durationMs &&
           other.lastPositionMs == this.lastPositionMs &&
-          other.playedAt == this.playedAt);
+          other.playedAt == this.playedAt &&
+          other.room == this.room &&
+          other.username == this.username);
 }
 
 class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
@@ -919,6 +991,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
   final Value<int?> durationMs;
   final Value<int> lastPositionMs;
   final Value<DateTime> playedAt;
+  final Value<String?> room;
+  final Value<String?> username;
   const HistoryEntriesCompanion({
     this.id = const Value.absent(),
     this.filePath = const Value.absent(),
@@ -927,6 +1001,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     this.durationMs = const Value.absent(),
     this.lastPositionMs = const Value.absent(),
     this.playedAt = const Value.absent(),
+    this.room = const Value.absent(),
+    this.username = const Value.absent(),
   });
   HistoryEntriesCompanion.insert({
     this.id = const Value.absent(),
@@ -936,6 +1012,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     this.durationMs = const Value.absent(),
     this.lastPositionMs = const Value.absent(),
     required DateTime playedAt,
+    this.room = const Value.absent(),
+    this.username = const Value.absent(),
   }) : filePath = Value(filePath),
        fileName = Value(fileName),
        playedAt = Value(playedAt);
@@ -947,6 +1025,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     Expression<int>? durationMs,
     Expression<int>? lastPositionMs,
     Expression<DateTime>? playedAt,
+    Expression<String>? room,
+    Expression<String>? username,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -956,6 +1036,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
       if (durationMs != null) 'duration_ms': durationMs,
       if (lastPositionMs != null) 'last_position_ms': lastPositionMs,
       if (playedAt != null) 'played_at': playedAt,
+      if (room != null) 'room': room,
+      if (username != null) 'username': username,
     });
   }
 
@@ -967,6 +1049,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     Value<int?>? durationMs,
     Value<int>? lastPositionMs,
     Value<DateTime>? playedAt,
+    Value<String?>? room,
+    Value<String?>? username,
   }) {
     return HistoryEntriesCompanion(
       id: id ?? this.id,
@@ -976,6 +1060,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
       durationMs: durationMs ?? this.durationMs,
       lastPositionMs: lastPositionMs ?? this.lastPositionMs,
       playedAt: playedAt ?? this.playedAt,
+      room: room ?? this.room,
+      username: username ?? this.username,
     );
   }
 
@@ -1003,6 +1089,12 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     if (playedAt.present) {
       map['played_at'] = Variable<DateTime>(playedAt.value);
     }
+    if (room.present) {
+      map['room'] = Variable<String>(room.value);
+    }
+    if (username.present) {
+      map['username'] = Variable<String>(username.value);
+    }
     return map;
   }
 
@@ -1015,7 +1107,9 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
           ..write('fileSizeBytes: $fileSizeBytes, ')
           ..write('durationMs: $durationMs, ')
           ..write('lastPositionMs: $lastPositionMs, ')
-          ..write('playedAt: $playedAt')
+          ..write('playedAt: $playedAt, ')
+          ..write('room: $room, ')
+          ..write('username: $username')
           ..write(')'))
         .toString();
   }
@@ -1524,6 +1618,8 @@ typedef $$HistoryEntriesTableCreateCompanionBuilder =
       Value<int?> durationMs,
       Value<int> lastPositionMs,
       required DateTime playedAt,
+      Value<String?> room,
+      Value<String?> username,
     });
 typedef $$HistoryEntriesTableUpdateCompanionBuilder =
     HistoryEntriesCompanion Function({
@@ -1534,6 +1630,8 @@ typedef $$HistoryEntriesTableUpdateCompanionBuilder =
       Value<int?> durationMs,
       Value<int> lastPositionMs,
       Value<DateTime> playedAt,
+      Value<String?> room,
+      Value<String?> username,
     });
 
 class $$HistoryEntriesTableFilterComposer
@@ -1577,6 +1675,16 @@ class $$HistoryEntriesTableFilterComposer
 
   ColumnFilters<DateTime> get playedAt => $composableBuilder(
     column: $table.playedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get room => $composableBuilder(
+    column: $table.room,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get username => $composableBuilder(
+    column: $table.username,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1624,6 +1732,16 @@ class $$HistoryEntriesTableOrderingComposer
     column: $table.playedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get room => $composableBuilder(
+    column: $table.room,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get username => $composableBuilder(
+    column: $table.username,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$HistoryEntriesTableAnnotationComposer
@@ -1661,6 +1779,12 @@ class $$HistoryEntriesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get playedAt =>
       $composableBuilder(column: $table.playedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get room =>
+      $composableBuilder(column: $table.room, builder: (column) => column);
+
+  GeneratedColumn<String> get username =>
+      $composableBuilder(column: $table.username, builder: (column) => column);
 }
 
 class $$HistoryEntriesTableTableManager
@@ -1703,6 +1827,8 @@ class $$HistoryEntriesTableTableManager
                 Value<int?> durationMs = const Value.absent(),
                 Value<int> lastPositionMs = const Value.absent(),
                 Value<DateTime> playedAt = const Value.absent(),
+                Value<String?> room = const Value.absent(),
+                Value<String?> username = const Value.absent(),
               }) => HistoryEntriesCompanion(
                 id: id,
                 filePath: filePath,
@@ -1711,6 +1837,8 @@ class $$HistoryEntriesTableTableManager
                 durationMs: durationMs,
                 lastPositionMs: lastPositionMs,
                 playedAt: playedAt,
+                room: room,
+                username: username,
               ),
           createCompanionCallback:
               ({
@@ -1721,6 +1849,8 @@ class $$HistoryEntriesTableTableManager
                 Value<int?> durationMs = const Value.absent(),
                 Value<int> lastPositionMs = const Value.absent(),
                 required DateTime playedAt,
+                Value<String?> room = const Value.absent(),
+                Value<String?> username = const Value.absent(),
               }) => HistoryEntriesCompanion.insert(
                 id: id,
                 filePath: filePath,
@@ -1729,6 +1859,8 @@ class $$HistoryEntriesTableTableManager
                 durationMs: durationMs,
                 lastPositionMs: lastPositionMs,
                 playedAt: playedAt,
+                room: room,
+                username: username,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

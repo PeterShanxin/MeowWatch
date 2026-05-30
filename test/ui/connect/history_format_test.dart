@@ -7,6 +7,8 @@ HistoryEntry entry({
   int lastPositionMs = 0,
   DateTime? playedAt,
   int fileSizeBytes = 0,
+  String? room,
+  String? username,
 }) =>
     HistoryEntry(
       id: 1,
@@ -16,6 +18,8 @@ HistoryEntry entry({
       durationMs: durationMs,
       lastPositionMs: lastPositionMs,
       playedAt: playedAt ?? DateTime(2026, 5, 30),
+      room: room,
+      username: username,
     );
 
 void main() {
@@ -76,6 +80,21 @@ void main() {
       expect(formatFileSize(720 * 1024 * 1024), '720 MB');
       expect(
           formatFileSize((1.4 * 1024 * 1024 * 1024).round()), '1.4 GB');
+    });
+  });
+
+  group('historyRoomLine', () {
+    test('null when no room recorded', () {
+      expect(historyRoomLine(entry()), isNull);
+      expect(historyRoomLine(entry(room: '')), isNull);
+    });
+    test('room only', () {
+      expect(historyRoomLine(entry(room: 'breezy-crow-66')),
+          'in breezy-crow-66');
+    });
+    test('room + username', () {
+      expect(historyRoomLine(entry(room: 'breezy-crow-66', username: 'meow')),
+          'in breezy-crow-66 as meow');
     });
   });
 
