@@ -138,7 +138,10 @@ class SyncplayClient extends SyncCore {
       onLog?.call('<< $line');
       late ServerMessage msg;
       try {
-        msg = decodeServerMessage(json.decode(line) as Map<dynamic, dynamic>);
+        msg = decodeServerMessage(
+          json.decode(line) as Map<dynamic, dynamic>,
+          selfRoom: _room,
+        );
       } on FormatException {
         continue;
       }
@@ -161,6 +164,11 @@ class SyncplayClient extends SyncCore {
         emitConnectionState(
           const SyncConnectionState(status: SyncConnectionStatus.connected),
         );
+        // Ask for the room roster immediately — otherwise a client that joins
+        // without a file loaded never learns who is already here (it would only
+        // request the list when announcing a file), and sits on "waiting for a
+        // friend" while everyone else can see it.
+        _send(encodeList());
       case PresenceMessage(:final events, :final files):
         for (final e in events) {
           emitPresence(e);

@@ -207,6 +207,22 @@ void main() {
       expect(m.usernames, containsAll(<String>['A', 'B']));
     });
 
+    test('roster keeps only the given room when selfRoom is set', () {
+      final m = decodeServerMessage({
+        'List': {
+          'ours': {
+            'A': {'position': 0},
+            'B': {'position': 0},
+          },
+          'someone-elses-room': {
+            'stranger': {'position': 0},
+          },
+        },
+      }, selfRoom: 'ours') as RosterMessage;
+      expect(m.usernames, containsAll(<String>['A', 'B']));
+      expect(m.usernames, isNot(contains('stranger')));
+    });
+
     test('roster carries peer files', () {
       final m = decodeServerMessage({
         'List': {

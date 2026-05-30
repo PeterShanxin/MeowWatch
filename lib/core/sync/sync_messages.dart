@@ -192,11 +192,16 @@ class UnknownMessage extends ServerMessage {
   const UnknownMessage();
 }
 
-ServerMessage decodeServerMessage(Map<dynamic, dynamic> message) {
+ServerMessage decodeServerMessage(
+  Map<dynamic, dynamic> message, {
+  String? selfRoom,
+}) {
   if (message.containsKey('Hello')) return const HelloMessage();
   if (message.containsKey('State')) return _decodeState(message['State'] as Map);
   if (message.containsKey('Set')) return _decodeSet(message['Set'] as Map);
-  if (message.containsKey('List')) return _decodeList(message['List']);
+  if (message.containsKey('List')) {
+    return _decodeList(message['List'], selfRoom: selfRoom);
+  }
   if (message.containsKey('Chat')) {
     final chat = message['Chat'] as Map;
     return ChatServerMessage(ChatMessage(
@@ -274,23 +279,25 @@ PeerFile? _parsePeerFile(String username, Object? fileValue) {
   );
 }
 
-ServerMessage _decodeList(Object? list) {
-  // Shape: {"List": {roomName: {username: {file: {...}, ...}}}}
+ServerMessage _decodeList(Object? list, {String? selfRoom}) {
+  // Shape: {"List": {roomName: {username: {file: {...}, ...}}}}. Public servers
+  // host many rooms; when [selfRoom] is given, only that room's members count as
+  // peers — otherwise B would treat strangers in other rooms as "friends".
   final names = <String>[];
   final files = <PeerFile>[];
   if (list is Map) {
-    for (final room in list.values) {
-      if (room is Map) {
-        room.forEach((name, entry) {
-          if (name is! String) return;
-          names.add(name);
-          if (entry is Map) {
-            final file = _parsePeerFile(name, entry['file']);
-            if (file != null) files.add(file);
-          }
-        });
-      }
-    }
+    list.forEach((roomName, room) {
+      if (room is! Map) return;
+      if (selfRoom != null && roomName != selfRoom) return;
+      room.forEach((name, entry) {
+        if (name is! String) return;
+        names.add(name);
+        if (entry is Map) {
+          final file = _parsePeerFile(name, entry['file']);
+          if (file != null) files.add(file);
+        }
+      });
+    });
   }
   return RosterMessage(names, files: files);
 }
