@@ -145,4 +145,20 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 10));
     expect(video.state.position, const Duration(seconds: 42));
   });
+
+  test('a small-drift pause flip pauses without re-seeking', () async {
+    video.push(const PlaybackState(
+      status: PlaybackStatus.playing,
+      position: Duration(seconds: 10),
+      fileName: 'a',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    // Peer is paused 100ms away (doSeek=false) — within the 250ms threshold,
+    // so we pause but keep our own frame instead of a visible micro-jump.
+    sync.pushPeer(
+        const PeerPlayState(position: Duration(milliseconds: 10100), paused: true));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(video.state.status, PlaybackStatus.paused);
+    expect(video.state.position, const Duration(seconds: 10));
+  });
 }

@@ -16,6 +16,7 @@ class PlaybackSyncBridge {
     required this.sync,
     this.seekDetectThreshold = SyncplayConstants.seekDetectThreshold,
     this.remoteApplyWindow = const Duration(milliseconds: 800),
+    this.remoteSeekThreshold = const Duration(milliseconds: 250),
   });
 
   final VideoCore video;
@@ -28,6 +29,10 @@ class PlaybackSyncBridge {
   /// cleared before the resulting state event arrives — and the bridge would
   /// wrongly echo it back as a local change, causing the two clients to fight.
   final Duration remoteApplyWindow;
+
+  /// On a non-seek apply (pause/play flip or drift rewind) we only reposition
+  /// if we're off by more than this — avoids latency-jitter micro-seeks.
+  final Duration remoteSeekThreshold;
 
   StreamSubscription<PlaybackState>? _videoSub;
   StreamSubscription<PeerPlayState>? _peerSub;
@@ -82,10 +87,18 @@ class PlaybackSyncBridge {
   Future<void> _onPeerState(PeerPlayState peer) async {
     // The SyncCore only emits states that genuinely require a local change
     // (the convergence/anti-fight decision lives in decideFollow), so the
-    // bridge simply applies each one: align position, then match play/pause.
+    // bridge applies each one: align position, then match play/pause.
     _applyingRemote = true;
     try {
-      await video.seek(peer.position);
+      // Seek only on an explicit peer seek, or when we've drifted materially
+      // from the room. A pause/play flip where we're already frame-aligned
+      // (within the threshold) skips the seek, so network jitter never causes
+      // a visible micro-jump backward. This mirrors real Syncplay, which only
+      // repositions on a genuine seek or correction.
+      final drift = (peer.position - video.state.position).abs();
+      if (peer.doSeek || drift > remoteSeekThreshold) {
+        await video.seek(peer.position);
+      }
 
       final localPaused = video.state.status != PlaybackStatus.playing;
       if (peer.paused && !localPaused) {
