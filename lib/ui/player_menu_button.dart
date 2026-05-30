@@ -8,26 +8,39 @@ import '../core/theme/meow_theme.dart';
 import 'theme/theme_swatches.dart';
 
 /// Top-left in-player control: a gear button that opens a small anchored
-/// popover holding the room code (copyable), theme swatches, and a
-/// "Leave room" action. Replaces the bare Leave button so theme switching is a
-/// deliberate pick (not a blind cycle) while watching.
+/// popover with the room code (copyable), who's in the room, a "Load video"
+/// action, theme swatches, and "Leave room".
 class PlayerMenuButton extends StatelessWidget {
   const PlayerMenuButton({
     required this.roomCode,
+    required this.members,
+    required this.myUsername,
     required this.currentTheme,
     required this.onThemeChanged,
+    required this.onLoadVideo,
     required this.onLeave,
     super.key,
   });
 
   final String roomCode;
+
+  /// Everyone in the room (including you).
+  final List<String> members;
+  final String myUsername;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
+  final VoidCallback onLoadVideo;
   final VoidCallback onLeave;
 
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
+    Widget label(String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child:
+              Text(text, style: TextStyle(color: m.textDim, fontSize: 13)),
+        );
+
     return MenuAnchor(
       style: MenuStyle(
         backgroundColor: WidgetStatePropertyAll<Color>(m.surface),
@@ -54,52 +67,115 @@ class PlayerMenuButton extends StatelessWidget {
         ),
       ),
       menuChildren: [
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text('Room code',
-                  style: TextStyle(color: m.textDim, fontSize: 13)),
-            ),
-            _RoomCodeRow(code: roomCode),
-            const SizedBox(height: 8),
-            Divider(color: m.border, height: 16),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text('Theme',
-                  style: TextStyle(color: m.textDim, fontSize: 13)),
-            ),
-            ThemeSwatches(current: currentTheme, onChanged: onThemeChanged),
-            const SizedBox(height: 8),
-            Divider(color: m.border, height: 16),
-            InkWell(
-              key: const Key('player-menu-leave'),
-              borderRadius: BorderRadius.circular(8),
-              onTap: onLeave,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.arrow_back, size: 16, color: m.textPrimary),
-                    const SizedBox(width: 8),
-                    Text('Leave room',
-                        style: TextStyle(color: m.textPrimary, fontSize: 13)),
-                  ],
-                ),
+        SizedBox(
+          width: 232,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              label('Room code'),
+              _RoomCodeRow(code: roomCode),
+              const SizedBox(height: 8),
+              Divider(color: m.border, height: 16),
+              label('In the room (${members.length})'),
+              for (final name in members)
+                _MemberRow(name: name, isMe: name == myUsername),
+              const SizedBox(height: 8),
+              Divider(color: m.border, height: 16),
+              _MenuAction(
+                key: const Key('player-menu-load'),
+                icon: Icons.video_library_outlined,
+                text: 'Load video…',
+                onTap: onLoadVideo,
               ),
-            ),
-          ],
+              Divider(color: m.border, height: 16),
+              label('Theme'),
+              ThemeSwatches(current: currentTheme, onChanged: onThemeChanged),
+              const SizedBox(height: 8),
+              Divider(color: m.border, height: 16),
+              _MenuAction(
+                key: const Key('player-menu-leave'),
+                icon: Icons.arrow_back,
+                text: 'Leave room',
+                onTap: onLeave,
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 }
 
-/// The room code shown in monospace next to a copy button that briefly flips
-/// to a check + "Copied!" so the tap feels acknowledged.
+/// A tappable icon+label row used for the menu actions.
+class _MenuAction extends StatelessWidget {
+  const _MenuAction({
+    required this.icon,
+    required this.text,
+    required this.onTap,
+    super.key,
+  });
+
+  final IconData icon;
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: m.textPrimary),
+            const SizedBox(width: 8),
+            Text(text, style: TextStyle(color: m.textPrimary, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One room member: a presence dot + name, with "(you)" for yourself.
+class _MemberRow extends StatelessWidget {
+  const _MemberRow({required this.name, required this.isMe});
+
+  final String name;
+  final bool isMe;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      child: Row(
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: m.online, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              isMe ? '$name (you)' : name,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: m.textPrimary, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The room code in monospace next to a copy button. The button briefly flips
+/// to a check; the words go to a SnackBar so the row never changes width.
 class _RoomCodeRow extends StatefulWidget {
   const _RoomCodeRow({required this.code});
 
@@ -168,13 +244,9 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
               ),
             ),
             const SizedBox(width: 10),
+            // Fixed-size slot so flipping copy→check never reflows the row.
             Icon(_copied ? Icons.check : Icons.copy,
                 size: 15, color: _copied ? m.online : m.accent),
-            if (_copied) ...[
-              const SizedBox(width: 4),
-              Text('Copied!',
-                  style: TextStyle(color: m.online, fontSize: 12)),
-            ],
           ],
         ),
       ),

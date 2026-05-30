@@ -10,14 +10,25 @@ Widget _host(Widget child) => MaterialApp(
       home: Scaffold(body: child),
     );
 
+PlayerMenuButton _button({
+  ValueChanged<MeowThemeId>? onThemeChanged,
+  VoidCallback? onLoadVideo,
+  VoidCallback? onLeave,
+  List<String>? members,
+}) =>
+    PlayerMenuButton(
+      roomCode: 'MEOW42',
+      members: members ?? const ['me', 'lin'],
+      myUsername: 'me',
+      currentTheme: MeowThemeId.cozy,
+      onThemeChanged: onThemeChanged ?? (_) {},
+      onLoadVideo: onLoadVideo ?? () {},
+      onLeave: onLeave ?? () {},
+    );
+
 void main() {
   testWidgets('menu is closed until the gear is tapped', (tester) async {
-    await tester.pumpWidget(_host(PlayerMenuButton(
-      roomCode: 'MEOW42',
-      currentTheme: MeowThemeId.cozy,
-      onThemeChanged: (_) {},
-      onLeave: () {},
-    )));
+    await tester.pumpWidget(_host(_button()));
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
 
     await tester.tap(find.byKey(const Key('player-menu-gear')));
@@ -27,12 +38,7 @@ void main() {
 
   testWidgets('tapping a swatch fires onThemeChanged', (tester) async {
     MeowThemeId? picked;
-    await tester.pumpWidget(_host(PlayerMenuButton(
-      roomCode: 'MEOW42',
-      currentTheme: MeowThemeId.cozy,
-      onThemeChanged: (id) => picked = id,
-      onLeave: () {},
-    )));
+    await tester.pumpWidget(_host(_button(onThemeChanged: (id) => picked = id)));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('theme-swatch-aurora')));
@@ -41,19 +47,32 @@ void main() {
 
   testWidgets('tapping Leave fires onLeave', (tester) async {
     var left = false;
-    await tester.pumpWidget(_host(PlayerMenuButton(
-      roomCode: 'MEOW42',
-      currentTheme: MeowThemeId.cozy,
-      onThemeChanged: (_) {},
-      onLeave: () => left = true,
-    )));
+    await tester.pumpWidget(_host(_button(onLeave: () => left = true)));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('player-menu-leave')));
     expect(left, isTrue);
   });
 
-  testWidgets('shows the room code and copies it to the clipboard',
+  testWidgets('tapping Load video fires onLoadVideo', (tester) async {
+    var loaded = false;
+    await tester.pumpWidget(_host(_button(onLoadVideo: () => loaded = true)));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('player-menu-load')));
+    expect(loaded, isTrue);
+  });
+
+  testWidgets('lists room members with "(you)" for self', (tester) async {
+    await tester.pumpWidget(_host(_button(members: const ['me', 'lin'])));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+    expect(find.text('me (you)'), findsOneWidget);
+    expect(find.text('lin'), findsOneWidget);
+    expect(find.text('In the room (2)'), findsOneWidget);
+  });
+
+  testWidgets('copies the room code to the clipboard (no row reflow)',
       (tester) async {
     String? copied;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -66,12 +85,7 @@ void main() {
       },
     );
 
-    await tester.pumpWidget(_host(PlayerMenuButton(
-      roomCode: 'MEOW42',
-      currentTheme: MeowThemeId.cozy,
-      onThemeChanged: (_) {},
-      onLeave: () {},
-    )));
+    await tester.pumpWidget(_host(_button()));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
 
@@ -79,6 +93,8 @@ void main() {
     await tester.tap(find.byKey(const Key('player-menu-room-code')));
     await tester.pump();
     expect(copied, 'MEOW42');
-    expect(find.text('Copied!'), findsOneWidget);
+    // Confirmation goes to a SnackBar; the row itself shows no "Copied!" text.
+    expect(find.text('Copied!'), findsNothing);
+    expect(find.textContaining('copied'), findsOneWidget);
   });
 }

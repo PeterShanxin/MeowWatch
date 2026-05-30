@@ -475,8 +475,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     left: 12,
                     child: PlayerMenuButton(
                       roomCode: widget.config.room,
+                      members: <String>[_username, ..._peers],
+                      myUsername: _username,
                       currentTheme: widget.currentTheme,
                       onThemeChanged: widget.onThemeChanged,
+                      onLoadVideo: _browse,
                       onLeave: _leave,
                     ),
                   ),
