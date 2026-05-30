@@ -29,11 +29,14 @@ default with one click, and have the chosen size persist across app launches.
 
 ## User-facing behavior
 
-- **Resize grip:** a small handle at the card's **free corner** — the corner
-  diagonally opposite the docked corner. Docked bottom-left → grip at top-right;
-  docked top-right → grip at bottom-left; etc. Dragging the grip changes width
-  and height. The docked corner stays pinned (the existing `Align` placement
-  already anchors that corner), so the card grows/shrinks away from its anchor.
+- **Resize grip:** a small handle at the card's **bottom-right corner** (the
+  familiar resize affordance, clear of the header controls at the top). While
+  the grip is being dragged, the card free-floats with its **top-left pinned**,
+  so the corner under the cursor grows naturally to the right and down. On
+  release, the card eases back to whichever corner it is docked in (reusing the
+  existing post-drag snap-glide), now at the new size. This avoids any overlap
+  with the header's drag area / collapse chevron / reset button, which all sit
+  along the top edge.
 - **Bounds (clamp):** the card cannot be dragged smaller than a usable minimum
   or larger than the window:
   - Min: 240 px wide × 220 px tall.
@@ -56,22 +59,22 @@ A headless, widget-free function mirroring the style of `chat_corner.dart`'s
 `computeSnap`:
 
 ```
-ResizeResult computeResize({
-  required Size currentCardSize,   // px, the card's size at drag start
-  required Offset dragDelta,       // px, accumulated grip movement
-  required ChatCorner dockedCorner,// which corner is anchored (sign of delta)
-  required Size windowSize,        // px, for max-bound calculation
+Size computeResize({
+  required Size startSize,    // px, the card's size at grip-drag start
+  required Offset dragDelta,  // px, accumulated grip movement from start
+  required Size windowSize,   // px, for max-bound calculation
 });
 ```
 
-- Translates grip drag delta into a new width/height, accounting for which
-  corner is anchored (e.g. when docked bottom-left, dragging the top-right grip
-  up-and-right *increases* size; the sign flips per corner).
-- Clamps the result to the min/max bounds above.
-- Returns `ResizeResult(width, height)` in px.
+- Bottom-right grip: `+dx` grows width, `+dy` grows height. No per-corner sign
+  logic — the card free-floats top-left-pinned during the drag, so growth is
+  always right/down regardless of docked corner.
+- Clamps the result to the min/max bounds above and returns the new `Size` in px.
 
 Min/max constants live here as named consts so the math and any UI hints share
-one source of truth.
+one source of truth:
+`kMinCardWidth = 240`, `kMinCardHeight = 220`,
+`kMaxCardWidthFrac = 0.70`, `kMaxCardHeightFrac = 0.85`.
 
 ### 2. Immutable layout state — extend `ChatOverlayLayout`
 
