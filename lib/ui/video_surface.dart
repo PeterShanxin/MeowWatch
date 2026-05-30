@@ -23,7 +23,9 @@ class VideoSurface extends StatefulWidget {
 }
 
 class _VideoSurfaceState extends State<VideoSurface> {
-  late final VideoController _controller;
+  // Owned by the core (created eagerly there so the very first open() has its
+  // video output wired). VideoSurface just references it — never disposes it.
+  late final VideoController _controller = widget.core.videoController;
   final FocusNode _focus = FocusNode();
 
   // Play/pause center flash.
@@ -53,7 +55,6 @@ class _VideoSurfaceState extends State<VideoSurface> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoController(widget.core.player);
     _focus.requestFocus();
     _scheduleHide();
   }

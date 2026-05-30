@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 
 import 'playback_state.dart';
@@ -8,11 +9,18 @@ import 'video_core.dart';
 
 class MediaKitVideoCore extends VideoCore {
   MediaKitVideoCore() : _player = Player() {
+    // Create the render controller up front, BEFORE any media is opened. If it
+    // is attached lazily (only once a VideoSurface mounts, i.e. after the first
+    // open()), libmpv has no video output wired for that first file and it never
+    // starts — which looked like "the first video won't play, but reloading a
+    // new one works". Eager creation is also media_kit's documented pattern.
+    videoController = VideoController(_player);
     _wireListeners();
     _configureDecoding();
   }
 
   final Player _player;
+  late final VideoController videoController;
   late final List<StreamSubscription<Object?>> _subs;
 
   Player get player => _player;
