@@ -4,7 +4,33 @@ Updated 2026-05-30 after the polish round (presence, gear roster, load-video,
 mascot, bridge seek guard). All automated tests pass and the Release build is
 ready. Verify by hand before tagging `phase-6-complete`.
 
-## Polish round (new — verify these)
+## Polish round 2 (newest — verify these)
+- [ ] **Notices on the load-video screen**: before any video is loaded, the
+      "Waiting for a friend…" hint and "🐾 X joined" / "👋 X left" banners now
+      show (previously only appeared once a video was playing).
+- [ ] **Chat visible without a video**: the chat card shows on the empty screen
+      too, so you can type/read while picking a file.
+- [ ] **Load video then play**: gear → "Load video…" → pick a file → the menu
+      closes; you can immediately press play (space or the bar button) and your
+      friend follows. (Before: the open menu trapped focus and play did nothing.)
+- [ ] **Reload mid-session**: while watching, gear → "Load video…" a different
+      file on A → both can play it together.
+- [ ] **Menu dismisses on action**: tapping "Load video…" or "Leave room" closes
+      the gear popover.
+
+### About chat history (point #4)
+A friend who joins *after* messages were sent will NOT see the earlier ones —
+the Syncplay server does not replay past chat to late joiners. Messages from the
+moment they join onward appear normally. (Persisting/replaying our own history is
+a possible future feature — tell me if you want it.)
+
+### If "B doesn't follow play" happens again
+There's now an automatic log at:
+`C:\Users\shanx\AppData\Local\Temp\meowwatch_sync.log`
+Reproduce the issue once, then send me that file (or just tell me) — it records
+the exact follow decisions so I can pin the root cause.
+
+## Polish round (verify these)
 - [ ] **Leave message**: friend leaves → banner "👋 X left" (no longer jumps to
       "waiting for a friend" first), and a centered "X left the room" line in the
       chat card.
