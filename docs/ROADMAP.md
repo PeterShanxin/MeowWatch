@@ -43,6 +43,29 @@ All six planned phases are shipped. The items below are out of the v1 plan — d
 - **Cloudflare R2 release hosting** — CI workflow has commented-out R2 upload steps ready to activate once the R2 bucket is provisioned and secrets (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`) are configured in GitHub repo settings.
 - **MSIX installer** — Windows Store distribution with system-managed updates. Requires a code-signing certificate.
 
+### Feature requests backlog (split from umbrella request)
+
+- **Windows ARM64 compatibility (native build + runtime verification)**
+  - Ship a native ARM64 build artifact (not x64 emulation-only).
+  - Verify two-instance local playback + sync behavior on ARM64 hardware.
+  - Add release labeling so users can clearly choose x64 vs ARM64 packages.
+- **Sync activity status messages (pause/seek feedback)**
+  - Show transient, human-readable status lines for remote playback actions (example: "Video paused at 00:12:34", "Video skipped to 00:15:10").
+  - Include actor context when available ("Alice paused…") and de-duplicate noisy repeats.
+  - Keep messages non-blocking and auto-dismissed to avoid UI clutter.
+- **Auto-hide minimized chat icon after idle**
+  - When chat is minimized/collapsed, fade the icon/tab out after X seconds of no pointer/keyboard activity.
+  - Restore visibility immediately on user interaction and on new unread chat activity.
+  - Keep behavior optional or conservatively tuned to avoid discoverability regressions.
+- **Resizable chat window**
+  - Allow drag-resizing the expanded chat card with min/max constraints.
+  - Preserve corner/edge docking behavior after resize and persist the chosen size.
+  - Ensure responsive layout still works at small window sizes and high DPI scales.
+- **Volume adjustment controls**
+  - Provide explicit in-UI volume controls (slider and/or +/- actions) in addition to keyboard shortcuts.
+  - Show current volume value and mute state clearly.
+  - Keep Syncplay semantics local-only for volume (no remote volume synchronization).
+
 ## Out of v1 scope
 
 - Voice chat
