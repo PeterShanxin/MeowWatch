@@ -9,6 +9,7 @@ import 'chat_bubble.dart';
 import 'chat_corner.dart';
 import 'chat_input.dart';
 import 'peek_tab.dart';
+import 'resize_math.dart';
 
 /// The floating chat card. Presentational: the parent owns the layout state
 /// (corner + collapsed) and supplies callbacks. Dragging the header reports a
@@ -23,6 +24,10 @@ class ChatOverlay extends StatefulWidget {
     required this.onSend,
     required this.onToggleCollapsed,
     required this.onSnap,
+    this.onResize,
+    this.onResetSize,
+    this.widthFrac,
+    this.heightFrac,
     this.corner = ChatCorner.bottomLeft,
     this.pulsing = false,
     this.typingLabel,
@@ -38,6 +43,16 @@ class ChatOverlay extends StatefulWidget {
   final void Function(String text) onSend;
   final VoidCallback onToggleCollapsed;
   final void Function(SnapResult result) onSnap;
+
+  /// Reports the card's new px size when a resize grip drag ends.
+  final void Function(Size newSize)? onResize;
+
+  /// Resets the card to its default size.
+  final VoidCallback? onResetSize;
+
+  /// Card size as a fraction of the window; null falls back to 0.30 / 0.50.
+  final double? widthFrac;
+  final double? heightFrac;
 
   /// e.g. "lin is typing…"; null when nobody is typing.
   final String? typingLabel;
@@ -63,6 +78,10 @@ class _ChatOverlayState extends State<ChatOverlay>
   Size? _dragCardSize;
   Size? _overlaySize;
   final GlobalKey _cardKey = GlobalKey();
+
+  // Active resize: size captured at grip-drag start + accumulated grip delta.
+  Size? _resizeStartSize;
+  Offset _resizeDelta = Offset.zero;
 
   // Post-release snap glide: tween _dragTopLeft from where it was dropped to
   // the resting corner, so docking eases in instead of teleporting.
@@ -184,6 +203,55 @@ class _ChatOverlayState extends State<ChatOverlay>
     widget.onDraggingChanged?.call(true);
   }
 
+  /// Begin a grip resize: pin the card's current top-left (free-float) and
+  /// capture its current rendered size to grow from.
+  void _startResize() {
+    if (_snapCtrl.isAnimating) _snapCtrl.stop();
+    final cardBox = _cardKey.currentContext?.findRenderObject() as RenderBox?;
+    final selfBox = context.findRenderObject() as RenderBox?;
+    if (cardBox == null || selfBox == null) return;
+    final origin = selfBox.localToGlobal(Offset.zero);
+    setState(() {
+      _dragTopLeft = cardBox.localToGlobal(Offset.zero) - origin;
+      _dragCardSize = cardBox.size;
+      _overlaySize = selfBox.size;
+      _resizeStartSize = cardBox.size;
+      _resizeDelta = Offset.zero;
+    });
+    widget.onDraggingChanged?.call(true);
+  }
+
+  void _updateResize(Offset delta) {
+    final start = _resizeStartSize;
+    final window = _overlaySize;
+    if (start == null || window == null) return;
+    _resizeDelta += delta;
+    setState(() {
+      _dragCardSize = computeResize(
+        startSize: start,
+        dragDelta: _resizeDelta,
+        windowSize: window,
+      );
+    });
+  }
+
+  /// End the resize: report the new size, then glide back to the docked corner.
+  void _endResize() {
+    final size = _dragCardSize;
+    final topLeft = _dragTopLeft;
+    final window = _overlaySize;
+    _resizeStartSize = null;
+    _resizeDelta = Offset.zero;
+    if (size == null || topLeft == null || window == null) {
+      _clearDrag();
+      return;
+    }
+    widget.onResize?.call(size);
+    _snapFrom = topLeft;
+    _snapTo = _cornerTopLeft(widget.corner, size, window);
+    _snapCtrl.forward(from: 0);
+  }
+
   void _endHeaderDrag() {
     final topLeft = _dragTopLeft;
     final card = _dragCardSize;
@@ -229,12 +297,21 @@ class _ChatOverlayState extends State<ChatOverlay>
         inputFocusNode: _inputFocus,
         typingLabel: widget.typingLabel,
         onTypingChanged: widget.onTypingChanged,
+        corner: widget.corner,
+        onResetSize: widget.onResetSize ?? () {},
+        onResizeStart: _startResize,
+        onResizeUpdate: _updateResize,
+        onResizeEnd: _endResize,
       );
 
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context).size;
-    final cardSize = Size(media.width * 0.3, media.height * 0.5);
+    final cardSize = _dragCardSize ??
+        Size(
+          media.width * (widget.widthFrac ?? 0.30),
+          media.height * (widget.heightFrac ?? 0.50),
+        );
 
     // Active drag, or the post-release snap glide, renders a free-floating card.
     final topLeft = _dragTopLeft;
@@ -299,6 +376,11 @@ class _GlassCard extends StatelessWidget {
     required this.inputFocusNode,
     required this.typingLabel,
     required this.onTypingChanged,
+    required this.corner,
+    required this.onResetSize,
+    required this.onResizeStart,
+    required this.onResizeUpdate,
+    required this.onResizeEnd,
   });
 
   final double width;
@@ -313,6 +395,11 @@ class _GlassCard extends StatelessWidget {
   final FocusNode inputFocusNode;
   final String? typingLabel;
   final ValueChanged<bool>? onTypingChanged;
+  final ChatCorner corner;
+  final VoidCallback onResetSize;
+  final VoidCallback onResizeStart;
+  final void Function(Offset delta) onResizeUpdate;
+  final VoidCallback onResizeEnd;
 
   /// Wrap [child] in a frosted-glass blur when the active theme asks for it
   /// (`glassBlur > 0`, e.g. Aurora). Returns [child] unchanged otherwise, so
@@ -332,107 +419,139 @@ class _GlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: m.scrim.withValues(alpha: 0.60),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: _frosted(
-        context,
-        Container(
-          width: width,
-          constraints: BoxConstraints(maxHeight: maxHeight),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        DecoratedBox(
           decoration: BoxDecoration(
-            color: m.surface,
             borderRadius: BorderRadius.circular(16),
-            border:
-                Border.all(color: m.accent.withValues(alpha: 0.80), width: 1.5),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                dragStartBehavior: DragStartBehavior.down,
-                onPanStart: (_) => onHeaderDragStart(),
-                onPanUpdate: (d) => onHeaderDragUpdate(d.delta),
-                onPanEnd: (_) => onHeaderDragEnd(),
-                child: Container(
-                  height: 36,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      Icon(Icons.drag_indicator, size: 16, color: m.textDim),
-                      const Spacer(),
-                      Text('Chat',
-                          style: TextStyle(color: m.textPrimary, fontSize: 13)),
-                      const Spacer(),
-                      // Opaque, padded hit target — an 18px icon alone is too
-                      // small to reliably tap (it read as "had to click twice").
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: onCollapse,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 8),
-                          child: Icon(Icons.chevron_right,
-                              size: 18, color: m.accent),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Flexible(
-                child: messages.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 24),
-                        child: Text(
-                          'No messages yet — say hi 🐾',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: m.textDim, fontSize: 13),
-                        ),
-                      )
-                    : ListView(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        children: [
-                          for (final msg in messages)
-                            ChatBubble(message: msg, myUsername: myUsername),
-                        ],
-                      ),
-              ),
-              if (typingLabel != null)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
-                    child: Text(
-                      typingLabel!,
-                      style: TextStyle(
-                        color: m.textDim,
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-                ),
-              ChatInput(
-                onSend: onSend,
-                focusNode: inputFocusNode,
-                onTypingChanged: onTypingChanged,
+            boxShadow: [
+              BoxShadow(
+                color: m.scrim.withValues(alpha: 0.60),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
+          child: _frosted(
+            context,
+            Container(
+              width: width,
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              decoration: BoxDecoration(
+                color: m.surface,
+                borderRadius: BorderRadius.circular(16),
+                border:
+                    Border.all(color: m.accent.withValues(alpha: 0.80), width: 1.5),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    dragStartBehavior: DragStartBehavior.down,
+                    onPanStart: (_) => onHeaderDragStart(),
+                    onPanUpdate: (d) => onHeaderDragUpdate(d.delta),
+                    onPanEnd: (_) => onHeaderDragEnd(),
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          Icon(Icons.drag_indicator, size: 16, color: m.textDim),
+                          const Spacer(),
+                          Text('Chat',
+                              style: TextStyle(color: m.textPrimary, fontSize: 13)),
+                          const Spacer(),
+                          GestureDetector(
+                            key: const ValueKey('chat-reset-size'),
+                            behavior: HitTestBehavior.opaque,
+                            onTap: onResetSize,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 8),
+                              child: Icon(Icons.crop_free,
+                                  size: 16, color: m.textDim),
+                            ),
+                          ),
+                          // Opaque, padded hit target — an 18px icon alone is too
+                          // small to reliably tap (it read as "had to click twice").
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: onCollapse,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                              child: Icon(Icons.chevron_right,
+                                  size: 18, color: m.accent),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Flexible(
+                    child: messages.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 24),
+                            child: Text(
+                              'No messages yet — say hi 🐾',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: m.textDim, fontSize: 13),
+                            ),
+                          )
+                        : ListView(
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            children: [
+                              for (final msg in messages)
+                                ChatBubble(message: msg, myUsername: myUsername),
+                            ],
+                          ),
+                  ),
+                  if (typingLabel != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+                        child: Text(
+                          typingLabel!,
+                          style: TextStyle(
+                            color: m.textDim,
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ChatInput(
+                    onSend: onSend,
+                    focusNode: inputFocusNode,
+                    onTypingChanged: onTypingChanged,
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-      ),
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: GestureDetector(
+            key: const ValueKey('chat-resize-grip'),
+            behavior: HitTestBehavior.opaque,
+            dragStartBehavior: DragStartBehavior.down,
+            onPanStart: (_) => onResizeStart(),
+            onPanUpdate: (d) => onResizeUpdate(d.delta),
+            onPanEnd: (_) => onResizeEnd(),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(Icons.open_in_full, size: 14, color: m.accent),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
