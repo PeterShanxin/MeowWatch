@@ -364,10 +364,17 @@ class _GlassCard extends StatelessWidget {
                       Text('Chat',
                           style: TextStyle(color: m.textPrimary, fontSize: 13)),
                       const Spacer(),
+                      // Opaque, padded hit target — an 18px icon alone is too
+                      // small to reliably tap (it read as "had to click twice").
                       GestureDetector(
+                        behavior: HitTestBehavior.opaque,
                         onTap: onCollapse,
-                        child: Icon(Icons.chevron_right,
-                            size: 18, color: m.accent),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          child: Icon(Icons.chevron_right,
+                              size: 18, color: m.accent),
+                        ),
                       ),
                     ],
                   ),
@@ -471,20 +478,31 @@ class _DropZoneHints extends StatelessWidget {
 
     return Positioned.fill(
       child: IgnorePointer(
-        child: Stack(
-          children: [
-            zone(left, top, midX - gap / 2, midY - gap / 2, Icons.north_west,
-                corner == ChatCorner.topLeft),
-            zone(midX + gap / 2, top, right, midY - gap / 2, Icons.north_east,
-                corner == ChatCorner.topRight),
-            zone(left, midY + gap / 2, midX - gap / 2, bottom, Icons.south_west,
-                corner == ChatCorner.bottomLeft),
-            zone(midX + gap / 2, midY + gap / 2, right, bottom,
-                Icons.south_east, corner == ChatCorner.bottomRight),
-            // Slim, tall collapse bar hugging the right edge.
-            zone(w - barW, top, w - 8, bottom, Icons.chevron_right,
-                snap.collapsed),
-          ],
+        // Ease the whole hint layer in (fade + slight scale) so it doesn't
+        // pop in abruptly on grab.
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          builder: (context, t, child) => Opacity(
+            opacity: t,
+            child: Transform.scale(scale: 0.97 + 0.03 * t, child: child),
+          ),
+          child: Stack(
+            children: [
+              zone(left, top, midX - gap / 2, midY - gap / 2, Icons.north_west,
+                  corner == ChatCorner.topLeft),
+              zone(midX + gap / 2, top, right, midY - gap / 2, Icons.north_east,
+                  corner == ChatCorner.topRight),
+              zone(left, midY + gap / 2, midX - gap / 2, bottom,
+                  Icons.south_west, corner == ChatCorner.bottomLeft),
+              zone(midX + gap / 2, midY + gap / 2, right, bottom,
+                  Icons.south_east, corner == ChatCorner.bottomRight),
+              // Slim, tall collapse bar hugging the right edge.
+              zone(w - barW, top, w - 8, bottom, Icons.chevron_right,
+                  snap.collapsed),
+            ],
+          ),
         ),
       ),
     );

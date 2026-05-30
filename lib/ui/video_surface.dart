@@ -14,9 +14,13 @@ import 'seek_indicator.dart';
 import 'volume_indicator.dart';
 
 class VideoSurface extends StatefulWidget {
-  const VideoSurface({required this.core, super.key});
+  const VideoSurface({required this.core, this.focusNode, super.key});
 
   final MediaKitVideoCore core;
+
+  /// Optional external focus node so the parent can restore keyboard focus to
+  /// the player (e.g. after the chat collapses) — keeping Tab/space reliable.
+  final FocusNode? focusNode;
 
   @override
   State<VideoSurface> createState() => _VideoSurfaceState();
@@ -26,7 +30,8 @@ class _VideoSurfaceState extends State<VideoSurface> {
   // Owned by the core (created eagerly there so the very first open() has its
   // video output wired). VideoSurface just references it — never disposes it.
   late final VideoController _controller = widget.core.videoController;
-  final FocusNode _focus = FocusNode();
+  FocusNode? _ownFocus;
+  FocusNode get _focus => widget.focusNode ?? (_ownFocus ??= FocusNode());
 
   // Play/pause center flash.
   PlaybackAction? _lastAction;
@@ -64,7 +69,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
     _hideTimer?.cancel();
     _seekHideTimer?.cancel();
     _volumeHideTimer?.cancel();
-    _focus.dispose();
+    _ownFocus?.dispose();
     super.dispose();
   }
 

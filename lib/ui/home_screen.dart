@@ -87,6 +87,13 @@ class _HomeScreenState extends State<HomeScreen> {
   late final ChatStore _chat;
   ChatOverlayLayout _chatLayout = const ChatOverlayLayout();
   bool _chatDragging = false;
+
+  /// Keyboard focus for the player. Held here (not inside VideoSurface) so that
+  /// after the chat collapses — which removes its auto-focused text field — we
+  /// can hand focus straight back to the player. Otherwise focus falls to the
+  /// root and the next Tab is wasted just re-acquiring it (the "press Tab twice"
+  /// bug). With focus always on a descendant, the Tab handler fires every press.
+  final FocusNode _videoFocus = FocusNode(debugLabel: 'video-surface');
   List<ChatMessage> _messages = const <ChatMessage>[];
   late String _username;
   bool _peekPulsing = false;
@@ -207,6 +214,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_sync.dispose());
     unawaited(_core.dispose());
     unawaited(_syncLog.close());
+    _videoFocus.dispose();
     super.dispose();
   }
 
@@ -237,6 +245,17 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_typingUsers.isEmpty) return null;
     if (_typingUsers.length == 1) return '${_typingUsers.first} is typing…';
     return '${_typingUsers.length} people are typing…';
+  }
+
+  /// Toggle the chat card. When it collapses we restore focus to the player so
+  /// the keyboard shortcut (Tab) and space/arrows keep working on one press.
+  void _toggleChat() {
+    setState(() => _chatLayout = _chatLayout.toggle());
+    if (_chatLayout.collapsed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _videoFocus.requestFocus();
+      });
+    }
   }
 
   void _pulsePeek() {
@@ -435,7 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onKeyEvent: (node, event) {
           if (event is KeyDownEvent &&
               event.logicalKey == LogicalKeyboardKey.tab) {
-            setState(() => _chatLayout = _chatLayout.toggle());
+            _toggleChat();
             return KeyEventResult.handled;
           }
           return KeyEventResult.ignored;
@@ -459,7 +478,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (state.fileName == null)
                     EmptyState(onBrowse: _browse)
                   else
-                    VideoSurface(core: _core),
+                    VideoSurface(core: _core, focusNode: _videoFocus),
                   if (state.fileName != null)
                     Positioned.fill(
                       child: FloatingReactionsOverlay(
@@ -482,8 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       onSend: _chat.send,
                       typingLabel: _typingLabel,
                       onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
-                      onToggleCollapsed: () =>
-                          setState(() => _chatLayout = _chatLayout.toggle()),
+                      onToggleCollapsed: _toggleChat,
                       onSnap: (result) => setState(
                           () => _chatLayout = _chatLayout.applySnap(result)),
                       onDraggingChanged: (d) =>
