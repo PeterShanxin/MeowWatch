@@ -176,7 +176,9 @@ class SyncplayClient extends SyncCore {
         for (final name in usernames) {
           if (name != _username) {
             emitPresence(PresenceEvent(
-                username: name, kind: PresenceKind.joined));
+                username: name,
+                kind: PresenceKind.joined,
+                fromRoster: true));
           }
         }
         for (final f in files) {

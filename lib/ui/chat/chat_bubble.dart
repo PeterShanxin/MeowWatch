@@ -24,6 +24,25 @@ class ChatBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     final ts = message.timestamp;
+
+    // System/event lines (joins, leaves) render centered and dim — not bubbles.
+    if (message.system) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+        child: Center(
+          child: Text(
+            message.text,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: m.textDim,
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Align(
       alignment: _mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(

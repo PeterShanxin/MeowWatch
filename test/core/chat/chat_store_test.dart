@@ -124,4 +124,22 @@ void main() {
     await store.dispose();
     await sync.dispose();
   });
+
+  test('addSystem inserts a local system line, not sent over the wire',
+      () async {
+    final sync = FakeSync();
+    final store = ChatStore(sync: sync);
+
+    store.addSystem('lin joined the room');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.sent, isEmpty); // never transmitted
+    final msg = store.messages.single;
+    expect(msg.system, isTrue);
+    expect(msg.text, 'lin joined the room');
+    expect(msg.timestamp, isNotNull);
+
+    await store.dispose();
+    await sync.dispose();
+  });
 }

@@ -42,6 +42,23 @@ void main() {
     expect(find.text('me'), findsNothing);
   });
 
+  testWidgets('system message renders centered text, no sender label',
+      (tester) async {
+    await tester.pumpWidget(host(const ChatBubble(
+      message: ChatMessage(
+        username: '',
+        text: 'lin joined the room',
+        system: true,
+      ),
+      myUsername: 'me',
+    )));
+
+    expect(find.text('lin joined the room'), findsOneWidget);
+    // Not a bubble: no Align wrapper from the normal path.
+    expect(find.byType(Align), findsNothing);
+    expect(find.byType(Center), findsOneWidget);
+  });
+
   testWidgets('mine aligns right, friend aligns left', (tester) async {
     await tester.pumpWidget(host(const Column(children: [
       ChatBubble(

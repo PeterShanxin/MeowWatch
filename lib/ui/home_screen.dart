@@ -134,11 +134,18 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         if (e.kind == PresenceKind.joined) {
-          _peers.add(e.username);
-          _showPresenceNotice('🐾 ${e.username} joined');
+          final isNew = _peers.add(e.username);
+          // Roster entries (people already here when we arrived) update
+          // membership silently; only a live join gets a banner + event line.
+          if (isNew && !e.fromRoster) {
+            _showPresenceNotice('🐾 ${e.username} joined');
+            _chat.addSystem('${e.username} joined the room');
+          }
         } else {
           _peers.remove(e.username);
           if (_peerFile?.username == e.username) _peerFile = null;
+          _showPresenceNotice('👋 ${e.username} left');
+          _chat.addSystem('${e.username} left the room');
         }
         _evaluateSyncHealth();
       });

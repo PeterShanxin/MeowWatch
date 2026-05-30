@@ -99,12 +99,18 @@ class PresenceEvent {
     required this.kind,
     this.room,
     this.fileName,
+    this.fromRoster = false,
   });
 
   final String username;
   final PresenceKind kind;
   final String? room;
   final String? fileName;
+
+  /// True when this came from the server roster (List) — i.e. a user who was
+  /// already in the room when we arrived, not a live join. Roster joins update
+  /// membership silently; they don't fire a "joined" banner/system message.
+  final bool fromRoster;
 }
 
 @immutable
@@ -113,6 +119,7 @@ class ChatMessage {
     required this.username,
     required this.text,
     this.timestamp,
+    this.system = false,
   });
 
   final String username;
@@ -122,10 +129,15 @@ class ChatMessage {
   /// timestamp, so the chat store stamps this on receipt; null until then.
   final DateTime? timestamp;
 
+  /// A local-only event line (e.g. "X joined the room"), rendered centered and
+  /// dim rather than as a chat bubble. Never sent over the wire.
+  final bool system;
+
   ChatMessage copyWith({DateTime? timestamp}) => ChatMessage(
         username: username,
         text: text,
         timestamp: timestamp ?? this.timestamp,
+        system: system,
       );
 
   @override
@@ -133,8 +145,9 @@ class ChatMessage {
       other is ChatMessage &&
       other.username == username &&
       other.text == text &&
-      other.timestamp == timestamp;
+      other.timestamp == timestamp &&
+      other.system == system;
 
   @override
-  int get hashCode => Object.hash(username, text, timestamp);
+  int get hashCode => Object.hash(username, text, timestamp, system);
 }

@@ -82,6 +82,13 @@ class ChatStore {
     _sync.sendChat(trimmed);
   }
 
+  /// Append a local-only event line (e.g. "lin joined the room"). Not sent over
+  /// the wire — each client annotates its own history.
+  void addSystem(String text) {
+    _messages.add(ChatMessage(username: '', text: text, timestamp: _now(), system: true));
+    _controller.add(messages);
+  }
+
   /// Broadcast a floating reaction to the room.
   void sendReaction(String emoji) => _sync.sendChat(encodeReaction(emoji));
 
