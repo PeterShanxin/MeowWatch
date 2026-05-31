@@ -249,12 +249,15 @@ class UpdateService {
   /// No-op when [expected] is null or empty — older releases may not publish a
   /// hash, and we can only verify against what was provided. When a hash *is*
   /// present, a mismatch throws [UpdateVerificationException]. The comparison
-  /// is case-insensitive, since hex digests may be published in either case.
+  /// is case-insensitive, since hex digests may be published in either case,
+  /// and the published value is trimmed so stray whitespace (templating or
+  /// copy/paste) doesn't reject a valid download.
   void verifyChecksum(List<int> bytes, String? expected) {
-    if (expected == null || expected.isEmpty) return;
+    final want = expected?.trim();
+    if (want == null || want.isEmpty) return;
     final actual = sha256.convert(bytes).toString();
-    if (actual.toLowerCase() != expected.toLowerCase()) {
-      throw UpdateVerificationException(expected: expected, actual: actual);
+    if (actual.toLowerCase() != want.toLowerCase()) {
+      throw UpdateVerificationException(expected: want, actual: actual);
     }
   }
 
@@ -309,15 +312,17 @@ class UpdateService {
 /// Build the PowerShell script that swaps the new files over the install and
 /// restarts the app, after the current process exits.
 ///
-/// Uses `robocopy` to mirror [extractedDir] onto [appDir]. The previous version
-/// used `Copy-Item -Recurse`, which nests an existing `data` folder into itself
-/// (`appDir\data\data\...`) — so the app's Dart code (`data\app.so`) was never
-/// actually replaced and the app stayed on the old version. robocopy merges
-/// subfolders correctly and overwrites in place.
+/// Uses `robocopy` to copy [extractedDir] over [appDir], overwriting in place.
+/// The previous version used `Copy-Item -Recurse`, which nests an existing
+/// `data` folder into itself (`appDir\data\data\...`) — so the app's Dart code
+/// (`data\app.so`) was never actually replaced and the app stayed on the old
+/// version. robocopy merges subfolders correctly. It uses `/E` (add/overwrite),
+/// not `/MIR`, on purpose: we don't want to delete files the new build happens
+/// to omit, which is safer if the install folder ever holds anything extra.
 ///
 /// robocopy exit codes 0–7 are success (8+ is failure); the script only
-/// restarts when the copy succeeded, and writes a log to [tempDir] for
-/// diagnosis.
+/// restarts when the copy succeeded, writes a log to [tempDir] for diagnosis,
+/// and deletes its own script + temp payload at the end (keeping the log).
 String buildUpdaterScript({
   required String extractedDir,
   required String appDir,
@@ -337,9 +342,10 @@ String buildUpdaterScript({
 # Wait for the app to fully exit and release file locks.
 Start-Sleep -Seconds 2
 
-# Mirror the new files over the install. robocopy merges subfolders correctly;
-# the old recursive copy nested an existing 'data' folder into itself, leaving
-# the Dart app.so un-updated. Exit codes 0-7 are success; 8+ is failure.
+# Copy the new files over the install (overwrite in place). robocopy merges
+# subfolders correctly; the old recursive copy nested an existing 'data' folder
+# into itself, leaving the Dart app.so un-updated. /E adds and overwrites but
+# does not delete files the new build omits. Exit codes 0-7 are success.
 \$ok = \$false
 for (\$i = 0; \$i -lt 10; \$i++) {
     robocopy "$extractedDir" "$appDir" /E /IS /IT /R:2 /W:1 /NP /NFL /NDL /NJH /NJS *>> \$log
@@ -357,9 +363,12 @@ if (-not \$ok) {
 "[\$(Get-Date -Format o)] files updated; restarting" | Out-File -FilePath \$log -Append -Encoding utf8
 Start-Process -FilePath "$appDir\\$exeName" -WorkingDirectory "$appDir"
 
-# Clean up temp files (keep the log).
+# Clean up temp files (keep the log). Also remove this script itself so it
+# doesn't linger as an executable artifact; PowerShell has already read it into
+# memory, so self-deletion is safe.
 Start-Sleep -Seconds 2
 Remove-Item -Path "$extractedDir" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "$tempDir\\update.zip" -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath \$PSCommandPath -Force -ErrorAction SilentlyContinue
 ''';
 }

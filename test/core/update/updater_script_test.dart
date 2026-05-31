@@ -29,4 +29,11 @@ void main() {
   test('writes a diagnostic log under the temp dir', () {
     expect(script, contains(r'C:\tmp\meow\updater.log'));
   });
+
+  test('cleans up its own script and payload but keeps the log', () {
+    expect(script, contains(r'Remove-Item -LiteralPath $PSCommandPath'));
+    expect(script, contains(r'C:\tmp\meow\update.zip'));
+    // The log file is never deleted.
+    expect(script, isNot(contains(r'Remove-Item -Path "C:\tmp\meow\updater.log"')));
+  });
 }

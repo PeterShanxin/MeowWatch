@@ -38,4 +38,14 @@ void main() {
     final svc = UpdateService(baseUrl: 'https://example.test');
     expect(() => svc.verifyChecksum(bytes, ''), returnsNormally);
   });
+
+  test('verifyChecksum trims surrounding whitespace on the published hash', () {
+    final svc = UpdateService(baseUrl: 'https://example.test');
+    expect(() => svc.verifyChecksum(bytes, '  $digest\n'), returnsNormally);
+  });
+
+  test('verifyChecksum treats a whitespace-only hash as no hash', () {
+    final svc = UpdateService(baseUrl: 'https://example.test');
+    expect(() => svc.verifyChecksum(bytes, '   '), returnsNormally);
+  });
 }
