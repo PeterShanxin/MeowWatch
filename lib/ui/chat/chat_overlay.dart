@@ -9,6 +9,11 @@ import 'chat_bubble.dart';
 import 'chat_corner.dart';
 import 'chat_input.dart';
 import 'peek_tab.dart';
+import 'resize_math.dart';
+
+/// Hover delay before any chat-card tooltip appears. A short beat so tooltips
+/// don't pop instantly on every passing hover (felt twitchy at 0ms).
+const Duration _kTooltipWait = Duration(milliseconds: 700);
 
 /// The floating chat card. Presentational: the parent owns the layout state
 /// (corner + collapsed) and supplies callbacks. Dragging the header reports a
@@ -23,6 +28,10 @@ class ChatOverlay extends StatefulWidget {
     required this.onSend,
     required this.onToggleCollapsed,
     required this.onSnap,
+    this.onResize,
+    this.onResetSize,
+    this.widthPx,
+    this.heightPx,
     this.corner = ChatCorner.bottomLeft,
     this.pulsing = false,
     this.typingLabel,
@@ -38,6 +47,17 @@ class ChatOverlay extends StatefulWidget {
   final void Function(String text) onSend;
   final VoidCallback onToggleCollapsed;
   final void Function(SnapResult result) onSnap;
+
+  /// Reports the card's new px size when a resize grip drag ends.
+  final void Function(Size newSize)? onResize;
+
+  /// Resets the card to its default size.
+  final VoidCallback? onResetSize;
+
+  /// Card size in logical px; null falls back to the default. The view clamps
+  /// it to the viewport, so it never overflows even on a small window.
+  final double? widthPx;
+  final double? heightPx;
 
   /// e.g. "lin is typing…"; null when nobody is typing.
   final String? typingLabel;
@@ -64,6 +84,13 @@ class _ChatOverlayState extends State<ChatOverlay>
   Size? _overlaySize;
   final GlobalKey _cardKey = GlobalKey();
 
+  // Active resize: rect captured at grip-drag start + accumulated grip delta +
+  // which corner is being dragged.
+  Size? _resizeStartSize;
+  Offset? _resizeStartTopLeft;
+  Offset _resizeDelta = Offset.zero;
+  ChatCorner _resizeGrip = ChatCorner.bottomRight;
+
   // Post-release snap glide: tween _dragTopLeft from where it was dropped to
   // the resting corner, so docking eases in instead of teleporting.
   late final AnimationController _snapCtrl = AnimationController(
@@ -75,9 +102,6 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   // Focus the message box when the card is opened (peek tab → card).
   final FocusNode _inputFocus = FocusNode();
-
-  // Scrolls the chat list to the bottom on new messages.
-  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -95,24 +119,12 @@ class _ChatOverlayState extends State<ChatOverlay>
         if (mounted) _inputFocus.requestFocus();
       });
     }
-    if (old.messages.length < widget.messages.length) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOutCubic,
-          );
-        }
-      });
-    }
   }
 
   @override
   void dispose() {
     _snapCtrl.dispose();
     _inputFocus.dispose();
-    _scrollController.dispose();
     super.dispose();
   }
 
@@ -199,6 +211,64 @@ class _ChatOverlayState extends State<ChatOverlay>
     widget.onDraggingChanged?.call(true);
   }
 
+  /// Begin a grip resize from corner [grip]: pin the card's current rect and
+  /// remember which corner is being dragged.
+  void _startResize(ChatCorner grip) {
+    if (_snapCtrl.isAnimating) _snapCtrl.stop();
+    final cardBox = _cardKey.currentContext?.findRenderObject() as RenderBox?;
+    final selfBox = context.findRenderObject() as RenderBox?;
+    if (cardBox == null || selfBox == null) return;
+    final origin = selfBox.localToGlobal(Offset.zero);
+    final topLeft = cardBox.localToGlobal(Offset.zero) - origin;
+    setState(() {
+      _dragTopLeft = topLeft;
+      _dragCardSize = cardBox.size;
+      _overlaySize = selfBox.size;
+      _resizeStartSize = cardBox.size;
+      _resizeStartTopLeft = topLeft;
+      _resizeDelta = Offset.zero;
+      _resizeGrip = grip;
+    });
+    widget.onDraggingChanged?.call(true);
+  }
+
+  void _updateResize(Offset delta) {
+    final start = _resizeStartSize;
+    final startTL = _resizeStartTopLeft;
+    final window = _overlaySize;
+    if (start == null || startTL == null || window == null) return;
+    _resizeDelta += delta;
+    final r = computeCornerResize(
+      startTopLeft: startTL,
+      startSize: start,
+      dragDelta: _resizeDelta,
+      grip: _resizeGrip,
+      windowSize: window,
+    );
+    setState(() {
+      _dragTopLeft = r.topLeft;
+      _dragCardSize = r.size;
+    });
+  }
+
+  /// End the resize: report the new size, then glide back to the docked corner.
+  void _endResize() {
+    final size = _dragCardSize;
+    final topLeft = _dragTopLeft;
+    final window = _overlaySize;
+    _resizeStartSize = null;
+    _resizeStartTopLeft = null;
+    _resizeDelta = Offset.zero;
+    if (size == null || topLeft == null || window == null) {
+      _clearDrag();
+      return;
+    }
+    widget.onResize?.call(size);
+    _snapFrom = topLeft;
+    _snapTo = _cornerTopLeft(widget.corner, size, window);
+    _snapCtrl.forward(from: 0);
+  }
+
   void _endHeaderDrag() {
     final topLeft = _dragTopLeft;
     final card = _dragCardSize;
@@ -229,7 +299,7 @@ class _ChatOverlayState extends State<ChatOverlay>
   Widget _buildCard(Size cardSize) => _GlassCard(
         key: _cardKey,
         width: cardSize.width,
-        maxHeight: cardSize.height,
+        height: cardSize.height,
         onHeaderDragStart: _startHeaderDrag,
         onHeaderDragUpdate: (delta) {
           final base = _dragTopLeft;
@@ -244,13 +314,25 @@ class _ChatOverlayState extends State<ChatOverlay>
         inputFocusNode: _inputFocus,
         typingLabel: widget.typingLabel,
         onTypingChanged: widget.onTypingChanged,
-        scrollController: _scrollController,
+        onResetSize: widget.onResetSize ?? () {},
+        onResizeStart: _startResize,
+        onResizeUpdate: _updateResize,
+        onResizeEnd: _endResize,
       );
 
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context).size;
-    final cardSize = Size(media.width * 0.3, media.height * 0.5);
+    // Stored px size, clamped to the current viewport (so it never overflows a
+    // small window) but otherwise stable when the window is resized/maximized.
+    final cardSize = _dragCardSize ??
+        clampCardSize(
+          Size(
+            widget.widthPx ?? kDefaultCardWidth,
+            widget.heightPx ?? kDefaultCardHeight,
+          ),
+          media,
+        );
 
     // Active drag, or the post-release snap glide, renders a free-floating card.
     final topLeft = _dragTopLeft;
@@ -304,7 +386,7 @@ class _GlassCard extends StatelessWidget {
   const _GlassCard({
     super.key,
     required this.width,
-    required this.maxHeight,
+    required this.height,
     required this.onHeaderDragStart,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
@@ -315,11 +397,14 @@ class _GlassCard extends StatelessWidget {
     required this.inputFocusNode,
     required this.typingLabel,
     required this.onTypingChanged,
-    required this.scrollController,
+    required this.onResetSize,
+    required this.onResizeStart,
+    required this.onResizeUpdate,
+    required this.onResizeEnd,
   });
 
   final double width;
-  final double maxHeight;
+  final double height;
   final VoidCallback onHeaderDragStart;
   final void Function(Offset delta) onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
@@ -330,7 +415,10 @@ class _GlassCard extends StatelessWidget {
   final FocusNode inputFocusNode;
   final String? typingLabel;
   final ValueChanged<bool>? onTypingChanged;
-  final ScrollController scrollController;
+  final VoidCallback onResetSize;
+  final void Function(ChatCorner corner) onResizeStart;
+  final void Function(Offset delta) onResizeUpdate;
+  final VoidCallback onResizeEnd;
 
   /// Wrap [child] in a frosted-glass blur when the active theme asks for it
   /// (`glassBlur > 0`, e.g. Aurora). Returns [child] unchanged otherwise, so
@@ -347,111 +435,186 @@ class _GlassCard extends StatelessWidget {
     );
   }
 
+  /// An invisible corner resize grip. No icon — hovering shows the diagonal
+  /// resize cursor instead, which reads cleaner than four icons in the corners.
+  /// Reports its own [corner] on drag start so the controller can pin the
+  /// opposite corner.
+  ///
+  /// Uses a raw [Listener] rather than a pan [GestureDetector]: the bottom grips
+  /// sit over the chat input, and a focused `TextField` would otherwise win the
+  /// gesture arena and steal the drag (selecting text instead of resizing).
+  /// Listener pointer events bypass the arena, so the grip always resizes.
+  Widget _grip(BuildContext context, ChatCorner corner) {
+    return Listener(
+      key: ValueKey('chat-resize-grip-${corner.name}'),
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (_) => onResizeStart(corner),
+      onPointerMove: (e) => onResizeUpdate(e.delta),
+      onPointerUp: (_) => onResizeEnd(),
+      onPointerCancel: (_) => onResizeEnd(),
+      child: MouseRegion(
+        cursor: _cursorFor(corner),
+        child: const Tooltip(
+          message: 'Drag to resize',
+          waitDuration: _kTooltipWait,
+          child: SizedBox(width: 22, height: 22),
+        ),
+      ),
+    );
+  }
+
+  /// Diagonal resize cursor matching the dragged corner: a "\" cursor for the
+  /// top-left/bottom-right pair, a "/" cursor for the top-right/bottom-left pair.
+  MouseCursor _cursorFor(ChatCorner corner) {
+    switch (corner) {
+      case ChatCorner.topLeft:
+      case ChatCorner.bottomRight:
+        return SystemMouseCursors.resizeUpLeftDownRight;
+      case ChatCorner.topRight:
+      case ChatCorner.bottomLeft:
+        return SystemMouseCursors.resizeUpRightDownLeft;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: m.scrim.withValues(alpha: 0.60),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: _frosted(
-        context,
-        Container(
-          width: width,
-          constraints: BoxConstraints(maxHeight: maxHeight),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        DecoratedBox(
           decoration: BoxDecoration(
-            color: m.surface,
             borderRadius: BorderRadius.circular(16),
-            border:
-                Border.all(color: m.accent.withValues(alpha: 0.80), width: 1.5),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                dragStartBehavior: DragStartBehavior.down,
-                onPanStart: (_) => onHeaderDragStart(),
-                onPanUpdate: (d) => onHeaderDragUpdate(d.delta),
-                onPanEnd: (_) => onHeaderDragEnd(),
-                child: Container(
-                  height: 36,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      Icon(Icons.drag_indicator, size: 16, color: m.textDim),
-                      const Spacer(),
-                      Text('Chat',
-                          style: TextStyle(color: m.textPrimary, fontSize: 13)),
-                      const Spacer(),
-                      // Opaque, padded hit target — an 18px icon alone is too
-                      // small to reliably tap (it read as "had to click twice").
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: onCollapse,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 8),
-                          child: Icon(Icons.chevron_right,
-                              size: 18, color: m.accent),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Flexible(
-                child: messages.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 24),
-                        child: Text(
-                          'No messages yet — say hi 🐾',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: m.textDim, fontSize: 13),
-                        ),
-                      )
-                    : ListView(
-                        controller: scrollController,
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        children: [
-                          for (final msg in messages)
-                            ChatBubble(message: msg, myUsername: myUsername),
-                        ],
-                      ),
-              ),
-              if (typingLabel != null)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
-                    child: Text(
-                      typingLabel!,
-                      style: TextStyle(
-                        color: m.textDim,
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-                ),
-              ChatInput(
-                onSend: onSend,
-                focusNode: inputFocusNode,
-                onTypingChanged: onTypingChanged,
+            boxShadow: [
+              BoxShadow(
+                color: m.scrim.withValues(alpha: 0.60),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
+          child: _frosted(
+            context,
+            Container(
+              width: width,
+              height: height,
+              decoration: BoxDecoration(
+                color: m.surface,
+                borderRadius: BorderRadius.circular(16),
+                border:
+                    Border.all(color: m.accent.withValues(alpha: 0.80), width: 1.5),
+              ),
+              child: Column(
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    dragStartBehavior: DragStartBehavior.down,
+                    onPanStart: (_) => onHeaderDragStart(),
+                    onPanUpdate: (d) => onHeaderDragUpdate(d.delta),
+                    onPanEnd: (_) => onHeaderDragEnd(),
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          Tooltip(
+                            message: 'Drag to move',
+                            waitDuration: _kTooltipWait,
+                            child: Icon(Icons.drag_indicator,
+                                size: 16, color: m.textDim),
+                          ),
+                          const Spacer(),
+                          Text('Chat',
+                              style: TextStyle(color: m.textPrimary, fontSize: 13)),
+                          const Spacer(),
+                          GestureDetector(
+                            key: const ValueKey('chat-reset-size'),
+                            behavior: HitTestBehavior.opaque,
+                            onTap: onResetSize,
+                            child: Tooltip(
+                              message: 'Reset size',
+                              waitDuration: _kTooltipWait,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 8),
+                                child: Icon(Icons.crop_free,
+                                    size: 16, color: m.textDim),
+                              ),
+                            ),
+                          ),
+                          // Opaque, padded hit target — an 18px icon alone is too
+                          // small to reliably tap (it read as "had to click twice").
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: onCollapse,
+                            child: Tooltip(
+                              message: 'Hide chat',
+                              waitDuration: _kTooltipWait,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8),
+                                child: Icon(Icons.chevron_right,
+                                    size: 18, color: m.accent),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: messages.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 24),
+                              child: Text(
+                                'No messages yet — say hi 🐾',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: m.textDim, fontSize: 13),
+                              ),
+                            ),
+                          )
+                        : ListView(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            children: [
+                              for (final msg in messages)
+                                ChatBubble(message: msg, myUsername: myUsername),
+                            ],
+                          ),
+                  ),
+                  if (typingLabel != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+                        child: Text(
+                          typingLabel!,
+                          style: TextStyle(
+                            color: m.textDim,
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ChatInput(
+                    onSend: onSend,
+                    focusNode: inputFocusNode,
+                    onTypingChanged: onTypingChanged,
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-      ),
+        Positioned(left: 0, top: 0, child: _grip(context, ChatCorner.topLeft)),
+        Positioned(right: 0, top: 0, child: _grip(context, ChatCorner.topRight)),
+        Positioned(
+            left: 0, bottom: 0, child: _grip(context, ChatCorner.bottomLeft)),
+        Positioned(
+            right: 0, bottom: 0, child: _grip(context, ChatCorner.bottomRight)),
+      ],
     );
   }
 }

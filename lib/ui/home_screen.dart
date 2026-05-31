@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../core/chat/chat_store.dart';
 import '../core/connect/room_config.dart';
+import '../core/data/settings_store.dart';
 import '../core/data/stores.dart';
 import '../core/debug/debug_log.dart';
 import '../core/sync/auto_pause.dart';
@@ -32,13 +33,19 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.config,
     required this.history,
+    required this.settings,
     required this.currentTheme,
     required this.onThemeChanged,
+    this.initialWidthPx,
+    this.initialHeightPx,
     super.key,
   });
 
   final RoomConfig config;
   final HistoryStore history;
+  final SettingsStore settings;
+  final double? initialWidthPx;
+  final double? initialHeightPx;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
 
@@ -85,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _autoPauseDelay = Duration(seconds: 2);
 
   late final ChatStore _chat;
-  ChatOverlayLayout _chatLayout = const ChatOverlayLayout();
+  late ChatOverlayLayout _chatLayout;
   bool _chatDragging = false;
 
   /// Keyboard focus for the player. Held here (not inside VideoSurface) so that
@@ -123,6 +130,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _chatLayout = ChatOverlayLayout(
+      widthPx: widget.initialWidthPx,
+      heightPx: widget.initialHeightPx,
+    );
     _syncLog.start();
     _core = MediaKitVideoCore();
     _sync = SyncplayClient(onLog: _syncLog.call);
@@ -537,6 +548,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                       onDraggingChanged: (d) =>
                           setState(() => _chatDragging = d),
+                      widthPx: _chatLayout.widthPx,
+                      heightPx: _chatLayout.heightPx,
+                      onResize: (size) {
+                        setState(
+                            () => _chatLayout = _chatLayout.applyResize(size));
+                        widget.settings.set(
+                          kChatCardSizeSettingKey,
+                          formatCardSize(
+                            _chatLayout.widthPx!,
+                            _chatLayout.heightPx!,
+                          ),
+                        );
+                      },
+                      onResetSize: () {
+                        setState(() => _chatLayout = _chatLayout.resetSize());
+                        widget.settings.set(kChatCardSizeSettingKey, '');
+                      },
                     ),
                   Positioned(
                     top: 12,

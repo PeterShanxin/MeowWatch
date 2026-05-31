@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
@@ -24,8 +25,41 @@ class UpdateInfo {
   final String releaseDate;
 }
 
+/// One version's changelog entry, as published in `releases/changelog.json`.
+class ChangelogEntry {
+  const ChangelogEntry({
+    required this.version,
+    required this.date,
+    required this.notes,
+  });
+
+  final String version;
+  final String date;
+  final String notes;
+}
+
 /// Result of comparing local version to remote.
 enum UpdateStatus { upToDate, updateAvailable, checkFailed }
+
+/// Thrown when a downloaded update's SHA-256 does not match the hash published
+/// in `latest.json`. Signals a corrupted or tampered download — the update is
+/// aborted before any files are extracted or executed.
+class UpdateVerificationException implements Exception {
+  const UpdateVerificationException({
+    required this.expected,
+    required this.actual,
+  });
+
+  /// The hex digest published alongside the asset.
+  final String expected;
+
+  /// The hex digest computed from the bytes that actually arrived.
+  final String actual;
+
+  @override
+  String toString() =>
+      'Update checksum mismatch: expected $expected, got $actual';
+}
 
 /// Checks for updates from the R2 release bucket, downloads, and applies them.
 ///
@@ -33,12 +67,15 @@ enum UpdateStatus { upToDate, updateAvailable, checkFailed }
 ///   1. `checkForUpdate()` → GET `{baseUrl}/releases/latest.json`
 ///   2. Compare remote version to [appVersion]
 ///   3. `downloadUpdate()` → stream zip to temp dir with progress callback
-///   4. `applyUpdate()` → extract zip, write updater.ps1, launch it, exit app
+///   4. `applyUpdate()` → verify SHA-256, extract zip, write updater.ps1,
+///      launch it, exit app
 class UpdateService {
-  UpdateService({String? baseUrl}) : _baseUrl = baseUrl ?? updateBaseUrl;
+  UpdateService({String? baseUrl, http.Client? client})
+      : _baseUrl = baseUrl ?? updateBaseUrl,
+        _client = client ?? http.Client();
 
   final String _baseUrl;
-  final http.Client _client = http.Client();
+  final http.Client _client;
 
   UpdateInfo? _latestUpdate;
 
@@ -86,6 +123,44 @@ class UpdateService {
     }
   }
 
+  /// Fetch the multi-version changelog and return only the entries newer than
+  /// the installed [appVersion], newest first. Returns an empty list on any
+  /// failure (missing file, network error, malformed JSON) so callers can fall
+  /// back to the single-release note.
+  Future<List<ChangelogEntry>> fetchChangelog() async {
+    try {
+      final uri = Uri.parse('$_baseUrl/releases/changelog.json');
+      final response =
+          await _client.get(uri).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return const [];
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) return const [];
+
+      final entries = <ChangelogEntry>[];
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        // Read fields defensively: a wrong-shaped payload (numeric `date`,
+        // missing `version`, etc.) is skipped, never thrown.
+        final version = item['version'];
+        if (version is! String) continue;
+        if (!_isNewer(version, appVersion)) continue;
+        final date = item['date'];
+        final notes = item['notes'];
+        entries.add(ChangelogEntry(
+          version: version,
+          date: date is String ? date : '',
+          notes: notes is String ? notes : '',
+        ));
+      }
+      return entries;
+    } catch (_) {
+      // Any failure (network, malformed JSON, unexpected shape) → empty list so
+      // the dialog falls back to the single-release note.
+      return const [];
+    }
+  }
+
   /// Download the update zip to a temp directory, calling [onProgress] with
   /// a 0.0–1.0 fraction as bytes arrive.
   ///
@@ -123,6 +198,12 @@ class UpdateService {
   /// over the existing installation, restarts the app, and cleans up temp files.
   Future<void> applyUpdate(String zipPath) async {
     final zipBytes = await File(zipPath).readAsBytes();
+
+    // Integrity gate: confirm the bytes match the hash published in
+    // latest.json before we extract or run anything. A mismatch means the
+    // download was corrupted or tampered with — abort instead of installing.
+    verifyChecksum(zipBytes, _latestUpdate?.sha256);
+
     final archive = ZipDecoder().decodeBytes(zipBytes);
 
     final tempDir = Directory(p.dirname(zipPath));
@@ -144,7 +225,7 @@ class UpdateService {
     final appDir = p.dirname(Platform.resolvedExecutable);
     final scriptPath = p.join(tempDir.path, 'updater.ps1');
 
-    final script = _buildUpdaterScript(
+    final script = buildUpdaterScript(
       extractedDir: extractDir.path,
       appDir: appDir,
       tempDir: tempDir.path,
@@ -161,6 +242,23 @@ class UpdateService {
     );
 
     exit(0);
+  }
+
+  /// Verify [bytes] against the [expected] SHA-256 hex digest.
+  ///
+  /// No-op when [expected] is null or empty — older releases may not publish a
+  /// hash, and we can only verify against what was provided. When a hash *is*
+  /// present, a mismatch throws [UpdateVerificationException]. The comparison
+  /// is case-insensitive, since hex digests may be published in either case,
+  /// and the published value is trimmed so stray whitespace (templating or
+  /// copy/paste) doesn't reject a valid download.
+  void verifyChecksum(List<int> bytes, String? expected) {
+    final want = expected?.trim();
+    if (want == null || want.isEmpty) return;
+    final actual = sha256.convert(bytes).toString();
+    if (actual.toLowerCase() != want.toLowerCase()) {
+      throw UpdateVerificationException(expected: want, actual: actual);
+    }
   }
 
   /// Determine the Windows CPU architecture for asset selection.
@@ -206,42 +304,71 @@ class UpdateService {
     return (nums, prePart);
   }
 
-  /// Build the PowerShell script that performs the file swap.
-  String _buildUpdaterScript({
-    required String extractedDir,
-    required String appDir,
-    required String tempDir,
-    required String exeName,
-  }) {
-    // Escape backslashes for PowerShell string literals.
-    String esc(String s) => s.replaceAll(r'\', r'\\');
-    return '''
-# MeowWatch Auto-Updater
-# This script is generated by the app and runs after it exits.
-
-# Wait for the app to fully exit.
-Start-Sleep -Seconds 2
-
-# Retry loop in case the process takes a moment to release file locks.
-for (\$i = 0; \$i -lt 10; \$i++) {
-    try {
-        Copy-Item -Path "${esc(extractedDir)}\\*" -Destination "${esc(appDir)}" -Recurse -Force -ErrorAction Stop
-        break
-    } catch {
-        Start-Sleep -Seconds 1
-    }
-}
-
-# Restart the updated app.
-Start-Process "${esc(appDir)}\\$exeName"
-
-# Clean up temp files.
-Start-Sleep -Seconds 2
-Remove-Item -Path "${esc(tempDir)}" -Recurse -Force -ErrorAction SilentlyContinue
-''';
-  }
-
   void dispose() {
     _client.close();
   }
+}
+
+/// Build the PowerShell script that swaps the new files over the install and
+/// restarts the app, after the current process exits.
+///
+/// Uses `robocopy` to copy [extractedDir] over [appDir], overwriting in place.
+/// The previous version used `Copy-Item -Recurse`, which nests an existing
+/// `data` folder into itself (`appDir\data\data\...`) — so the app's Dart code
+/// (`data\app.so`) was never actually replaced and the app stayed on the old
+/// version. robocopy merges subfolders correctly. It uses `/E` (add/overwrite),
+/// not `/MIR`, on purpose: we don't want to delete files the new build happens
+/// to omit, which is safer if the install folder ever holds anything extra.
+///
+/// robocopy exit codes 0–7 are success (8+ is failure); the script only
+/// restarts when the copy succeeded, writes a log to [tempDir] for diagnosis,
+/// and deletes its own script + temp payload at the end (keeping the log).
+String buildUpdaterScript({
+  required String extractedDir,
+  required String appDir,
+  required String tempDir,
+  required String exeName,
+}) {
+  // PowerShell double-quoted strings treat backslash literally (the escape char
+  // is the backtick), so Windows paths go in verbatim — no escaping needed. The
+  // `\\` separators below are single backslashes after Dart unescapes them.
+  return '''
+# MeowWatch Auto-Updater
+# This script is generated by the app and runs after it exits.
+\$ErrorActionPreference = 'Continue'
+\$log = "$tempDir\\updater.log"
+"[\$(Get-Date -Format o)] updater start" | Out-File -FilePath \$log -Encoding utf8
+
+# Wait for the app to fully exit and release file locks.
+Start-Sleep -Seconds 2
+
+# Copy the new files over the install (overwrite in place). robocopy merges
+# subfolders correctly; the old recursive copy nested an existing 'data' folder
+# into itself, leaving the Dart app.so un-updated. /E adds and overwrites but
+# does not delete files the new build omits. Exit codes 0-7 are success.
+\$ok = \$false
+for (\$i = 0; \$i -lt 10; \$i++) {
+    robocopy "$extractedDir" "$appDir" /E /IS /IT /R:2 /W:1 /NP /NFL /NDL /NJH /NJS *>> \$log
+    if (\$LASTEXITCODE -lt 8) { \$ok = \$true; break }
+    "[\$(Get-Date -Format o)] robocopy attempt \$i failed (code \$LASTEXITCODE)" | Out-File -FilePath \$log -Append -Encoding utf8
+    Start-Sleep -Seconds 1
+}
+
+if (-not \$ok) {
+    "[\$(Get-Date -Format o)] update FAILED; not restarting" | Out-File -FilePath \$log -Append -Encoding utf8
+    exit 1
+}
+
+# Restart the updated app from its own folder.
+"[\$(Get-Date -Format o)] files updated; restarting" | Out-File -FilePath \$log -Append -Encoding utf8
+Start-Process -FilePath "$appDir\\$exeName" -WorkingDirectory "$appDir"
+
+# Clean up temp files (keep the log). Also remove this script itself so it
+# doesn't linger as an executable artifact; PowerShell has already read it into
+# memory, so self-deletion is safe.
+Start-Sleep -Seconds 2
+Remove-Item -Path "$extractedDir" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$tempDir\\update.zip" -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath \$PSCommandPath -Force -ErrorAction SilentlyContinue
+''';
 }
