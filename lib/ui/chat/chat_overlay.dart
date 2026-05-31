@@ -11,6 +11,10 @@ import 'chat_input.dart';
 import 'peek_tab.dart';
 import 'resize_math.dart';
 
+/// Hover delay before any chat-card tooltip appears. A short beat so tooltips
+/// don't pop instantly on every passing hover (felt twitchy at 0ms).
+const Duration _kTooltipWait = Duration(milliseconds: 700);
+
 /// The floating chat card. Presentational: the parent owns the layout state
 /// (corner + collapsed) and supplies callbacks. Dragging the header reports a
 /// drag-release decision through [onSnap]; collapse/expand goes through
@@ -425,15 +429,16 @@ class _GlassCard extends StatelessWidget {
     );
   }
 
-  /// A corner resize grip. Reports its own [corner] on drag start so the
-  /// controller can pin the opposite corner.
+  /// An invisible corner resize grip. No icon — hovering shows the diagonal
+  /// resize cursor instead, which reads cleaner than four icons in the corners.
+  /// Reports its own [corner] on drag start so the controller can pin the
+  /// opposite corner.
   ///
   /// Uses a raw [Listener] rather than a pan [GestureDetector]: the bottom grips
   /// sit over the chat input, and a focused `TextField` would otherwise win the
   /// gesture arena and steal the drag (selecting text instead of resizing).
   /// Listener pointer events bypass the arena, so the grip always resizes.
   Widget _grip(BuildContext context, ChatCorner corner) {
-    final m = context.meow;
     return Listener(
       key: ValueKey('chat-resize-grip-${corner.name}'),
       behavior: HitTestBehavior.opaque,
@@ -441,14 +446,28 @@ class _GlassCard extends StatelessWidget {
       onPointerMove: (e) => onResizeUpdate(e.delta),
       onPointerUp: (_) => onResizeEnd(),
       onPointerCancel: (_) => onResizeEnd(),
-      child: Tooltip(
-        message: 'Drag to resize',
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: Icon(Icons.open_in_full, size: 14, color: m.accent),
+      child: MouseRegion(
+        cursor: _cursorFor(corner),
+        child: const Tooltip(
+          message: 'Drag to resize',
+          waitDuration: _kTooltipWait,
+          child: SizedBox(width: 22, height: 22),
         ),
       ),
     );
+  }
+
+  /// Diagonal resize cursor matching the dragged corner: a "\" cursor for the
+  /// top-left/bottom-right pair, a "/" cursor for the top-right/bottom-left pair.
+  MouseCursor _cursorFor(ChatCorner corner) {
+    switch (corner) {
+      case ChatCorner.topLeft:
+      case ChatCorner.bottomRight:
+        return SystemMouseCursors.resizeUpLeftDownRight;
+      case ChatCorner.topRight:
+      case ChatCorner.bottomLeft:
+        return SystemMouseCursors.resizeUpRightDownLeft;
+    }
   }
 
   @override
@@ -494,6 +513,7 @@ class _GlassCard extends StatelessWidget {
                         children: [
                           Tooltip(
                             message: 'Drag to move',
+                            waitDuration: _kTooltipWait,
                             child: Icon(Icons.drag_indicator,
                                 size: 16, color: m.textDim),
                           ),
@@ -507,6 +527,7 @@ class _GlassCard extends StatelessWidget {
                             onTap: onResetSize,
                             child: Tooltip(
                               message: 'Reset size',
+                              waitDuration: _kTooltipWait,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 8),
@@ -522,6 +543,7 @@ class _GlassCard extends StatelessWidget {
                             onTap: onCollapse,
                             child: Tooltip(
                               message: 'Hide chat',
+                              waitDuration: _kTooltipWait,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 8),

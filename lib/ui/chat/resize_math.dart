@@ -4,7 +4,7 @@ import 'chat_corner.dart';
 
 /// Smallest usable card size, in logical px.
 const double kMinCardWidth = 240;
-const double kMinCardHeight = 220;
+const double kMinCardHeight = 160;
 
 /// Largest card size, as a fraction of the window.
 const double kMaxCardWidthFrac = 0.70;
