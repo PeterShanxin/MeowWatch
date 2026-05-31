@@ -47,6 +47,8 @@ class FakeSyncCore extends SyncCore {
   Future<void> disposeBackend() async {}
 
   void pushPeer(PeerPlayState s) => emitPeerState(s);
+
+  void pushActivity(SyncActivity a) => emitActivity(a);
 }
 
 void main() {
@@ -77,5 +79,19 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     await sub.cancel();
     expect(peers.single.position, const Duration(seconds: 3));
+  });
+
+  test('activity stream emits pushed activities', () async {
+    final events = <SyncActivity>[];
+    final sub = core.activity.listen(events.add);
+    core.pushActivity(const SyncActivity(
+      kind: SyncActivityKind.paused,
+      username: 'lin',
+      position: Duration(seconds: 42),
+    ));
+    await Future<void>.delayed(Duration.zero);
+    await sub.cancel();
+    expect(events.single.kind, SyncActivityKind.paused);
+    expect(events.single.username, 'lin');
   });
 }
