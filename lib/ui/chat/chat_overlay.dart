@@ -441,6 +441,7 @@ class _ChatOverlayState extends State<ChatOverlay>
       // Dock hints show only during the live drag, not the settling glide.
       final showHints =
           !_snapCtrl.isAnimating &&
+          _resizeStartSize == null &&
           _overlaySize != null &&
           _dragCardSize != null;
       return Positioned.fill(

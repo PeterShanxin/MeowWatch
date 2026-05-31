@@ -90,7 +90,7 @@ void main() {
     final before = tester.getTopLeft(handle);
 
     const move = Offset(40, -30);
-    final gesture = await tester.startGesture(tester.getCenter(handle));
+    final gesture = await tester.startGesture(tester.getCenter(handle) + const Offset(10, 0));
     await gesture.moveBy(move);
     await tester.pump();
     final after = tester.getTopLeft(handle);
@@ -122,7 +122,7 @@ void main() {
     expect(find.byIcon(Icons.south_east), findsNothing);
 
     final handle = find.byIcon(Icons.drag_indicator);
-    final gesture = await tester.startGesture(tester.getCenter(handle));
+    final gesture = await tester.startGesture(tester.getCenter(handle) + const Offset(10, 0));
     await gesture.moveBy(const Offset(40, -30));
     await tester.pump();
 
