@@ -107,13 +107,17 @@ class _ChatOverlayState extends State<ChatOverlay>
   // jumps to the bottom when the card reopens.
   final ScrollController _scrollController = ScrollController();
 
+  // How close (in px) to the bottom still counts as "at the bottom" — within
+  // this slack a new message auto-scrolls instead of bumping the unread badge.
+  static const double _bottomSlack = 20;
+
   int _unreadCount = 0;
 
   void _onScroll() {
     if (!mounted || !_scrollController.hasClients) return;
     if (_unreadCount > 0) {
       final pos = _scrollController.position;
-      if (pos.pixels >= pos.maxScrollExtent - 20) {
+      if (pos.pixels >= pos.maxScrollExtent - _bottomSlack) {
         setState(() => _unreadCount = 0);
       }
     }
@@ -145,14 +149,16 @@ class _ChatOverlayState extends State<ChatOverlay>
       _scrollToBottom(animate: false);
     } else if (old.messages.length < widget.messages.length) {
       final newMsgs = widget.messages.length - old.messages.length;
-      final isMyMessage = widget.messages.isNotEmpty && widget.messages.last.username == widget.myUsername;
-      
+      final isMyMessage =
+          widget.messages.isNotEmpty &&
+          widget.messages.last.username == widget.myUsername;
+
       bool isAtBottom = false;
       if (!widget.collapsed && _scrollController.hasClients) {
         final pos = _scrollController.position;
-        isAtBottom = pos.pixels >= pos.maxScrollExtent - 20;
+        isAtBottom = pos.pixels >= pos.maxScrollExtent - _bottomSlack;
       }
-      
+
       if (isMyMessage || (isAtBottom && !widget.collapsed)) {
         if (!widget.collapsed) _scrollToBottom(animate: true);
         if (_unreadCount != 0) setState(() => _unreadCount = 0);
@@ -249,8 +255,13 @@ class _ChatOverlayState extends State<ChatOverlay>
     final from = _snapFrom;
     final to = _snapTo;
     if (from == null || to == null) return;
-    setState(() => _dragTopLeft =
-        Offset.lerp(from, to, Curves.easeOutCubic.transform(_snapCtrl.value)));
+    setState(
+      () => _dragTopLeft = Offset.lerp(
+        from,
+        to,
+        Curves.easeOutCubic.transform(_snapCtrl.value),
+      ),
+    );
   }
 
   void _onSnapStatus(AnimationStatus status) {
@@ -380,41 +391,42 @@ class _ChatOverlayState extends State<ChatOverlay>
   }
 
   Widget _buildCard(Size cardSize) => _GlassCard(
-        key: _cardKey,
-        width: cardSize.width,
-        height: cardSize.height,
-        onHeaderDragStart: _startHeaderDrag,
-        onHeaderDragUpdate: (delta) {
-          final base = _dragTopLeft;
-          if (base == null) return;
-          setState(() => _dragTopLeft = base + delta);
-        },
-        onHeaderDragEnd: _endHeaderDrag,
-        onCollapse: widget.onToggleCollapsed,
-        messages: widget.messages,
-        myUsername: widget.myUsername,
-        unreadCount: _unreadCount,
-        onScrollToBottom: () {
-          if (_unreadCount > 0) setState(() => _unreadCount = 0);
-          _scrollToBottom(animate: true);
-        },
-        onSend: widget.onSend,
-        inputFocusNode: _inputFocus,
-        scrollController: _scrollController,
-        typingLabel: widget.typingLabel,
-        onTypingChanged: widget.onTypingChanged,
-        onResetSize: widget.onResetSize ?? () {},
-        onResizeStart: _startResize,
-        onResizeUpdate: _updateResize,
-        onResizeEnd: _endResize,
-      );
+    key: _cardKey,
+    width: cardSize.width,
+    height: cardSize.height,
+    onHeaderDragStart: _startHeaderDrag,
+    onHeaderDragUpdate: (delta) {
+      final base = _dragTopLeft;
+      if (base == null) return;
+      setState(() => _dragTopLeft = base + delta);
+    },
+    onHeaderDragEnd: _endHeaderDrag,
+    onCollapse: widget.onToggleCollapsed,
+    messages: widget.messages,
+    myUsername: widget.myUsername,
+    unreadCount: _unreadCount,
+    onScrollToBottom: () {
+      if (_unreadCount > 0) setState(() => _unreadCount = 0);
+      _scrollToBottom(animate: true);
+    },
+    onSend: widget.onSend,
+    inputFocusNode: _inputFocus,
+    scrollController: _scrollController,
+    typingLabel: widget.typingLabel,
+    onTypingChanged: widget.onTypingChanged,
+    onResetSize: widget.onResetSize ?? () {},
+    onResizeStart: _startResize,
+    onResizeUpdate: _updateResize,
+    onResizeEnd: _endResize,
+  );
 
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context).size;
     // Stored px size, clamped to the current viewport (so it never overflows a
     // small window) but otherwise stable when the window is resized/maximized.
-    final cardSize = _dragCardSize ??
+    final cardSize =
+        _dragCardSize ??
         clampCardSize(
           Size(
             widget.widthPx ?? kDefaultCardWidth,
@@ -427,7 +439,8 @@ class _ChatOverlayState extends State<ChatOverlay>
     final topLeft = _dragTopLeft;
     if (topLeft != null) {
       // Dock hints show only during the live drag, not the settling glide.
-      final showHints = !_snapCtrl.isAnimating &&
+      final showHints =
+          !_snapCtrl.isAnimating &&
           _overlaySize != null &&
           _dragCardSize != null;
       return Positioned.fill(
@@ -439,7 +452,11 @@ class _ChatOverlayState extends State<ChatOverlay>
                 cardSize: _dragCardSize!,
                 dragTopLeft: topLeft,
               ),
-            Positioned(left: topLeft.dx, top: topLeft.dy, child: _buildCard(cardSize)),
+            Positioned(
+              left: topLeft.dx,
+              top: topLeft.dy,
+              child: _buildCard(cardSize),
+            ),
           ],
         ),
       );
@@ -451,8 +468,11 @@ class _ChatOverlayState extends State<ChatOverlay>
         ? Align(
             key: const ValueKey<String>('peek'),
             alignment: Alignment.centerRight,
-            child:
-                PeekTab(pulsing: widget.pulsing, unreadCount: _unreadCount, onTap: widget.onToggleCollapsed),
+            child: PeekTab(
+              pulsing: widget.pulsing,
+              unreadCount: _unreadCount,
+              onTap: widget.onToggleCollapsed,
+            ),
           )
         : Align(
             key: const ValueKey<String>('card'),
@@ -596,8 +616,10 @@ class _GlassCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: m.surface,
                 borderRadius: BorderRadius.circular(16),
-                border:
-                    Border.all(color: m.accent.withValues(alpha: 0.80), width: 1.5),
+                border: Border.all(
+                  color: m.accent.withValues(alpha: 0.80),
+                  width: 1.5,
+                ),
               ),
               child: Column(
                 children: [
@@ -615,12 +637,20 @@ class _GlassCard extends StatelessWidget {
                           Tooltip(
                             message: 'Drag to move',
                             waitDuration: _kTooltipWait,
-                            child: Icon(Icons.drag_indicator,
-                                size: 16, color: m.textDim),
+                            child: Icon(
+                              Icons.drag_indicator,
+                              size: 16,
+                              color: m.textDim,
+                            ),
                           ),
                           const Spacer(),
-                          Text('Chat',
-                              style: TextStyle(color: m.textPrimary, fontSize: 13)),
+                          Text(
+                            'Chat',
+                            style: TextStyle(
+                              color: m.textPrimary,
+                              fontSize: 13,
+                            ),
+                          ),
                           const Spacer(),
                           GestureDetector(
                             key: const ValueKey('chat-reset-size'),
@@ -631,9 +661,14 @@ class _GlassCard extends StatelessWidget {
                               waitDuration: _kTooltipWait,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 8),
-                                child: Icon(Icons.crop_free,
-                                    size: 16, color: m.textDim),
+                                  horizontal: 8,
+                                  vertical: 8,
+                                ),
+                                child: Icon(
+                                  Icons.crop_free,
+                                  size: 16,
+                                  color: m.textDim,
+                                ),
                               ),
                             ),
                           ),
@@ -647,9 +682,14 @@ class _GlassCard extends StatelessWidget {
                               waitDuration: _kTooltipWait,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 8),
-                                child: Icon(Icons.chevron_right,
-                                    size: 18, color: m.accent),
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                child: Icon(
+                                  Icons.chevron_right,
+                                  size: 18,
+                                  color: m.accent,
+                                ),
                               ),
                             ),
                           ),
@@ -662,11 +702,16 @@ class _GlassCard extends StatelessWidget {
                         ? Center(
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 24),
+                                horizontal: 16,
+                                vertical: 24,
+                              ),
                               child: Text(
                                 'No messages yet — say hi 🐾',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(color: m.textDim, fontSize: 13),
+                                style: TextStyle(
+                                  color: m.textDim,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
                           )
@@ -674,10 +719,15 @@ class _GlassCard extends StatelessWidget {
                             children: [
                               ListView(
                                 controller: scrollController,
-                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
                                 children: [
                                   for (final msg in messages)
-                                    ChatBubble(message: msg, myUsername: myUsername),
+                                    ChatBubble(
+                                      message: msg,
+                                      myUsername: myUsername,
+                                    ),
                                 ],
                               ),
                               if (unreadCount > 0)
@@ -689,13 +739,20 @@ class _GlassCard extends StatelessWidget {
                                     child: GestureDetector(
                                       onTap: onScrollToBottom,
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: m.accent,
-                                          borderRadius: BorderRadius.circular(16),
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: m.scrim.withValues(alpha: 0.5),
+                                              color: m.scrim.withValues(
+                                                alpha: 0.5,
+                                              ),
                                               blurRadius: 8,
                                               offset: const Offset(0, 4),
                                             ),
@@ -728,11 +785,21 @@ class _GlassCard extends StatelessWidget {
           ),
         ),
         Positioned(left: 0, top: 0, child: _grip(context, ChatCorner.topLeft)),
-        Positioned(right: 0, top: 0, child: _grip(context, ChatCorner.topRight)),
         Positioned(
-            left: 0, bottom: 0, child: _grip(context, ChatCorner.bottomLeft)),
+          right: 0,
+          top: 0,
+          child: _grip(context, ChatCorner.topRight),
+        ),
         Positioned(
-            right: 0, bottom: 0, child: _grip(context, ChatCorner.bottomRight)),
+          left: 0,
+          bottom: 0,
+          child: _grip(context, ChatCorner.bottomLeft),
+        ),
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: _grip(context, ChatCorner.bottomRight),
+        ),
       ],
     );
   }
@@ -835,15 +902,20 @@ class _DropZoneHints extends StatelessWidget {
     final midX = (left + right) / 2;
     final midY = (top + bottom) / 2;
 
-    Widget zone(double l, double t, double r, double b, IconData icon,
-            bool active) =>
-        Positioned(
-          left: l,
-          top: t,
-          width: (r - l).clamp(0, w),
-          height: (b - t).clamp(0, h),
-          child: _HintZone(icon: icon, active: active),
-        );
+    Widget zone(
+      double l,
+      double t,
+      double r,
+      double b,
+      IconData icon,
+      bool active,
+    ) => Positioned(
+      left: l,
+      top: t,
+      width: (r - l).clamp(0, w),
+      height: (b - t).clamp(0, h),
+      child: _HintZone(icon: icon, active: active),
+    );
 
     return Positioned.fill(
       child: IgnorePointer(
@@ -859,17 +931,47 @@ class _DropZoneHints extends StatelessWidget {
           ),
           child: Stack(
             children: [
-              zone(left, top, midX - gap / 2, midY - gap / 2, Icons.north_west,
-                  corner == ChatCorner.topLeft),
-              zone(midX + gap / 2, top, right, midY - gap / 2, Icons.north_east,
-                  corner == ChatCorner.topRight),
-              zone(left, midY + gap / 2, midX - gap / 2, bottom,
-                  Icons.south_west, corner == ChatCorner.bottomLeft),
-              zone(midX + gap / 2, midY + gap / 2, right, bottom,
-                  Icons.south_east, corner == ChatCorner.bottomRight),
+              zone(
+                left,
+                top,
+                midX - gap / 2,
+                midY - gap / 2,
+                Icons.north_west,
+                corner == ChatCorner.topLeft,
+              ),
+              zone(
+                midX + gap / 2,
+                top,
+                right,
+                midY - gap / 2,
+                Icons.north_east,
+                corner == ChatCorner.topRight,
+              ),
+              zone(
+                left,
+                midY + gap / 2,
+                midX - gap / 2,
+                bottom,
+                Icons.south_west,
+                corner == ChatCorner.bottomLeft,
+              ),
+              zone(
+                midX + gap / 2,
+                midY + gap / 2,
+                right,
+                bottom,
+                Icons.south_east,
+                corner == ChatCorner.bottomRight,
+              ),
               // Slim, tall collapse bar hugging the right edge.
-              zone(w - barW, top, w - 8, bottom, Icons.chevron_right,
-                  snap.collapsed),
+              zone(
+                w - barW,
+                top,
+                w - 8,
+                bottom,
+                Icons.chevron_right,
+                snap.collapsed,
+              ),
             ],
           ),
         ),
