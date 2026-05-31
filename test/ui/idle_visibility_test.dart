@@ -71,6 +71,18 @@ void main() {
       );
     });
 
+    test('collapsed tab stays fully hidden in deep idle too (#34)', () {
+      expect(
+        chatOverlayOpacity(
+          idle: true,
+          collapsed: true,
+          autoDim: true,
+          deepIdle: true,
+        ),
+        0.0,
+      );
+    });
+
     test('deep idle still respects auto-dim off (chat stays visible)', () {
       expect(
         chatOverlayOpacity(

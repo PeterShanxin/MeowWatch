@@ -30,6 +30,15 @@ void main() {
     expect(events.single.position, const Duration(seconds: 30));
   });
 
+  test('local resume (play) is announced as played', () async {
+    client.debugMarkLoggedIn('me');
+    client.updateLocalState(position: const Duration(seconds: 30), paused: true);
+    client.updateLocalState(position: const Duration(seconds: 30), paused: false);
+    client.notifyLocalChange(doSeek: false);
+    await Future<void>.delayed(Duration.zero);
+    expect(events.single.kind, SyncActivityKind.played);
+  });
+
   test('local forward seek is announced at the landing position', () async {
     client.debugMarkLoggedIn('me');
     client.updateLocalState(position: const Duration(seconds: 10), paused: false);
@@ -38,6 +47,35 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(events.single.kind, SyncActivityKind.seekedForward);
     expect(events.single.position, const Duration(seconds: 90));
+  });
+
+  test('local backward seek is announced as seekedBack', () async {
+    client.debugMarkLoggedIn('me');
+    client.updateLocalState(position: const Duration(seconds: 90), paused: false);
+    client.updateLocalState(position: const Duration(seconds: 10), paused: false);
+    client.notifyLocalChange(doSeek: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(events.single.kind, SyncActivityKind.seekedBack);
+    expect(events.single.position, const Duration(seconds: 10));
+  });
+
+  test('a zero-delta seek resolves to seekedForward (non-negative delta)',
+      () async {
+    client.debugMarkLoggedIn('me');
+    client.updateLocalState(position: const Duration(seconds: 50), paused: false);
+    client.updateLocalState(position: const Duration(seconds: 50), paused: false);
+    client.notifyLocalChange(doSeek: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(events.single.kind, SyncActivityKind.seekedForward);
+  });
+
+  test('nothing announced for a logged-in but empty username', () async {
+    client.debugMarkLoggedIn('');
+    client.updateLocalState(position: const Duration(seconds: 30), paused: false);
+    client.updateLocalState(position: const Duration(seconds: 30), paused: true);
+    client.notifyLocalChange(doSeek: false);
+    await Future<void>.delayed(Duration.zero);
+    expect(events, isEmpty);
   });
 
   test('nothing announced before login (no username to attribute)', () async {

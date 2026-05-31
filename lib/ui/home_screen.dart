@@ -623,6 +623,12 @@ class _HomeScreenState extends State<HomeScreen> {
             builder: (context, snapshot) {
               final state = snapshot.data!;
               final hint = _banner;
+              final chatOpacity = chatOverlayOpacity(
+                idle: _isUiIdle,
+                deepIdle: _isUiDeepIdle,
+                collapsed: _chatLayout.collapsed,
+                autoDim: _chatAutoDim,
+              );
               return Stack(
                 fit: StackFit.expand,
                 children: [
@@ -654,14 +660,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       alignment: const Alignment(0, -0.8),
                       child: _SyncHintBanner(text: hint),
                     ),
-                  Builder(builder: (context) {
-                    final chatOpacity = chatOverlayOpacity(
-                      idle: _isUiIdle,
-                      deepIdle: _isUiDeepIdle,
-                      collapsed: _chatLayout.collapsed,
-                      autoDim: _chatAutoDim,
-                    );
-                    return AnimatedOpacity(
+                  AnimatedOpacity(
                     opacity: chatOpacity,
                     duration: const Duration(milliseconds: 200),
                     child: IgnorePointer(
@@ -703,8 +702,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                       ),
                     ),
-                    );
-                  }),
+                  ),
                   Positioned(
                     top: 12,
                     left: 12,
