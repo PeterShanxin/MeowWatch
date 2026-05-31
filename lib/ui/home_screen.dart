@@ -26,6 +26,7 @@ import 'chat/chat_overlay.dart';
 import 'chat/chat_overlay_layout.dart';
 import 'drop_target.dart';
 import 'empty_state.dart';
+import 'idle_visibility.dart';
 import 'player_menu_button.dart';
 import 'reactions/floating_reactions.dart';
 import 'reactions/reaction_bar.dart';
@@ -620,15 +621,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       alignment: const Alignment(0, -0.8),
                       child: _SyncHintBanner(text: hint),
                     ),
-                  if (hint != null)
-                    Align(
-                      alignment: const Alignment(0, -0.8),
-                      child: _SyncHintBanner(text: hint),
-                    ),
                   AnimatedOpacity(
-                    opacity: _isUiIdle
-                        ? (_chatLayout.collapsed ? 0.0 : (_chatAutoDim ? 0.1 : 1.0))
-                        : 1.0,
+                    opacity: chatOverlayOpacity(
+                      idle: _isUiIdle,
+                      collapsed: _chatLayout.collapsed,
+                      autoDim: _chatAutoDim,
+                    ),
                     duration: const Duration(milliseconds: 200),
                     child: IgnorePointer(
                       ignoring: _isUiIdle && _chatLayout.collapsed,
@@ -702,7 +700,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       right: 16,
                       bottom: 84,
                       child: AnimatedOpacity(
-                        opacity: _isUiIdle ? 0.0 : 1.0,
+                        opacity: overlayOpacity(idle: _isUiIdle),
                         duration: const Duration(milliseconds: 200),
                         child: IgnorePointer(
                           ignoring: _isUiIdle,
