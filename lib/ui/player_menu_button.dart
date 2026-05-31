@@ -19,6 +19,8 @@ class PlayerMenuButton extends StatelessWidget {
     required this.onThemeChanged,
     required this.onLoadVideo,
     required this.onLeave,
+    required this.chatAutoDim,
+    required this.onChatAutoDimChanged,
     super.key,
   });
 
@@ -31,6 +33,8 @@ class PlayerMenuButton extends StatelessWidget {
   final ValueChanged<MeowThemeId> onThemeChanged;
   final VoidCallback onLoadVideo;
   final VoidCallback onLeave;
+  final bool chatAutoDim;
+  final ValueChanged<bool> onChatAutoDimChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -114,6 +118,13 @@ class PlayerMenuButton extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Divider(color: m.border, height: 16),
+              label('Settings'),
+              _MenuSwitch(
+                text: 'Dim chat when idle',
+                value: chatAutoDim,
+                onChanged: onChatAutoDimChanged,
+              ),
+              Divider(color: m.border, height: 16),
               _MenuAction(
                 key: const Key('player-menu-leave'),
                 icon: Icons.arrow_back,
@@ -163,6 +174,43 @@ class _MenuAction extends StatelessWidget {
             Icon(icon, size: 20, color: m.textPrimary),
             const SizedBox(width: 12),
             Text(text, style: TextStyle(color: m.textPrimary, fontSize: 15)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A tappable row with a toggle switch for menu settings.
+class _MenuSwitch extends StatelessWidget {
+  const _MenuSwitch({
+    required this.text,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String text;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(child: Text(text, style: TextStyle(color: m.textPrimary, fontSize: 15))),
+            Switch(
+              value: value,
+              onChanged: onChanged,
+              activeTrackColor: m.accent.withValues(alpha: 0.5),
+              activeThumbColor: m.accent,
+            ),
           ],
         ),
       ),

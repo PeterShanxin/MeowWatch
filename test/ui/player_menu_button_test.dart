@@ -15,6 +15,8 @@ PlayerMenuButton _button({
   VoidCallback? onLoadVideo,
   VoidCallback? onLeave,
   List<String>? members,
+  bool chatAutoDim = true,
+  ValueChanged<bool>? onChatAutoDimChanged,
 }) =>
     PlayerMenuButton(
       roomCode: 'MEOW42',
@@ -24,6 +26,8 @@ PlayerMenuButton _button({
       onThemeChanged: onThemeChanged ?? (_) {},
       onLoadVideo: onLoadVideo ?? () {},
       onLeave: onLeave ?? () {},
+      chatAutoDim: chatAutoDim,
+      onChatAutoDimChanged: onChatAutoDimChanged ?? (_) {},
     );
 
 void main() {
@@ -103,5 +107,21 @@ void main() {
     // Confirmation goes to a SnackBar; the row itself shows no "Copied!" text.
     expect(find.text('Copied!'), findsNothing);
     expect(find.textContaining('copied'), findsOneWidget);
+  });
+
+  testWidgets('tapping "Dim chat when idle" toggles onChatAutoDimChanged',
+      (tester) async {
+    bool? changed;
+    await tester.pumpWidget(_host(_button(
+      chatAutoDim: true,
+      onChatAutoDimChanged: (v) => changed = v,
+    )));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dim chat when idle'), findsOneWidget);
+    // Tapping the row flips the current (true) value to false.
+    await tester.tap(find.text('Dim chat when idle'));
+    expect(changed, isFalse);
   });
 }
