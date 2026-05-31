@@ -31,6 +31,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
   double _downloadProgress = 0;
   String? _downloadedZipPath;
   String _errorMessage = '';
+  List<ChangelogEntry> _changelog = const [];
 
   @override
   void initState() {
@@ -52,7 +53,12 @@ class _UpdateDialogState extends State<UpdateDialog> {
       case UpdateStatus.upToDate:
         setState(() => _phase = _UpdatePhase.upToDate);
       case UpdateStatus.updateAvailable:
-        setState(() => _phase = _UpdatePhase.updateAvailable);
+        final changelog = await _service.fetchChangelog();
+        if (!mounted) return;
+        setState(() {
+          _changelog = changelog;
+          _phase = _UpdatePhase.updateAvailable;
+        });
       case UpdateStatus.checkFailed:
         setState(() {
           _phase = _UpdatePhase.error;
@@ -186,7 +192,50 @@ class _UpdateDialogState extends State<UpdateDialog> {
               text: 'New version available: v${info.version}',
               m: m,
             ),
-            if (info.releaseNotes.isNotEmpty) ...[
+            if (_changelog.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxHeight: 220),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: (m.background as Color).withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: (m.border as Color).withValues(alpha: 0.5)),
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _changelog.length,
+                  separatorBuilder: (_, _) => Divider(
+                    height: 16,
+                    color: (m.border as Color).withValues(alpha: 0.4),
+                  ),
+                  itemBuilder: (context, i) {
+                    final e = _changelog[i];
+                    final header =
+                        e.date.isEmpty ? 'v${e.version}' : 'v${e.version} · ${e.date}';
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          header,
+                          style: TextStyle(
+                            color: m.textPrimary as Color,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          e.notes,
+                          style: TextStyle(color: m.textDim as Color, fontSize: 12),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ] else if (info.releaseNotes.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,

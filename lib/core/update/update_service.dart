@@ -24,6 +24,19 @@ class UpdateInfo {
   final String releaseDate;
 }
 
+/// One version's changelog entry, as published in `releases/changelog.json`.
+class ChangelogEntry {
+  const ChangelogEntry({
+    required this.version,
+    required this.date,
+    required this.notes,
+  });
+
+  final String version;
+  final String date;
+  final String notes;
+}
+
 /// Result of comparing local version to remote.
 enum UpdateStatus { upToDate, updateAvailable, checkFailed }
 
@@ -35,10 +48,12 @@ enum UpdateStatus { upToDate, updateAvailable, checkFailed }
 ///   3. `downloadUpdate()` → stream zip to temp dir with progress callback
 ///   4. `applyUpdate()` → extract zip, write updater.ps1, launch it, exit app
 class UpdateService {
-  UpdateService({String? baseUrl}) : _baseUrl = baseUrl ?? updateBaseUrl;
+  UpdateService({String? baseUrl, http.Client? client})
+      : _baseUrl = baseUrl ?? updateBaseUrl,
+        _client = client ?? http.Client();
 
   final String _baseUrl;
-  final http.Client _client = http.Client();
+  final http.Client _client;
 
   UpdateInfo? _latestUpdate;
 
@@ -83,6 +98,44 @@ class UpdateService {
       return UpdateStatus.upToDate;
     } on Exception {
       return UpdateStatus.checkFailed;
+    }
+  }
+
+  /// Fetch the multi-version changelog and return only the entries newer than
+  /// the installed [appVersion], newest first. Returns an empty list on any
+  /// failure (missing file, network error, malformed JSON) so callers can fall
+  /// back to the single-release note.
+  Future<List<ChangelogEntry>> fetchChangelog() async {
+    try {
+      final uri = Uri.parse('$_baseUrl/releases/changelog.json');
+      final response =
+          await _client.get(uri).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return const [];
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) return const [];
+
+      final entries = <ChangelogEntry>[];
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        // Read fields defensively: a wrong-shaped payload (numeric `date`,
+        // missing `version`, etc.) is skipped, never thrown.
+        final version = item['version'];
+        if (version is! String) continue;
+        if (!_isNewer(version, appVersion)) continue;
+        final date = item['date'];
+        final notes = item['notes'];
+        entries.add(ChangelogEntry(
+          version: version,
+          date: date is String ? date : '',
+          notes: notes is String ? notes : '',
+        ));
+      }
+      return entries;
+    } catch (_) {
+      // Any failure (network, malformed JSON, unexpected shape) → empty list so
+      // the dialog falls back to the single-release note.
+      return const [];
     }
   }
 

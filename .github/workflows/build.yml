@@ -128,3 +128,31 @@ jobs:
           }
           EOF
           rclone copyto latest.json r2:${{ secrets.R2_BUCKET_NAME }}/releases/latest.json
+
+      - name: Publish changelog to R2
+        run: |
+          python3 - <<'PY'
+          import json, re, pathlib
+          path = pathlib.Path('CHANGELOG.md')
+          text = path.read_text(encoding='utf-8') if path.exists() else ''
+          header = re.compile(r'^## \[(?P<v>[^\]]+)\]\s*-\s*(?P<d>.+)$')
+          entries = []
+          cur = None
+          for line in text.splitlines():
+              mobj = header.match(line.strip())
+              if mobj:
+                  if cur:
+                      entries.append(cur)
+                  cur = {'version': mobj.group('v').strip(),
+                         'date': mobj.group('d').strip(), 'notes': ''}
+              elif cur is not None:
+                  cur['notes'] += line + '\n'
+          if cur:
+              entries.append(cur)
+          for e in entries:
+              e['notes'] = e['notes'].strip()
+          pathlib.Path('changelog.json').write_text(
+              json.dumps(entries, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(f'{len(entries)} changelog entries')
+          PY
+          rclone copyto changelog.json r2:${{ secrets.R2_BUCKET_NAME }}/releases/changelog.json
