@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'peer_state.dart';
 import 'ping_service.dart';
+import 'sync_activity.dart';
 import 'sync_core.dart';
 import 'sync_follow.dart';
 import 'sync_messages.dart';
@@ -259,6 +260,15 @@ class SyncplayClient extends SyncCore {
           'local(pos=${_localPosition.inMilliseconds / 1000}s paused=$_localPaused) '
           '=> apply=${action.shouldApply}');
       if (action.shouldApply) {
+        // Surface this as a notification BEFORE we overwrite our local snapshot
+        // below — the classifier compares the peer's target to where we were.
+        final activity = classifySyncActivity(
+          global: global,
+          localPaused: _localPaused,
+          localPosition: _localPosition,
+        );
+        if (activity != null) emitActivity(activity);
+
         // Adopt the applied state into our local cache immediately. The video
         // applies it asynchronously, so without this the very next heartbeat
         // would report the STALE pre-apply state (e.g. pos=0 paused=true) and
