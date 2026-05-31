@@ -9,7 +9,11 @@ import '../core/update/update_service.dart';
 /// States: idle → checking → up-to-date / update-available →
 ///         downloading (progress) → ready-to-install → error
 class UpdateDialog extends StatefulWidget {
-  const UpdateDialog({super.key});
+  const UpdateDialog({super.key, this.service});
+
+  /// Injectable update service; defaults to a real [UpdateService]. Tests pass
+  /// one backed by a mock HTTP client.
+  final UpdateService? service;
 
   @override
   State<UpdateDialog> createState() => _UpdateDialogState();
@@ -26,7 +30,7 @@ enum _UpdatePhase {
 }
 
 class _UpdateDialogState extends State<UpdateDialog> {
-  final UpdateService _service = UpdateService();
+  late final UpdateService _service = widget.service ?? UpdateService();
   _UpdatePhase _phase = _UpdatePhase.idle;
   double _downloadProgress = 0;
   String? _downloadedZipPath;
@@ -51,7 +55,15 @@ class _UpdateDialogState extends State<UpdateDialog> {
     if (!mounted) return;
     switch (status) {
       case UpdateStatus.upToDate:
-        setState(() => _phase = _UpdatePhase.upToDate);
+        // Still fetch the changelog so the user can read what shipped in recent
+        // versions even when there's nothing new to install. onlyNewer: false
+        // includes the current version (nothing is "newer" when up to date).
+        final changelog = await _service.fetchChangelog(onlyNewer: false);
+        if (!mounted) return;
+        setState(() {
+          _changelog = changelog;
+          _phase = _UpdatePhase.upToDate;
+        });
       case UpdateStatus.updateAvailable:
         final changelog = await _service.fetchChangelog();
         if (!mounted) return;
@@ -171,14 +183,34 @@ class _UpdateDialogState extends State<UpdateDialog> {
         );
 
       case _UpdatePhase.upToDate:
-        return _statusRow(
-          icon: Icon(Icons.check_circle, color: m.online as Color, size: 20),
-          text: 'You\'re up to date!',
-          m: m,
-          trailing: TextButton(
-            onPressed: _checkForUpdate,
-            child: Text('Check again', style: TextStyle(color: m.accent as Color)),
-          ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _statusRow(
+              icon: Icon(Icons.check_circle, color: m.online as Color, size: 20),
+              text: 'You\'re up to date!',
+              m: m,
+              trailing: TextButton(
+                onPressed: _checkForUpdate,
+                child:
+                    Text('Check again', style: TextStyle(color: m.accent as Color)),
+              ),
+            ),
+            if (_changelog.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(
+                "What's new",
+                style: TextStyle(
+                  color: m.textDim as Color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _changelogPanel(m),
+            ],
+          ],
         );
 
       case _UpdatePhase.updateAvailable:
@@ -194,47 +226,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
             ),
             if (_changelog.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                constraints: const BoxConstraints(maxHeight: 220),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: (m.background as Color).withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: (m.border as Color).withValues(alpha: 0.5)),
-                ),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: _changelog.length,
-                  separatorBuilder: (_, _) => Divider(
-                    height: 16,
-                    color: (m.border as Color).withValues(alpha: 0.4),
-                  ),
-                  itemBuilder: (context, i) {
-                    final e = _changelog[i];
-                    final header =
-                        e.date.isEmpty ? 'v${e.version}' : 'v${e.version} · ${e.date}';
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          header,
-                          style: TextStyle(
-                            color: m.textPrimary as Color,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          e.notes,
-                          style: TextStyle(color: m.textDim as Color, fontSize: 12),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
+              _changelogPanel(m),
             ] else if (info.releaseNotes.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
@@ -348,6 +340,52 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ],
         );
     }
+  }
+
+  /// Scrollable list of changelog entries (newest first). Shared by the
+  /// update-available and up-to-date phases.
+  Widget _changelogPanel(dynamic m) {
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 220),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: (m.background as Color).withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: (m.border as Color).withValues(alpha: 0.5)),
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        itemCount: _changelog.length,
+        separatorBuilder: (_, _) => Divider(
+          height: 16,
+          color: (m.border as Color).withValues(alpha: 0.4),
+        ),
+        itemBuilder: (context, i) {
+          final e = _changelog[i];
+          final header =
+              e.date.isEmpty ? 'v${e.version}' : 'v${e.version} · ${e.date}';
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                header,
+                style: TextStyle(
+                  color: m.textPrimary as Color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                e.notes,
+                style: TextStyle(color: m.textDim as Color, fontSize: 12),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Widget _statusRow({

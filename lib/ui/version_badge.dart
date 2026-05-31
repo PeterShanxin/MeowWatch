@@ -14,7 +14,7 @@ class VersionBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return Tooltip(
-      message: 'Check for updates',
+      message: "Updates & what's new",
       child: Material(
         color: Colors.transparent,
         child: InkWell(
