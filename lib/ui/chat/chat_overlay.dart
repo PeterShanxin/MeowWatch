@@ -134,21 +134,43 @@ class _ChatOverlayState extends State<ChatOverlay>
     }
   }
 
-  // Scroll the message list to the newest message after the next frame, once
-  // the list has laid out (so maxScrollExtent is known). No-ops when the list
-  // isn't mounted (e.g. the card is collapsed).
+  // Scroll the message list to the newest message. A live new-message scroll
+  // (animate) runs once — the list is already laid out, so maxScrollExtent is
+  // known on the next frame. A reopen jump re-pins across frames; see
+  // [_jumpToBottom].
   void _scrollToBottom({required bool animate}) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      final target = _scrollController.position.maxScrollExtent;
-      if (animate) {
+    if (animate) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
         _scrollController.animateTo(
-          target,
+          _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
         );
-      } else {
-        _scrollController.jumpTo(target);
+      });
+      return;
+    }
+    _jumpToBottom(8, null);
+  }
+
+  // Reopen pins the list hard to the bottom. The list is freshly mounted inside
+  // the AnimatedSwitcher, so the first post-frame often reports
+  // hasClients=false, or maxScrollExtent=0 because the bubbles haven't laid out
+  // yet — a one-shot jump then lands at the top (the bug in #17). So we re-pin
+  // across several frames: each pass jumps to the *current* extent and the
+  // final pass lands correctly once layout settles. We stop early once the
+  // extent stops changing (settled) or the frame budget runs out.
+  void _jumpToBottom(int remaining, double? lastExtent) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_scrollController.hasClients) {
+        if (remaining > 0) _jumpToBottom(remaining - 1, lastExtent);
+        return;
+      }
+      final extent = _scrollController.position.maxScrollExtent;
+      if (_scrollController.offset != extent) _scrollController.jumpTo(extent);
+      if (extent != lastExtent && remaining > 0) {
+        _jumpToBottom(remaining - 1, extent);
       }
     });
   }
@@ -620,21 +642,7 @@ class _GlassCard extends StatelessWidget {
                             ],
                           ),
                   ),
-                  if (typingLabel != null)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
-                        child: Text(
-                          typingLabel!,
-                          style: TextStyle(
-                            color: m.textDim,
-                            fontSize: 12,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
-                    ),
+                  _TypingStrip(label: typingLabel),
                   ChatInput(
                     onSend: onSend,
                     focusNode: inputFocusNode,
@@ -652,6 +660,65 @@ class _GlassCard extends StatelessWidget {
         Positioned(
             right: 0, bottom: 0, child: _grip(context, ChatCorner.bottomRight)),
       ],
+    );
+  }
+}
+
+/// Fixed-height slot for the "… is typing" line. Always occupies the same
+/// vertical space whether or not anyone is typing, so toggling the indicator
+/// never resizes the message list above it. Previously the line was inserted/
+/// removed from the Column, which shrank the list and jolted the newest bubble
+/// out of view (the #20 jitter). The label fades in/out, and the last text is
+/// held during fade-out so the words dissolve instead of vanishing instantly.
+class _TypingStrip extends StatefulWidget {
+  const _TypingStrip({required this.label});
+
+  final String? label;
+
+  @override
+  State<_TypingStrip> createState() => _TypingStripState();
+}
+
+class _TypingStripState extends State<_TypingStrip> {
+  // Held so fade-out animates the actual words rather than blanking instantly.
+  String _shown = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _shown = widget.label ?? '';
+  }
+
+  @override
+  void didUpdateWidget(_TypingStrip old) {
+    super.didUpdateWidget(old);
+    final label = widget.label;
+    if (label != null && label != _shown) setState(() => _shown = label);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return SizedBox(
+      height: 20,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: AnimatedOpacity(
+          opacity: widget.label == null ? 0 : 1,
+          duration: const Duration(milliseconds: 150),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+            child: Text(
+              _shown,
+              style: TextStyle(
+                color: m.textDim,
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

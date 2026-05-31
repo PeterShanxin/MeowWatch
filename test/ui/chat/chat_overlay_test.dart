@@ -219,5 +219,41 @@ void main() {
     await tester.pumpWidget(overlay(collapsed: false, count: 40));
     await tester.pumpAndSettle();
     expect(find.text('msg-39'), findsOneWidget);
+
+    // Pinned hard to the bottom: offset sits exactly at maxScrollExtent, not a
+    // stale near-bottom position left by a single frame-racing jump.
+    final list = tester.widget<ListView>(find.byType(ListView));
+    final controller = list.controller!;
+    expect(controller.offset, controller.position.maxScrollExtent);
+  });
+
+  testWidgets('typing indicator toggling does not resize the message list',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    Widget overlay(String? typingLabel) => host(ChatOverlay(
+          messages: manyMessages(40),
+          myUsername: 'me',
+          collapsed: false,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+          typingLabel: typingLabel,
+        ));
+
+    // Nobody typing: measure the list viewport height.
+    await tester.pumpWidget(overlay(null));
+    await tester.pumpAndSettle();
+    final heightIdle = tester.getSize(find.byType(ListView)).height;
+
+    // A peer starts typing — the reserved strip means the list keeps its height
+    // (no shrink that would yank the newest bubble out of view).
+    await tester.pumpWidget(overlay('lin is typing…'));
+    await tester.pumpAndSettle();
+    final heightTyping = tester.getSize(find.byType(ListView)).height;
+
+    expect(heightTyping, heightIdle);
   });
 }
