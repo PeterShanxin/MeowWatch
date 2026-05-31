@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.7.0-alpha] - 2026-05-31
+- MeowWatch now checks for updates on its own when you open it. If a newer version is out, the version chip in the bottom-right corner gets a little amber dot and a "New version available!" message pops up with an Update button — tap it to open the updater. No more remembering to check by hand. The check runs quietly once per launch and never gets in your way.
+
 ## [0.6.0-alpha] - 2026-05-31
 - The player now gets out of your way while you watch. After a few seconds of no mouse or keyboard activity during playback, the controls, the top-left gear, and the emoji reaction bar fade away, and the chat card dims down — so nothing covers the video. Everything snaps back the instant you move the mouse, scroll, tap, or press a key (or whenever playback pauses).
 - New "Dim chat when idle" toggle in the gear menu: leave it on to fade the open chat to a faint ghost while idle, or turn it off to keep chat fully visible. Your choice is remembered.

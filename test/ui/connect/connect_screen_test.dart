@@ -9,6 +9,7 @@ import 'package:meowwatch/core/data/stores.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/connect/connect_screen.dart';
+import 'package:meowwatch/ui/version_badge.dart';
 
 class _FakeProfileStore implements ProfileStore {
   final _ctrl = StreamController<List<SavedProfile>>.broadcast();
@@ -109,6 +110,9 @@ void main() {
   setUp(() {
     profiles = _FakeProfileStore();
     history = _FakeHistoryStore();
+    // ConnectScreen embeds a VersionBadge whose silent update check uses
+    // process-wide statics; reset so these tests stay order-independent.
+    VersionBadge.resetForTest();
   });
 
   testWidgets('renders a saved profile card', (tester) async {
