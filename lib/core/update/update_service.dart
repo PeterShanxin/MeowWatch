@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
@@ -40,13 +41,34 @@ class ChangelogEntry {
 /// Result of comparing local version to remote.
 enum UpdateStatus { upToDate, updateAvailable, checkFailed }
 
+/// Thrown when a downloaded update's SHA-256 does not match the hash published
+/// in `latest.json`. Signals a corrupted or tampered download — the update is
+/// aborted before any files are extracted or executed.
+class UpdateVerificationException implements Exception {
+  const UpdateVerificationException({
+    required this.expected,
+    required this.actual,
+  });
+
+  /// The hex digest published alongside the asset.
+  final String expected;
+
+  /// The hex digest computed from the bytes that actually arrived.
+  final String actual;
+
+  @override
+  String toString() =>
+      'Update checksum mismatch: expected $expected, got $actual';
+}
+
 /// Checks for updates from the R2 release bucket, downloads, and applies them.
 ///
 /// Flow:
 ///   1. `checkForUpdate()` → GET `{baseUrl}/releases/latest.json`
 ///   2. Compare remote version to [appVersion]
 ///   3. `downloadUpdate()` → stream zip to temp dir with progress callback
-///   4. `applyUpdate()` → extract zip, write updater.ps1, launch it, exit app
+///   4. `applyUpdate()` → verify SHA-256, extract zip, write updater.ps1,
+///      launch it, exit app
 class UpdateService {
   UpdateService({String? baseUrl, http.Client? client})
       : _baseUrl = baseUrl ?? updateBaseUrl,
@@ -176,6 +198,12 @@ class UpdateService {
   /// over the existing installation, restarts the app, and cleans up temp files.
   Future<void> applyUpdate(String zipPath) async {
     final zipBytes = await File(zipPath).readAsBytes();
+
+    // Integrity gate: confirm the bytes match the hash published in
+    // latest.json before we extract or run anything. A mismatch means the
+    // download was corrupted or tampered with — abort instead of installing.
+    verifyChecksum(zipBytes, _latestUpdate?.sha256);
+
     final archive = ZipDecoder().decodeBytes(zipBytes);
 
     final tempDir = Directory(p.dirname(zipPath));
@@ -214,6 +242,20 @@ class UpdateService {
     );
 
     exit(0);
+  }
+
+  /// Verify [bytes] against the [expected] SHA-256 hex digest.
+  ///
+  /// No-op when [expected] is null or empty — older releases may not publish a
+  /// hash, and we can only verify against what was provided. When a hash *is*
+  /// present, a mismatch throws [UpdateVerificationException]. The comparison
+  /// is case-insensitive, since hex digests may be published in either case.
+  void verifyChecksum(List<int> bytes, String? expected) {
+    if (expected == null || expected.isEmpty) return;
+    final actual = sha256.convert(bytes).toString();
+    if (actual.toLowerCase() != expected.toLowerCase()) {
+      throw UpdateVerificationException(expected: expected, actual: actual);
+    }
   }
 
   /// Determine the Windows CPU architecture for asset selection.
