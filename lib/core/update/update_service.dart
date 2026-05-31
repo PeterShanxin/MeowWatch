@@ -236,10 +236,17 @@ class UpdateService {
 
     await File(scriptPath).writeAsString(script);
 
-    // Launch the PowerShell script detached, then exit.
+    // Launch the updater so it OUTLIVES this process. A directly-spawned
+    // detached child stays inside our Windows job object, so the instant we
+    // exit(0) the job's kill-on-close terminates the updater before it runs a
+    // single line — this was the silent auto-update failure (app closed,
+    // nothing happened, version unchanged, no updater.log written). Routing
+    // through cmd's `start` re-parents PowerShell outside our process tree so
+    // it survives our exit. See [buildUpdaterLaunch].
+    final launch = buildUpdaterLaunch(scriptPath: scriptPath);
     await Process.start(
-      'powershell',
-      ['-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+      launch.executable,
+      launch.arguments,
       mode: ProcessStartMode.detached,
     );
 
@@ -309,6 +316,40 @@ class UpdateService {
   void dispose() {
     _client.close();
   }
+}
+
+/// Build the command that launches the updater script so it survives this
+/// process exiting.
+///
+/// MUST route through `cmd /c start` rather than spawning `powershell`
+/// directly: on Windows the app runs inside a job object, and a detached child
+/// we spawn ourselves stays *in that job*. When we `exit(0)`, the job's
+/// kill-on-close tears the child down before it executes a line — which is
+/// exactly why auto-update appeared to do nothing (the app closed, the version
+/// never changed, and no `updater.log` was ever written). `start` re-parents
+/// PowerShell outside our process tree so it outlives us.
+///
+/// The empty `''` is `start`'s window-title argument — required, or `start`
+/// would mis-read a quoted path as the title. `-WindowStyle Hidden` keeps the
+/// updater console from flashing on screen during the swap.
+({String executable, List<String> arguments}) buildUpdaterLaunch({
+  required String scriptPath,
+}) {
+  return (
+    executable: 'cmd',
+    arguments: [
+      '/c',
+      'start',
+      '',
+      'powershell',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-WindowStyle',
+      'Hidden',
+      '-File',
+      scriptPath,
+    ],
+  );
 }
 
 /// Build the PowerShell script that swaps the new files over the install and
