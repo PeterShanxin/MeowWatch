@@ -27,6 +27,7 @@ import 'empty_state.dart';
 import 'player_menu_button.dart';
 import 'reactions/floating_reactions.dart';
 import 'reactions/reaction_bar.dart';
+import 'sync_activity_text.dart';
 import 'video_surface.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -66,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<PresenceEvent>? _presenceSub;
   StreamSubscription<PlaybackState>? _noticeSub;
   StreamSubscription<PeerFile>? _peerFileSub;
+  StreamSubscription<SyncActivity>? _activitySub;
 
   /// Most recent file a peer announced, and our own loaded file's byte size —
   /// together they drive the file-mismatch warning. MeowWatch is a two-person
@@ -169,13 +171,13 @@ class _HomeScreenState extends State<HomeScreen> {
           // Roster entries (people already here when we arrived) update
           // membership silently; only a live join gets a banner + event line.
           if (isNew && !e.fromRoster) {
-            _showPresenceNotice('🐾 ${e.username} joined');
+            _showTransientNotice('🐾 ${e.username} joined');
             _chat.addSystem('${e.username} joined the room');
           }
         } else {
           _peers.remove(e.username);
           if (_peerFile?.username == e.username) _peerFile = null;
-          _showPresenceNotice('👋 ${e.username} left');
+          _showTransientNotice('👋 ${e.username} left');
           _chat.addSystem('${e.username} left the room');
         }
         _evaluateSyncHealth();
@@ -183,6 +185,12 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     _peerFileSub = _sync.peerFile.listen((f) {
       if (mounted) setState(() => _peerFile = f);
+    });
+    _activitySub = _sync.activity.listen((a) {
+      if (!mounted) return;
+      final t = syncActivityText(a);
+      setState(() => _showTransientNotice(t.banner));
+      _chat.addSystem(t.chatLine);
     });
     // Clear the auto-pause banner once the user manually resumes playback.
     _noticeSub = _core.stateStream.listen((s) {
@@ -226,6 +234,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_presenceSub?.cancel());
     unawaited(_noticeSub?.cancel());
     unawaited(_peerFileSub?.cancel());
+    unawaited(_activitySub?.cancel());
     _presenceTimer?.cancel();
     _autoPauseTimer?.cancel();
     unawaited(_bridge.dispose());
@@ -299,9 +308,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// Show a transient banner (e.g. "X joined"); auto-clears after a few
-  /// seconds. Call inside setState.
-  void _showPresenceNotice(String text) {
+  /// Show a transient banner (friend joined/left, or a sync action); auto-clears
+  /// after a few seconds. Call inside setState.
+  void _showTransientNotice(String text) {
     _presenceNotice = text;
     _presenceTimer?.cancel();
     _presenceTimer = Timer(const Duration(seconds: 3), () {
