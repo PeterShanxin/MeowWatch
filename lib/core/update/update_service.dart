@@ -112,21 +112,29 @@ class UpdateService {
           await _client.get(uri).timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) return const [];
 
-      final list = jsonDecode(response.body) as List<dynamic>;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) return const [];
+
       final entries = <ChangelogEntry>[];
-      for (final item in list) {
-        if (item is! Map<String, dynamic>) continue;
-        final version = item['version'] as String?;
-        if (version == null) continue;
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        // Read fields defensively: a wrong-shaped payload (numeric `date`,
+        // missing `version`, etc.) is skipped, never thrown.
+        final version = item['version'];
+        if (version is! String) continue;
         if (!_isNewer(version, appVersion)) continue;
+        final date = item['date'];
+        final notes = item['notes'];
         entries.add(ChangelogEntry(
           version: version,
-          date: (item['date'] as String?) ?? '',
-          notes: (item['notes'] as String?) ?? '',
+          date: date is String ? date : '',
+          notes: notes is String ? notes : '',
         ));
       }
       return entries;
-    } on Exception {
+    } catch (_) {
+      // Any failure (network, malformed JSON, unexpected shape) → empty list so
+      // the dialog falls back to the single-release note.
       return const [];
     }
   }

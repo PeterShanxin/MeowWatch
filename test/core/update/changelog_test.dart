@@ -37,4 +37,26 @@ void main() {
     final svc = UpdateService(baseUrl: 'https://example.test', client: mock);
     expect(await svc.fetchChangelog(), isEmpty);
   });
+
+  test('fetchChangelog returns empty list when JSON is an object, not a list', () async {
+    final mock = MockClient((req) async => http.Response('{"oops": true}', 200));
+    final svc = UpdateService(baseUrl: 'https://example.test', client: mock);
+    expect(await svc.fetchChangelog(), isEmpty);
+  });
+
+  test('fetchChangelog skips entries with wrong-typed fields', () async {
+    final body = jsonEncode([
+      {'version': 9, 'date': '2099-01-01', 'notes': 'numeric version'},
+      {'version': '9.9.9', 'date': 123, 'notes': '- ok, numeric date'},
+    ]);
+    final mock = MockClient((req) async => http.Response(body, 200));
+    final svc = UpdateService(baseUrl: 'https://example.test', client: mock);
+
+    final entries = await svc.fetchChangelog();
+
+    // The numeric-version entry is skipped; the numeric-date entry is kept with
+    // an empty date — neither throws.
+    expect(entries.map((e) => e.version), ['9.9.9']);
+    expect(entries.single.date, isEmpty);
+  });
 }

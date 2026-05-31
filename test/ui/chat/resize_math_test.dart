@@ -83,6 +83,18 @@ void main() {
     expect(r.topLeft, const Offset(100, 100));
   });
 
+  test('does not throw on a tiny window (max below min)', () {
+    final r = computeCornerResize(
+      startTopLeft: const Offset(10, 10),
+      startSize: const Size(300, 400),
+      dragDelta: const Offset(-50, -50),
+      grip: ChatCorner.bottomRight,
+      windowSize: const Size(100, 100), // maxFrac*window < min
+    );
+    expect(r.size.width, greaterThanOrEqualTo(kMinCardWidth));
+    expect(r.size.height, greaterThanOrEqualTo(kMinCardHeight));
+  });
+
   group('clampCardSize', () {
     test('keeps a px size unchanged when it fits the window', () {
       expect(

@@ -44,8 +44,12 @@ Size clampCardSize(Size desired, Size window) {
   required ChatCorner grip,
   required Size windowSize,
 }) {
-  final maxW = windowSize.width * kMaxCardWidthFrac;
-  final maxH = windowSize.height * kMaxCardHeightFrac;
+  // Guard against a tiny window where the max would fall below the min, which
+  // would make `.clamp(min, max)` throw (it requires min <= max). The min wins.
+  final rawMaxW = windowSize.width * kMaxCardWidthFrac;
+  final rawMaxH = windowSize.height * kMaxCardHeightFrac;
+  final maxW = rawMaxW < kMinCardWidth ? kMinCardWidth : rawMaxW;
+  final maxH = rawMaxH < kMinCardHeight ? kMinCardHeight : rawMaxH;
 
   final isRight = grip == ChatCorner.topRight || grip == ChatCorner.bottomRight;
   final isBottom =
