@@ -38,4 +38,29 @@ void main() {
     final t = text(SyncActivityKind.paused, const Duration(seconds: 3725));
     expect(t.chatLine, 'lin paused at 1:02:05');
   });
+
+  test('our own action renders as "You" (issue #27)', () {
+    final t = syncActivityText(
+      const SyncActivity(
+        kind: SyncActivityKind.paused,
+        username: 'me',
+        position: Duration(seconds: 750),
+      ),
+      selfUsername: 'me',
+    );
+    expect(t.banner, '⏸ You paused at 12:30');
+    expect(t.chatLine, 'You paused at 12:30');
+  });
+
+  test('a peer action keeps their name even when selfUsername is given', () {
+    final t = syncActivityText(
+      const SyncActivity(
+        kind: SyncActivityKind.played,
+        username: 'lin',
+        position: Duration(seconds: 10),
+      ),
+      selfUsername: 'me',
+    );
+    expect(t.banner, '▶ lin resumed');
+  });
 }

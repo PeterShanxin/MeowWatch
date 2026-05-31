@@ -14,17 +14,20 @@ library;
 /// - Idle + collapsed → fully hidden (`0.0`): the minimized tab/icon auto-hides
 ///   (issue #5).
 /// - Idle + expanded + auto-dim on → faint ghost (`0.1`) so it stays out of the
-///   way without vanishing (issue #18).
+///   way without vanishing (issue #18), then fully hidden (`0.0`) once idle
+///   persists into deep idle (issue #34).
 /// - Idle + expanded + auto-dim off → fully visible (`1.0`): the user opted to
-///   keep chat always visible.
+///   keep chat always visible (respected even in deep idle).
 double chatOverlayOpacity({
   required bool idle,
   required bool collapsed,
   required bool autoDim,
+  bool deepIdle = false,
 }) {
   if (!idle) return 1.0;
   if (collapsed) return 0.0;
-  return autoDim ? 0.1 : 1.0;
+  if (!autoDim) return 1.0;
+  return deepIdle ? 0.0 : 0.1;
 }
 
 /// Opacity for the secondary overlays (gear button, reaction bar) that simply

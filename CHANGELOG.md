@@ -5,6 +5,11 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.8.0-alpha] - 2026-05-31
+- You now see your own playback actions too: when you pause, resume, or skip, a little banner and a chat line confirm it ("⏸ you paused at 12:30", "⏩ you skipped to 45:00") — the same way you already see your friend's actions. No more wondering whether your click registered.
+- Skipping around no longer floods the chat. Dragging the scrubber or holding the seek keys used to spit out a "skipped to…" line for every step; now it waits until you settle and posts a single line for where you landed.
+- After you've been idle a little longer during playback, the dimmed chat card now fades away completely instead of lingering as a faint ghost — so the video is fully unobstructed. It snaps right back the moment you move the mouse or press a key.
+
 ## [0.7.0-alpha] - 2026-05-31
 - MeowWatch now checks for updates on its own when you open it. If a newer version is out, the version chip in the bottom-right corner gets a little amber dot and a "New version available!" message pops up with an Update button — tap it to open the updater. No more remembering to check by hand. The check runs quietly once per launch and never gets in your way.
 

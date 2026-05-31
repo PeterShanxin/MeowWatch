@@ -83,4 +83,63 @@ void main() {
     final a = classify(peerPaused: true, localPaused: false, setBy: null);
     expect(a, isNull);
   });
+
+  group('classifyLocalActivity (issue #27 — announce our own actions)', () {
+    SyncActivity? local({
+      required bool doSeek,
+      required bool paused,
+      required bool wasPaused,
+      Duration position = const Duration(seconds: 100),
+      Duration previousPosition = const Duration(seconds: 100),
+      String username = 'me',
+    }) =>
+        classifyLocalActivity(
+          doSeek: doSeek,
+          paused: paused,
+          wasPaused: wasPaused,
+          position: position,
+          previousPosition: previousPosition,
+          username: username,
+        );
+
+    test('local pause flip → paused at our position', () {
+      final a = local(doSeek: false, paused: true, wasPaused: false);
+      expect(a!.kind, SyncActivityKind.paused);
+      expect(a.username, 'me');
+      expect(a.position, const Duration(seconds: 100));
+    });
+
+    test('local play flip → played', () {
+      final a = local(doSeek: false, paused: false, wasPaused: true);
+      expect(a!.kind, SyncActivityKind.played);
+    });
+
+    test('local forward seek → seekedForward at the landing position', () {
+      final a = local(
+        doSeek: true,
+        paused: false,
+        wasPaused: false,
+        previousPosition: const Duration(seconds: 100),
+        position: const Duration(seconds: 500),
+      );
+      expect(a!.kind, SyncActivityKind.seekedForward);
+      expect(a.position, const Duration(seconds: 500));
+    });
+
+    test('local backward seek → seekedBack', () {
+      final a = local(
+        doSeek: true,
+        paused: false,
+        wasPaused: false,
+        previousPosition: const Duration(seconds: 100),
+        position: const Duration(seconds: 30),
+      );
+      expect(a!.kind, SyncActivityKind.seekedBack);
+    });
+
+    test('no flip and no seek → null (steady playback ticks stay silent)', () {
+      final a = local(doSeek: false, paused: false, wasPaused: false);
+      expect(a, isNull);
+    });
+  });
 }
