@@ -59,4 +59,25 @@ void main() {
       expect(m.text, 'hi');
     });
   });
+
+  test('SyncActivity equality is value-based over all fields', () {
+    const a = SyncActivity(
+      kind: SyncActivityKind.paused,
+      username: 'lin',
+      position: Duration(seconds: 90),
+    );
+    const b = SyncActivity(
+      kind: SyncActivityKind.paused,
+      username: 'lin',
+      position: Duration(seconds: 90),
+    );
+    const different = SyncActivity(
+      kind: SyncActivityKind.played,
+      username: 'lin',
+      position: Duration(seconds: 90),
+    );
+    expect(a, b);
+    expect(a.hashCode, b.hashCode);
+    expect(a == different, isFalse);
+  });
 }
