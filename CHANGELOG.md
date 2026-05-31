@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.1.4-alpha] - 2026-05-31
+- Chat input keeps focus after you send a message, so you can keep typing without clicking back into the box.
+- The chat list scrolls to the newest message automatically — when a message arrives, and when you reopen the chat after messages piled up while it was hidden.
+
 ## [0.1.3-alpha] - 2026-05-31
 - Fixed auto-update never actually applying: it now replaces the app's files correctly and restarts, instead of leaving you on the old version.
 - Auto-updates now verify the download's SHA-256 fingerprint before installing, so a corrupted or tampered download is rejected instead of applied.

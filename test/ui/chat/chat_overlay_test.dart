@@ -160,4 +160,64 @@ void main() {
     final editable = tester.widget<EditableText>(find.byType(EditableText));
     expect(editable.focusNode.hasFocus, isTrue);
   });
+
+  // A list tall enough to overflow the card, so the newest message starts
+  // off-screen and "scrolled into view" is a meaningful assertion. Off-viewport
+  // list children are not matched by find.text, so finding the last message
+  // proves the list scrolled down to it.
+  List<ChatMessage> manyMessages(int n) => [
+        for (var i = 0; i < n; i++) ChatMessage(username: 'lin', text: 'msg-$i'),
+      ];
+
+  testWidgets('a new message scrolls the newest message into view',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    Widget overlay(List<ChatMessage> messages) => host(ChatOverlay(
+          messages: messages,
+          myUsername: 'me',
+          collapsed: false,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        ));
+
+    await tester.pumpWidget(overlay(manyMessages(40)));
+    await tester.pumpAndSettle();
+    // No auto-scroll on first build: the bottom message is still off-screen.
+    expect(find.text('msg-39'), findsNothing);
+
+    // A fresh message arrives while open — the list scrolls to show it.
+    await tester.pumpWidget(overlay(manyMessages(41)));
+    await tester.pumpAndSettle();
+    expect(find.text('msg-40'), findsOneWidget);
+  });
+
+  testWidgets('reopening the card scrolls the latest message into view even '
+      'though messages piled up while it was collapsed', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    Widget overlay({required bool collapsed, required int count}) =>
+        host(ChatOverlay(
+          messages: manyMessages(count),
+          myUsername: 'me',
+          collapsed: collapsed,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        ));
+
+    // Collapsed with a backlog: the list is unmounted, so no scroll runs.
+    await tester.pumpWidget(overlay(collapsed: true, count: 40));
+    await tester.pump();
+
+    // Reopen — the list mounts and should land at the newest message.
+    await tester.pumpWidget(overlay(collapsed: false, count: 40));
+    await tester.pumpAndSettle();
+    expect(find.text('msg-39'), findsOneWidget);
+  });
 }
