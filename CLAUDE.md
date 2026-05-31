@@ -59,6 +59,8 @@ $FLUTTER run -d windows                            # debug run
 
 TDD (RED → GREEN → REFACTOR), small commits at verified milestones. Conventional-commit messages (`feat:`, `fix:`, …). Don't tag a phase complete until the user confirms a manual two-instance test passes. Specs live in `docs/superpowers/specs/`, per-phase plans in `docs/superpowers/plans/`.
 
+**Versioning (every behavior-changing PR):** bump the version in lockstep across `pubspec.yaml` (`version:`), `lib/core/app_version.dart` (`appVersion`), and `CHANGELOG.md` (new top `## [<version>] - <date>` entry). Semver `MAJOR.MINOR.PATCH`: fix → PATCH, new feature → MINOR, big/breaking → MAJOR. Keep the `-alpha` suffix until we move off alpha. CI parses `CHANGELOG.md` → `releases/changelog.json` on R2, which the in-app updater reads — so the three files drifting out of sync breaks the updater's "what changed" view.
+
 ## Maintaining this file
 
 Keep this file current. When you discover a new sharp edge (a build quirk, a test trap, a non-obvious convention) or make a structural change to the architecture above, update the relevant section in the same change — don't let it drift. Prefer fixing/expanding an existing bullet over appending duplicates.
