@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../core/chat/chat_store.dart';
 import '../core/connect/room_config.dart';
@@ -59,6 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final SyncplayClient _sync;
   late final PlaybackSyncBridge _bridge;
   final DebugLog _syncLog = DebugLog.temp('meowwatch_sync.log');
+  late final Player _audioPlayer;
 
   SyncConnectionStatus _syncStatus = SyncConnectionStatus.disconnected;
   String? _syncError;
@@ -141,10 +144,27 @@ class _HomeScreenState extends State<HomeScreen> {
     _sync = SyncplayClient(onLog: _syncLog.call);
     _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
     _chat = ChatStore(sync: _sync);
-    _chatSub = _chat.stream.listen((msgs) {
+    _audioPlayer = Player();
+    _chatSub = _chat.stream.listen((msgs) async {
       if (!mounted) return;
+      final newCount = msgs.length - _messages.length;
+      final isNewMessage = newCount > 0;
+      final lastMsg = isNewMessage ? msgs.last : null;
+      
       setState(() => _messages = msgs);
-      if (_chatLayout.collapsed) _pulsePeek();
+      
+      if (_chatLayout.collapsed && isNewMessage) _pulsePeek();
+      
+      if (isNewMessage && lastMsg != null && lastMsg.username != _username) {
+        final focused = await windowManager.isFocused();
+        if (!focused) {
+          try {
+            await _audioPlayer.open(Media('file:///C:/Windows/Media/Windows Notify Messaging.wav'), play: true);
+          } catch (e) {
+            debugPrint('Failed to play notification: $e');
+          }
+        }
+      }
     });
     _reactionSub = _chat.reactions.listen((e) {
       if (mounted && !_reactionFeed.isClosed) _reactionFeed.add(e.emoji);
@@ -240,6 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
     unawaited(_core.dispose());
+    unawaited(_audioPlayer.dispose());
     unawaited(_syncLog.close());
     _videoFocus.dispose();
     _rootFocus.dispose();

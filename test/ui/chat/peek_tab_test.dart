@@ -14,6 +14,7 @@ void main() {
     var tapped = false;
     await tester.pumpWidget(host(PeekTab(
       pulsing: false,
+      unreadCount: 0,
       onTap: () => tapped = true,
     )));
 

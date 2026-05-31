@@ -107,9 +107,22 @@ class _ChatOverlayState extends State<ChatOverlay>
   // jumps to the bottom when the card reopens.
   final ScrollController _scrollController = ScrollController();
 
+  int _unreadCount = 0;
+
+  void _onScroll() {
+    if (!mounted || !_scrollController.hasClients) return;
+    if (_unreadCount > 0) {
+      final pos = _scrollController.position;
+      if (pos.pixels >= pos.maxScrollExtent - 20) {
+        setState(() => _unreadCount = 0);
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _snapCtrl
       ..addListener(_onSnapTick)
       ..addStatusListener(_onSnapStatus);
@@ -128,9 +141,24 @@ class _ChatOverlayState extends State<ChatOverlay>
     // collapsed, when the list is unmounted and a scroll would no-op); a new
     // message while already open animates into view.
     if (justOpened) {
+      if (_unreadCount > 0) setState(() => _unreadCount = 0);
       _scrollToBottom(animate: false);
     } else if (old.messages.length < widget.messages.length) {
-      _scrollToBottom(animate: true);
+      final newMsgs = widget.messages.length - old.messages.length;
+      final isMyMessage = widget.messages.isNotEmpty && widget.messages.last.username == widget.myUsername;
+      
+      bool isAtBottom = false;
+      if (!widget.collapsed && _scrollController.hasClients) {
+        final pos = _scrollController.position;
+        isAtBottom = pos.pixels >= pos.maxScrollExtent - 20;
+      }
+      
+      if (isMyMessage || (isAtBottom && !widget.collapsed)) {
+        if (!widget.collapsed) _scrollToBottom(animate: true);
+        if (_unreadCount != 0) setState(() => _unreadCount = 0);
+      } else {
+        setState(() => _unreadCount += newMsgs);
+      }
     }
   }
 
@@ -365,6 +393,11 @@ class _ChatOverlayState extends State<ChatOverlay>
         onCollapse: widget.onToggleCollapsed,
         messages: widget.messages,
         myUsername: widget.myUsername,
+        unreadCount: _unreadCount,
+        onScrollToBottom: () {
+          if (_unreadCount > 0) setState(() => _unreadCount = 0);
+          _scrollToBottom(animate: true);
+        },
         onSend: widget.onSend,
         inputFocusNode: _inputFocus,
         scrollController: _scrollController,
@@ -419,7 +452,7 @@ class _ChatOverlayState extends State<ChatOverlay>
             key: const ValueKey<String>('peek'),
             alignment: Alignment.centerRight,
             child:
-                PeekTab(pulsing: widget.pulsing, onTap: widget.onToggleCollapsed),
+                PeekTab(pulsing: widget.pulsing, unreadCount: _unreadCount, onTap: widget.onToggleCollapsed),
           )
         : Align(
             key: const ValueKey<String>('card'),
@@ -449,6 +482,8 @@ class _GlassCard extends StatelessWidget {
     required this.onCollapse,
     required this.messages,
     required this.myUsername,
+    required this.unreadCount,
+    required this.onScrollToBottom,
     required this.onSend,
     required this.inputFocusNode,
     required this.scrollController,
@@ -468,6 +503,8 @@ class _GlassCard extends StatelessWidget {
   final VoidCallback onCollapse;
   final List<ChatMessage> messages;
   final String myUsername;
+  final int unreadCount;
+  final VoidCallback onScrollToBottom;
   final void Function(String text) onSend;
   final FocusNode inputFocusNode;
   final ScrollController scrollController;
@@ -633,12 +670,49 @@ class _GlassCard extends StatelessWidget {
                               ),
                             ),
                           )
-                        : ListView(
-                            controller: scrollController,
-                            padding: const EdgeInsets.symmetric(vertical: 4),
+                        : Stack(
                             children: [
-                              for (final msg in messages)
-                                ChatBubble(message: msg, myUsername: myUsername),
+                              ListView(
+                                controller: scrollController,
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                children: [
+                                  for (final msg in messages)
+                                    ChatBubble(message: msg, myUsername: myUsername),
+                                ],
+                              ),
+                              if (unreadCount > 0)
+                                Positioned(
+                                  bottom: 8,
+                                  left: 0,
+                                  right: 0,
+                                  child: Center(
+                                    child: GestureDetector(
+                                      onTap: onScrollToBottom,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: m.accent,
+                                          borderRadius: BorderRadius.circular(16),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: m.scrim.withValues(alpha: 0.5),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Text(
+                                          '↓ $unreadCount new message${unreadCount > 1 ? 's' : ''}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                   ),
