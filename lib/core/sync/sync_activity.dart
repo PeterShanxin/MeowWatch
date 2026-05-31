@@ -44,3 +44,40 @@ SyncActivity? classifySyncActivity({
 
   return null;
 }
+
+/// Classify the LOCAL user's own play/pause/seek into a [SyncActivity] so it can
+/// be announced on our own screen (issue #27), mirroring what peers already see.
+///
+/// The Syncplay bridge detects a local change and calls this with the new local
+/// state plus the snapshot from just before it. Seek direction comes from the
+/// position delta; a pause/play flip from the paused-flag change. A tick that is
+/// neither (steady playback) returns null.
+SyncActivity? classifyLocalActivity({
+  required bool doSeek,
+  required bool paused,
+  required bool wasPaused,
+  required Duration position,
+  required Duration previousPosition,
+  required String username,
+}) {
+  if (doSeek) {
+    final delta = position - previousPosition;
+    return SyncActivity(
+      kind: delta.isNegative
+          ? SyncActivityKind.seekedBack
+          : SyncActivityKind.seekedForward,
+      username: username,
+      position: position,
+    );
+  }
+
+  if (paused != wasPaused) {
+    return SyncActivity(
+      kind: paused ? SyncActivityKind.paused : SyncActivityKind.played,
+      username: username,
+      position: position,
+    );
+  }
+
+  return null;
+}

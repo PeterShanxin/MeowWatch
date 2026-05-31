@@ -16,6 +16,7 @@ import '../core/sync/auto_pause.dart';
 import '../core/sync/file_match.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
+import '../core/sync/sync_activity_throttle.dart';
 import '../core/sync/syncplay_client.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
@@ -144,7 +145,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isUiIdle = false;
   Timer? _uiIdleTimer;
+
+  /// Second idle stage: after staying idle past the first threshold, the dimmed
+  /// chat card fades fully out (issue #34) instead of lingering as a ghost.
+  bool _isUiDeepIdle = false;
+  Timer? _uiDeepIdleTimer;
+  static const _uiIdleDelay = Duration(seconds: 3);
+  static const _uiDeepIdleDelay = Duration(seconds: 3);
+
   bool _chatAutoDim = true;
+
+  /// Collapses bursts of seek notifications into a single line/banner (#26).
+  final SyncActivityThrottle _activityThrottle = SyncActivityThrottle();
+  StreamSubscription<SyncActivity>? _activityThrottleSub;
 
   @override
   void initState() {
@@ -227,9 +240,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _peerFileSub = _sync.peerFile.listen((f) {
       if (mounted) setState(() => _peerFile = f);
     });
-    _activitySub = _sync.activity.listen((a) {
+    // Sync activities (peer + our own) flow through the throttle so a scrub
+    // burst collapses to one line/banner (#26); the throttled output drives the
+    // banner + chat history.
+    _activitySub = _sync.activity.listen((a) => _activityThrottle.add(a));
+    _activityThrottleSub = _activityThrottle.stream.listen((a) {
       if (!mounted) return;
-      final t = syncActivityText(a);
+      final t = syncActivityText(a, selfUsername: _username);
       setState(() => _showTransientNotice(t.banner));
       _chat.addSystem(t.chatLine);
     });
@@ -238,8 +255,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_autoPausedNotice && s.status == PlaybackStatus.playing) {
         setState(() => _autoPausedNotice = false);
       }
-      if (_isUiIdle && s.status != PlaybackStatus.playing) {
-        setState(() => _isUiIdle = false);
+      if ((_isUiIdle || _isUiDeepIdle) && s.status != PlaybackStatus.playing) {
+        _uiDeepIdleTimer?.cancel();
+        setState(() {
+          _isUiIdle = false;
+          _isUiDeepIdle = false;
+        });
       }
     });
 
@@ -270,19 +291,29 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onUserInteraction() {
-    if (_isUiIdle) setState(() => _isUiIdle = false);
+    if (_isUiIdle || _isUiDeepIdle) {
+      setState(() {
+        _isUiIdle = false;
+        _isUiDeepIdle = false;
+      });
+    }
     _uiIdleTimer?.cancel();
-    _uiIdleTimer = Timer(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      if (_core.state.status == PlaybackStatus.playing) {
-        setState(() => _isUiIdle = true);
-      }
+    _uiDeepIdleTimer?.cancel();
+    _uiIdleTimer = Timer(_uiIdleDelay, () {
+      if (!mounted || _core.state.status != PlaybackStatus.playing) return;
+      setState(() => _isUiIdle = true);
+      // Stage two: once idle persists, fully hide the dimmed chat card (#34).
+      _uiDeepIdleTimer = Timer(_uiDeepIdleDelay, () {
+        if (!mounted || _core.state.status != PlaybackStatus.playing) return;
+        setState(() => _isUiDeepIdle = true);
+      });
     });
   }
 
   @override
   void dispose() {
     _uiIdleTimer?.cancel();
+    _uiDeepIdleTimer?.cancel();
     _historyTimer?.cancel();
     unawaited(_saveResumePosition());
     _peekTimer?.cancel();
@@ -299,6 +330,8 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_noticeSub?.cancel());
     unawaited(_peerFileSub?.cancel());
     unawaited(_activitySub?.cancel());
+    unawaited(_activityThrottleSub?.cancel());
+    unawaited(_activityThrottle.dispose());
     _presenceTimer?.cancel();
     _autoPauseTimer?.cancel();
     unawaited(_bridge.dispose());
@@ -621,15 +654,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       alignment: const Alignment(0, -0.8),
                       child: _SyncHintBanner(text: hint),
                     ),
-                  AnimatedOpacity(
-                    opacity: chatOverlayOpacity(
+                  Builder(builder: (context) {
+                    final chatOpacity = chatOverlayOpacity(
                       idle: _isUiIdle,
+                      deepIdle: _isUiDeepIdle,
                       collapsed: _chatLayout.collapsed,
                       autoDim: _chatAutoDim,
-                    ),
+                    );
+                    return AnimatedOpacity(
+                    opacity: chatOpacity,
                     duration: const Duration(milliseconds: 200),
                     child: IgnorePointer(
-                      ignoring: _isUiIdle && _chatLayout.collapsed,
+                      ignoring: chatOpacity == 0.0,
                       child: ChatOverlay(
                         messages: _messages,
                         myUsername: _username,
@@ -667,7 +703,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         },
                       ),
                     ),
-                  ),
+                    );
+                  }),
                   Positioned(
                     top: 12,
                     left: 12,

@@ -9,11 +9,15 @@ class SyncActivityText {
   final String chatLine;
 }
 
-/// Build the banner + chat strings for a peer [SyncActivity]. Pure so the
+/// Build the banner + chat strings for a [SyncActivity]. Pure so the
 /// wording/edge cases are unit-testable without a widget pump.
-SyncActivityText syncActivityText(SyncActivity a) {
+///
+/// When [selfUsername] matches the activity's user, the actor is rendered as
+/// "You" — our own actions (issue #27) read naturally on our own screen instead
+/// of echoing our own name back at us.
+SyncActivityText syncActivityText(SyncActivity a, {String? selfUsername}) {
   final at = formatRuntime(a.position.inMilliseconds);
-  final user = a.username;
+  final user = a.username == selfUsername ? 'You' : a.username;
   switch (a.kind) {
     case SyncActivityKind.paused:
       return SyncActivityText(

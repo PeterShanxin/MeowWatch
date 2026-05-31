@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import 'peer_state.dart';
 import 'ping_service.dart';
@@ -31,6 +32,11 @@ class SyncplayClient extends SyncCore {
   // Latest local playback state for the heartbeat.
   Duration _localPosition = Duration.zero;
   bool _localPaused = true;
+
+  // Snapshot of the local state from just before the latest update — lets us
+  // classify our OWN play/pause/seek for self-notifications (issue #27).
+  Duration _prevLocalPosition = Duration.zero;
+  bool _prevLocalPaused = true;
 
   // ignoringOnTheFly handshake counters.
   int _clientIgnore = 0;
@@ -337,6 +343,8 @@ class SyncplayClient extends SyncCore {
 
   @override
   void updateLocalState({required Duration position, required bool paused}) {
+    _prevLocalPosition = _localPosition;
+    _prevLocalPaused = _localPaused;
     _localPosition = position;
     _localPaused = paused;
   }
@@ -345,6 +353,29 @@ class SyncplayClient extends SyncCore {
   void notifyLocalChange({required bool doSeek}) {
     _pendingStateChange = true;
     if (doSeek) _pendingDoSeek = true;
+
+    // Announce our own action locally (issue #27). The peer-side path in
+    // _handleState only fires for *peers*; without this our own play/pause/seek
+    // would be silent on our own screen. Suppressed until we have a username to
+    // attribute it to.
+    if (!_loggedIn || _username.isEmpty) return;
+    final activity = classifyLocalActivity(
+      doSeek: doSeek,
+      paused: _localPaused,
+      wasPaused: _prevLocalPaused,
+      position: _localPosition,
+      previousPosition: _prevLocalPosition,
+      username: _username,
+    );
+    if (activity != null) emitActivity(activity);
+  }
+
+  /// Test hook: simulate a completed login so local-change classification has a
+  /// username to attribute, without standing up a real socket/handshake.
+  @visibleForTesting
+  void debugMarkLoggedIn(String username) {
+    _username = username;
+    _loggedIn = true;
   }
 
   @override

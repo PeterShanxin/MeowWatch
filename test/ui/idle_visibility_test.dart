@@ -45,6 +45,43 @@ void main() {
         1.0,
       );
     });
+
+    test('expanded card stays a ghost on first idle, before deep idle (#34)',
+        () {
+      expect(
+        chatOverlayOpacity(
+          idle: true,
+          collapsed: false,
+          autoDim: true,
+          deepIdle: false,
+        ),
+        0.1,
+      );
+    });
+
+    test('expanded card hides fully after extended (deep) idle (#34)', () {
+      expect(
+        chatOverlayOpacity(
+          idle: true,
+          collapsed: false,
+          autoDim: true,
+          deepIdle: true,
+        ),
+        0.0,
+      );
+    });
+
+    test('deep idle still respects auto-dim off (chat stays visible)', () {
+      expect(
+        chatOverlayOpacity(
+          idle: true,
+          collapsed: false,
+          autoDim: false,
+          deepIdle: true,
+        ),
+        1.0,
+      );
+    });
   });
 
   group('overlayOpacity', () {
