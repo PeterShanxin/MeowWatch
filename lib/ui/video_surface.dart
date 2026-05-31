@@ -131,6 +131,9 @@ class _VideoSurfaceState extends State<VideoSurface> {
     _volumeHideTimer = Timer(_volumeLinger, () {
       if (mounted) setState(() => _volumeShown = null);
     });
+    // Volume keys are consumed here (KeyEventResult.handled), so the ancestor
+    // idle-reset hook never sees them — wake the UI directly, like play/seek.
+    _handleUserInteraction();
   }
 
   void _onSeekReleased() {
