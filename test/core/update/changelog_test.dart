@@ -26,6 +26,26 @@ void main() {
     expect(entries.first.notes, contains('future stuff'));
   });
 
+  test('fetchChangelog(onlyNewer: false) returns the full history, newest first',
+      () async {
+    final body = jsonEncode([
+      {'version': '9.9.9', 'date': '2099-01-01', 'notes': '- future stuff'},
+      {'version': '0.0.1', 'date': '2000-01-01', 'notes': '- ancient'},
+    ]);
+    final mock = MockClient((req) async {
+      if (req.url.path.endsWith('changelog.json')) {
+        return http.Response(body, 200);
+      }
+      return http.Response('', 404);
+    });
+    final svc = UpdateService(baseUrl: 'https://example.test', client: mock);
+
+    final entries = await svc.fetchChangelog(onlyNewer: false);
+
+    // Both kept, order preserved (newest first) — nothing filtered by version.
+    expect(entries.map((e) => e.version), ['9.9.9', '0.0.1']);
+  });
+
   test('fetchChangelog returns empty list on a 404', () async {
     final mock = MockClient((req) async => http.Response('', 404));
     final svc = UpdateService(baseUrl: 'https://example.test', client: mock);

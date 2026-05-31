@@ -123,11 +123,13 @@ class UpdateService {
     }
   }
 
-  /// Fetch the multi-version changelog and return only the entries newer than
-  /// the installed [appVersion], newest first. Returns an empty list on any
-  /// failure (missing file, network error, malformed JSON) so callers can fall
-  /// back to the single-release note.
-  Future<List<ChangelogEntry>> fetchChangelog() async {
+  /// Fetch the multi-version changelog, newest first. By default returns only
+  /// entries newer than the installed [appVersion] (for the "an update is
+  /// available, here's what's in it" view); pass [onlyNewer] `false` to get the
+  /// full history including the current version (for the up-to-date "what's
+  /// new" view). Returns an empty list on any failure (missing file, network
+  /// error, malformed JSON) so callers can fall back to the single-release note.
+  Future<List<ChangelogEntry>> fetchChangelog({bool onlyNewer = true}) async {
     try {
       final uri = Uri.parse('$_baseUrl/releases/changelog.json');
       final response =
@@ -144,7 +146,7 @@ class UpdateService {
         // missing `version`, etc.) is skipped, never thrown.
         final version = item['version'];
         if (version is! String) continue;
-        if (!_isNewer(version, appVersion)) continue;
+        if (onlyNewer && !_isNewer(version, appVersion)) continue;
         final date = item['date'];
         final notes = item['notes'];
         entries.add(ChangelogEntry(
