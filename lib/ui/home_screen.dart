@@ -141,9 +141,15 @@ class _HomeScreenState extends State<HomeScreen> {
   final Set<String> _typingUsers = <String>{};
   final Map<String, Timer> _typingTimers = <String, Timer>{};
 
+  bool _isUiIdle = false;
+  Timer? _uiIdleTimer;
+  bool _chatAutoDim = true;
+
   @override
   void initState() {
     super.initState();
+    _initSettings();
+    _onUserInteraction();
     _chatLayout = ChatOverlayLayout(
       widthPx: widget.initialWidthPx,
       heightPx: widget.initialHeightPx,
@@ -226,11 +232,13 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _showTransientNotice(t.banner));
       _chat.addSystem(t.chatLine);
     });
-    // Clear the auto-pause banner once the user manually resumes playback.
     _noticeSub = _core.stateStream.listen((s) {
       if (!mounted) return;
       if (_autoPausedNotice && s.status == PlaybackStatus.playing) {
         setState(() => _autoPausedNotice = false);
+      }
+      if (_isUiIdle && s.status != PlaybackStatus.playing) {
+        setState(() => _isUiIdle = false);
       }
     });
 
@@ -253,8 +261,27 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _initSettings() async {
+    final dimSetting = await widget.settings.get(kChatAutoDimSettingKey);
+    if (dimSetting == 'false' && mounted) {
+      setState(() => _chatAutoDim = false);
+    }
+  }
+
+  void _onUserInteraction() {
+    if (_isUiIdle) setState(() => _isUiIdle = false);
+    _uiIdleTimer?.cancel();
+    _uiIdleTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      if (_core.state.status == PlaybackStatus.playing) {
+        setState(() => _isUiIdle = true);
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _uiIdleTimer?.cancel();
     _historyTimer?.cancel();
     unawaited(_saveResumePosition());
     _peekTimer?.cancel();
@@ -540,6 +567,7 @@ class _HomeScreenState extends State<HomeScreen> {
         focusNode: _rootFocus,
         skipTraversal: true,
         onKeyEvent: (node, event) {
+          _onUserInteraction();
           if (event is KeyDownEvent &&
               event.logicalKey == LogicalKeyboardKey.tab) {
             _toggleChat();
@@ -547,9 +575,15 @@ class _HomeScreenState extends State<HomeScreen> {
           }
           return KeyEventResult.ignored;
         },
-        child: VideoDropTarget(
-          onFileDropped: _handleDropped,
-          child: StreamBuilder<PlaybackState>(
+        child: Listener(
+          onPointerDown: (_) => _onUserInteraction(),
+          onPointerMove: (_) => _onUserInteraction(),
+          onPointerUp: (_) => _onUserInteraction(),
+          onPointerHover: (_) => _onUserInteraction(),
+          onPointerSignal: (_) => _onUserInteraction(),
+          child: VideoDropTarget(
+            onFileDropped: _handleDropped,
+            child: StreamBuilder<PlaybackState>(
             stream: _core.stateStream,
             initialData: _core.state,
             builder: (context, snapshot) {
@@ -566,7 +600,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (state.fileName == null)
                     EmptyState(onBrowse: _browse)
                   else
-                    VideoSurface(core: _core, focusNode: _videoFocus),
+                    VideoSurface(
+                      core: _core,
+                      focusNode: _videoFocus,
+                      isUiIdle: _isUiIdle,
+                      onUserInteraction: _onUserInteraction,
+                    ),
                   if (state.fileName != null)
                     Positioned.fill(
                       child: FloatingReactionsOverlay(
@@ -581,41 +620,55 @@ class _HomeScreenState extends State<HomeScreen> {
                       alignment: const Alignment(0, -0.8),
                       child: _SyncHintBanner(text: hint),
                     ),
-                  ChatOverlay(
-                    messages: _messages,
-                    myUsername: _username,
-                    collapsed: _chatLayout.collapsed,
-                    corner: _chatLayout.corner,
-                    pulsing: _peekPulsing,
-                    onSend: _chat.send,
-                    typingLabel: _typingLabel,
-                    onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
-                    onToggleCollapsed: _toggleChat,
-                    onSnap: (result) {
-                      setState(
-                        () => _chatLayout = _chatLayout.applySnap(result),
-                      );
-                      if (_chatLayout.collapsed) _restorePlayerFocus();
-                    },
-                    onDraggingChanged: (d) => setState(() => _chatDragging = d),
-                    widthPx: _chatLayout.widthPx,
-                    heightPx: _chatLayout.heightPx,
-                    onResize: (size) {
-                      setState(
-                        () => _chatLayout = _chatLayout.applyResize(size),
-                      );
-                      widget.settings.set(
-                        kChatCardSizeSettingKey,
-                        formatCardSize(
-                          _chatLayout.widthPx!,
-                          _chatLayout.heightPx!,
-                        ),
-                      );
-                    },
-                    onResetSize: () {
-                      setState(() => _chatLayout = _chatLayout.resetSize());
-                      widget.settings.set(kChatCardSizeSettingKey, '');
-                    },
+                  if (hint != null)
+                    Align(
+                      alignment: const Alignment(0, -0.8),
+                      child: _SyncHintBanner(text: hint),
+                    ),
+                  AnimatedOpacity(
+                    opacity: _isUiIdle
+                        ? (_chatLayout.collapsed ? 0.0 : (_chatAutoDim ? 0.1 : 1.0))
+                        : 1.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: IgnorePointer(
+                      ignoring: _isUiIdle && _chatLayout.collapsed,
+                      child: ChatOverlay(
+                        messages: _messages,
+                        myUsername: _username,
+                        collapsed: _chatLayout.collapsed,
+                        corner: _chatLayout.corner,
+                        pulsing: _peekPulsing,
+                        onSend: _chat.send,
+                        typingLabel: _typingLabel,
+                        onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
+                        onToggleCollapsed: _toggleChat,
+                        onSnap: (result) {
+                          setState(
+                            () => _chatLayout = _chatLayout.applySnap(result),
+                          );
+                          if (_chatLayout.collapsed) _restorePlayerFocus();
+                        },
+                        onDraggingChanged: (d) => setState(() => _chatDragging = d),
+                        widthPx: _chatLayout.widthPx,
+                        heightPx: _chatLayout.heightPx,
+                        onResize: (size) {
+                          setState(
+                            () => _chatLayout = _chatLayout.applyResize(size),
+                          );
+                          widget.settings.set(
+                            kChatCardSizeSettingKey,
+                            formatCardSize(
+                              _chatLayout.widthPx!,
+                              _chatLayout.heightPx!,
+                            ),
+                          );
+                        },
+                        onResetSize: () {
+                          setState(() => _chatLayout = _chatLayout.resetSize());
+                          widget.settings.set(kChatCardSizeSettingKey, '');
+                        },
+                      ),
+                    ),
                   ),
                   Positioned(
                     top: 12,
@@ -623,10 +676,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     // Fade the gear out while the chat card is being dragged so
                     // it never covers the top-left dock hint.
                     child: AnimatedOpacity(
-                      opacity: _chatDragging ? 0.0 : 1.0,
+                      opacity: _chatDragging || _isUiIdle ? 0.0 : 1.0,
                       duration: const Duration(milliseconds: 150),
                       child: IgnorePointer(
-                        ignoring: _chatDragging,
+                        ignoring: _chatDragging || _isUiIdle,
                         child: PlayerMenuButton(
                           roomCode: widget.config.room,
                           members: <String>[_username, ..._peers],
@@ -635,6 +688,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           onThemeChanged: widget.onThemeChanged,
                           onLoadVideo: _browse,
                           onLeave: _leave,
+                          chatAutoDim: _chatAutoDim,
+                          onChatAutoDimChanged: (val) {
+                            setState(() => _chatAutoDim = val);
+                            widget.settings.set(kChatAutoDimSettingKey, val.toString());
+                          },
                         ),
                       ),
                     ),
@@ -643,12 +701,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     Positioned(
                       right: 16,
                       bottom: 84,
-                      child: ReactionBar(onReact: _chat.sendReaction),
+                      child: AnimatedOpacity(
+                        opacity: _isUiIdle ? 0.0 : 1.0,
+                        duration: const Duration(milliseconds: 200),
+                        child: IgnorePointer(
+                          ignoring: _isUiIdle,
+                          child: ReactionBar(onReact: _chat.sendReaction),
+                        ),
+                      ),
                     ),
                 ],
               );
             },
           ),
+        ),
         ),
       ),
     );

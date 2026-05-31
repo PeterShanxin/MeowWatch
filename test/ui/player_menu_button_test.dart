@@ -24,6 +24,8 @@ PlayerMenuButton _button({
       onThemeChanged: onThemeChanged ?? (_) {},
       onLoadVideo: onLoadVideo ?? () {},
       onLeave: onLeave ?? () {},
+      chatAutoDim: true,
+      onChatAutoDimChanged: (_) {},
     );
 
 void main() {

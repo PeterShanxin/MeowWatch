@@ -14,13 +14,22 @@ import 'seek_indicator.dart';
 import 'volume_indicator.dart';
 
 class VideoSurface extends StatefulWidget {
-  const VideoSurface({required this.core, this.focusNode, super.key});
+  const VideoSurface({
+    required this.core,
+    this.focusNode,
+    required this.isUiIdle,
+    required this.onUserInteraction,
+    super.key,
+  });
 
   final MediaKitVideoCore core;
 
   /// Optional external focus node so the parent can restore keyboard focus to
   /// the player (e.g. after the chat collapses) — keeping Tab/space reliable.
   final FocusNode? focusNode;
+
+  final bool isUiIdle;
+  final VoidCallback onUserInteraction;
 
   @override
   State<VideoSurface> createState() => _VideoSurfaceState();
@@ -46,13 +55,8 @@ class _VideoSurfaceState extends State<VideoSurface> {
   double? _volumeShown;
   Timer? _volumeHideTimer;
 
-  // Bottom control bar auto-hide.
-  bool _barVisible = true;
-  Timer? _hideTimer;
-
   bool _isFullscreen = false;
 
-  static const _hideDelay = Duration(seconds: 3);
   static const _seekLinger = Duration(milliseconds: 600);
   static const _volumeLinger = Duration(milliseconds: 900);
   static const _seekStep = Duration(seconds: 5);
@@ -61,12 +65,10 @@ class _VideoSurfaceState extends State<VideoSurface> {
   void initState() {
     super.initState();
     _focus.requestFocus();
-    _scheduleHide();
   }
 
   @override
   void dispose() {
-    _hideTimer?.cancel();
     _seekHideTimer?.cancel();
     _volumeHideTimer?.cancel();
     _ownFocus?.dispose();
@@ -80,26 +82,15 @@ class _VideoSurfaceState extends State<VideoSurface> {
     });
   }
 
-  void _revealBar() {
-    if (!_barVisible) setState(() => _barVisible = true);
-    _scheduleHide();
-  }
-
-  void _scheduleHide() {
-    _hideTimer?.cancel();
-    _hideTimer = Timer(_hideDelay, () {
-      if (!mounted) return;
-      if (widget.core.state.status == PlaybackStatus.playing) {
-        setState(() => _barVisible = false);
-      }
-    });
+  void _handleUserInteraction() {
+    widget.onUserInteraction();
   }
 
   void _togglePlay() {
     final willPlay = widget.core.state.status != PlaybackStatus.playing;
     widget.core.togglePlay();
     _flash(willPlay ? PlaybackAction.play : PlaybackAction.pause);
-    _revealBar();
+    _handleUserInteraction();
   }
 
   Future<void> _toggleFullscreen() async {
@@ -128,7 +119,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
         _seekSeconds += _seekStep.inSeconds;
       }
     });
-    _revealBar();
+    _handleUserInteraction();
   }
 
   void _onVolumeKey(bool up) {
@@ -204,7 +195,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
       onKeyEvent: _onKey,
       autofocus: true,
       child: MouseRegion(
-        onHover: (_) => _revealBar(),
+        onHover: (_) => _handleUserInteraction(),
         child: GestureDetector(
           onTap: _handleTap,
           onDoubleTap: _toggleFullscreen,
@@ -235,7 +226,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
                   builder: (context, snapshot) {
                     final state = snapshot.data!;
                     final visible =
-                        _barVisible || state.status != PlaybackStatus.playing;
+                        !widget.isUiIdle || state.status != PlaybackStatus.playing;
                     return AnimatedOpacity(
                       opacity: visible ? 1.0 : 0.0,
                       duration: const Duration(milliseconds: 200),
