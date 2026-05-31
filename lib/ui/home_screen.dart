@@ -36,16 +36,16 @@ class HomeScreen extends StatefulWidget {
     required this.settings,
     required this.currentTheme,
     required this.onThemeChanged,
-    this.initialWidthFrac,
-    this.initialHeightFrac,
+    this.initialWidthPx,
+    this.initialHeightPx,
     super.key,
   });
 
   final RoomConfig config;
   final HistoryStore history;
   final SettingsStore settings;
-  final double? initialWidthFrac;
-  final double? initialHeightFrac;
+  final double? initialWidthPx;
+  final double? initialHeightPx;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
 
@@ -131,8 +131,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _chatLayout = ChatOverlayLayout(
-      widthFrac: widget.initialWidthFrac,
-      heightFrac: widget.initialHeightFrac,
+      widthPx: widget.initialWidthPx,
+      heightPx: widget.initialHeightPx,
     );
     _syncLog.start();
     _core = MediaKitVideoCore();
@@ -548,17 +548,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                       onDraggingChanged: (d) =>
                           setState(() => _chatDragging = d),
-                      widthFrac: _chatLayout.widthFrac,
-                      heightFrac: _chatLayout.heightFrac,
+                      widthPx: _chatLayout.widthPx,
+                      heightPx: _chatLayout.heightPx,
                       onResize: (size) {
-                        final media = MediaQuery.of(context).size;
-                        setState(() =>
-                            _chatLayout = _chatLayout.applyResize(size, media));
+                        setState(
+                            () => _chatLayout = _chatLayout.applyResize(size));
                         widget.settings.set(
                           kChatCardSizeSettingKey,
-                          formatCardSizeFraction(
-                            _chatLayout.widthFrac!,
-                            _chatLayout.heightFrac!,
+                          formatCardSize(
+                            _chatLayout.widthPx!,
+                            _chatLayout.heightPx!,
                           ),
                         );
                       },

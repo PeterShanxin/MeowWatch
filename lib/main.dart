@@ -18,14 +18,14 @@ Future<void> main() async {
   final settings = DriftSettingsStore(db);
   final savedTheme = MeowThemeId.fromName(await settings.get(kThemeSettingKey));
   final (cardW, cardH) =
-      parseCardSizeFraction(await settings.get(kChatCardSizeSettingKey));
+      parseCardSize(await settings.get(kChatCardSizeSettingKey));
 
   runApp(MeowWatchApp(
     profiles: DriftProfileStore(db),
     history: DriftHistoryStore(db),
     settings: settings,
     initialTheme: savedTheme,
-    initialCardWidthFrac: cardW,
-    initialCardHeightFrac: cardH,
+    initialCardWidthPx: cardW,
+    initialCardHeightPx: cardH,
   ));
 }

@@ -10,6 +10,26 @@ const double kMinCardHeight = 160;
 const double kMaxCardWidthFrac = 0.70;
 const double kMaxCardHeightFrac = 0.85;
 
+/// Default card size, in logical px, used until the user resizes. Persisted
+/// sizes are stored in px too, so the card keeps a stable physical size when
+/// the window is maximized/resized (most floating overlays behave this way).
+const double kDefaultCardWidth = 360;
+const double kDefaultCardHeight = 420;
+
+/// Clamp a desired px card size to fit [window]: at least the min, at most the
+/// max fraction of the window. If the window is so small the max would fall
+/// below the min, the min wins (the card may then exceed a tiny window, but it
+/// stays usable). Display-only — never mutates the stored size.
+Size clampCardSize(Size desired, Size window) {
+  final maxW = window.width * kMaxCardWidthFrac;
+  final maxH = window.height * kMaxCardHeightFrac;
+  final w = desired.width
+      .clamp(kMinCardWidth, maxW < kMinCardWidth ? kMinCardWidth : maxW);
+  final h = desired.height
+      .clamp(kMinCardHeight, maxH < kMinCardHeight ? kMinCardHeight : maxH);
+  return Size(w, h);
+}
+
 /// New top-left + size from dragging one corner [grip] of the card.
 ///
 /// The corner opposite [grip] is the anchor and stays fixed; the dragged corner

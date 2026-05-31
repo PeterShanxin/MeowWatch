@@ -11,31 +11,33 @@ class ChatOverlayLayout {
     this.corner = ChatCorner.bottomLeft,
     this.collapsed = false,
     this.lastCorner = ChatCorner.bottomLeft,
-    this.widthFrac,
-    this.heightFrac,
+    this.widthPx,
+    this.heightPx,
   });
 
   final ChatCorner corner;
   final bool collapsed;
   final ChatCorner lastCorner;
 
-  /// Card width/height as a fraction (0..1) of the window. Null = use default.
-  final double? widthFrac;
-  final double? heightFrac;
+  /// Card width/height in logical px. Null = use the default size. Stored in px
+  /// (not a window fraction) so the card keeps a stable physical size when the
+  /// window is resized/maximized; the view clamps it to the viewport.
+  final double? widthPx;
+  final double? heightPx;
 
   ChatOverlayLayout copyWith({
     ChatCorner? corner,
     bool? collapsed,
     ChatCorner? lastCorner,
-    double? widthFrac,
-    double? heightFrac,
+    double? widthPx,
+    double? heightPx,
   }) =>
       ChatOverlayLayout(
         corner: corner ?? this.corner,
         collapsed: collapsed ?? this.collapsed,
         lastCorner: lastCorner ?? this.lastCorner,
-        widthFrac: widthFrac ?? this.widthFrac,
-        heightFrac: heightFrac ?? this.heightFrac,
+        widthPx: widthPx ?? this.widthPx,
+        heightPx: heightPx ?? this.heightPx,
       );
 
   /// Apply a drag-release result: snap to a corner, or collapse (remembering
@@ -55,13 +57,13 @@ class ChatOverlayLayout {
     return copyWith(collapsed: true, lastCorner: corner);
   }
 
-  /// Record a new px size as fractions of [window].
-  ChatOverlayLayout applyResize(Size px, Size window) => copyWith(
-        widthFrac: px.width / window.width,
-        heightFrac: px.height / window.height,
+  /// Record a new px size.
+  ChatOverlayLayout applyResize(Size px) => copyWith(
+        widthPx: px.width,
+        heightPx: px.height,
       );
 
-  /// Clear the custom size (back to the default fractions).
+  /// Clear the custom size (back to the default px size).
   ChatOverlayLayout resetSize() => ChatOverlayLayout(
         corner: corner,
         collapsed: collapsed,
@@ -74,27 +76,35 @@ class ChatOverlayLayout {
       other.corner == corner &&
       other.collapsed == collapsed &&
       other.lastCorner == lastCorner &&
-      other.widthFrac == widthFrac &&
-      other.heightFrac == heightFrac;
+      other.widthPx == widthPx &&
+      other.heightPx == heightPx;
 
   @override
   int get hashCode =>
-      Object.hash(corner, collapsed, lastCorner, widthFrac, heightFrac);
+      Object.hash(corner, collapsed, lastCorner, widthPx, heightPx);
 }
 
-/// Serialize size fractions for [kChatCardSizeSettingKey] storage.
-String formatCardSizeFraction(double widthFrac, double heightFrac) =>
-    '$widthFrac,$heightFrac';
+/// Smallest/largest px a stored card dimension may take. A value outside this
+/// range (e.g. a legacy fraction string like "0.30") is treated as invalid so
+/// it falls back to the default size.
+const double _kMinStoredPx = 50;
+const double _kMaxStoredPx = 10000;
 
-/// Parse a stored size value into (widthFrac, heightFrac). Returns (null, null)
-/// for missing, empty, malformed, or out-of-range (0..1) values.
-(double?, double?) parseCardSizeFraction(String? value) {
+/// Serialize a px size for [kChatCardSizeSettingKey] storage (rounded ints).
+String formatCardSize(double widthPx, double heightPx) =>
+    '${widthPx.round()},${heightPx.round()}';
+
+/// Parse a stored size value into (widthPx, heightPx). Returns (null, null) for
+/// missing, empty, malformed, or out-of-range values (including legacy fraction
+/// strings, which are below the px floor and so ignored → default size).
+(double?, double?) parseCardSize(String? value) {
   if (value == null || value.isEmpty) return (null, null);
   final parts = value.split(',');
   if (parts.length != 2) return (null, null);
   final w = double.tryParse(parts[0]);
   final h = double.tryParse(parts[1]);
   if (w == null || h == null) return (null, null);
-  if (w <= 0 || w > 1 || h <= 0 || h > 1) return (null, null);
+  if (w < _kMinStoredPx || w > _kMaxStoredPx) return (null, null);
+  if (h < _kMinStoredPx || h > _kMaxStoredPx) return (null, null);
   return (w, h);
 }

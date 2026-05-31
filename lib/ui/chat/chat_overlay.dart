@@ -30,8 +30,8 @@ class ChatOverlay extends StatefulWidget {
     required this.onSnap,
     this.onResize,
     this.onResetSize,
-    this.widthFrac,
-    this.heightFrac,
+    this.widthPx,
+    this.heightPx,
     this.corner = ChatCorner.bottomLeft,
     this.pulsing = false,
     this.typingLabel,
@@ -54,9 +54,10 @@ class ChatOverlay extends StatefulWidget {
   /// Resets the card to its default size.
   final VoidCallback? onResetSize;
 
-  /// Card size as a fraction of the window; null falls back to 0.30 / 0.50.
-  final double? widthFrac;
-  final double? heightFrac;
+  /// Card size in logical px; null falls back to the default. The view clamps
+  /// it to the viewport, so it never overflows even on a small window.
+  final double? widthPx;
+  final double? heightPx;
 
   /// e.g. "lin is typing…"; null when nobody is typing.
   final String? typingLabel;
@@ -322,10 +323,15 @@ class _ChatOverlayState extends State<ChatOverlay>
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context).size;
+    // Stored px size, clamped to the current viewport (so it never overflows a
+    // small window) but otherwise stable when the window is resized/maximized.
     final cardSize = _dragCardSize ??
-        Size(
-          media.width * (widget.widthFrac ?? 0.30),
-          media.height * (widget.heightFrac ?? 0.50),
+        clampCardSize(
+          Size(
+            widget.widthPx ?? kDefaultCardWidth,
+            widget.heightPx ?? kDefaultCardHeight,
+          ),
+          media,
         );
 
     // Active drag, or the post-release snap glide, renders a free-floating card.

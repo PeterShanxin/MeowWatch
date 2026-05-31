@@ -8,7 +8,8 @@ in-app updater reads to show what changed.
 ## [0.1.2-alpha] - 2026-05-30
 - Resize the chat card from any of its four corners (the opposite corner stays pinned).
 - Card now has a real height you can drag (fixes height resize doing nothing).
-- Hover tooltips on the chat-card buttons (move, reset size, hide, resize).
+- Hover a corner to get a resize cursor; the chat-card buttons have hover tooltips.
+- Card keeps its physical size when you maximize or resize the window (no longer scales with it).
 - Updater shows a scrollable changelog covering every version between your build and the latest.
 
 ## [0.1.1-alpha] - 2026-05-30

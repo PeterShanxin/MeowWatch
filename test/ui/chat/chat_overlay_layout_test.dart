@@ -4,45 +4,51 @@ import 'package:meowwatch/ui/chat/chat_corner.dart';
 import 'package:meowwatch/ui/chat/chat_overlay_layout.dart';
 
 void main() {
-  test('defaults have null size fractions', () {
+  test('defaults have null px size', () {
     const l = ChatOverlayLayout();
-    expect(l.widthFrac, isNull);
-    expect(l.heightFrac, isNull);
+    expect(l.widthPx, isNull);
+    expect(l.heightPx, isNull);
   });
 
-  test('applyResize derives fractions from px over window', () {
+  test('applyResize stores the px size verbatim', () {
     const l = ChatOverlayLayout();
-    final r = l.applyResize(const Size(300, 400), const Size(1000, 800));
-    expect(r.widthFrac, closeTo(0.30, 1e-9));
-    expect(r.heightFrac, closeTo(0.50, 1e-9));
+    final r = l.applyResize(const Size(300, 400));
+    expect(r.widthPx, 300);
+    expect(r.heightPx, 400);
   });
 
-  test('resetSize clears fractions but keeps corner', () {
+  test('resetSize clears the size but keeps corner', () {
     final l = const ChatOverlayLayout(corner: ChatCorner.topRight)
-        .applyResize(const Size(500, 600), const Size(1000, 800));
+        .applyResize(const Size(500, 600));
     final r = l.resetSize();
-    expect(r.widthFrac, isNull);
-    expect(r.heightFrac, isNull);
+    expect(r.widthPx, isNull);
+    expect(r.heightPx, isNull);
     expect(r.corner, ChatCorner.topRight);
   });
 
-  test('format and parse round-trip', () {
-    expect(formatCardSizeFraction(0.42, 0.63), '0.42,0.63');
-    expect(parseCardSizeFraction('0.42,0.63'), (0.42, 0.63));
+  test('format and parse round-trip (rounded px)', () {
+    expect(formatCardSize(360, 420), '360,420');
+    expect(formatCardSize(360.6, 420.4), '361,420');
+    expect(parseCardSize('360,420'), (360.0, 420.0));
   });
 
   test('parse returns nulls for empty or malformed input', () {
-    expect(parseCardSizeFraction(null), (null, null));
-    expect(parseCardSizeFraction(''), (null, null));
-    expect(parseCardSizeFraction('garbage'), (null, null));
-    expect(parseCardSizeFraction('1.5,0.5'), (null, null)); // out of range
+    expect(parseCardSize(null), (null, null));
+    expect(parseCardSize(''), (null, null));
+    expect(parseCardSize('garbage'), (null, null));
   });
 
-  test('equality includes size fractions', () {
-    final a = const ChatOverlayLayout()
-        .applyResize(const Size(300, 400), const Size(1000, 800));
-    final b = const ChatOverlayLayout()
-        .applyResize(const Size(300, 400), const Size(1000, 800));
+  test('parse rejects legacy fraction strings (below px floor)', () {
+    expect(parseCardSize('0.30,0.50'), (null, null));
+  });
+
+  test('parse rejects absurdly large values', () {
+    expect(parseCardSize('99999,99999'), (null, null));
+  });
+
+  test('equality includes px size', () {
+    final a = const ChatOverlayLayout().applyResize(const Size(300, 400));
+    final b = const ChatOverlayLayout().applyResize(const Size(300, 400));
     expect(a, b);
     expect(a, isNot(const ChatOverlayLayout()));
   });

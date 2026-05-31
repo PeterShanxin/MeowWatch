@@ -82,4 +82,36 @@ void main() {
     expect(r.size, Size(window.width * kMaxCardWidthFrac, window.height * kMaxCardHeightFrac));
     expect(r.topLeft, const Offset(100, 100));
   });
+
+  group('clampCardSize', () {
+    test('keeps a px size unchanged when it fits the window', () {
+      expect(
+        clampCardSize(const Size(360, 420), const Size(1280, 800)),
+        const Size(360, 420),
+      );
+    });
+
+    test('does not grow when the window is maximized (stable px)', () {
+      const desired = Size(360, 420);
+      final small = clampCardSize(desired, const Size(1280, 800));
+      final big = clampCardSize(desired, const Size(2560, 1440));
+      expect(big, small); // same physical size on a bigger window
+    });
+
+    test('clamps down to the window max fraction on a small window', () {
+      final r = clampCardSize(const Size(900, 900), const Size(1000, 800));
+      expect(r.width, 1000 * kMaxCardWidthFrac); // 700
+      expect(r.height, 800 * kMaxCardHeightFrac); // 680
+    });
+
+    test('clamps up to the minimum', () {
+      final r = clampCardSize(const Size(10, 10), const Size(1280, 800));
+      expect(r, const Size(kMinCardWidth, kMinCardHeight));
+    });
+
+    test('min wins when the window is tiny', () {
+      final r = clampCardSize(const Size(360, 420), const Size(100, 100));
+      expect(r, const Size(kMinCardWidth, kMinCardHeight));
+    });
+  });
 }
