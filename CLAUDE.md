@@ -59,7 +59,16 @@ $FLUTTER run -d windows                            # debug run
 
 TDD (RED → GREEN → REFACTOR), small commits at verified milestones. Conventional-commit messages (`feat:`, `fix:`, …). Don't tag a phase complete until the user confirms a manual two-instance test passes. Specs live in `docs/superpowers/specs/`, per-phase plans in `docs/superpowers/plans/`.
 
-**Versioning (every behavior-changing PR):** bump the version in lockstep across `pubspec.yaml` (`version:`), `lib/core/app_version.dart` (`appVersion`), and `CHANGELOG.md` (new top `## [<version>] - <date>` entry). Semver `MAJOR.MINOR.PATCH`: fix → PATCH, new feature → MINOR, big/breaking → MAJOR. Keep the `-alpha` suffix until we move off alpha. CI parses `CHANGELOG.md` → `releases/changelog.json` on R2, which the in-app updater reads — so the three files drifting out of sync breaks the updater's "what changed" view.
+**Versioning (every behavior-changing PR):** bump the version in lockstep across `pubspec.yaml` (`version:`), `lib/core/app_version.dart` (`appVersion`), and `CHANGELOG.md` (new top `## [<version>] - <date>` entry).
+
+Semver is `MAJOR.MINOR.PATCH` — **three separate digit slots**, each is the digit *in that position*, NOT "the next number overall":
+- `MAJOR` = **1st** digit — big/breaking change. Bumping it resets MINOR and PATCH to 0 (`0.2.3 → 1.0.0`).
+- `MINOR` = **2nd** digit — new feature. Bumping it resets PATCH to 0 (`0.1.3 → 0.2.0`, **not** `0.1.4`).
+- `PATCH` = **3rd** digit — bug fix / small tweak (`0.1.3 → 0.1.4`).
+
+So a `feat:` PR is a MINOR bump = 2nd digit + reset 3rd to 0. A `fix:` PR is a PATCH bump = 3rd digit. Common mistake: bumping the 3rd digit and calling it "minor" — the 3rd digit is PATCH.
+
+Keep the `-alpha` suffix until we move off alpha. CI parses `CHANGELOG.md` → `releases/changelog.json` on R2, which the in-app updater reads — so the three files drifting out of sync breaks the updater's "what changed" view.
 
 **Release flow (the user finds this sequence helpful — follow it for every release):**
 1. Land work on a feature/fix branch → open a PR to `main`. Don't push `v*` tags from the branch.
