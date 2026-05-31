@@ -59,6 +59,19 @@ $FLUTTER run -d windows                            # debug run
 
 TDD (RED → GREEN → REFACTOR), small commits at verified milestones. Conventional-commit messages (`feat:`, `fix:`, …). Don't tag a phase complete until the user confirms a manual two-instance test passes. Specs live in `docs/superpowers/specs/`, per-phase plans in `docs/superpowers/plans/`.
 
+**Versioning (every behavior-changing PR):** bump the version in lockstep across `pubspec.yaml` (`version:`), `lib/core/app_version.dart` (`appVersion`), and `CHANGELOG.md` (new top `## [<version>] - <date>` entry). Semver `MAJOR.MINOR.PATCH`: fix → PATCH, new feature → MINOR, big/breaking → MAJOR. Keep the `-alpha` suffix until we move off alpha. CI parses `CHANGELOG.md` → `releases/changelog.json` on R2, which the in-app updater reads — so the three files drifting out of sync breaks the updater's "what changed" view.
+
+**Release flow (the user finds this sequence helpful — follow it for every release):**
+1. Land work on a feature/fix branch → open a PR to `main`. Don't push `v*` tags from the branch.
+2. Wait for the automatic **Copilot review**, then run the `address-pr-review` skill: fix or reject each comment with a real reason, reply, resolve the threads, push.
+3. If a manual test is warranted (visible behavior change), get the user's confirmation first; pure edge-case/defensive fixes with unit coverage don't need one — say so.
+4. Wait for **CI green** (the `Build / Windows x64` check), then **merge** the PR to `main` (merge commit).
+5. `git checkout main && git pull` → **tag** `v<version>` on the merge commit → `git push origin v<version>`. The tag fires the release job (build + R2 upload + `changelog.json`).
+6. Wait for the release run green, then **verify R2**: `curl …/releases/latest.json` (version matches) and `…/releases/changelog.json` (array includes the new version).
+7. Delete the merged branch (local + remote).
+
+**Auto-update has a one-version lag:** the running app applies updates with *its own* (old) `buildUpdaterScript`, so a fix to the updater only takes effect for updates *from* the fixed version onward. After shipping an updater fix, that one hop must be installed **manually** (download the R2 zip, replace the install folder); auto-update works from the fixed version on. (The pre-0.1.3 updater used `Copy-Item -Recurse`, which nested `data\data\` and never replaced `app.so` — so 0.1.2→0.1.3 needs a manual install.)
+
 ## Maintaining this file
 
 Keep this file current. When you discover a new sharp edge (a build quirk, a test trap, a non-obvious convention) or make a structural change to the architecture above, update the relevant section in the same change — don't let it drift. Prefer fixing/expanding an existing bullet over appending duplicates.

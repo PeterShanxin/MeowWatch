@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.1.3-alpha] - 2026-05-31
+- Fixed auto-update never actually applying: it now replaces the app's files correctly and restarts, instead of leaving you on the old version.
+- Auto-updates now verify the download's SHA-256 fingerprint before installing, so a corrupted or tampered download is rejected instead of applied.
+
 ## [0.1.2-alpha] - 2026-05-30
 - Resize the chat card from any of its four corners (the opposite corner stays pinned).
 - Card now has a real height you can drag (fixes height resize doing nothing).
