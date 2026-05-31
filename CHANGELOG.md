@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.3.1-alpha] - 2026-05-31
+- Fixed auto-update silently doing nothing when you clicked Install: the updater is now launched so it keeps running after the app closes, instead of being killed the instant the app exited. Updating from this version onward applies the new version and restarts correctly.
+
 ## [0.3.0-alpha] - 2026-05-31
 - The version button (bottom-right) now shows a "What's new" changelog even when you're already up to date — tap it any time to see what changed in recent versions.
 
