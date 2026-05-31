@@ -103,6 +103,10 @@ class _ChatOverlayState extends State<ChatOverlay>
   // Focus the message box when the card is opened (peek tab → card).
   final FocusNode _inputFocus = FocusNode();
 
+  // Keeps the newest message visible: animates on a new message while open,
+  // jumps to the bottom when the card reopens.
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -114,17 +118,46 @@ class _ChatOverlayState extends State<ChatOverlay>
   @override
   void didUpdateWidget(ChatOverlay old) {
     super.didUpdateWidget(old);
-    if (old.collapsed && !widget.collapsed) {
+    final justOpened = old.collapsed && !widget.collapsed;
+    if (justOpened) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _inputFocus.requestFocus();
       });
     }
+    // Reopening jumps straight to the latest (messages can pile up while
+    // collapsed, when the list is unmounted and a scroll would no-op); a new
+    // message while already open animates into view.
+    if (justOpened) {
+      _scrollToBottom(animate: false);
+    } else if (old.messages.length < widget.messages.length) {
+      _scrollToBottom(animate: true);
+    }
+  }
+
+  // Scroll the message list to the newest message after the next frame, once
+  // the list has laid out (so maxScrollExtent is known). No-ops when the list
+  // isn't mounted (e.g. the card is collapsed).
+  void _scrollToBottom({required bool animate}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      final target = _scrollController.position.maxScrollExtent;
+      if (animate) {
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+        );
+      } else {
+        _scrollController.jumpTo(target);
+      }
+    });
   }
 
   @override
   void dispose() {
     _snapCtrl.dispose();
     _inputFocus.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -312,6 +345,7 @@ class _ChatOverlayState extends State<ChatOverlay>
         myUsername: widget.myUsername,
         onSend: widget.onSend,
         inputFocusNode: _inputFocus,
+        scrollController: _scrollController,
         typingLabel: widget.typingLabel,
         onTypingChanged: widget.onTypingChanged,
         onResetSize: widget.onResetSize ?? () {},
@@ -395,6 +429,7 @@ class _GlassCard extends StatelessWidget {
     required this.myUsername,
     required this.onSend,
     required this.inputFocusNode,
+    required this.scrollController,
     required this.typingLabel,
     required this.onTypingChanged,
     required this.onResetSize,
@@ -413,6 +448,7 @@ class _GlassCard extends StatelessWidget {
   final String myUsername;
   final void Function(String text) onSend;
   final FocusNode inputFocusNode;
+  final ScrollController scrollController;
   final String? typingLabel;
   final ValueChanged<bool>? onTypingChanged;
   final VoidCallback onResetSize;
@@ -576,6 +612,7 @@ class _GlassCard extends StatelessWidget {
                             ),
                           )
                         : ListView(
+                            controller: scrollController,
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             children: [
                               for (final msg in messages)

@@ -50,6 +50,22 @@ void main() {
     expect(events, [true, false]);
   });
 
+  testWidgets('sending restores focus to the input (issue #8)', (tester) async {
+    final focus = FocusNode();
+    addTearDown(focus.dispose);
+    await tester.pumpWidget(host(ChatInput(onSend: (_) {}, focusNode: focus)));
+
+    // Focus the field, type, and send — focus should bounce straight back so
+    // the user can keep typing without re-clicking the box.
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'hi');
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
+
+    expect(focus.hasFocus, isTrue);
+  });
+
   testWidgets('sending clears the typing state', (tester) async {
     final events = <bool>[];
     await tester.pumpWidget(host(ChatInput(
