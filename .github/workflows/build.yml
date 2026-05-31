@@ -6,14 +6,23 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
 
 permissions:
   contents: write # needed for creating releases
 
+# PR/branch runs: per-ref group, cancel superseded runs.
+# Tag runs: one shared group so releases queue (never cancel) and never race
+# on the shared R2 keys (latest.json / changelog.json).
+concurrency:
+  group: ${{ startsWith(github.ref, 'refs/tags/') && format('{0}-release', github.workflow) || format('{0}-{1}', github.workflow, github.ref) }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
-  # ── Build Windows x64 ─────────────────────────────────────────────
-  build-windows-x64:
-    name: Windows x64
+  # ── Fast gate: analyze + test (every PR / main push / tag) ─────────
+  check:
+    name: Analyze & Test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +31,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true # caches both the Flutter SDK and pub dependencies
 
       - name: Install dependencies
         run: flutter pub get
@@ -31,6 +41,24 @@ jobs:
 
       - name: Run tests
         run: flutter test
+
+  # ── Build Windows x64 (tag pushes only — release builds anyway) ────
+  build-windows-x64:
+    name: Windows x64
+    needs: [check]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true # caches both the Flutter SDK and pub dependencies
+
+      - name: Install dependencies
+        run: flutter pub get
 
       - name: Build Windows release
         run: flutter build windows --release
