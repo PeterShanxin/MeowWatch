@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.5.0-alpha] - 2026-05-31
+- Chat now shows how many messages you haven't read: a red count rides the collapsed tab, and an "↓ N new messages" pill appears in the open chat when you've scrolled up. Tap the pill (or scroll to the bottom) to catch up and clear it.
+- A soft notification chime plays when a friend messages you while the window isn't focused, so you don't miss it while doing something else.
+
 ## [0.4.1-alpha] - 2026-05-31
 - Reopening the chat now reliably jumps straight to the newest message, even when a backlog piled up while it was hidden — it no longer occasionally stuck at the top.
 - The "… is typing" line no longer nudges the chat list up and down as your friend starts and stops typing; its space is always reserved and the text just fades in and out.

@@ -169,7 +169,35 @@ void main() {
         for (var i = 0; i < n; i++) ChatMessage(username: 'lin', text: 'msg-$i'),
       ];
 
-  testWidgets('a new message scrolls the newest message into view',
+  testWidgets('a new message scrolls into view if already at bottom',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    Widget overlay(List<ChatMessage> messages) => host(ChatOverlay(
+          messages: messages,
+          myUsername: 'me',
+          collapsed: false,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        ));
+
+    await tester.pumpWidget(overlay(manyMessages(40)));
+    await tester.pumpAndSettle();
+    // Scroll to the bottom
+    final list = tester.widget<ListView>(find.byType(ListView));
+    list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+
+    // A fresh message arrives while open — the list scrolls to show it.
+    await tester.pumpWidget(overlay(manyMessages(41)));
+    await tester.pumpAndSettle();
+    expect(find.text('msg-40'), findsOneWidget);
+  });
+
+  testWidgets('a new message shows unread badge if scrolled up',
       (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1.0;
@@ -189,10 +217,17 @@ void main() {
     // No auto-scroll on first build: the bottom message is still off-screen.
     expect(find.text('msg-39'), findsNothing);
 
-    // A fresh message arrives while open — the list scrolls to show it.
+    // A fresh message arrives while open — it does NOT scroll, but shows badge.
     await tester.pumpWidget(overlay(manyMessages(41)));
     await tester.pumpAndSettle();
+    expect(find.text('msg-40'), findsNothing);
+    expect(find.text('↓ 1 new message'), findsOneWidget);
+
+    // Tapping the badge scrolls to bottom and clears the badge
+    await tester.tap(find.text('↓ 1 new message'));
+    await tester.pumpAndSettle();
     expect(find.text('msg-40'), findsOneWidget);
+    expect(find.text('↓ 1 new message'), findsNothing);
   });
 
   testWidgets('reopening the card scrolls the latest message into view even '

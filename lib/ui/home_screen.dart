@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../core/chat/chat_store.dart';
 import '../core/connect/room_config.dart';
@@ -59,6 +61,14 @@ class _HomeScreenState extends State<HomeScreen> {
   late final SyncplayClient _sync;
   late final PlaybackSyncBridge _bridge;
   final DebugLog _syncLog = DebugLog.temp('meowwatch_sync.log');
+  late final Player _audioPlayer;
+
+  // Notification chime: a bundled asset (portable, no dependency on a
+  // system-specific sound file), throttled so a burst of messages while
+  // unfocused doesn't stack overlapping playbacks.
+  static const String _notifySoundAsset = 'asset:///assets/sounds/notify.wav';
+  static const Duration _notifyThrottle = Duration(seconds: 2);
+  final Stopwatch _notifyClock = Stopwatch();
 
   SyncConnectionStatus _syncStatus = SyncConnectionStatus.disconnected;
   String? _syncError;
@@ -108,8 +118,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// "waiting" screen still has a focused descendant for the Tab handler to fire
   /// from). skipTraversal keeps it out of Tab focus-traversal; we only ever
   /// focus it programmatically when restoring focus with no VideoSurface mounted.
-  final FocusNode _rootFocus =
-      FocusNode(debugLabel: 'home-root', skipTraversal: true);
+  final FocusNode _rootFocus = FocusNode(
+    debugLabel: 'home-root',
+    skipTraversal: true,
+  );
   List<ChatMessage> _messages = const <ChatMessage>[];
   late String _username;
   bool _peekPulsing = false;
@@ -141,10 +153,32 @@ class _HomeScreenState extends State<HomeScreen> {
     _sync = SyncplayClient(onLog: _syncLog.call);
     _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
     _chat = ChatStore(sync: _sync);
-    _chatSub = _chat.stream.listen((msgs) {
+    _audioPlayer = Player();
+    _chatSub = _chat.stream.listen((msgs) async {
       if (!mounted) return;
+      final newCount = msgs.length - _messages.length;
+      final isNewMessage = newCount > 0;
+      final lastMsg = isNewMessage ? msgs.last : null;
+
       setState(() => _messages = msgs);
-      if (_chatLayout.collapsed) _pulsePeek();
+
+      if (_chatLayout.collapsed && isNewMessage) _pulsePeek();
+
+      if (isNewMessage && lastMsg != null && lastMsg.username != _username) {
+        final focused = await windowManager.isFocused();
+        if (!mounted || focused) return;
+        if (_notifyClock.isRunning && _notifyClock.elapsed < _notifyThrottle) {
+          return;
+        }
+        _notifyClock
+          ..reset()
+          ..start();
+        try {
+          await _audioPlayer.open(Media(_notifySoundAsset), play: true);
+        } catch (e) {
+          debugPrint('Failed to play notification: $e');
+        }
+      }
     });
     _reactionSub = _chat.reactions.listen((e) {
       if (mounted && !_reactionFeed.isClosed) _reactionFeed.add(e.emoji);
@@ -204,13 +238,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _historyTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       unawaited(_saveResumePosition());
     });
-    unawaited(_sync.connect(
-      server: widget.config.server,
-      port: widget.config.port,
-      username: widget.config.username,
-      room: widget.config.room,
-      password: widget.config.password,
-    ));
+    unawaited(
+      _sync.connect(
+        server: widget.config.server,
+        port: widget.config.port,
+        username: widget.config.username,
+        room: widget.config.room,
+        password: widget.config.password,
+      ),
+    );
     final resume = widget.config.resumeFilePath;
     if (resume != null) {
       unawaited(_resume(resume, widget.config.resumePositionMs));
@@ -240,6 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
     unawaited(_core.dispose());
+    unawaited(_audioPlayer.dispose());
     unawaited(_syncLog.close());
     _videoFocus.dispose();
     _rootFocus.dispose();
@@ -319,9 +356,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool get _syncHealthyNow => SyncHealth(
-        connected: _syncStatus == SyncConnectionStatus.connected,
-        hasPeer: _peers.isNotEmpty,
-      ).healthy;
+    connected: _syncStatus == SyncConnectionStatus.connected,
+    hasPeer: _peers.isNotEmpty,
+  ).healthy;
 
   /// Recompute sync health and (after a debounce) auto-pause on a sustained
   /// healthy -> unhealthy drop. Call inside setState after [_syncStatus] /
@@ -336,7 +373,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _autoPauseTimer = null;
       _autoPausedNotice = false;
     } else if (decideAutoPause(
-            wasHealthy: _syncHealthy, nowHealthy: nowHealthy, isPlaying: isPlaying) &&
+          wasHealthy: _syncHealthy,
+          nowHealthy: nowHealthy,
+          isPlaying: isPlaying,
+        ) &&
         _autoPauseTimer == null) {
       // Edge into unhealthy while playing — arm the debounce, confirm later.
       _autoPauseTimer = Timer(_autoPauseDelay, _confirmAutoPause);
@@ -530,7 +570,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (state.fileName != null)
                     Positioned.fill(
                       child: FloatingReactionsOverlay(
-                          emojis: _reactionFeed.stream),
+                        emojis: _reactionFeed.stream,
+                      ),
                     ),
                   // Banner + chat show even before a video is loaded, so the
                   // "waiting / friend joined" notices and chat history are
@@ -541,40 +582,41 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: _SyncHintBanner(text: hint),
                     ),
                   ChatOverlay(
-                      messages: _messages,
-                      myUsername: _username,
-                      collapsed: _chatLayout.collapsed,
-                      corner: _chatLayout.corner,
-                      pulsing: _peekPulsing,
-                      onSend: _chat.send,
-                      typingLabel: _typingLabel,
-                      onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
-                      onToggleCollapsed: _toggleChat,
-                      onSnap: (result) {
-                        setState(
-                            () => _chatLayout = _chatLayout.applySnap(result));
-                        if (_chatLayout.collapsed) _restorePlayerFocus();
-                      },
-                      onDraggingChanged: (d) =>
-                          setState(() => _chatDragging = d),
-                      widthPx: _chatLayout.widthPx,
-                      heightPx: _chatLayout.heightPx,
-                      onResize: (size) {
-                        setState(
-                            () => _chatLayout = _chatLayout.applyResize(size));
-                        widget.settings.set(
-                          kChatCardSizeSettingKey,
-                          formatCardSize(
-                            _chatLayout.widthPx!,
-                            _chatLayout.heightPx!,
-                          ),
-                        );
-                      },
-                      onResetSize: () {
-                        setState(() => _chatLayout = _chatLayout.resetSize());
-                        widget.settings.set(kChatCardSizeSettingKey, '');
-                      },
-                    ),
+                    messages: _messages,
+                    myUsername: _username,
+                    collapsed: _chatLayout.collapsed,
+                    corner: _chatLayout.corner,
+                    pulsing: _peekPulsing,
+                    onSend: _chat.send,
+                    typingLabel: _typingLabel,
+                    onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
+                    onToggleCollapsed: _toggleChat,
+                    onSnap: (result) {
+                      setState(
+                        () => _chatLayout = _chatLayout.applySnap(result),
+                      );
+                      if (_chatLayout.collapsed) _restorePlayerFocus();
+                    },
+                    onDraggingChanged: (d) => setState(() => _chatDragging = d),
+                    widthPx: _chatLayout.widthPx,
+                    heightPx: _chatLayout.heightPx,
+                    onResize: (size) {
+                      setState(
+                        () => _chatLayout = _chatLayout.applyResize(size),
+                      );
+                      widget.settings.set(
+                        kChatCardSizeSettingKey,
+                        formatCardSize(
+                          _chatLayout.widthPx!,
+                          _chatLayout.heightPx!,
+                        ),
+                      );
+                    },
+                    onResetSize: () {
+                      setState(() => _chatLayout = _chatLayout.resetSize());
+                      widget.settings.set(kChatCardSizeSettingKey, '');
+                    },
+                  ),
                   Positioned(
                     top: 12,
                     left: 12,
@@ -629,12 +671,8 @@ class _SyncHintBanner extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: m.border),
         ),
-        child: Text(
-          text,
-          style: TextStyle(color: m.textPrimary, fontSize: 14),
-        ),
+        child: Text(text, style: TextStyle(color: m.textPrimary, fontSize: 14)),
       ),
     );
   }
 }
-
