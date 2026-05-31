@@ -151,3 +151,34 @@ class ChatMessage {
   @override
   int get hashCode => Object.hash(username, text, timestamp, system);
 }
+
+/// A deliberate playback action a peer took (play/pause/seek), surfaced as a
+/// notification so the other watcher understands why playback jumped. Drift
+/// corrections are NOT activities — see classifySyncActivity.
+enum SyncActivityKind { played, paused, seekedForward, seekedBack }
+
+@immutable
+class SyncActivity {
+  const SyncActivity({
+    required this.kind,
+    required this.username,
+    required this.position,
+  });
+
+  final SyncActivityKind kind;
+  final String username;
+
+  /// Target position of the action (where they paused/seeked to). For [played]
+  /// it is the resume point; the UI ignores it there.
+  final Duration position;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SyncActivity &&
+      other.kind == kind &&
+      other.username == username &&
+      other.position == position;
+
+  @override
+  int get hashCode => Object.hash(kind, username, position);
+}
