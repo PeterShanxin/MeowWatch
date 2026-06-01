@@ -122,7 +122,7 @@ class _ChatOverlayState extends State<ChatOverlay>
   int? _dividerIndex;
   Timer? _dividerTimer;
 
-  void _setUnreadCount(int count) {
+  void _setUnreadCount(int count, {int? firstUnreadIndex}) {
     if (_unreadCount == count) return;
     final wasUnread = _unreadCount > 0;
     _unreadCount = count;
@@ -137,7 +137,7 @@ class _ChatOverlayState extends State<ChatOverlay>
       // Pin the divider just before the first unread message. Safe as an
       // absolute index only because the message list is append-only — existing
       // indices never shift, so the boundary stays put as more arrive.
-      _dividerIndex = widget.messages.length - count;
+      _dividerIndex = firstUnreadIndex ?? (widget.messages.length - count);
       _dividerTimer?.cancel();
       _dividerTimer = null;
     }
@@ -209,8 +209,13 @@ class _ChatOverlayState extends State<ChatOverlay>
       final isMyMessage = newMsgs.isNotEmpty && newMsgs.last.username == widget.myUsername;
 
       int newUnread = 0;
-      for (final m in newMsgs) {
-        if (!m.system && m.username != widget.myUsername) newUnread++;
+      int? firstUnreadIndex;
+      for (int i = 0; i < newMsgs.length; i++) {
+        final m = newMsgs[i];
+        if (!m.system && m.username != widget.myUsername) {
+          newUnread++;
+          firstUnreadIndex ??= old.messages.length + i;
+        }
       }
 
       bool isAtBottom = false;
@@ -225,10 +230,10 @@ class _ChatOverlayState extends State<ChatOverlay>
         if (!widget.isUiIdle || isMyMessage) {
           if (_unreadCount != 0) setState(() => _setUnreadCount(0));
         } else {
-          if (newUnread > 0) setState(() => _setUnreadCount(_unreadCount + newUnread));
+          if (newUnread > 0) setState(() => _setUnreadCount(_unreadCount + newUnread, firstUnreadIndex: firstUnreadIndex));
         }
       } else {
-        if (newUnread > 0) setState(() => _setUnreadCount(_unreadCount + newUnread));
+        if (newUnread > 0) setState(() => _setUnreadCount(_unreadCount + newUnread, firstUnreadIndex: firstUnreadIndex));
       }
     }
 
