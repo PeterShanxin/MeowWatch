@@ -27,6 +27,10 @@ class LineFramer {
     _buffer.removeRange(0, start);
     return lines;
   }
+
+  /// Discard any partially-buffered line. Call before a reconnect so a stray
+  /// half-line from the dead socket can't corrupt the first frame of the new one.
+  void reset() => _buffer.clear();
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'connection_watchdog.dart';
 import 'peer_state.dart';
 import 'ping_service.dart';
 import 'sync_activity.dart';
@@ -14,14 +15,43 @@ import 'sync_messages.dart';
 /// Concrete SyncCore speaking the Syncplay text protocol over a TCP socket
 /// upgraded to TLS. One JSON object per line, terminated `\r\n`.
 class SyncplayClient extends SyncCore {
-  SyncplayClient({this.onLog});
+  SyncplayClient({
+    this.onLog,
+    this.livenessTimeout = const Duration(seconds: 12),
+  });
 
   /// Optional debug sink for raw protocol traffic and follow decisions.
   final void Function(String line)? onLog;
 
+  /// How long to tolerate silence from the server before presuming the link is
+  /// dead (a half-open TCP that never fired onDone/onError). Generous relative
+  /// to the ~1s State heartbeat. Injectable for tests.
+  final Duration livenessTimeout;
+
   Socket? _socket;
-  final LineFramer _framer = LineFramer();
+  LineFramer _framer = LineFramer();
   final PingService _ping = PingService();
+
+  late final ConnectionWatchdog _watchdog = ConnectionWatchdog(
+    timeout: livenessTimeout,
+    onTimeout: _onConnectionLost,
+  );
+
+  // Reconnect bookkeeping. Server/port are remembered from the first connect so
+  // a dropped link can be re-established without UI involvement.
+  String _server = '';
+  int _port = 0;
+  int _reconnectAttempt = 0;
+  Timer? _reconnectTimer;
+  bool _manualDisconnect = false;
+
+  // Bumped every time we abandon or supersede a connection attempt (new dial,
+  // reconnect, manual leave). The TLS negotiation runs async on a socket that
+  // isn't yet bound to [_socket]; a slow handshake could otherwise complete
+  // *after* its attempt was torn down and bind a zombie socket. Each
+  // negotiation captures the generation it started in and bails if it no longer
+  // matches.
+  int _generation = 0;
 
   String _username = '';
   String _room = '';
@@ -55,28 +85,101 @@ class SyncplayClient extends SyncCore {
     required String room,
     String? password,
   }) async {
+    _server = server;
+    _port = port;
     _username = username;
     _room = room;
     _password = password;
+    _manualDisconnect = false;
+    _reconnectAttempt = 0;
     emitConnectionState(
       const SyncConnectionState(status: SyncConnectionStatus.connecting),
     );
+    await _openConnection();
+  }
+
+  /// Open (or re-open) the socket and start the TLS handshake. Shared by the
+  /// initial [connect] and the auto-reconnect path; callers set the surrounding
+  /// status (`connecting` vs. `reconnecting`) before invoking.
+  Future<void> _openConnection() async {
+    // Tear down any prior socket and stale framer state before dialing again.
+    _watchdog.stop();
+    _socket?.destroy();
+    _socket = null;
+    _framer = LineFramer();
+    _loggedIn = false;
+    final generation = ++_generation;
 
     try {
-      final plain = await Socket.connect(server, port,
+      final plain = await Socket.connect(_server, _port,
           timeout: const Duration(seconds: 10));
+      // A late dial that resolves after we already moved on: drop it.
+      if (generation != _generation || _manualDisconnect) {
+        plain.destroy();
+        return;
+      }
+      // Track the negotiation socket immediately so a mid-handshake teardown
+      // (watchdog trip or manual leave, before _bindSocket runs) can destroy it.
+      _socket = plain;
       // Attempt TLS upgrade first (public servers require it).
       _sendRaw(plain, encodeTlsRequest());
       emitConnectionState(
         const SyncConnectionState(status: SyncConnectionStatus.handshaking),
       );
-      _attachPlainForTlsNegotiation(plain, server);
+      // Guard the handshake too: if the socket binds but the server never
+      // completes the Hello, the watchdog trips and we retry.
+      _watchdog.bump();
+      _attachPlainForTlsNegotiation(plain, _server, generation);
     } on SocketException catch (e) {
-      emitConnectionState(SyncConnectionState(
-        status: SyncConnectionStatus.error,
-        message: 'Could not reach server: ${e.message}',
-      ));
+      if (generation != _generation || _manualDisconnect) return;
+      onLog?.call('connect failed: ${e.message}');
+      _scheduleReconnect(message: 'Could not reach server: ${e.message}');
     }
+  }
+
+  /// Presume the current link dead (silent timeout, socket error, or clean
+  /// close) and arm a backed-off reconnect — unless the user asked to leave.
+  void _onConnectionLost() {
+    if (_manualDisconnect) return;
+    onLog?.call('connection lost (no server traffic within '
+        '${livenessTimeout.inSeconds}s) — reconnecting');
+    _scheduleReconnect();
+  }
+
+  /// Permanently stop the connection — no auto-reconnect. Used for a deliberate
+  /// leave and for a fatal server protocol error (rejected room/password). Bumps
+  /// the generation so a trailing onDone from the closing socket is ignored.
+  void _stopReconnecting() {
+    _manualDisconnect = true;
+    _generation++;
+    _watchdog.stop();
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+  }
+
+  void _scheduleReconnect({String? message}) {
+    if (_manualDisconnect) return;
+    _watchdog.stop();
+    // Invalidate any in-flight handshake from the attempt we're abandoning.
+    _generation++;
+    // Clear _socket BEFORE destroying so the destroyed socket's trailing
+    // onDone/onError can't observe itself as the live socket.
+    final old = _socket;
+    _socket = null;
+    old?.destroy();
+    _loggedIn = false;
+    // Surface the gap to the UI so playback auto-pauses while we recover.
+    emitConnectionState(SyncConnectionState(
+      status: SyncConnectionStatus.reconnecting,
+      message: message,
+    ));
+    _reconnectTimer?.cancel();
+    final delay = reconnectBackoff(attempt: _reconnectAttempt);
+    _reconnectAttempt++;
+    _reconnectTimer = Timer(delay, () {
+      if (_manualDisconnect) return;
+      unawaited(_openConnection());
+    });
   }
 
   /// Listen on the plain socket only long enough to receive the TLS answer,
@@ -86,7 +189,10 @@ class SyncplayClient extends SyncCore {
   /// [SecureSocket.secure] via `subscription:`, so any bytes already buffered
   /// for that subscription are carried into the TLS handshake. Cancelling
   /// instead would drop them and break the handshake.
-  void _attachPlainForTlsNegotiation(Socket plain, String server) {
+  void _attachPlainForTlsNegotiation(Socket plain, String server, int generation) {
+    // True once this attempt is superseded (reconnect/manual leave) or done —
+    // every completion path must bail rather than bind a zombie socket.
+    bool stale() => generation != _generation || _manualDisconnect;
     var upgraded = false;
     late StreamSubscription<Uint8List> sub;
     sub = plain.listen((chunk) async {
@@ -97,6 +203,7 @@ class SyncplayClient extends SyncCore {
             decodeServerMessage(json.decode(line) as Map<dynamic, dynamic>);
         if (decoded is TlsMessage && decoded.startTls) {
           upgraded = true;
+          if (stale()) return;
           // Pause (don't cancel) so SecureSocket.secure can detach this
           // subscription and carry any buffered bytes into the handshake.
           sub.pause();
@@ -105,41 +212,57 @@ class SyncplayClient extends SyncCore {
             host: server,
             onBadCertificate: (_) => false,
           );
-          _bindSocket(secure);
+          // The await above can outlive a teardown — drop the upgraded socket
+          // rather than binding it over a newer attempt.
+          if (stale()) {
+            secure.destroy();
+            return;
+          }
+          _bindSocket(secure, generation);
           _sendHello();
           return;
         } else if (decoded is ErrorMessage) {
           // Server doesn't support TLS — fall back to the plain socket.
           upgraded = true;
+          if (stale()) return;
           await sub.cancel();
-          _bindSocket(plain);
+          if (stale()) return;
+          _bindSocket(plain, generation);
           _sendHello();
           return;
         }
       }
     }, onError: (Object e) {
-      emitConnectionState(SyncConnectionState(
-        status: SyncConnectionStatus.error,
-        message: e.toString(),
-      ));
+      if (stale()) return;
+      onLog?.call('tls negotiation error: $e');
+      _onConnectionLost();
     });
   }
 
-  void _bindSocket(Socket socket) {
+  void _bindSocket(Socket socket, int generation) {
     _socket = socket;
+    // onDone/onError can fire *after* we've already torn this socket down (a
+    // destroy() during reconnect still flushes a final close event). Guard on
+    // the generation so only the currently-live socket can trigger a reconnect
+    // — otherwise a stale callback would schedule a second one, double-counting
+    // the backoff and resetting the timer.
     socket.listen(
       _onChunk,
-      onError: (Object e) => emitConnectionState(SyncConnectionState(
-        status: SyncConnectionStatus.error,
-        message: e.toString(),
-      )),
-      onDone: () => emitConnectionState(
-        const SyncConnectionState(status: SyncConnectionStatus.disconnected),
-      ),
+      onError: (Object e) {
+        if (generation != _generation) return;
+        onLog?.call('socket error: $e');
+        _onConnectionLost();
+      },
+      onDone: () {
+        if (generation != _generation) return;
+        _onConnectionLost();
+      },
     );
   }
 
   void _onChunk(List<int> chunk) {
+    // Any byte from the server proves the link is alive — reset the watchdog.
+    _watchdog.bump();
     for (final line in _framer.addChunk(chunk)) {
       if (line.isEmpty) continue;
       onLog?.call('<< $line');
@@ -168,6 +291,9 @@ class SyncplayClient extends SyncCore {
     switch (msg) {
       case HelloMessage():
         _loggedIn = true;
+        // A completed login means the (re)connect succeeded — reset the backoff
+        // so the next drop starts over from the short end.
+        _reconnectAttempt = 0;
         emitConnectionState(
           const SyncConnectionState(status: SyncConnectionStatus.connected),
         );
@@ -202,6 +328,15 @@ class SyncplayClient extends SyncCore {
       case ChatServerMessage(:final message):
         emitChat(message);
       case ErrorMessage(:final message):
+        // A server protocol error is a deliberate rejection (bad room/password,
+        // room full, kicked) — the server closes the socket right after. Stop
+        // reconnecting so that trailing close doesn't restart an endless loop
+        // with the same bad credentials; leave the user on the actionable error.
+        _stopReconnecting();
+        final old = _socket;
+        _socket = null;
+        old?.destroy();
+        _loggedIn = false;
         emitConnectionState(SyncConnectionState(
           status: SyncConnectionStatus.error,
           message: message,
@@ -378,6 +513,27 @@ class SyncplayClient extends SyncCore {
     _loggedIn = true;
   }
 
+  /// Test hook: pretend the server fell silent / the socket dropped, exercising
+  /// the reconnect state machine without a real network. Mirrors what the
+  /// watchdog, socket onDone, and socket onError all funnel into.
+  @visibleForTesting
+  void debugSimulateConnectionLost() => _onConnectionLost();
+
+  /// Test hook: how many reconnect attempts have been scheduled since the last
+  /// successful login (resets to 0 on Hello). Lets a test assert the backoff
+  /// advances on repeated drops.
+  @visibleForTesting
+  int get debugReconnectAttempt => _reconnectAttempt;
+
+  /// Test hook: is a reconnect currently armed?
+  @visibleForTesting
+  bool get debugReconnectScheduled => _reconnectTimer?.isActive ?? false;
+
+  /// Test hook: route a decoded server message through the normal handler,
+  /// without a socket — e.g. to exercise the fatal-error stop path.
+  @visibleForTesting
+  void debugHandleMessage(ServerMessage msg) => _handleMessage(msg);
+
   @override
   void sendChat(String text) {
     if (_loggedIn) _send(encodeChat(text));
@@ -385,8 +541,16 @@ class SyncplayClient extends SyncCore {
 
   @override
   Future<void> disconnect() async {
-    await _socket?.close();
+    // User asked to leave: stop the watchdog and cancel any pending reconnect so
+    // we don't immediately dial back in.
+    _stopReconnecting();
+    // destroy(), not close(): a half-open socket's close() awaits a flush that
+    // can never complete (the peer is gone), which is exactly what wedged the
+    // "Leave room" button. destroy() drops it immediately. Clear _socket first
+    // so the trailing close event can't see itself as live.
+    final old = _socket;
     _socket = null;
+    old?.destroy();
     _loggedIn = false;
     emitConnectionState(
       const SyncConnectionState(status: SyncConnectionStatus.disconnected),
@@ -395,7 +559,9 @@ class SyncplayClient extends SyncCore {
 
   @override
   Future<void> disposeBackend() async {
-    await _socket?.close();
+    _stopReconnecting();
+    final old = _socket;
     _socket = null;
+    old?.destroy();
   }
 }

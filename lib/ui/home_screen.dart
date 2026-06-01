@@ -531,6 +531,12 @@ class _HomeScreenState extends State<HomeScreen> {
       case SyncConnectionStatus.connecting:
       case SyncConnectionStatus.handshaking:
         return 'Connecting to room $room…';
+      case SyncConnectionStatus.reconnecting:
+        // Surface the concrete failure reason when we have one (e.g. "Could not
+        // reach server…" from a failed dial); otherwise the generic line.
+        return _syncError != null
+            ? '${_syncError!} — reconnecting…'
+            : 'Connection lost — reconnecting to room $room…';
       case SyncConnectionStatus.error:
         return _syncError ?? 'Couldn\'t connect to room $room';
       case SyncConnectionStatus.disconnected:

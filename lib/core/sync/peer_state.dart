@@ -1,6 +1,13 @@
 import 'package:flutter/foundation.dart';
 
-enum SyncConnectionStatus { disconnected, connecting, handshaking, connected, error }
+enum SyncConnectionStatus {
+  disconnected,
+  connecting,
+  reconnecting,
+  handshaking,
+  connected,
+  error
+}
 
 @immutable
 class SyncConnectionState {
