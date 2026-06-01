@@ -146,6 +146,17 @@ class SyncplayClient extends SyncCore {
     _scheduleReconnect();
   }
 
+  /// Permanently stop the connection — no auto-reconnect. Used for a deliberate
+  /// leave and for a fatal server protocol error (rejected room/password). Bumps
+  /// the generation so a trailing onDone from the closing socket is ignored.
+  void _stopReconnecting() {
+    _manualDisconnect = true;
+    _generation++;
+    _watchdog.stop();
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+  }
+
   void _scheduleReconnect({String? message}) {
     if (_manualDisconnect) return;
     _watchdog.stop();
@@ -317,6 +328,15 @@ class SyncplayClient extends SyncCore {
       case ChatServerMessage(:final message):
         emitChat(message);
       case ErrorMessage(:final message):
+        // A server protocol error is a deliberate rejection (bad room/password,
+        // room full, kicked) — the server closes the socket right after. Stop
+        // reconnecting so that trailing close doesn't restart an endless loop
+        // with the same bad credentials; leave the user on the actionable error.
+        _stopReconnecting();
+        final old = _socket;
+        _socket = null;
+        old?.destroy();
+        _loggedIn = false;
         emitConnectionState(SyncConnectionState(
           status: SyncConnectionStatus.error,
           message: message,
@@ -509,6 +529,11 @@ class SyncplayClient extends SyncCore {
   @visibleForTesting
   bool get debugReconnectScheduled => _reconnectTimer?.isActive ?? false;
 
+  /// Test hook: route a decoded server message through the normal handler,
+  /// without a socket — e.g. to exercise the fatal-error stop path.
+  @visibleForTesting
+  void debugHandleMessage(ServerMessage msg) => _handleMessage(msg);
+
   @override
   void sendChat(String text) {
     if (_loggedIn) _send(encodeChat(text));
@@ -518,11 +543,7 @@ class SyncplayClient extends SyncCore {
   Future<void> disconnect() async {
     // User asked to leave: stop the watchdog and cancel any pending reconnect so
     // we don't immediately dial back in.
-    _manualDisconnect = true;
-    _generation++;
-    _watchdog.stop();
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
+    _stopReconnecting();
     // destroy(), not close(): a half-open socket's close() awaits a flush that
     // can never complete (the peer is gone), which is exactly what wedged the
     // "Leave room" button. destroy() drops it immediately. Clear _socket first
@@ -538,11 +559,7 @@ class SyncplayClient extends SyncCore {
 
   @override
   Future<void> disposeBackend() async {
-    _manualDisconnect = true;
-    _generation++;
-    _watchdog.stop();
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
+    _stopReconnecting();
     final old = _socket;
     _socket = null;
     old?.destroy();

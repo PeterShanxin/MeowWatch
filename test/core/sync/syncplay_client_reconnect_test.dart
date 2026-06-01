@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/sync/peer_state.dart';
+import 'package:meowwatch/core/sync/sync_messages.dart';
 import 'package:meowwatch/core/sync/syncplay_client.dart';
 
 /// State-machine coverage for the half-open-connection fix. A real handshake
@@ -64,6 +65,23 @@ void main() {
     // disconnect() must always resolve promptly regardless of socket state.
     await client.disconnect().timeout(const Duration(seconds: 1));
     expect(statuses.last, SyncConnectionStatus.disconnected);
+  });
+
+  test('a fatal server error stops reconnecting (no endless loop)', () async {
+    // A rejected room/password: the server sends Error then closes the socket.
+    // The trailing close must NOT restart the loop with the same bad creds —
+    // the user stays on the actionable error. (Codex review #49.)
+    client.debugHandleMessage(const ErrorMessage('Invalid password'));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(statuses.last, SyncConnectionStatus.error);
+    expect(client.debugReconnectScheduled, isFalse);
+
+    // The socket's onDone arrives after Error — simulate it; still no reconnect.
+    client.debugSimulateConnectionLost();
+    await Future<void>.delayed(Duration.zero);
+    expect(statuses, isNot(contains(SyncConnectionStatus.reconnecting)));
+    expect(statuses.last, SyncConnectionStatus.error);
   });
 
   test('manual leave mid-handshake tears down and never reconnects', () async {
