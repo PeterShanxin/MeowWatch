@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/sync/peer_state.dart';
 import 'package:meowwatch/core/sync/syncplay_client.dart';
@@ -63,4 +65,51 @@ void main() {
     await client.disconnect().timeout(const Duration(seconds: 1));
     expect(statuses.last, SyncConnectionStatus.disconnected);
   });
+
+  test('manual leave mid-handshake tears down and never reconnects', () async {
+    // A server that accepts the TCP connection but never answers the TLS
+    // request leaves the client stuck in negotiation with the (unbound)
+    // handshake socket live. Leaving now must destroy it and stay disconnected
+    // — the generation guard must stop the dangling negotiation from later
+    // binding a zombie socket. (Codex review #49.)
+    final server = await ServerSocket.bind('127.0.0.1', 0);
+    final accepted = <Socket>[];
+    server.listen((s) {
+      accepted.add(s);
+      s.listen((_) {}); // read & ignore; never reply
+    });
+    addTearDown(() async {
+      for (final s in accepted) {
+        s.destroy();
+      }
+      await server.close();
+    });
+
+    await client.connect(
+      server: '127.0.0.1',
+      port: server.port,
+      username: 'me',
+      room: 'r',
+    );
+    // We're now mid-handshake (handshaking emitted, no Hello will ever arrive).
+    await _until(() => statuses.contains(SyncConnectionStatus.handshaking));
+    expect(statuses, contains(SyncConnectionStatus.handshaking));
+
+    await client.disconnect().timeout(const Duration(seconds: 1));
+    expect(statuses.last, SyncConnectionStatus.disconnected);
+    expect(client.debugReconnectScheduled, isFalse);
+
+    // Let any late negotiation callback fire — it must be ignored.
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(statuses, isNot(contains(SyncConnectionStatus.reconnecting)));
+    expect(statuses.last, SyncConnectionStatus.disconnected);
+  });
+}
+
+/// Poll [predicate] until true or a hard deadline, so tests don't hang forever.
+Future<void> _until(bool Function() predicate) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 5));
+  while (!predicate() && DateTime.now().isBefore(deadline)) {
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
 }

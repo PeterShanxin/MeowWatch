@@ -45,6 +45,14 @@ class SyncplayClient extends SyncCore {
   Timer? _reconnectTimer;
   bool _manualDisconnect = false;
 
+  // Bumped every time we abandon or supersede a connection attempt (new dial,
+  // reconnect, manual leave). The TLS negotiation runs async on a socket that
+  // isn't yet bound to [_socket]; a slow handshake could otherwise complete
+  // *after* its attempt was torn down and bind a zombie socket. Each
+  // negotiation captures the generation it started in and bails if it no longer
+  // matches.
+  int _generation = 0;
+
   String _username = '';
   String _room = '';
   String? _password;
@@ -100,20 +108,30 @@ class SyncplayClient extends SyncCore {
     _socket = null;
     _framer = LineFramer();
     _loggedIn = false;
+    final generation = ++_generation;
 
     try {
       final plain = await Socket.connect(_server, _port,
           timeout: const Duration(seconds: 10));
+      // A late dial that resolves after we already moved on: drop it.
+      if (generation != _generation || _manualDisconnect) {
+        plain.destroy();
+        return;
+      }
+      // Track the negotiation socket immediately so a mid-handshake teardown
+      // (watchdog trip or manual leave, before _bindSocket runs) can destroy it.
+      _socket = plain;
       // Attempt TLS upgrade first (public servers require it).
       _sendRaw(plain, encodeTlsRequest());
       emitConnectionState(
         const SyncConnectionState(status: SyncConnectionStatus.handshaking),
       );
-      // Guard the handshake too: if the upgraded socket binds but the server
-      // never completes the Hello, the watchdog trips and we retry.
+      // Guard the handshake too: if the socket binds but the server never
+      // completes the Hello, the watchdog trips and we retry.
       _watchdog.bump();
-      _attachPlainForTlsNegotiation(plain, _server);
+      _attachPlainForTlsNegotiation(plain, _server, generation);
     } on SocketException catch (e) {
+      if (generation != _generation || _manualDisconnect) return;
       onLog?.call('connect failed: ${e.message}');
       _scheduleReconnect(message: 'Could not reach server: ${e.message}');
     }
@@ -131,6 +149,8 @@ class SyncplayClient extends SyncCore {
   void _scheduleReconnect({String? message}) {
     if (_manualDisconnect) return;
     _watchdog.stop();
+    // Invalidate any in-flight handshake from the attempt we're abandoning.
+    _generation++;
     _socket?.destroy();
     _socket = null;
     _loggedIn = false;
@@ -155,7 +175,10 @@ class SyncplayClient extends SyncCore {
   /// [SecureSocket.secure] via `subscription:`, so any bytes already buffered
   /// for that subscription are carried into the TLS handshake. Cancelling
   /// instead would drop them and break the handshake.
-  void _attachPlainForTlsNegotiation(Socket plain, String server) {
+  void _attachPlainForTlsNegotiation(Socket plain, String server, int generation) {
+    // True once this attempt is superseded (reconnect/manual leave) or done —
+    // every completion path must bail rather than bind a zombie socket.
+    bool stale() => generation != _generation || _manualDisconnect;
     var upgraded = false;
     late StreamSubscription<Uint8List> sub;
     sub = plain.listen((chunk) async {
@@ -166,6 +189,7 @@ class SyncplayClient extends SyncCore {
             decodeServerMessage(json.decode(line) as Map<dynamic, dynamic>);
         if (decoded is TlsMessage && decoded.startTls) {
           upgraded = true;
+          if (stale()) return;
           // Pause (don't cancel) so SecureSocket.secure can detach this
           // subscription and carry any buffered bytes into the handshake.
           sub.pause();
@@ -174,19 +198,28 @@ class SyncplayClient extends SyncCore {
             host: server,
             onBadCertificate: (_) => false,
           );
+          // The await above can outlive a teardown — drop the upgraded socket
+          // rather than binding it over a newer attempt.
+          if (stale()) {
+            secure.destroy();
+            return;
+          }
           _bindSocket(secure);
           _sendHello();
           return;
         } else if (decoded is ErrorMessage) {
           // Server doesn't support TLS — fall back to the plain socket.
           upgraded = true;
+          if (stale()) return;
           await sub.cancel();
+          if (stale()) return;
           _bindSocket(plain);
           _sendHello();
           return;
         }
       }
     }, onError: (Object e) {
+      if (stale()) return;
       onLog?.call('tls negotiation error: $e');
       _onConnectionLost();
     });
@@ -476,6 +509,7 @@ class SyncplayClient extends SyncCore {
     // User asked to leave: stop the watchdog and cancel any pending reconnect so
     // we don't immediately dial back in.
     _manualDisconnect = true;
+    _generation++;
     _watchdog.stop();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
@@ -493,6 +527,7 @@ class SyncplayClient extends SyncCore {
   @override
   Future<void> disposeBackend() async {
     _manualDisconnect = true;
+    _generation++;
     _watchdog.stop();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
