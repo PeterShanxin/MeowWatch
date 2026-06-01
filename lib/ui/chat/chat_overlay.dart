@@ -132,6 +132,9 @@ class _ChatOverlayState extends State<ChatOverlay>
         if (mounted) setState(() => _dividerIndex = null);
       });
     } else if (!wasUnread && isUnread) {
+      // Pin the divider just before the first unread message. Safe as an
+      // absolute index only because the message list is append-only — existing
+      // indices never shift, so the boundary stays put as more arrive.
       _dividerIndex = widget.messages.length - count;
       _dividerTimer?.cancel();
       _dividerTimer = null;
@@ -173,9 +176,14 @@ class _ChatOverlayState extends State<ChatOverlay>
   }
 
   void _onInputFocusChanged() {
-    if (_inputFocus.hasFocus && _dividerIndex != null) {
+    // Only clear on focus when the divider isn't already on its post-read
+    // linger timer. Opening the overlay auto-focuses the input (see
+    // didUpdateWidget); without this guard that programmatic focus would wipe
+    // the "New Messages" divider the instant the user reopens to catch up —
+    // exactly when they want to see it. A manual focus while messages are still
+    // unread (no timer scheduled) still clears it.
+    if (_inputFocus.hasFocus && _dividerIndex != null && _dividerTimer == null) {
       setState(() => _dividerIndex = null);
-      _dividerTimer?.cancel();
     }
   }
 
