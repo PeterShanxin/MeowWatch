@@ -123,7 +123,17 @@ class _ChatOverlayState extends State<ChatOverlay>
     _unreadCount = count;
     final isUnread = _unreadCount > 0;
     if (wasUnread != isUnread) {
-      widget.onUnreadChanged?.call(isUnread);
+      // Defer past the current frame: _setUnreadCount runs inside
+      // didUpdateWidget (the parent's build phase), and onUnreadChanged drives
+      // a parent setState — calling it synchronously throws "setState() called
+      // during build". The post-frame hop also coalesces if the flag flips back
+      // before the frame ends.
+      final cb = widget.onUnreadChanged;
+      if (cb != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) cb(_unreadCount > 0);
+        });
+      }
     }
   }
 

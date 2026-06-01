@@ -94,6 +94,72 @@ void main() {
         1.0,
       );
     });
+
+    test('collapsed tab with unread stays fully visible when idle (#43)', () {
+      expect(
+        chatOverlayOpacity(
+          idle: true,
+          collapsed: true,
+          autoDim: true,
+          hasUnread: true,
+        ),
+        1.0,
+      );
+    });
+
+    test('collapsed unread tab survives deep idle too (#43)', () {
+      expect(
+        chatOverlayOpacity(
+          idle: true,
+          collapsed: true,
+          autoDim: true,
+          deepIdle: true,
+          hasUnread: true,
+        ),
+        1.0,
+      );
+    });
+
+    test('expanded unread card ghosts when wake-on-message off (#43)', () {
+      expect(
+        chatOverlayOpacity(
+          idle: true,
+          collapsed: false,
+          autoDim: true,
+          hasUnread: true,
+          wakeToFullyVisible: false,
+        ),
+        0.1,
+      );
+    });
+
+    test('expanded unread card fully wakes when setting on (#43)', () {
+      expect(
+        chatOverlayOpacity(
+          idle: true,
+          collapsed: false,
+          autoDim: true,
+          hasUnread: true,
+          wakeToFullyVisible: true,
+        ),
+        1.0,
+      );
+    });
+
+    test('unread expanded card does not hide in deep idle (#43)', () {
+      // Without unread this would be 0.0 (#34); unread keeps it a ghost.
+      expect(
+        chatOverlayOpacity(
+          idle: true,
+          collapsed: false,
+          autoDim: true,
+          deepIdle: true,
+          hasUnread: true,
+          wakeToFullyVisible: false,
+        ),
+        0.1,
+      );
+    });
   });
 
   group('overlayOpacity', () {
