@@ -235,6 +235,49 @@ void main() {
     expect(find.text('↓ 1 new message'), findsNothing);
   });
 
+  testWidgets('unread transition notifies the parent without a build-phase '
+      'crash (#43)', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    var count = 40;
+    final unreadEvents = <bool>[];
+    late StateSetter setOuter;
+
+    await tester.pumpWidget(host(StatefulBuilder(
+      builder: (context, setState) {
+        setOuter = setState;
+        return ChatOverlay(
+          messages: manyMessages(count),
+          myUsername: 'me',
+          collapsed: false,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+          // Mirror HomeScreen: the callback drives a parent setState. The new
+          // message arrives via didUpdateWidget (the parent's build phase), so
+          // firing this synchronously would throw "setState() called during
+          // build" — it must be deferred past the frame.
+          onUnreadChanged: (has) {
+            unreadEvents.add(has);
+            setOuter(() {});
+          },
+        );
+      },
+    )));
+    await tester.pumpAndSettle();
+    // First build doesn't auto-scroll, so the card is scrolled up: a new
+    // message bumps unread rather than scrolling into view.
+    expect(unreadEvents, isEmpty);
+
+    setOuter(() => count = 41);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(unreadEvents, contains(true));
+  });
+
   testWidgets('reopening the card scrolls the latest message into view even '
       'though messages piled up while it was collapsed', (tester) async {
     tester.view.physicalSize = const Size(1280, 720);

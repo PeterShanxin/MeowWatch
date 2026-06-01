@@ -154,6 +154,8 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _uiDeepIdleDelay = Duration(seconds: 3);
 
   bool _chatAutoDim = true;
+  bool _chatHasUnread = false;
+  bool _chatWakeOnMessage = false;
 
   /// Collapses bursts of seek notifications into a single line/banner (#26).
   final SyncActivityThrottle _activityThrottle = SyncActivityThrottle();
@@ -287,6 +289,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final dimSetting = await widget.settings.get(kChatAutoDimSettingKey);
     if (dimSetting == 'false' && mounted) {
       setState(() => _chatAutoDim = false);
+    }
+    final wakeSetting = await widget.settings.get(kChatWakeOnNewMessageSettingKey);
+    if (wakeSetting == 'true' && mounted) {
+      setState(() => _chatWakeOnMessage = true);
     }
   }
 
@@ -628,6 +634,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 deepIdle: _isUiDeepIdle,
                 collapsed: _chatLayout.collapsed,
                 autoDim: _chatAutoDim,
+                hasUnread: _chatHasUnread,
+                wakeToFullyVisible: _chatWakeOnMessage,
               );
               return Stack(
                 fit: StackFit.expand,
@@ -682,6 +690,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           if (_chatLayout.collapsed) _restorePlayerFocus();
                         },
                         onDraggingChanged: (d) => setState(() => _chatDragging = d),
+                        onUnreadChanged: (has) => setState(() => _chatHasUnread = has),
                         widthPx: _chatLayout.widthPx,
                         heightPx: _chatLayout.heightPx,
                         onResize: (size) {
@@ -725,6 +734,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           onChatAutoDimChanged: (val) {
                             setState(() => _chatAutoDim = val);
                             widget.settings.set(kChatAutoDimSettingKey, val.toString());
+                          },
+                          chatWakeOnMessage: _chatWakeOnMessage,
+                          onChatWakeOnMessageChanged: (val) {
+                            setState(() => _chatWakeOnMessage = val);
+                            widget.settings.set(kChatWakeOnNewMessageSettingKey, val.toString());
                           },
                         ),
                       ),

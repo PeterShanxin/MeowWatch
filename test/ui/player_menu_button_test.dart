@@ -17,6 +17,8 @@ PlayerMenuButton _button({
   List<String>? members,
   bool chatAutoDim = true,
   ValueChanged<bool>? onChatAutoDimChanged,
+  bool chatWakeOnMessage = false,
+  ValueChanged<bool>? onChatWakeOnMessageChanged,
 }) =>
     PlayerMenuButton(
       roomCode: 'MEOW42',
@@ -28,6 +30,8 @@ PlayerMenuButton _button({
       onLeave: onLeave ?? () {},
       chatAutoDim: chatAutoDim,
       onChatAutoDimChanged: onChatAutoDimChanged ?? (_) {},
+      chatWakeOnMessage: chatWakeOnMessage,
+      onChatWakeOnMessageChanged: onChatWakeOnMessageChanged ?? (_) {},
     );
 
 void main() {
@@ -123,5 +127,21 @@ void main() {
     // Tapping the row flips the current (true) value to false.
     await tester.tap(find.text('Dim chat when idle'));
     expect(changed, isFalse);
+  });
+
+  testWidgets('tapping "Fully wake chat on message" toggles onChatWakeOnMessageChanged',
+      (tester) async {
+    bool? changed;
+    await tester.pumpWidget(_host(_button(
+      chatWakeOnMessage: false,
+      onChatWakeOnMessageChanged: (v) => changed = v,
+    )));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Fully wake chat on message'), findsOneWidget);
+    // Tapping the row flips the current (false) value to true.
+    await tester.tap(find.text('Fully wake chat on message'));
+    expect(changed, isTrue);
   });
 }

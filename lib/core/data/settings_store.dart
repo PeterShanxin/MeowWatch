@@ -9,6 +9,10 @@ const String kChatCardSizeSettingKey = 'chat_card_size';
 /// (value = "true" or "false", default = "true").
 const String kChatAutoDimSettingKey = 'chat_auto_dim';
 
+/// Key for the persisted choice to fully wake the chat card when a new
+/// message arrives during idle (value = "true" or "false", default = "false").
+const String kChatWakeOnNewMessageSettingKey = 'chat_wake_on_new_message';
+
 /// Commands-in access to persisted key/value app settings.
 abstract class SettingsStore {
   Future<String?> get(String key);

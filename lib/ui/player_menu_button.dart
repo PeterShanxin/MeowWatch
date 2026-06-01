@@ -21,6 +21,8 @@ class PlayerMenuButton extends StatelessWidget {
     required this.onLeave,
     required this.chatAutoDim,
     required this.onChatAutoDimChanged,
+    required this.chatWakeOnMessage,
+    required this.onChatWakeOnMessageChanged,
     super.key,
   });
 
@@ -35,6 +37,8 @@ class PlayerMenuButton extends StatelessWidget {
   final VoidCallback onLeave;
   final bool chatAutoDim;
   final ValueChanged<bool> onChatAutoDimChanged;
+  final bool chatWakeOnMessage;
+  final ValueChanged<bool> onChatWakeOnMessageChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +127,11 @@ class PlayerMenuButton extends StatelessWidget {
                 text: 'Dim chat when idle',
                 value: chatAutoDim,
                 onChanged: onChatAutoDimChanged,
+              ),
+              _MenuSwitch(
+                text: 'Fully wake chat on message',
+                value: chatWakeOnMessage,
+                onChanged: onChatWakeOnMessageChanged,
               ),
               Divider(color: m.border, height: 16),
               _MenuAction(
