@@ -505,21 +505,33 @@ class _ChatOverlayState extends State<ChatOverlay>
           _resizeStartSize == null &&
           _overlaySize != null &&
           _dragCardSize != null;
-      return Positioned.fill(
-        child: Stack(
-          children: [
-            if (showHints)
-              _DropZoneHints(
-                overlaySize: _overlaySize!,
-                cardSize: _dragCardSize!,
-                dragTopLeft: topLeft,
+      // Fill the overlay's box with a plain SizedBox.expand — NOT Positioned.fill.
+      // ChatOverlay is mounted under IgnorePointer/AnimatedOpacity (see
+      // HomeScreen), not directly inside a Stack, so a Positioned here is a
+      // misused ParentDataWidget. In release that mis-annotation made the engine
+      // composite the whole screen wrong → a translucent pale-white wash for the
+      // entire drag (#50; debug tolerated it, release didn't). The inner Stack
+      // (below) is the real Stack the card's Positioned belongs to.
+      return SizedBox.expand(
+        // Isolate the moving/resizing card in its own compositor layer so its
+        // per-frame drag/resize repaints stay local instead of repainting the
+        // whole screen.
+        child: RepaintBoundary(
+          child: Stack(
+            children: [
+              if (showHints)
+                _DropZoneHints(
+                  overlaySize: _overlaySize!,
+                  cardSize: _dragCardSize!,
+                  dragTopLeft: topLeft,
+                ),
+              Positioned(
+                left: topLeft.dx,
+                top: topLeft.dy,
+                child: _buildCard(cardSize),
               ),
-            Positioned(
-              left: topLeft.dx,
-              top: topLeft.dy,
-              child: _buildCard(cardSize),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -544,11 +556,16 @@ class _ChatOverlayState extends State<ChatOverlay>
               child: _buildCard(cardSize),
             ),
           );
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 180),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      child: resting,
+    // Same isolation as the drag path: the docked card's own repaints (new
+    // message, typing strip, scroll, collapse cross-fade) stay in their own
+    // layer instead of repainting the player behind it.
+    return RepaintBoundary(
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 180),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: resting,
+      ),
     );
   }
 }
