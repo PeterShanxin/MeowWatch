@@ -18,18 +18,13 @@ class _PaintProbe extends CustomPainter {
 }
 
 void main() {
-  // Regression guard for #50 (a deeper recurrence of #42): resizing the chat
-  // card must not repaint the rest of the screen.
-  //
-  // Why this matters: the chat card resizes by calling setState on every
-  // pointer-move. With no RepaintBoundary isolating the overlay, that
-  // markNeedsPaint walks to the root and repaints the WHOLE screen each frame.
-  // Under the extra per-frame load of being in a room (heartbeat/presence) or
-  // playing (texture + position stream), those full-screen repaints overran the
-  // frame budget; the dropped raster frame let the Windows window's white clear
-  // colour flash through ("whole screen goes white"). Isolating the overlay in
-  // its own layer keeps resize repaints local, so the player layer never
-  // repaints during a resize — no frame drop, no white flash.
+  // Performance / repaint-isolation guard (NOT the #50 white-flash fix — that
+  // was the misused Positioned, see the test below). The card resizes by calling
+  // setState on every pointer-move; without a RepaintBoundary isolating the
+  // overlay, that markNeedsPaint walks to the root and repaints the WHOLE screen
+  // each frame, needlessly redrawing the player behind it. ChatOverlay wraps its
+  // output in a RepaintBoundary so those resize repaints stay in its own layer —
+  // this asserts the sibling player layer doesn't repaint during a resize.
   testWidgets('resizing the chat card does not repaint the sibling player layer',
       (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
