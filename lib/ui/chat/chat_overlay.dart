@@ -438,7 +438,10 @@ class _ChatOverlayState extends State<ChatOverlay>
     // Active drag, or the post-release snap glide, renders a free-floating card.
     final topLeft = _dragTopLeft;
     if (topLeft != null) {
-      // Dock hints show only during the live drag, not the settling glide.
+      // Dock hints show only during the live move-drag: not the settling glide
+      // (isAnimating), and not during a grip resize (_resizeStartSize) — the
+      // resize reuses this free-floating render path, and the hint layer over a
+      // resizing card flashed a white screen (issue #42).
       final showHints =
           !_snapCtrl.isAnimating &&
           _resizeStartSize == null &&

@@ -57,6 +57,21 @@ void main() {
     }
   });
 
+  testWidgets('no dock hints appear while resizing via a grip', (tester) async {
+    // Regression guard for issue #42: a resize reuses the free-floating render
+    // path, and the dock-hint layer over a resizing card flashed a white
+    // screen. The hints must stay hidden for the whole grip drag.
+    await tester.pumpWidget(_host(onResize: (_) {}, onResetSize: () {}));
+    final grip = find.byKey(const ValueKey('chat-resize-grip-bottomRight'));
+    final gesture = await tester.startGesture(tester.getCenter(grip));
+    await gesture.moveBy(const Offset(30, 30));
+    await tester.pump();
+    expect(find.byIcon(Icons.north_west), findsNothing);
+    expect(find.byIcon(Icons.south_east), findsNothing);
+    await gesture.up();
+    await tester.pump();
+  });
+
   testWidgets('control tooltips are present', (tester) async {
     await tester.pumpWidget(_host(onResize: (_) {}, onResetSize: () {}));
     expect(find.byTooltip('Reset size'), findsOneWidget);
