@@ -95,6 +95,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// True while we've auto-paused because sync dropped; drives the banner.
   bool _autoPausedNotice = false;
 
+  /// The reason text for the current auto-pause (peer left vs. connection lost),
+  /// snapshotted at pause time so the banner can't later show a stale cause.
+  String? _autoPausedReason;
+
   /// Transient banner when a friend joins/rejoins the room (auto-clears).
   String? _presenceNotice;
   Timer? _presenceTimer;
@@ -248,13 +252,16 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     // Sync activities (peer + our own) flow through the throttle so a scrub
     // burst collapses to one line/banner (#26); the throttled output drives the
-    // banner + chat history.
+    // banner + chat history. We gate on sync health at BOTH ends: at intake to
+    // avoid buffering lonely activity, and again at output because the throttle
+    // debounce can outlast a peer leaving — without the second gate, an activity
+    // queued while healthy would still surface after sync is gone (#41).
     _activitySub = _sync.activity.listen((a) {
       if (!_syncHealthyNow) return;
       _activityThrottle.add(a);
     });
     _activityThrottleSub = _activityThrottle.stream.listen((a) {
-      if (!mounted) return;
+      if (!mounted || !_syncHealthyNow) return;
       final t = syncActivityText(a, selfUsername: _username);
       setState(() => _showTransientNotice(t.banner));
       _chat.addSystem(t.chatLine);
@@ -443,9 +450,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (nowHealthy) {
       // Recovered (or never lost) — cancel any pending pause, clear banner.
+      // Also forget who last left: keeping it would let a later *connection*
+      // drop wrongly blame a friend who left a different session ago.
       _autoPauseTimer?.cancel();
       _autoPauseTimer = null;
       _autoPausedNotice = false;
+      _lastPeerLeft = null;
     } else if (decideAutoPause(
           wasHealthy: _syncHealthy,
           nowHealthy: nowHealthy,
@@ -466,9 +476,22 @@ class _HomeScreenState extends State<HomeScreen> {
     final stillDown = !_syncHealthyNow;
     final playing = _core.state.status == PlaybackStatus.playing;
     if (stillDown && playing) {
+      // Phrase the reason by actual cause: a friend leaving (still connected,
+      // empty room) names them; any other drop is a connection loss and must
+      // not claim someone left (#41 follow-up).
+      final reason = autoPauseMessage(
+        cause: autoPauseCause(
+          connected: _syncStatus == SyncConnectionStatus.connected,
+          hasPeer: _peers.isNotEmpty,
+        ),
+        peerName: _lastPeerLeft,
+      );
       unawaited(_core.pause());
-      setState(() => _autoPausedNotice = true);
-      _chat.addSystem('${_lastPeerLeft ?? "Friend"} left, auto-paused');
+      setState(() {
+        _autoPausedNotice = true;
+        _autoPausedReason = reason;
+      });
+      _chat.addSystem(reason);
     }
   }
 
@@ -479,7 +502,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_presenceNotice != null) return _presenceNotice;
     final mismatch = _fileMismatchBanner;
     if (mismatch != null) return mismatch;
-    if (_autoPausedNotice) return '⏸ ${_lastPeerLeft ?? "Friend"} left, auto-paused';
+    if (_autoPausedNotice) {
+      return '⏸ ${_autoPausedReason ?? 'Paused — lost sync with your friend'}';
+    }
     return _syncHint;
   }
 

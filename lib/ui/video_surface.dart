@@ -72,9 +72,10 @@ class _VideoSurfaceState extends State<VideoSurface> {
     _seekHideTimer?.cancel();
     _volumeHideTimer?.cancel();
     _ownFocus?.dispose();
-    if (_isFullscreen) {
-      unawaited(windowManager.setFullScreen(false));
-    }
+    // Always leave the app windowed when the player surface goes away — don't
+    // trust the local flag, which can desync if fullscreen is toggled via OS
+    // window controls. A no-op when already windowed.
+    unawaited(windowManager.setFullScreen(false));
     super.dispose();
   }
 

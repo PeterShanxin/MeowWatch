@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.10.1-alpha] - 2026-06-01
+- Leaving the player no longer leaves the app stuck fullscreen — the window goes back to normal when you exit the video (#23).
+- Auto-pause messages now tell the truth about why. When a friend leaves, you'll see "[Friend] left, auto-paused"; when you simply lose connection, it stays the generic "lost sync with your friend" instead of wrongly blaming someone for leaving. The "you paused" line also no longer pops up when you're alone in the room (#41).
+
 ## [0.10.0-alpha] - 2026-06-01
 - Update downloads no longer get thrown away when you close the updater. If you start a download and dismiss the dialog, it keeps going in the background — reopen the updater later and it's still downloading (or ready to install) right where it left off.
 - The open chat now marks where you left off: when new messages arrive while you've scrolled up, a "New Messages" divider drops in above the first unread one. It clears itself once you scroll to the bottom (after a short moment) or start typing a reply.
