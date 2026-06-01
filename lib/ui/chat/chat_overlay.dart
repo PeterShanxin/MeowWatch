@@ -33,6 +33,7 @@ class ChatOverlay extends StatefulWidget {
     this.onResetSize,
     this.widthPx,
     this.heightPx,
+    this.isUiIdle = false,
     this.corner = ChatCorner.bottomLeft,
     this.pulsing = false,
     this.typingLabel,
@@ -44,6 +45,7 @@ class ChatOverlay extends StatefulWidget {
   final List<ChatMessage> messages;
   final String myUsername;
   final bool collapsed;
+  final bool isUiIdle;
   final ChatCorner corner;
   final bool pulsing;
   final void Function(String text) onSend;
@@ -157,7 +159,7 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   void _onScroll() {
     if (!mounted || !_scrollController.hasClients) return;
-    if (_unreadCount > 0) {
+    if (_unreadCount > 0 && !widget.isUiIdle) {
       final pos = _scrollController.position;
       if (pos.pixels >= pos.maxScrollExtent - _bottomSlack) {
         setState(() => _setUnreadCount(0));
@@ -203,10 +205,13 @@ class _ChatOverlayState extends State<ChatOverlay>
       if (_unreadCount > 0) setState(() => _setUnreadCount(0));
       _scrollToBottom(animate: false);
     } else if (old.messages.length < widget.messages.length) {
-      final newMsgs = widget.messages.length - old.messages.length;
-      final isMyMessage =
-          widget.messages.isNotEmpty &&
-          widget.messages.last.username == widget.myUsername;
+      final newMsgs = widget.messages.sublist(old.messages.length);
+      final isMyMessage = newMsgs.isNotEmpty && newMsgs.last.username == widget.myUsername;
+
+      int newUnread = 0;
+      for (final m in newMsgs) {
+        if (!m.system && m.username != widget.myUsername) newUnread++;
+      }
 
       bool isAtBottom = false;
       if (!widget.collapsed && _scrollController.hasClients) {
@@ -216,9 +221,23 @@ class _ChatOverlayState extends State<ChatOverlay>
 
       if (isMyMessage || (isAtBottom && !widget.collapsed)) {
         if (!widget.collapsed) _scrollToBottom(animate: true);
-        if (_unreadCount != 0) setState(() => _setUnreadCount(0));
+        
+        if (!widget.isUiIdle || isMyMessage) {
+          if (_unreadCount != 0) setState(() => _setUnreadCount(0));
+        } else {
+          if (newUnread > 0) setState(() => _setUnreadCount(_unreadCount + newUnread));
+        }
       } else {
-        setState(() => _setUnreadCount(_unreadCount + newMsgs));
+        if (newUnread > 0) setState(() => _setUnreadCount(_unreadCount + newUnread));
+      }
+    }
+
+    if (old.isUiIdle && !widget.isUiIdle) {
+      if (_unreadCount > 0 && !widget.collapsed && _scrollController.hasClients) {
+        final pos = _scrollController.position;
+        if (pos.pixels >= pos.maxScrollExtent - _bottomSlack) {
+          setState(() => _setUnreadCount(0));
+        }
       }
     }
   }
