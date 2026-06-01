@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/gestures.dart' show DragStartBehavior;
@@ -116,12 +117,26 @@ class _ChatOverlayState extends State<ChatOverlay>
   static const double _bottomSlack = 20;
 
   int _unreadCount = 0;
+  int? _dividerIndex;
+  Timer? _dividerTimer;
 
   void _setUnreadCount(int count) {
     if (_unreadCount == count) return;
     final wasUnread = _unreadCount > 0;
     _unreadCount = count;
     final isUnread = _unreadCount > 0;
+
+    if (wasUnread && !isUnread) {
+      _dividerTimer?.cancel();
+      _dividerTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _dividerIndex = null);
+      });
+    } else if (!wasUnread && isUnread) {
+      _dividerIndex = widget.messages.length - count;
+      _dividerTimer?.cancel();
+      _dividerTimer = null;
+    }
+
     if (wasUnread != isUnread) {
       // Defer past the current frame: _setUnreadCount runs inside
       // didUpdateWidget (the parent's build phase), and onUnreadChanged drives
@@ -151,9 +166,17 @@ class _ChatOverlayState extends State<ChatOverlay>
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _inputFocus.addListener(_onInputFocusChanged);
     _snapCtrl
       ..addListener(_onSnapTick)
       ..addStatusListener(_onSnapStatus);
+  }
+
+  void _onInputFocusChanged() {
+    if (_inputFocus.hasFocus && _dividerIndex != null) {
+      setState(() => _dividerIndex = null);
+      _dividerTimer?.cancel();
+    }
   }
 
   @override
@@ -235,6 +258,8 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   @override
   void dispose() {
+    _dividerTimer?.cancel();
+    _inputFocus.removeListener(_onInputFocusChanged);
     _snapCtrl.dispose();
     _inputFocus.dispose();
     _scrollController.dispose();
@@ -429,6 +454,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     messages: widget.messages,
     myUsername: widget.myUsername,
     unreadCount: _unreadCount,
+    dividerIndex: _dividerIndex,
     onScrollToBottom: () {
       if (_unreadCount > 0) setState(() => _setUnreadCount(0));
       _scrollToBottom(animate: true);
@@ -531,6 +557,7 @@ class _GlassCard extends StatelessWidget {
     required this.messages,
     required this.myUsername,
     required this.unreadCount,
+    required this.dividerIndex,
     required this.onScrollToBottom,
     required this.onSend,
     required this.inputFocusNode,
@@ -552,6 +579,7 @@ class _GlassCard extends StatelessWidget {
   final List<ChatMessage> messages;
   final String myUsername;
   final int unreadCount;
+  final int? dividerIndex;
   final VoidCallback onScrollToBottom;
   final void Function(String text) onSend;
   final FocusNode inputFocusNode;
@@ -751,11 +779,33 @@ class _GlassCard extends StatelessWidget {
                                   vertical: 4,
                                 ),
                                 children: [
-                                  for (final msg in messages)
+                                  for (int i = 0; i < messages.length; i++) ...[
+                                    if (i == dividerIndex)
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                                        child: Row(
+                                          children: [
+                                            Expanded(child: Divider(color: m.accent.withValues(alpha: 0.5), thickness: 1)),
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                                              child: Text(
+                                                'New Messages',
+                                                style: TextStyle(
+                                                  color: m.accent,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                            Expanded(child: Divider(color: m.accent.withValues(alpha: 0.5), thickness: 1)),
+                                          ],
+                                        ),
+                                      ),
                                     ChatBubble(
-                                      message: msg,
+                                      message: messages[i],
                                       myUsername: myUsername,
                                     ),
+                                  ],
                                 ],
                               ),
                               if (unreadCount > 0)
