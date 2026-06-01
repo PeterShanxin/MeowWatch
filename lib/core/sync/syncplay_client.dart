@@ -151,8 +151,11 @@ class SyncplayClient extends SyncCore {
     _watchdog.stop();
     // Invalidate any in-flight handshake from the attempt we're abandoning.
     _generation++;
-    _socket?.destroy();
+    // Clear _socket BEFORE destroying so the destroyed socket's trailing
+    // onDone/onError can't observe itself as the live socket.
+    final old = _socket;
     _socket = null;
+    old?.destroy();
     _loggedIn = false;
     // Surface the gap to the UI so playback auto-pauses while we recover.
     emitConnectionState(SyncConnectionState(
@@ -204,7 +207,7 @@ class SyncplayClient extends SyncCore {
             secure.destroy();
             return;
           }
-          _bindSocket(secure);
+          _bindSocket(secure, generation);
           _sendHello();
           return;
         } else if (decoded is ErrorMessage) {
@@ -213,7 +216,7 @@ class SyncplayClient extends SyncCore {
           if (stale()) return;
           await sub.cancel();
           if (stale()) return;
-          _bindSocket(plain);
+          _bindSocket(plain, generation);
           _sendHello();
           return;
         }
@@ -225,17 +228,24 @@ class SyncplayClient extends SyncCore {
     });
   }
 
-  void _bindSocket(Socket socket) {
+  void _bindSocket(Socket socket, int generation) {
     _socket = socket;
+    // onDone/onError can fire *after* we've already torn this socket down (a
+    // destroy() during reconnect still flushes a final close event). Guard on
+    // the generation so only the currently-live socket can trigger a reconnect
+    // — otherwise a stale callback would schedule a second one, double-counting
+    // the backoff and resetting the timer.
     socket.listen(
       _onChunk,
-      // A socket error or a clean close are both "link is gone" — route them
-      // through the same reconnect path as a silent timeout.
       onError: (Object e) {
+        if (generation != _generation) return;
         onLog?.call('socket error: $e');
         _onConnectionLost();
       },
-      onDone: _onConnectionLost,
+      onDone: () {
+        if (generation != _generation) return;
+        _onConnectionLost();
+      },
     );
   }
 
@@ -515,9 +525,11 @@ class SyncplayClient extends SyncCore {
     _reconnectTimer = null;
     // destroy(), not close(): a half-open socket's close() awaits a flush that
     // can never complete (the peer is gone), which is exactly what wedged the
-    // "Leave room" button. destroy() drops it immediately.
-    _socket?.destroy();
+    // "Leave room" button. destroy() drops it immediately. Clear _socket first
+    // so the trailing close event can't see itself as live.
+    final old = _socket;
     _socket = null;
+    old?.destroy();
     _loggedIn = false;
     emitConnectionState(
       const SyncConnectionState(status: SyncConnectionStatus.disconnected),
@@ -531,7 +543,8 @@ class SyncplayClient extends SyncCore {
     _watchdog.stop();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
-    _socket?.destroy();
+    final old = _socket;
     _socket = null;
+    old?.destroy();
   }
 }
