@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.10.2-alpha] - 2026-06-01
+- Fixed a silent disconnect where the app could look "connected" while the link was actually dead. If the connection drops in a way that doesn't cleanly close (server hiccup, Wi-Fi blip, router idle-timeout), MeowWatch now notices the missing heartbeat within ~12 seconds, shows "reconnecting", and automatically dials back into the room — no more typing messages into the void or having to kill and relaunch.
+- "Leave room" no longer hangs on a half-dead connection — leaving is now immediate.
+
 ## [0.10.1-alpha] - 2026-06-01
 - Leaving the player no longer leaves the app stuck fullscreen — the window goes back to normal when you exit the video (#23).
 - Auto-pause messages now tell the truth about why. When a friend leaves, you'll see "[Friend] left, auto-paused"; when you simply lose connection, it stays the generic "lost sync with your friend" instead of wrongly blaming someone for leaving. The "you paused" line also no longer pops up when you're alone in the room (#41).

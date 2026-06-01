@@ -531,6 +531,8 @@ class _HomeScreenState extends State<HomeScreen> {
       case SyncConnectionStatus.connecting:
       case SyncConnectionStatus.handshaking:
         return 'Connecting to room $room…';
+      case SyncConnectionStatus.reconnecting:
+        return 'Connection lost — reconnecting to room $room…';
       case SyncConnectionStatus.error:
         return _syncError ?? 'Couldn\'t connect to room $room';
       case SyncConnectionStatus.disconnected:

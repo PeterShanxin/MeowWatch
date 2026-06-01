@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'connection_watchdog.dart';
 import 'peer_state.dart';
 import 'ping_service.dart';
 import 'sync_activity.dart';
@@ -14,14 +15,35 @@ import 'sync_messages.dart';
 /// Concrete SyncCore speaking the Syncplay text protocol over a TCP socket
 /// upgraded to TLS. One JSON object per line, terminated `\r\n`.
 class SyncplayClient extends SyncCore {
-  SyncplayClient({this.onLog});
+  SyncplayClient({
+    this.onLog,
+    this.livenessTimeout = const Duration(seconds: 12),
+  });
 
   /// Optional debug sink for raw protocol traffic and follow decisions.
   final void Function(String line)? onLog;
 
+  /// How long to tolerate silence from the server before presuming the link is
+  /// dead (a half-open TCP that never fired onDone/onError). Generous relative
+  /// to the ~1s State heartbeat. Injectable for tests.
+  final Duration livenessTimeout;
+
   Socket? _socket;
-  final LineFramer _framer = LineFramer();
+  LineFramer _framer = LineFramer();
   final PingService _ping = PingService();
+
+  late final ConnectionWatchdog _watchdog = ConnectionWatchdog(
+    timeout: livenessTimeout,
+    onTimeout: _onConnectionLost,
+  );
+
+  // Reconnect bookkeeping. Server/port are remembered from the first connect so
+  // a dropped link can be re-established without UI involvement.
+  String _server = '';
+  int _port = 0;
+  int _reconnectAttempt = 0;
+  Timer? _reconnectTimer;
+  bool _manualDisconnect = false;
 
   String _username = '';
   String _room = '';
@@ -55,28 +77,75 @@ class SyncplayClient extends SyncCore {
     required String room,
     String? password,
   }) async {
+    _server = server;
+    _port = port;
     _username = username;
     _room = room;
     _password = password;
+    _manualDisconnect = false;
+    _reconnectAttempt = 0;
     emitConnectionState(
       const SyncConnectionState(status: SyncConnectionStatus.connecting),
     );
+    await _openConnection();
+  }
+
+  /// Open (or re-open) the socket and start the TLS handshake. Shared by the
+  /// initial [connect] and the auto-reconnect path; callers set the surrounding
+  /// status (`connecting` vs. `reconnecting`) before invoking.
+  Future<void> _openConnection() async {
+    // Tear down any prior socket and stale framer state before dialing again.
+    _watchdog.stop();
+    _socket?.destroy();
+    _socket = null;
+    _framer = LineFramer();
+    _loggedIn = false;
 
     try {
-      final plain = await Socket.connect(server, port,
+      final plain = await Socket.connect(_server, _port,
           timeout: const Duration(seconds: 10));
       // Attempt TLS upgrade first (public servers require it).
       _sendRaw(plain, encodeTlsRequest());
       emitConnectionState(
         const SyncConnectionState(status: SyncConnectionStatus.handshaking),
       );
-      _attachPlainForTlsNegotiation(plain, server);
+      // Guard the handshake too: if the upgraded socket binds but the server
+      // never completes the Hello, the watchdog trips and we retry.
+      _watchdog.bump();
+      _attachPlainForTlsNegotiation(plain, _server);
     } on SocketException catch (e) {
-      emitConnectionState(SyncConnectionState(
-        status: SyncConnectionStatus.error,
-        message: 'Could not reach server: ${e.message}',
-      ));
+      onLog?.call('connect failed: ${e.message}');
+      _scheduleReconnect(message: 'Could not reach server: ${e.message}');
     }
+  }
+
+  /// Presume the current link dead (silent timeout, socket error, or clean
+  /// close) and arm a backed-off reconnect — unless the user asked to leave.
+  void _onConnectionLost() {
+    if (_manualDisconnect) return;
+    onLog?.call('connection lost (no server traffic within '
+        '${livenessTimeout.inSeconds}s) — reconnecting');
+    _scheduleReconnect();
+  }
+
+  void _scheduleReconnect({String? message}) {
+    if (_manualDisconnect) return;
+    _watchdog.stop();
+    _socket?.destroy();
+    _socket = null;
+    _loggedIn = false;
+    // Surface the gap to the UI so playback auto-pauses while we recover.
+    emitConnectionState(SyncConnectionState(
+      status: SyncConnectionStatus.reconnecting,
+      message: message,
+    ));
+    _reconnectTimer?.cancel();
+    final delay = reconnectBackoff(attempt: _reconnectAttempt);
+    _reconnectAttempt++;
+    _reconnectTimer = Timer(delay, () {
+      if (_manualDisconnect) return;
+      unawaited(_openConnection());
+    });
   }
 
   /// Listen on the plain socket only long enough to receive the TLS answer,
@@ -118,10 +187,8 @@ class SyncplayClient extends SyncCore {
         }
       }
     }, onError: (Object e) {
-      emitConnectionState(SyncConnectionState(
-        status: SyncConnectionStatus.error,
-        message: e.toString(),
-      ));
+      onLog?.call('tls negotiation error: $e');
+      _onConnectionLost();
     });
   }
 
@@ -129,17 +196,19 @@ class SyncplayClient extends SyncCore {
     _socket = socket;
     socket.listen(
       _onChunk,
-      onError: (Object e) => emitConnectionState(SyncConnectionState(
-        status: SyncConnectionStatus.error,
-        message: e.toString(),
-      )),
-      onDone: () => emitConnectionState(
-        const SyncConnectionState(status: SyncConnectionStatus.disconnected),
-      ),
+      // A socket error or a clean close are both "link is gone" — route them
+      // through the same reconnect path as a silent timeout.
+      onError: (Object e) {
+        onLog?.call('socket error: $e');
+        _onConnectionLost();
+      },
+      onDone: _onConnectionLost,
     );
   }
 
   void _onChunk(List<int> chunk) {
+    // Any byte from the server proves the link is alive — reset the watchdog.
+    _watchdog.bump();
     for (final line in _framer.addChunk(chunk)) {
       if (line.isEmpty) continue;
       onLog?.call('<< $line');
@@ -168,6 +237,9 @@ class SyncplayClient extends SyncCore {
     switch (msg) {
       case HelloMessage():
         _loggedIn = true;
+        // A completed login means the (re)connect succeeded — reset the backoff
+        // so the next drop starts over from the short end.
+        _reconnectAttempt = 0;
         emitConnectionState(
           const SyncConnectionState(status: SyncConnectionStatus.connected),
         );
@@ -378,6 +450,22 @@ class SyncplayClient extends SyncCore {
     _loggedIn = true;
   }
 
+  /// Test hook: pretend the server fell silent / the socket dropped, exercising
+  /// the reconnect state machine without a real network. Mirrors what the
+  /// watchdog, socket onDone, and socket onError all funnel into.
+  @visibleForTesting
+  void debugSimulateConnectionLost() => _onConnectionLost();
+
+  /// Test hook: how many reconnect attempts have been scheduled since the last
+  /// successful login (resets to 0 on Hello). Lets a test assert the backoff
+  /// advances on repeated drops.
+  @visibleForTesting
+  int get debugReconnectAttempt => _reconnectAttempt;
+
+  /// Test hook: is a reconnect currently armed?
+  @visibleForTesting
+  bool get debugReconnectScheduled => _reconnectTimer?.isActive ?? false;
+
   @override
   void sendChat(String text) {
     if (_loggedIn) _send(encodeChat(text));
@@ -385,7 +473,16 @@ class SyncplayClient extends SyncCore {
 
   @override
   Future<void> disconnect() async {
-    await _socket?.close();
+    // User asked to leave: stop the watchdog and cancel any pending reconnect so
+    // we don't immediately dial back in.
+    _manualDisconnect = true;
+    _watchdog.stop();
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    // destroy(), not close(): a half-open socket's close() awaits a flush that
+    // can never complete (the peer is gone), which is exactly what wedged the
+    // "Leave room" button. destroy() drops it immediately.
+    _socket?.destroy();
     _socket = null;
     _loggedIn = false;
     emitConnectionState(
@@ -395,7 +492,11 @@ class SyncplayClient extends SyncCore {
 
   @override
   Future<void> disposeBackend() async {
-    await _socket?.close();
+    _manualDisconnect = true;
+    _watchdog.stop();
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _socket?.destroy();
     _socket = null;
   }
 }
