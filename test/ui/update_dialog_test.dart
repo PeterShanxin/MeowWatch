@@ -101,10 +101,14 @@ void main() {
     );
 
     // Drive the download to completion with no dialog mounted — the singleton
-    // keeps running in the background after the user dismisses it.
-    await svc.checkUpdateForDialog();
-    expect(svc.phase, UpdatePhase.updateAvailable);
-    await svc.startDownload();
+    // keeps running in the background after the user dismisses it. The check
+    // and download do real async I/O (mock HTTP + a temp-file write), so they
+    // must run in the real async zone, not the widget tester's fake one.
+    await tester.runAsync(() async {
+      await svc.checkUpdateForDialog();
+      expect(svc.phase, UpdatePhase.updateAvailable);
+      await svc.startDownload();
+    });
     expect(svc.phase, UpdatePhase.readyToInstall);
     expect(svc.downloadedZipPath, isNotNull);
 

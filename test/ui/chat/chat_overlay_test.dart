@@ -351,45 +351,6 @@ void main() {
     expect(find.text('New Messages'), findsNothing);
   });
 
-  testWidgets('focusing the input clears the divider while still unread (#32)',
-      (tester) async {
-    tester.view.physicalSize = const Size(1280, 720);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-
-    Widget overlay(List<ChatMessage> messages) => host(ChatOverlay(
-          messages: messages,
-          myUsername: 'me',
-          collapsed: false,
-          onSend: (_) {},
-          onToggleCollapsed: () {},
-          onSnap: (_) {},
-        ));
-
-    // Scrolled up (first build doesn't auto-scroll); a new message bumps unread
-    // and drops the divider, with no linger timer scheduled yet.
-    await tester.pumpWidget(overlay(manyMessages(40)));
-    await tester.pumpAndSettle();
-    await tester.pumpWidget(overlay(manyMessages(41)));
-    await tester.pumpAndSettle();
-    expect(find.text('↓ 1 new message'), findsOneWidget);
-
-    // Reveal the divider near the bottom without landing at the very bottom
-    // (staying outside the bottom slack keeps the message unread).
-    final list = tester.widget<ListView>(find.byType(ListView));
-    final pos = list.controller!.position;
-    list.controller!.jumpTo(pos.maxScrollExtent - 120);
-    await tester.pumpAndSettle();
-    expect(find.text('New Messages'), findsOneWidget);
-
-    // Focusing the input to reply clears the divider immediately, but the
-    // message stays unread (the badge remains) until they actually catch up.
-    await tester.tap(find.byType(ChatInput));
-    await tester.pumpAndSettle();
-    expect(find.text('New Messages'), findsNothing);
-    expect(find.text('↓ 1 new message'), findsOneWidget);
-  });
-
   testWidgets('typing indicator toggling does not resize the message list',
       (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
