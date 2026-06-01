@@ -51,4 +51,51 @@ void main() {
           const SyncHealth(connected: false, hasPeer: false).healthy, isFalse);
     });
   });
+
+  group('autoPauseCause', () {
+    test('peer left: still connected but the room is now empty', () {
+      expect(
+        autoPauseCause(connected: true, hasPeer: false),
+        AutoPauseCause.peerLeft,
+      );
+    });
+
+    test('connection lost: disconnected, regardless of peer flag', () {
+      expect(
+        autoPauseCause(connected: false, hasPeer: false),
+        AutoPauseCause.connectionLost,
+      );
+      // A stale "peer present" flag on a dropped socket is still a connection
+      // loss, not a leave — never claim someone left.
+      expect(
+        autoPauseCause(connected: false, hasPeer: true),
+        AutoPauseCause.connectionLost,
+      );
+    });
+  });
+
+  group('autoPauseMessage', () {
+    test('peer left names the friend who left', () {
+      expect(
+        autoPauseMessage(cause: AutoPauseCause.peerLeft, peerName: 'lin'),
+        'lin left, auto-paused',
+      );
+    });
+
+    test('peer left falls back to "Friend" when the name is unknown', () {
+      expect(
+        autoPauseMessage(cause: AutoPauseCause.peerLeft, peerName: null),
+        'Friend left, auto-paused',
+      );
+    });
+
+    test('connection loss never claims a peer left, even with a stale name',
+        () {
+      expect(
+        autoPauseMessage(
+            cause: AutoPauseCause.connectionLost, peerName: 'lin'),
+        'Paused — lost sync with your friend',
+      );
+    });
+  });
 }
