@@ -23,10 +23,21 @@ double chatOverlayOpacity({
   required bool collapsed,
   required bool autoDim,
   bool deepIdle = false,
+  bool hasUnread = false,
+  bool wakeToFullyVisible = false,
 }) {
   if (!idle) return 1.0;
-  if (collapsed) return 0.0;
+
+  if (collapsed) {
+    return hasUnread ? 1.0 : 0.0;
+  }
+
   if (!autoDim) return 1.0;
+
+  if (hasUnread) {
+    return wakeToFullyVisible ? 1.0 : 0.1;
+  }
+
   return deepIdle ? 0.0 : 0.1;
 }
 

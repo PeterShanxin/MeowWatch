@@ -37,6 +37,7 @@ class ChatOverlay extends StatefulWidget {
     this.typingLabel,
     this.onTypingChanged,
     this.onDraggingChanged,
+    this.onUnreadChanged,
   });
 
   final List<ChatMessage> messages;
@@ -67,6 +68,9 @@ class ChatOverlay extends StatefulWidget {
   /// once it settles — lets the parent hide controls (e.g. the gear) that would
   /// otherwise sit under the dock hints.
   final ValueChanged<bool>? onDraggingChanged;
+
+  /// Called when the chat transitions between having unread messages and having none.
+  final ValueChanged<bool>? onUnreadChanged;
 
   @override
   State<ChatOverlay> createState() => _ChatOverlayState();
@@ -113,12 +117,22 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   int _unreadCount = 0;
 
+  void _setUnreadCount(int count) {
+    if (_unreadCount == count) return;
+    final wasUnread = _unreadCount > 0;
+    _unreadCount = count;
+    final isUnread = _unreadCount > 0;
+    if (wasUnread != isUnread) {
+      widget.onUnreadChanged?.call(isUnread);
+    }
+  }
+
   void _onScroll() {
     if (!mounted || !_scrollController.hasClients) return;
     if (_unreadCount > 0) {
       final pos = _scrollController.position;
       if (pos.pixels >= pos.maxScrollExtent - _bottomSlack) {
-        setState(() => _unreadCount = 0);
+        setState(() => _setUnreadCount(0));
       }
     }
   }
@@ -145,7 +159,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     // collapsed, when the list is unmounted and a scroll would no-op); a new
     // message while already open animates into view.
     if (justOpened) {
-      if (_unreadCount > 0) setState(() => _unreadCount = 0);
+      if (_unreadCount > 0) setState(() => _setUnreadCount(0));
       _scrollToBottom(animate: false);
     } else if (old.messages.length < widget.messages.length) {
       final newMsgs = widget.messages.length - old.messages.length;
@@ -161,9 +175,9 @@ class _ChatOverlayState extends State<ChatOverlay>
 
       if (isMyMessage || (isAtBottom && !widget.collapsed)) {
         if (!widget.collapsed) _scrollToBottom(animate: true);
-        if (_unreadCount != 0) setState(() => _unreadCount = 0);
+        if (_unreadCount != 0) setState(() => _setUnreadCount(0));
       } else {
-        setState(() => _unreadCount += newMsgs);
+        setState(() => _setUnreadCount(_unreadCount + newMsgs));
       }
     }
   }
@@ -406,7 +420,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     myUsername: widget.myUsername,
     unreadCount: _unreadCount,
     onScrollToBottom: () {
-      if (_unreadCount > 0) setState(() => _unreadCount = 0);
+      if (_unreadCount > 0) setState(() => _setUnreadCount(0));
       _scrollToBottom(animate: true);
     },
     onSend: widget.onSend,
