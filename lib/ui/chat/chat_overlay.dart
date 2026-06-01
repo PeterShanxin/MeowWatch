@@ -33,6 +33,7 @@ class ChatOverlay extends StatefulWidget {
     this.onResetSize,
     this.widthPx,
     this.heightPx,
+    this.isUiIdle = false,
     this.corner = ChatCorner.bottomLeft,
     this.pulsing = false,
     this.typingLabel,
@@ -44,6 +45,7 @@ class ChatOverlay extends StatefulWidget {
   final List<ChatMessage> messages;
   final String myUsername;
   final bool collapsed;
+  final bool isUiIdle;
   final ChatCorner corner;
   final bool pulsing;
   final void Function(String text) onSend;
@@ -120,7 +122,7 @@ class _ChatOverlayState extends State<ChatOverlay>
   int? _dividerIndex;
   Timer? _dividerTimer;
 
-  void _setUnreadCount(int count) {
+  void _setUnreadCount(int count, {int? firstUnreadIndex}) {
     if (_unreadCount == count) return;
     final wasUnread = _unreadCount > 0;
     _unreadCount = count;
@@ -135,7 +137,7 @@ class _ChatOverlayState extends State<ChatOverlay>
       // Pin the divider just before the first unread message. Safe as an
       // absolute index only because the message list is append-only — existing
       // indices never shift, so the boundary stays put as more arrive.
-      _dividerIndex = widget.messages.length - count;
+      _dividerIndex = firstUnreadIndex ?? (widget.messages.length - count);
       _dividerTimer?.cancel();
       _dividerTimer = null;
     }
@@ -157,7 +159,7 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   void _onScroll() {
     if (!mounted || !_scrollController.hasClients) return;
-    if (_unreadCount > 0) {
+    if (_unreadCount > 0 && !widget.isUiIdle) {
       final pos = _scrollController.position;
       if (pos.pixels >= pos.maxScrollExtent - _bottomSlack) {
         setState(() => _setUnreadCount(0));
@@ -203,10 +205,18 @@ class _ChatOverlayState extends State<ChatOverlay>
       if (_unreadCount > 0) setState(() => _setUnreadCount(0));
       _scrollToBottom(animate: false);
     } else if (old.messages.length < widget.messages.length) {
-      final newMsgs = widget.messages.length - old.messages.length;
-      final isMyMessage =
-          widget.messages.isNotEmpty &&
-          widget.messages.last.username == widget.myUsername;
+      final newMsgs = widget.messages.sublist(old.messages.length);
+      final isMyMessage = newMsgs.isNotEmpty && newMsgs.last.username == widget.myUsername;
+
+      int newUnread = 0;
+      int? firstUnreadIndex;
+      for (int i = 0; i < newMsgs.length; i++) {
+        final m = newMsgs[i];
+        if (!m.system && m.username != widget.myUsername) {
+          newUnread++;
+          firstUnreadIndex ??= old.messages.length + i;
+        }
+      }
 
       bool isAtBottom = false;
       if (!widget.collapsed && _scrollController.hasClients) {
@@ -216,9 +226,23 @@ class _ChatOverlayState extends State<ChatOverlay>
 
       if (isMyMessage || (isAtBottom && !widget.collapsed)) {
         if (!widget.collapsed) _scrollToBottom(animate: true);
-        if (_unreadCount != 0) setState(() => _setUnreadCount(0));
+        
+        if (!widget.isUiIdle || isMyMessage) {
+          if (_unreadCount != 0) setState(() => _setUnreadCount(0));
+        } else {
+          if (newUnread > 0) setState(() => _setUnreadCount(_unreadCount + newUnread, firstUnreadIndex: firstUnreadIndex));
+        }
       } else {
-        setState(() => _setUnreadCount(_unreadCount + newMsgs));
+        if (newUnread > 0) setState(() => _setUnreadCount(_unreadCount + newUnread, firstUnreadIndex: firstUnreadIndex));
+      }
+    }
+
+    if (old.isUiIdle && !widget.isUiIdle) {
+      if (_unreadCount > 0 && !widget.collapsed && _scrollController.hasClients) {
+        final pos = _scrollController.position;
+        if (pos.pixels >= pos.maxScrollExtent - _bottomSlack) {
+          setState(() => _setUnreadCount(0));
+        }
       }
     }
   }

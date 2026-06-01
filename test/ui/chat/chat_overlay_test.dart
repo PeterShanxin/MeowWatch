@@ -380,4 +380,85 @@ void main() {
 
     expect(heightTyping, heightIdle);
   });
+
+  testWidgets('incoming messages increment unread when isUiIdle is true even if at bottom, and clear on wake', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    var isUiIdle = true;
+    var messageCount = 40;
+    late StateSetter setOuter;
+
+    await tester.pumpWidget(host(StatefulBuilder(
+      builder: (context, setState) {
+        setOuter = setState;
+        return ChatOverlay(
+          messages: manyMessages(messageCount),
+          myUsername: 'me',
+          collapsed: false,
+          isUiIdle: isUiIdle,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        );
+      },
+    )));
+    await tester.pumpAndSettle();
+
+    // Scroll to bottom
+    final list = tester.widget<ListView>(find.byType(ListView));
+    list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+
+    // While idle, an incoming message should NOT clear the unread count, 
+    // even though we are at the bottom.
+    setOuter(() => messageCount = 41);
+    await tester.pumpAndSettle();
+
+    expect(find.text('↓ 1 new message'), findsOneWidget);
+
+    // Wake the UI
+    setOuter(() => isUiIdle = false);
+    await tester.pumpAndSettle();
+
+    // Since we are at the bottom, waking the UI should clear the unread count
+    expect(find.text('↓ 1 new message'), findsNothing);
+  });
+
+  testWidgets('system messages do not increment unread or show badge', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    var messages = manyMessages(40);
+    late StateSetter setOuter;
+
+    await tester.pumpWidget(host(StatefulBuilder(
+      builder: (context, setState) {
+        setOuter = setState;
+        return ChatOverlay(
+          messages: messages,
+          myUsername: 'me',
+          collapsed: false,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        );
+      },
+    )));
+    await tester.pumpAndSettle();
+    
+    // First build doesn't auto-scroll, so we are not at bottom.
+    // Adding a system message should NOT trigger a new message badge.
+    setOuter(() {
+      messages = [
+        ...messages,
+        const ChatMessage(username: 'system', text: 'lin paused', system: true),
+      ];
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.text('↓ 1 new message'), findsNothing);
+  });
 }

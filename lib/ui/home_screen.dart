@@ -716,6 +716,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         messages: _messages,
                         myUsername: _username,
                         collapsed: _chatLayout.collapsed,
+                        isUiIdle: _isUiIdle,
                         corner: _chatLayout.corner,
                         pulsing: _peekPulsing,
                         onSend: _chat.send,
