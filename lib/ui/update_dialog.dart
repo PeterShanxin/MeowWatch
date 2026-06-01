@@ -19,94 +19,39 @@ class UpdateDialog extends StatefulWidget {
   State<UpdateDialog> createState() => _UpdateDialogState();
 }
 
-enum _UpdatePhase {
-  idle,
-  checking,
-  upToDate,
-  updateAvailable,
-  downloading,
-  readyToInstall,
-  error,
-}
-
 class _UpdateDialogState extends State<UpdateDialog> {
-  late final UpdateService _service = widget.service ?? UpdateService();
-  _UpdatePhase _phase = _UpdatePhase.idle;
-  double _downloadProgress = 0;
-  String? _downloadedZipPath;
-  String _errorMessage = '';
-  List<ChangelogEntry> _changelog = const [];
+  late final UpdateService _service = widget.service ?? UpdateService.instance;
 
   @override
   void initState() {
     super.initState();
-    _checkForUpdate();
+    if (_service.phase == UpdatePhase.idle ||
+        _service.phase == UpdatePhase.error ||
+        _service.phase == UpdatePhase.upToDate) {
+      _service.checkUpdateForDialog();
+    }
   }
 
   @override
   void dispose() {
-    _service.dispose();
+    if (widget.service != null) {
+      _service.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _checkForUpdate() async {
-    setState(() => _phase = _UpdatePhase.checking);
-    final status = await _service.checkForUpdate();
-    if (!mounted) return;
-    switch (status) {
-      case UpdateStatus.upToDate:
-        // Still fetch the changelog so the user can read what shipped in recent
-        // versions even when there's nothing new to install. onlyNewer: false
-        // includes the current version (nothing is "newer" when up to date).
-        final changelog = await _service.fetchChangelog(onlyNewer: false);
-        if (!mounted) return;
-        setState(() {
-          _changelog = changelog;
-          _phase = _UpdatePhase.upToDate;
-        });
-      case UpdateStatus.updateAvailable:
-        final changelog = await _service.fetchChangelog();
-        if (!mounted) return;
-        setState(() {
-          _changelog = changelog;
-          _phase = _UpdatePhase.updateAvailable;
-        });
-      case UpdateStatus.checkFailed:
-        setState(() {
-          _phase = _UpdatePhase.error;
-          _errorMessage = 'Could not reach update server.\nCheck your connection and try again.';
-        });
-    }
+    await _service.checkUpdateForDialog();
   }
 
   Future<void> _download() async {
-    setState(() {
-      _phase = _UpdatePhase.downloading;
-      _downloadProgress = 0;
-    });
-    try {
-      final path = await _service.downloadUpdate((p) {
-        if (mounted) setState(() => _downloadProgress = p);
-      });
-      if (!mounted) return;
-      setState(() {
-        _downloadedZipPath = path;
-        _phase = _UpdatePhase.readyToInstall;
-      });
-    } on Exception catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _phase = _UpdatePhase.error;
-        _errorMessage = 'Download failed: $e';
-      });
-    }
+    await _service.startDownload();
   }
 
   Future<void> _install() async {
-    final path = _downloadedZipPath;
+    final path = _service.downloadedZipPath;
     if (path == null) return;
     await _service.applyUpdate(path);
-    // applyUpdate calls exit(0), so we never reach here.
   }
 
   @override
@@ -157,7 +102,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
               const SizedBox(height: 20),
 
               // Body — varies by phase
-              _buildBody(m),
+              ListenableBuilder(
+                listenable: _service,
+                builder: (context, _) => _buildBody(m),
+              ),
             ],
           ),
         ),
@@ -166,9 +114,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
   }
 
   Widget _buildBody(dynamic m) {
-    switch (_phase) {
-      case _UpdatePhase.idle:
-      case _UpdatePhase.checking:
+    switch (_service.phase) {
+      case UpdatePhase.idle:
+      case UpdatePhase.checking:
         return _statusRow(
           icon: SizedBox(
             width: 18,
@@ -182,7 +130,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           m: m,
         );
 
-      case _UpdatePhase.upToDate:
+      case UpdatePhase.upToDate:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -197,7 +145,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                     Text('Check again', style: TextStyle(color: m.accent as Color)),
               ),
             ),
-            if (_changelog.isNotEmpty) ...[
+            if (_service.changelog.isNotEmpty) ...[
               const SizedBox(height: 16),
               Text(
                 "What's new",
@@ -213,7 +161,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ],
         );
 
-      case _UpdatePhase.updateAvailable:
+      case UpdatePhase.updateAvailable:
         final info = _service.latestUpdate!;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -224,7 +172,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
               text: 'New version available: v${info.version}',
               m: m,
             ),
-            if (_changelog.isNotEmpty) ...[
+            if (_service.changelog.isNotEmpty) ...[
               const SizedBox(height: 12),
               _changelogPanel(m),
             ] else if (info.releaseNotes.isNotEmpty) ...[
@@ -262,7 +210,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ],
         );
 
-      case _UpdatePhase.downloading:
+      case UpdatePhase.downloading:
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -275,14 +223,14 @@ class _UpdateDialogState extends State<UpdateDialog> {
                   color: m.accent as Color,
                 ),
               ),
-              text: 'Downloading… ${(_downloadProgress * 100).toStringAsFixed(0)}%',
+              text: 'Downloading… ${(_service.downloadProgress * 100).toStringAsFixed(0)}%',
               m: m,
             ),
             const SizedBox(height: 12),
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: _downloadProgress,
+                value: _service.downloadProgress,
                 minHeight: 6,
                 backgroundColor: m.border as Color,
                 valueColor: AlwaysStoppedAnimation<Color>(m.accent as Color),
@@ -291,7 +239,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ],
         );
 
-      case _UpdatePhase.readyToInstall:
+      case UpdatePhase.readyToInstall:
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -323,13 +271,13 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ],
         );
 
-      case _UpdatePhase.error:
+      case UpdatePhase.error:
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             _statusRow(
               icon: const Icon(Icons.error_outline, color: Colors.redAccent, size: 20),
-              text: _errorMessage,
+              text: _service.errorMessage,
               m: m,
             ),
             const SizedBox(height: 12),
@@ -356,13 +304,13 @@ class _UpdateDialogState extends State<UpdateDialog> {
       ),
       child: ListView.separated(
         shrinkWrap: true,
-        itemCount: _changelog.length,
+        itemCount: _service.changelog.length,
         separatorBuilder: (_, _) => Divider(
           height: 16,
           color: (m.border as Color).withValues(alpha: 0.4),
         ),
         itemBuilder: (context, i) {
-          final e = _changelog[i];
+          final e = _service.changelog[i];
           final header =
               e.date.isEmpty ? 'v${e.version}' : 'v${e.version} · ${e.date}';
           return Column(

@@ -39,7 +39,7 @@ void main() {
       MockClient((req) async => http.Response('', 500));
 
   UpdateService Function() factoryFor(http.Client client) =>
-      () => UpdateService(baseUrl: 'https://example.test', client: client);
+      () => UpdateService.forTest(baseUrl: 'https://example.test', client: client);
 
   Widget host(UpdateService Function() serviceFactory) => MaterialApp(
         theme: themeDataFor(MeowThemeId.cozy),

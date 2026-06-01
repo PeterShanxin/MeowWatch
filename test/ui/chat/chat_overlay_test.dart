@@ -231,6 +231,8 @@ void main() {
     // Tapping the badge scrolls to bottom and clears the badge
     await tester.tap(find.text('↓ 1 new message'));
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 4)); // wait for divider timer
+    await tester.pumpAndSettle();
     expect(find.text('msg-40'), findsOneWidget);
     expect(find.text('↓ 1 new message'), findsNothing);
   });
@@ -308,6 +310,45 @@ void main() {
     final list = tester.widget<ListView>(find.byType(ListView));
     final controller = list.controller!;
     expect(controller.offset, controller.position.maxScrollExtent);
+  });
+
+  testWidgets('a "New Messages" divider survives reopen and auto-clears after '
+      'the linger window (#32)', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    Widget overlay({required bool collapsed, required int count}) =>
+        host(ChatOverlay(
+          messages: manyMessages(count),
+          myUsername: 'me',
+          collapsed: collapsed,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        ));
+
+    // Open with a backlog, then collapse: a message that lands while collapsed
+    // marks the unread boundary (divider just above the first unread one).
+    await tester.pumpWidget(overlay(collapsed: false, count: 40));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(overlay(collapsed: true, count: 40));
+    await tester.pump();
+    await tester.pumpWidget(overlay(collapsed: true, count: 41));
+    await tester.pump();
+
+    // Reopen. The card auto-scrolls to the bottom AND auto-focuses the input —
+    // that programmatic focus must NOT wipe the divider (the regression this
+    // pins): the user reopened precisely to see where they left off.
+    await tester.pumpWidget(overlay(collapsed: false, count: 41));
+    await tester.pumpAndSettle();
+    expect(find.text('New Messages'), findsOneWidget);
+
+    // Reopen scrolled to the bottom, so the unread linger timer is running.
+    // Once it elapses the divider clears itself.
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+    expect(find.text('New Messages'), findsNothing);
   });
 
   testWidgets('typing indicator toggling does not resize the message list',
