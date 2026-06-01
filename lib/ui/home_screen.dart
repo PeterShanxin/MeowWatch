@@ -99,6 +99,9 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _presenceNotice;
   Timer? _presenceTimer;
 
+  /// The name of the last peer who left the room.
+  String? _lastPeerLeft;
+
   /// Debounce before auto-pausing: a brief blip (e.g. a heartbeat timeout that
   /// recovers a second later, common when two instances share one PC) should
   /// NOT pause — only a sustained loss of sync.
@@ -232,6 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         } else {
           _peers.remove(e.username);
+          _lastPeerLeft = e.username;
           if (_peerFile?.username == e.username) _peerFile = null;
           _showTransientNotice('👋 ${e.username} left');
           _chat.addSystem('${e.username} left the room');
@@ -245,7 +249,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // Sync activities (peer + our own) flow through the throttle so a scrub
     // burst collapses to one line/banner (#26); the throttled output drives the
     // banner + chat history.
-    _activitySub = _sync.activity.listen((a) => _activityThrottle.add(a));
+    _activitySub = _sync.activity.listen((a) {
+      if (!_syncHealthyNow) return;
+      _activityThrottle.add(a);
+    });
     _activityThrottleSub = _activityThrottle.stream.listen((a) {
       if (!mounted) return;
       final t = syncActivityText(a, selfUsername: _username);
@@ -461,6 +468,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (stillDown && playing) {
       unawaited(_core.pause());
       setState(() => _autoPausedNotice = true);
+      _chat.addSystem('${_lastPeerLeft ?? "Friend"} left, auto-paused');
     }
   }
 
@@ -471,7 +479,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_presenceNotice != null) return _presenceNotice;
     final mismatch = _fileMismatchBanner;
     if (mismatch != null) return mismatch;
-    if (_autoPausedNotice) return '⏸ Paused — lost sync with your friend';
+    if (_autoPausedNotice) return '⏸ ${_lastPeerLeft ?? "Friend"} left, auto-paused';
     return _syncHint;
   }
 

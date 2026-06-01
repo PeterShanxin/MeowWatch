@@ -72,6 +72,9 @@ class _VideoSurfaceState extends State<VideoSurface> {
     _seekHideTimer?.cancel();
     _volumeHideTimer?.cancel();
     _ownFocus?.dispose();
+    if (_isFullscreen) {
+      unawaited(windowManager.setFullScreen(false));
+    }
     super.dispose();
   }
 
