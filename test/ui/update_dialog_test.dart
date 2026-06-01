@@ -41,7 +41,7 @@ void main() {
       {'version': '0.1.5-alpha', 'date': '2026-05-31', 'notes': '- shiny thing'},
       {'version': '0.1.4-alpha', 'date': '2026-05-30', 'notes': '- older thing'},
     ]);
-    final svc = UpdateService(
+    final svc = UpdateService.forTest(
       baseUrl: 'https://example.test',
       client: upToDateClient(changelog: changelog),
     );
@@ -57,7 +57,7 @@ void main() {
 
   testWidgets('up-to-date with no changelog hides the "What\'s new" section',
       (tester) async {
-    final svc = UpdateService(
+    final svc = UpdateService.forTest(
       baseUrl: 'https://example.test',
       client: upToDateClient(changelog: '[]'),
     );

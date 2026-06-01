@@ -17,7 +17,7 @@ void main() {
       }
       return http.Response('', 404);
     });
-    final svc = UpdateService(baseUrl: 'https://example.test', client: mock);
+    final svc = UpdateService.forTest(baseUrl: 'https://example.test', client: mock);
 
     final entries = await svc.fetchChangelog();
 
@@ -38,7 +38,7 @@ void main() {
       }
       return http.Response('', 404);
     });
-    final svc = UpdateService(baseUrl: 'https://example.test', client: mock);
+    final svc = UpdateService.forTest(baseUrl: 'https://example.test', client: mock);
 
     final entries = await svc.fetchChangelog(onlyNewer: false);
 
@@ -48,19 +48,19 @@ void main() {
 
   test('fetchChangelog returns empty list on a 404', () async {
     final mock = MockClient((req) async => http.Response('', 404));
-    final svc = UpdateService(baseUrl: 'https://example.test', client: mock);
+    final svc = UpdateService.forTest(baseUrl: 'https://example.test', client: mock);
     expect(await svc.fetchChangelog(), isEmpty);
   });
 
   test('fetchChangelog returns empty list on malformed JSON', () async {
     final mock = MockClient((req) async => http.Response('not json', 200));
-    final svc = UpdateService(baseUrl: 'https://example.test', client: mock);
+    final svc = UpdateService.forTest(baseUrl: 'https://example.test', client: mock);
     expect(await svc.fetchChangelog(), isEmpty);
   });
 
   test('fetchChangelog returns empty list when JSON is an object, not a list', () async {
     final mock = MockClient((req) async => http.Response('{"oops": true}', 200));
-    final svc = UpdateService(baseUrl: 'https://example.test', client: mock);
+    final svc = UpdateService.forTest(baseUrl: 'https://example.test', client: mock);
     expect(await svc.fetchChangelog(), isEmpty);
   });
 
@@ -70,7 +70,7 @@ void main() {
       {'version': '9.9.9', 'date': 123, 'notes': '- ok, numeric date'},
     ]);
     final mock = MockClient((req) async => http.Response(body, 200));
-    final svc = UpdateService(baseUrl: 'https://example.test', client: mock);
+    final svc = UpdateService.forTest(baseUrl: 'https://example.test', client: mock);
 
     final entries = await svc.fetchChangelog();
 

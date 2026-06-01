@@ -231,6 +231,8 @@ void main() {
     // Tapping the badge scrolls to bottom and clears the badge
     await tester.tap(find.text('↓ 1 new message'));
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 4)); // wait for divider timer
+    await tester.pumpAndSettle();
     expect(find.text('msg-40'), findsOneWidget);
     expect(find.text('↓ 1 new message'), findsNothing);
   });
