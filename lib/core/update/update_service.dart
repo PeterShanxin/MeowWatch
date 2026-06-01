@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
@@ -41,6 +42,16 @@ class ChangelogEntry {
 /// Result of comparing local version to remote.
 enum UpdateStatus { upToDate, updateAvailable, checkFailed }
 
+enum UpdatePhase {
+  idle,
+  checking,
+  upToDate,
+  updateAvailable,
+  downloading,
+  readyToInstall,
+  error,
+}
+
 /// Thrown when a downloaded update's SHA-256 does not match the hash published
 /// in `latest.json`. Signals a corrupted or tampered download — the update is
 /// aborted before any files are extracted or executed.
@@ -69,8 +80,15 @@ class UpdateVerificationException implements Exception {
 ///   3. `downloadUpdate()` → stream zip to temp dir with progress callback
 ///   4. `applyUpdate()` → verify SHA-256, extract zip, write updater.ps1,
 ///      launch it, exit app
-class UpdateService {
-  UpdateService({String? baseUrl, http.Client? client})
+class UpdateService extends ChangeNotifier {
+  static final UpdateService instance = UpdateService._();
+
+  @visibleForTesting
+  UpdateService.forTest({String? baseUrl, http.Client? client})
+      : _baseUrl = baseUrl ?? updateBaseUrl,
+        _client = client ?? http.Client();
+
+  UpdateService._({String? baseUrl, http.Client? client})
       : _baseUrl = baseUrl ?? updateBaseUrl,
         _client = client ?? http.Client();
 
@@ -81,6 +99,12 @@ class UpdateService {
 
   /// The most recently fetched update info, or null if not checked yet.
   UpdateInfo? get latestUpdate => _latestUpdate;
+
+  UpdatePhase phase = UpdatePhase.idle;
+  double downloadProgress = 0;
+  String? downloadedZipPath;
+  String errorMessage = '';
+  List<ChangelogEntry> changelog = const [];
 
   /// Check the R2 bucket for a newer version.
   ///
@@ -160,6 +184,49 @@ class UpdateService {
       // Any failure (network, malformed JSON, unexpected shape) → empty list so
       // the dialog falls back to the single-release note.
       return const [];
+    }
+  }
+
+  Future<void> checkUpdateForDialog() async {
+    if (phase == UpdatePhase.downloading || phase == UpdatePhase.readyToInstall) {
+      return;
+    }
+    phase = UpdatePhase.checking;
+    notifyListeners();
+
+    final status = await checkForUpdate();
+    if (status == UpdateStatus.checkFailed) {
+      errorMessage = 'Could not reach update server.\nCheck your connection and try again.';
+      phase = UpdatePhase.error;
+      notifyListeners();
+      return;
+    }
+
+    final isUpToDate = status == UpdateStatus.upToDate;
+    changelog = await fetchChangelog(onlyNewer: !isUpToDate);
+
+    phase = isUpToDate ? UpdatePhase.upToDate : UpdatePhase.updateAvailable;
+    notifyListeners();
+  }
+
+  Future<void> startDownload() async {
+    if (phase == UpdatePhase.downloading) return;
+    phase = UpdatePhase.downloading;
+    downloadProgress = 0;
+    notifyListeners();
+
+    try {
+      final path = await downloadUpdate((p) {
+        downloadProgress = p;
+        notifyListeners();
+      });
+      downloadedZipPath = path;
+      phase = UpdatePhase.readyToInstall;
+      notifyListeners();
+    } catch (e) {
+      errorMessage = 'Download failed: $e';
+      phase = UpdatePhase.error;
+      notifyListeners();
     }
   }
 
@@ -313,8 +380,10 @@ class UpdateService {
     return (nums, prePart);
   }
 
+  @override
   void dispose() {
     _client.close();
+    super.dispose();
   }
 }
 

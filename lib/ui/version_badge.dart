@@ -52,7 +52,7 @@ class _VersionBadgeState extends State<VersionBadge> {
     if (_checkedThisSession || _checkInFlight) return;
     _checkInFlight = true;
 
-    final service = widget.serviceFactory?.call() ?? UpdateService();
+    final service = widget.serviceFactory?.call() ?? UpdateService.instance;
     try {
       final status = await service.checkForUpdate();
       // A failed check (e.g. offline at launch) does NOT consume the
@@ -71,7 +71,7 @@ class _VersionBadgeState extends State<VersionBadge> {
       }
     } finally {
       _checkInFlight = false;
-      service.dispose();
+      if (widget.serviceFactory != null) service.dispose();
     }
   }
 
