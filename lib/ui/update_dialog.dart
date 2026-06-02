@@ -211,32 +211,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
         );
 
       case UpdatePhase.downloading:
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _statusRow(
-              icon: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: m.accent as Color,
-                ),
-              ),
-              text: 'Downloading… ${(_service.downloadProgress * 100).toStringAsFixed(0)}%',
-              m: m,
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: _service.downloadProgress,
-                minHeight: 6,
-                backgroundColor: m.border as Color,
-                valueColor: AlwaysStoppedAnimation<Color>(m.accent as Color),
-              ),
-            ),
-          ],
+        return DownloadProgressBody(
+          hasTotal: _service.hasDownloadTotal,
+          progress: _service.downloadProgress,
+          receivedBytes: _service.downloadReceivedBytes,
         );
 
       case UpdatePhase.readyToInstall:
@@ -353,4 +331,73 @@ class _UpdateDialogState extends State<UpdateDialog> {
       ],
     );
   }
+}
+
+/// The downloading-phase body: a spinner + label and a progress bar. When the
+/// server advertised no Content-Length ([hasTotal] false) the bar is
+/// **indeterminate** and the label shows received bytes instead of a percentage,
+/// so reopening the dialog mid-download never shows a frozen 0% (#63).
+@visibleForTesting
+class DownloadProgressBody extends StatelessWidget {
+  const DownloadProgressBody({
+    super.key,
+    required this.hasTotal,
+    required this.progress,
+    required this.receivedBytes,
+  });
+
+  final bool hasTotal;
+  final double progress;
+  final int receivedBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    final label = hasTotal
+        ? 'Downloading… ${(progress * 100).toStringAsFixed(0)}%'
+        : 'Downloading… ${formatDownloadBytes(receivedBytes)}';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: m.accent),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(color: m.textPrimary, fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            // null ⇒ indeterminate sweep when the total is unknown.
+            value: hasTotal ? progress : null,
+            minHeight: 6,
+            backgroundColor: m.border,
+            valueColor: AlwaysStoppedAnimation<Color>(m.accent),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Human-readable byte count for the indeterminate download label
+/// ("3.4 MB", "512 KB", "900 B").
+@visibleForTesting
+String formatDownloadBytes(int bytes) {
+  const kb = 1024;
+  const mb = 1024 * 1024;
+  if (bytes >= mb) return '${(bytes / mb).toStringAsFixed(1)} MB';
+  if (bytes >= kb) return '${(bytes / kb).toStringAsFixed(0)} KB';
+  return '$bytes B';
 }
