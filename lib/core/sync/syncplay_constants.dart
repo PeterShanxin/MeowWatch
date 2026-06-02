@@ -11,6 +11,13 @@ class SyncplayConstants {
   static const defaultServer = 'syncplay.pl';
   static const defaultPort = 8999;
 
+  /// Max displayed characters per chat message (upstream
+  /// `MAX_CHAT_MESSAGE_LENGTH = 150`). The server silently truncates anything
+  /// longer, so we cap the composer at the same limit with a visible counter —
+  /// mirroring the official client — so nothing is lost without the user seeing
+  /// it (#55).
+  static const maxChatMessageLength = 150;
+
   /// Feature map advertised in Hello. We support chat receive only this phase,
   /// but advertise the standard static flags so servers treat us as a modern
   /// client.

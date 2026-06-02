@@ -110,6 +110,11 @@ class _ChatOverlayState extends State<ChatOverlay>
   // Focus the message box when the card is opened (peek tab → card).
   final FocusNode _inputFocus = FocusNode();
 
+  // The composer's draft, owned here (not in ChatInput) so a typed-but-unsent
+  // message survives the input subtree being torn down — collapse swaps the card
+  // for the peek tab, and a focus loss / window minimize can rebuild it (#59).
+  final TextEditingController _draftController = TextEditingController();
+
   // Keeps the newest message visible: animates on a new message while open,
   // jumps to the bottom when the card reopens.
   final ScrollController _scrollController = ScrollController();
@@ -294,6 +299,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     _inputFocus.removeListener(_onInputFocusChanged);
     _snapCtrl.dispose();
     _inputFocus.dispose();
+    _draftController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -493,6 +499,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     },
     onSend: widget.onSend,
     inputFocusNode: _inputFocus,
+    draftController: _draftController,
     scrollController: _scrollController,
     typingLabel: widget.typingLabel,
     onTypingChanged: widget.onTypingChanged,
@@ -610,6 +617,7 @@ class _GlassCard extends StatelessWidget {
     required this.onScrollToBottom,
     required this.onSend,
     required this.inputFocusNode,
+    required this.draftController,
     required this.scrollController,
     required this.typingLabel,
     required this.onTypingChanged,
@@ -632,6 +640,7 @@ class _GlassCard extends StatelessWidget {
   final VoidCallback onScrollToBottom;
   final void Function(String text) onSend;
   final FocusNode inputFocusNode;
+  final TextEditingController draftController;
   final ScrollController scrollController;
   final String? typingLabel;
   final ValueChanged<bool>? onTypingChanged;
@@ -904,6 +913,7 @@ class _GlassCard extends StatelessWidget {
                   ChatInput(
                     onSend: onSend,
                     focusNode: inputFocusNode,
+                    controller: draftController,
                     onTypingChanged: onTypingChanged,
                   ),
                 ],
