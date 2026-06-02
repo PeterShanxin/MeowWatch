@@ -39,6 +39,7 @@ double chatOverlayOpacity({
   bool deepIdle = false,
   bool hasUnread = false,
   bool wakeToFullyVisible = false,
+  double ghostOpacity = kChatIdleGhostOpacity,
 }) {
   if (!idle) return 1.0;
 
@@ -54,15 +55,20 @@ double chatOverlayOpacity({
   if (deepIdle) return 0.0;
 
   if (hasUnread) {
-    return wakeToFullyVisible ? 1.0 : kChatIdleGhostOpacity;
+    return wakeToFullyVisible ? 1.0 : ghostOpacity;
   }
 
-  return kChatIdleGhostOpacity;
+  return ghostOpacity;
 }
 
-/// Opacity of the dimmed-but-not-hidden chat card on first idle. Tuned up from
-/// the original 0.1, which was too faint to read.
-const double kChatIdleGhostOpacity = 0.28;
+/// Default opacity of the dimmed-but-not-hidden chat card on first idle. Raised
+/// to stay readable; the user can tune it via the gear slider, clamped to
+/// [kChatIdleDimMin]–[kChatIdleDimMax].
+const double kChatIdleGhostOpacity = 0.5;
+
+/// User-tunable bounds for the idle dim opacity (gear slider).
+const double kChatIdleDimMin = 0.15;
+const double kChatIdleDimMax = 0.95;
 
 /// Opacity for the secondary overlays (gear button, reaction bar) that simply
 /// fade fully out when idle and back in otherwise.

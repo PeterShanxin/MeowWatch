@@ -11,7 +11,8 @@ in-app updater reads to show what changed.
 - If a friend starts playback before you've loaded a video, the start screen now tells you ("lin started playback — load a video to join") instead of it happening silently. And if you've loaded a video but your friend hasn't yet, you now see a "⏳ lin hasn't loaded a video yet" heads-up — so neither side is left guessing (#60).
 - The gear menu now hides the "Fully wake chat on message" switch unless "Dim chat when idle" is on — it did nothing in that state. It slides in and out smoothly instead of popping (#51).
 - If you've downloaded an update but haven't installed it, closing the app now offers to install it on the way out, with an "installing…" notice so it doesn't look frozen, then starts you on the new version next time instead of nagging you to download it again. A normal close (no pending update) is untouched and instant (#62).
-- Fixed the dimmed idle chat being too faint to read, and a new message waking it but then never fading back out — it now brightens on a new message and settles back to hidden if you don't touch it.
+- The dimmed idle chat is more readable now, and you can tune exactly how faint it gets with a new "Dimmed chat readability" slider (with a reset) under the gear's Settings. A new message still brightens it and it settles back to hidden if you don't touch it.
+- The gear menu's chat settings now live under a collapsible "Settings" section so the menu stays short, with the wake toggle and dim slider sliding in only when "Dim chat when idle" is on.
 - Fixed playback jumping to 00:00 after a reconnect: when both sides briefly drop together, the app no longer yanks a mid-film session back to the start.
 
 ## [0.10.6-alpha] - 2026-06-02

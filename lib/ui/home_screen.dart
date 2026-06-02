@@ -170,6 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _chatAutoDim = true;
   bool _chatHasUnread = false;
   bool _chatWakeOnMessage = false;
+  double _chatIdleDim = kChatIdleGhostOpacity;
 
   /// Collapses bursts of seek notifications into a single line/banner (#26).
   final SyncActivityThrottle _activityThrottle = SyncActivityThrottle();
@@ -333,6 +334,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final wakeSetting = await widget.settings.get(kChatWakeOnNewMessageSettingKey);
     if (wakeSetting == 'true' && mounted) {
       setState(() => _chatWakeOnMessage = true);
+    }
+    final dimSettingRaw = await widget.settings.get(kChatIdleDimSettingKey);
+    final dim = double.tryParse(dimSettingRaw ?? '');
+    if (dim != null && mounted) {
+      setState(() => _chatIdleDim = dim.clamp(kChatIdleDimMin, kChatIdleDimMax));
     }
   }
 
@@ -737,6 +743,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 autoDim: _chatAutoDim,
                 hasUnread: _chatHasUnread,
                 wakeToFullyVisible: _chatWakeOnMessage,
+                ghostOpacity: _chatIdleDim,
               );
               return Stack(
                 fit: StackFit.expand,
@@ -841,6 +848,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           onChatWakeOnMessageChanged: (val) {
                             setState(() => _chatWakeOnMessage = val);
                             widget.settings.set(kChatWakeOnNewMessageSettingKey, val.toString());
+                          },
+                          chatIdleDim: _chatIdleDim,
+                          onChatIdleDimChanged: (val) {
+                            setState(() => _chatIdleDim = val);
+                            widget.settings.set(
+                                kChatIdleDimSettingKey, val.toStringAsFixed(2));
                           },
                         ),
                       ),

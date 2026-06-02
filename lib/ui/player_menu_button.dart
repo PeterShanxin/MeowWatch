@@ -5,11 +5,12 @@ import 'package:flutter/services.dart';
 
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
+import 'idle_visibility.dart';
 import 'theme/theme_swatches.dart';
 
 /// Top-left in-player control: a gear button that opens a small anchored
 /// popover with the room code (copyable), who's in the room, a "Load video"
-/// action, theme swatches, and "Leave room".
+/// action, theme swatches, a collapsible Settings section, and "Leave room".
 class PlayerMenuButton extends StatelessWidget {
   const PlayerMenuButton({
     required this.roomCode,
@@ -23,6 +24,8 @@ class PlayerMenuButton extends StatelessWidget {
     required this.onChatAutoDimChanged,
     required this.chatWakeOnMessage,
     required this.onChatWakeOnMessageChanged,
+    required this.chatIdleDim,
+    required this.onChatIdleDimChanged,
     super.key,
   });
 
@@ -40,15 +43,14 @@ class PlayerMenuButton extends StatelessWidget {
   final bool chatWakeOnMessage;
   final ValueChanged<bool> onChatWakeOnMessageChanged;
 
+  /// Current idle-dim opacity and a setter; tunes how readable the dimmed chat
+  /// card stays while idle.
+  final double chatIdleDim;
+  final ValueChanged<double> onChatIdleDimChanged;
+
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
-    Widget label(String text) => Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child:
-              Text(text, style: TextStyle(color: m.textDim, fontSize: 14)),
-        );
-
     return MenuAnchor(
       // Drop the popover a touch below the gear so it doesn't crowd the button.
       alignmentOffset: const Offset(0, 8),
@@ -91,76 +93,289 @@ class PlayerMenuButton extends StatelessWidget {
               child: child,
             ),
           ),
-          child: SizedBox(
-            width: 264,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              // Stretch so rows/actions fill the card width (bigger tap targets)
-              // instead of hugging the left as half-width nubs.
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                label('Room code'),
-              _RoomCodeRow(code: roomCode),
-              const SizedBox(height: 8),
-              Divider(color: m.border, height: 16),
-              label('In the room (${members.length})'),
-              for (final name in members)
-                _MemberRow(name: name, isMe: name == myUsername),
-              const SizedBox(height: 8),
-              Divider(color: m.border, height: 16),
-              _MenuAction(
-                key: const Key('player-menu-load'),
-                icon: Icons.video_library_outlined,
-                text: 'Load video…',
-                onTap: onLoadVideo,
-              ),
-              Divider(color: m.border, height: 16),
-              label('Theme'),
-              Center(
-                child:
-                    ThemeSwatches(current: currentTheme, onChanged: onThemeChanged),
-              ),
-              const SizedBox(height: 8),
-              Divider(color: m.border, height: 16),
-              label('Settings'),
-              _MenuSwitch(
-                text: 'Dim chat when idle',
-                value: chatAutoDim,
-                onChanged: onChatAutoDimChanged,
-              ),
-              // The wake toggle only means something while auto-dim is on — with
-              // dimming off the card already stays fully visible
-              // (idle_visibility.dart: `if (!autoDim) return 1.0;`). Hide it
-              // otherwise so it isn't a dead switch (#51). Reveal/collapse it
-              // smoothly (height + fade) rather than popping in and out.
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeInOut,
-                alignment: Alignment.topCenter,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 200),
-                  opacity: chatAutoDim ? 1 : 0,
-                  child: chatAutoDim
-                      ? _MenuSwitch(
-                          text: 'Fully wake chat on message',
-                          value: chatWakeOnMessage,
-                          onChanged: onChatWakeOnMessageChanged,
-                        )
-                      : const SizedBox(width: double.infinity),
-                ),
-              ),
-              Divider(color: m.border, height: 16),
-              _MenuAction(
-                key: const Key('player-menu-leave'),
-                icon: Icons.arrow_back,
-                text: 'Leave room',
-                onTap: onLeave,
-              ),
-              ],
-            ),
+          child: _MenuPanel(
+            roomCode: roomCode,
+            members: members,
+            myUsername: myUsername,
+            currentTheme: currentTheme,
+            onThemeChanged: onThemeChanged,
+            onLoadVideo: onLoadVideo,
+            onLeave: onLeave,
+            chatAutoDim: chatAutoDim,
+            onChatAutoDimChanged: onChatAutoDimChanged,
+            chatWakeOnMessage: chatWakeOnMessage,
+            onChatWakeOnMessageChanged: onChatWakeOnMessageChanged,
+            chatIdleDim: chatIdleDim,
+            onChatIdleDimChanged: onChatIdleDimChanged,
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The popover body. Stateful only to remember whether the collapsible Settings
+/// section is expanded for the current open session.
+class _MenuPanel extends StatefulWidget {
+  const _MenuPanel({
+    required this.roomCode,
+    required this.members,
+    required this.myUsername,
+    required this.currentTheme,
+    required this.onThemeChanged,
+    required this.onLoadVideo,
+    required this.onLeave,
+    required this.chatAutoDim,
+    required this.onChatAutoDimChanged,
+    required this.chatWakeOnMessage,
+    required this.onChatWakeOnMessageChanged,
+    required this.chatIdleDim,
+    required this.onChatIdleDimChanged,
+  });
+
+  final String roomCode;
+  final List<String> members;
+  final String myUsername;
+  final MeowThemeId currentTheme;
+  final ValueChanged<MeowThemeId> onThemeChanged;
+  final VoidCallback onLoadVideo;
+  final VoidCallback onLeave;
+  final bool chatAutoDim;
+  final ValueChanged<bool> onChatAutoDimChanged;
+  final bool chatWakeOnMessage;
+  final ValueChanged<bool> onChatWakeOnMessageChanged;
+  final double chatIdleDim;
+  final ValueChanged<double> onChatIdleDimChanged;
+
+  @override
+  State<_MenuPanel> createState() => _MenuPanelState();
+}
+
+class _MenuPanelState extends State<_MenuPanel> {
+  bool _settingsOpen = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    Widget label(String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Text(text, style: TextStyle(color: m.textDim, fontSize: 14)),
+        );
+
+    return SizedBox(
+      width: 264,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        // Stretch so rows/actions fill the card width (bigger tap targets)
+        // instead of hugging the left as half-width nubs.
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          label('Room code'),
+          _RoomCodeRow(code: widget.roomCode),
+          const SizedBox(height: 8),
+          Divider(color: m.border, height: 16),
+          label('In the room (${widget.members.length})'),
+          for (final name in widget.members)
+            _MemberRow(name: name, isMe: name == widget.myUsername),
+          const SizedBox(height: 8),
+          Divider(color: m.border, height: 16),
+          _MenuAction(
+            key: const Key('player-menu-load'),
+            icon: Icons.video_library_outlined,
+            text: 'Load video…',
+            onTap: widget.onLoadVideo,
+          ),
+          Divider(color: m.border, height: 16),
+          label('Theme'),
+          Center(
+            child: ThemeSwatches(
+              current: widget.currentTheme,
+              onChanged: widget.onThemeChanged,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Divider(color: m.border, height: 16),
+          // Collapsible Settings — keeps the menu short until you want the
+          // chat-dim controls.
+          _SectionHeader(
+            key: const Key('player-menu-settings'),
+            text: 'Settings',
+            expanded: _settingsOpen,
+            onTap: () => setState(() => _settingsOpen = !_settingsOpen),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: _settingsOpen
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _MenuSwitch(
+                        text: 'Dim chat when idle',
+                        value: widget.chatAutoDim,
+                        onChanged: widget.onChatAutoDimChanged,
+                      ),
+                      // The wake toggle + dim slider only mean something while
+                      // auto-dim is on; reveal/collapse them smoothly (#51).
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeInOut,
+                        alignment: Alignment.topCenter,
+                        child: widget.chatAutoDim
+                            ? Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _MenuSwitch(
+                                    text: 'Fully wake chat on message',
+                                    value: widget.chatWakeOnMessage,
+                                    onChanged: widget.onChatWakeOnMessageChanged,
+                                  ),
+                                  _DimSlider(
+                                    value: widget.chatIdleDim,
+                                    onChanged: widget.onChatIdleDimChanged,
+                                  ),
+                                ],
+                              )
+                            : const SizedBox(width: double.infinity),
+                      ),
+                    ],
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+          Divider(color: m.border, height: 16),
+          _MenuAction(
+            key: const Key('player-menu-leave'),
+            icon: Icons.arrow_back,
+            text: 'Leave room',
+            onTap: widget.onLeave,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A tappable section header with a rotating chevron, used to expand/collapse
+/// the Settings group.
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.text,
+    required this.expanded,
+    required this.onTap,
+    super.key,
+  });
+
+  final String text;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: Row(
+          children: [
+            Text(text, style: TextStyle(color: m.textDim, fontSize: 14)),
+            const Spacer(),
+            AnimatedRotation(
+              turns: expanded ? 0.5 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: Icon(Icons.expand_more, size: 18, color: m.textDim),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Slider for the idle-dim opacity, with a live percentage and a reset button
+/// back to the default. Keeps a local value so dragging is smooth and only
+/// commits on release (no settings write per tick).
+class _DimSlider extends StatefulWidget {
+  const _DimSlider({required this.value, required this.onChanged});
+
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  State<_DimSlider> createState() => _DimSliderState();
+}
+
+class _DimSliderState extends State<_DimSlider> {
+  late double _v = widget.value;
+
+  @override
+  void didUpdateWidget(_DimSlider old) {
+    super.didUpdateWidget(old);
+    // Adopt an external change (e.g. a reset) when we're not mid-drag.
+    if (old.value != widget.value) _v = widget.value;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Dimmed chat readability',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: m.textDim, fontSize: 13),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${(_v * 100).round()}%',
+                style: TextStyle(color: m.textPrimary, fontSize: 13),
+              ),
+              // Reset to the default opacity.
+              IconButton(
+                key: const Key('player-menu-dim-reset'),
+                tooltip: 'Reset',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: Icon(Icons.restart_alt, size: 16, color: m.accent),
+                onPressed: () {
+                  setState(() => _v = kChatIdleGhostOpacity);
+                  widget.onChanged(kChatIdleGhostOpacity);
+                },
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderThemeData(
+              trackHeight: 3,
+              activeTrackColor: m.accent,
+              inactiveTrackColor: m.border,
+              thumbColor: m.accent,
+              overlayColor: m.accent.withValues(alpha: 0.2),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+            ),
+            child: Slider(
+              value: _v.clamp(kChatIdleDimMin, kChatIdleDimMax),
+              min: kChatIdleDimMin,
+              max: kChatIdleDimMax,
+              onChanged: (v) => setState(() => _v = v),
+              onChangeEnd: widget.onChanged,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -19,6 +19,8 @@ PlayerMenuButton _button({
   ValueChanged<bool>? onChatAutoDimChanged,
   bool chatWakeOnMessage = false,
   ValueChanged<bool>? onChatWakeOnMessageChanged,
+  double chatIdleDim = 0.5,
+  ValueChanged<double>? onChatIdleDimChanged,
 }) =>
     PlayerMenuButton(
       roomCode: 'MEOW42',
@@ -32,7 +34,17 @@ PlayerMenuButton _button({
       onChatAutoDimChanged: onChatAutoDimChanged ?? (_) {},
       chatWakeOnMessage: chatWakeOnMessage,
       onChatWakeOnMessageChanged: onChatWakeOnMessageChanged ?? (_) {},
+      chatIdleDim: chatIdleDim,
+      onChatIdleDimChanged: onChatIdleDimChanged ?? (_) {},
     );
+
+/// Open the gear and expand the collapsible Settings section.
+Future<void> _openSettings(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('player-menu-gear')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('player-menu-settings')));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   testWidgets('menu is closed until the gear is tapped', (tester) async {
@@ -113,6 +125,20 @@ void main() {
     expect(find.textContaining('copied'), findsOneWidget);
   });
 
+  testWidgets('Settings is collapsed until its header is tapped', (tester) async {
+    await tester.pumpWidget(_host(_button()));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    // The header shows, but its controls are hidden until expanded.
+    expect(find.byKey(const Key('player-menu-settings')), findsOneWidget);
+    expect(find.text('Dim chat when idle'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('player-menu-settings')));
+    await tester.pumpAndSettle();
+    expect(find.text('Dim chat when idle'), findsOneWidget);
+  });
+
   testWidgets('tapping "Dim chat when idle" toggles onChatAutoDimChanged',
       (tester) async {
     bool? changed;
@@ -120,8 +146,7 @@ void main() {
       chatAutoDim: true,
       onChatAutoDimChanged: (v) => changed = v,
     )));
-    await tester.tap(find.byKey(const Key('player-menu-gear')));
-    await tester.pumpAndSettle();
+    await _openSettings(tester);
 
     expect(find.text('Dim chat when idle'), findsOneWidget);
     // Tapping the row flips the current (true) value to false.
@@ -136,8 +161,7 @@ void main() {
       chatWakeOnMessage: false,
       onChatWakeOnMessageChanged: (v) => changed = v,
     )));
-    await tester.tap(find.byKey(const Key('player-menu-gear')));
-    await tester.pumpAndSettle();
+    await _openSettings(tester);
 
     expect(find.text('Fully wake chat on message'), findsOneWidget);
     // Tapping the row flips the current (false) value to true.
@@ -145,15 +169,33 @@ void main() {
     expect(changed, isTrue);
   });
 
-  testWidgets('hides the wake toggle while "Dim chat when idle" is off (#51)',
+  testWidgets('hides the wake toggle + dim slider while "Dim chat when idle" is off (#51)',
       (tester) async {
     await tester.pumpWidget(_host(_button(chatAutoDim: false)));
-    await tester.tap(find.byKey(const Key('player-menu-gear')));
-    await tester.pumpAndSettle();
+    await _openSettings(tester);
 
-    // Auto-dim row is always there; the wake toggle is meaningless without it
-    // and so is hidden.
+    // Auto-dim row is always there; the wake toggle and dim slider are
+    // meaningless without it and so are hidden.
     expect(find.text('Dim chat when idle'), findsOneWidget);
     expect(find.text('Fully wake chat on message'), findsNothing);
+    expect(find.text('Dimmed chat readability'), findsNothing);
+  });
+
+  testWidgets('dim slider reset restores the default opacity', (tester) async {
+    double? changed;
+    await tester.pumpWidget(_host(_button(
+      chatIdleDim: 0.9,
+      onChatIdleDimChanged: (v) => changed = v,
+    )));
+    await _openSettings(tester);
+
+    expect(find.text('Dimmed chat readability'), findsOneWidget);
+    expect(find.text('90%'), findsOneWidget); // starts at the passed value
+
+    await tester.tap(find.byKey(const Key('player-menu-dim-reset')));
+    await tester.pumpAndSettle();
+    // Default is kChatIdleGhostOpacity (0.5) → 50%.
+    expect(changed, 0.5);
+    expect(find.text('50%'), findsOneWidget);
   });
 }
