@@ -42,6 +42,22 @@ void main() {
       expect(c.status, SyncConnectionStatus.error);
       expect(c.message, 'boom');
     });
+
+    test('carries the server-assigned username when connected', () {
+      const c = SyncConnectionState(
+        status: SyncConnectionStatus.connected,
+        username: 'meow_',
+      );
+      expect(c.username, 'meow_');
+    });
+
+    test('differing usernames are not equal', () {
+      const a = SyncConnectionState(
+          status: SyncConnectionStatus.connected, username: 'meow');
+      const b = SyncConnectionState(
+          status: SyncConnectionStatus.connected, username: 'meow_');
+      expect(a, isNot(equals(b)));
+    });
   });
 
   group('PresenceEvent', () {

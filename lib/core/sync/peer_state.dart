@@ -11,19 +11,28 @@ enum SyncConnectionStatus {
 
 @immutable
 class SyncConnectionState {
-  const SyncConnectionState({required this.status, this.message});
+  const SyncConnectionState({
+    required this.status,
+    this.message,
+    this.username,
+  });
 
   final SyncConnectionStatus status;
   final String? message;
+
+  /// The username the server assigned us, carried on the `connected` state so
+  /// the UI can reflect a server-side rename (#40). Null on other states.
+  final String? username;
 
   @override
   bool operator ==(Object other) =>
       other is SyncConnectionState &&
       other.status == status &&
-      other.message == message;
+      other.message == message &&
+      other.username == username;
 
   @override
-  int get hashCode => Object.hash(status, message);
+  int get hashCode => Object.hash(status, message, username);
 }
 
 @immutable
