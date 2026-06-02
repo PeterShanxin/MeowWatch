@@ -131,13 +131,24 @@ class PlayerMenuButton extends StatelessWidget {
               // The wake toggle only means something while auto-dim is on — with
               // dimming off the card already stays fully visible
               // (idle_visibility.dart: `if (!autoDim) return 1.0;`). Hide it
-              // otherwise so it isn't a dead switch (#51).
-              if (chatAutoDim)
-                _MenuSwitch(
-                  text: 'Fully wake chat on message',
-                  value: chatWakeOnMessage,
-                  onChanged: onChatWakeOnMessageChanged,
+              // otherwise so it isn't a dead switch (#51). Reveal/collapse it
+              // smoothly (height + fade) rather than popping in and out.
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                alignment: Alignment.topCenter,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: chatAutoDim ? 1 : 0,
+                  child: chatAutoDim
+                      ? _MenuSwitch(
+                          text: 'Fully wake chat on message',
+                          value: chatWakeOnMessage,
+                          onChanged: onChatWakeOnMessageChanged,
+                        )
+                      : const SizedBox(width: double.infinity),
                 ),
+              ),
               Divider(color: m.border, height: 16),
               _MenuAction(
                 key: const Key('player-menu-leave'),

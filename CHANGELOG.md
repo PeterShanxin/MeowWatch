@@ -8,9 +8,11 @@ in-app updater reads to show what changed.
 ## [0.11.0-alpha] - 2026-06-02
 - You can now select and copy chat messages — drag across a message to grab links, timestamps, or quotes (#54).
 - When a friend is typing, the collapsed chat tab now lights up and shows a little animated "…" so you can tell someone's writing without opening the chat (#53).
-- If a friend starts playback before you've loaded a video, the start screen now tells you ("lin started playback — load a video to join") instead of it happening silently. It works both ways — your friend sees the same heads-up if you start first (#60).
-- The gear menu now hides the "Fully wake chat on message" switch unless "Dim chat when idle" is on — it did nothing in that state, so it no longer shows as a dead toggle (#51).
-- If you've downloaded an update but haven't installed it, closing the app now offers to install it on the way out, so you start up on the new version next time instead of being nagged to download it again (#62).
+- If a friend starts playback before you've loaded a video, the start screen now tells you ("lin started playback — load a video to join") instead of it happening silently. And if you've loaded a video but your friend hasn't yet, you now see a "⏳ lin hasn't loaded a video yet" heads-up — so neither side is left guessing (#60).
+- The gear menu now hides the "Fully wake chat on message" switch unless "Dim chat when idle" is on — it did nothing in that state. It slides in and out smoothly instead of popping (#51).
+- If you've downloaded an update but haven't installed it, closing the app now offers to install it on the way out, with an "installing…" notice so it doesn't look frozen, then starts you on the new version next time instead of nagging you to download it again. A normal close (no pending update) is untouched and instant (#62).
+- Fixed the dimmed idle chat being too faint to read, and a new message waking it but then never fading back out — it now brightens on a new message and settles back to hidden if you don't touch it.
+- Fixed playback jumping to 00:00 after a reconnect: when both sides briefly drop together, the app no longer yanks a mid-film session back to the start.
 
 ## [0.10.6-alpha] - 2026-06-02
 - Long chat messages are no longer silently cut off. The message box now caps at 150 characters (the server's limit) and shows a counter as you near it, so nothing gets eaten mid-word on send (#55).

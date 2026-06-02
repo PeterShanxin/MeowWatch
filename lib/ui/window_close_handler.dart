@@ -9,13 +9,15 @@ import '../core/update/update_service.dart';
 /// What the user chose when prompted on close with a downloaded update ready.
 enum UpdateCloseChoice { installAndQuit, justQuit, cancel }
 
-/// Intercepts the window-close (X) button so a *downloaded-but-not-installed*
-/// update can be applied on the way out instead of re-nagging on next launch
-/// (#62). With nothing downloaded, close behaves normally.
+/// Intercepts the window-close (X) button **only when a downloaded-but-not-
+/// installed update is waiting** (#62), so it can be applied on the way out
+/// instead of re-nagging next launch.
 ///
-/// Registered once from `main()` (not the widget tree) so tests that pump the
-/// app never touch window plumbing. Holds the app's [navigatorKey] so it can
-/// show the confirm dialog over whatever screen is up.
+/// Crucially, `preventClose` is toggled on *only* while an update is ready and
+/// off otherwise — so a normal quit closes instantly through the OS path and is
+/// never routed through Dart (an earlier always-on version made every close slow
+/// and could wedge a playing window). Registered once from `main()`, not the
+/// widget tree, so tests that pump the app never touch window plumbing.
 class WindowCloseHandler with WindowListener {
   WindowCloseHandler({
     required this.navigatorKey,
@@ -25,31 +27,40 @@ class WindowCloseHandler with WindowListener {
   final GlobalKey<NavigatorState> navigatorKey;
   final UpdateService _service;
 
-  /// Start intercepting close. Safe to call once after `windowManager`
-  /// is initialized.
-  Future<void> register() async {
+  bool _preventing = false;
+
+  /// Start watching for a ready update and intercepting close while one waits.
+  void register() {
     windowManager.addListener(this);
-    // From here EVERY close routes through [onWindowClose]; we must explicitly
-    // destroy the window ourselves for a normal quit.
-    await windowManager.setPreventClose(true);
+    _service.addListener(_syncPreventClose);
+    _syncPreventClose();
+  }
+
+  bool get _updateReady =>
+      _service.phase == UpdatePhase.readyToInstall &&
+      _service.downloadedZipPath != null;
+
+  /// Prevent close only while an update is ready; otherwise let the OS close the
+  /// window normally (fast, no Dart in the path).
+  void _syncPreventClose() {
+    final shouldPrevent = _updateReady;
+    if (shouldPrevent == _preventing) return;
+    _preventing = shouldPrevent;
+    unawaited(windowManager.setPreventClose(shouldPrevent));
   }
 
   @override
   void onWindowClose() => unawaited(handleClose());
 
-  /// The close decision, separated from the listener callback so it can be
-  /// awaited/tested. Always ends by either applying the update (which exits the
-  /// process) or destroying the window — never leaves the app un-closable,
-  /// except the deliberate "cancel" path.
+  /// Reached only while close is prevented (an update is ready). Offers to
+  /// install on the way out; always ends by applying the update (which exits the
+  /// process) or destroying the window — never traps the user, except the
+  /// deliberate "cancel" path.
   @visibleForTesting
   Future<void> handleClose() async {
     final zip = _service.downloadedZipPath;
-    final ready =
-        _service.phase == UpdatePhase.readyToInstall && zip != null;
-
-    if (ready) {
+    if (_updateReady && zip != null) {
       final ctx = navigatorKey.currentContext;
-      // No context to ask in (shouldn't happen in practice) → just quit.
       final choice = ctx != null && ctx.mounted
           ? await showUpdateOnCloseDialog(ctx)
           : UpdateCloseChoice.justQuit;
@@ -58,8 +69,17 @@ class WindowCloseHandler with WindowListener {
 
       if (choice == UpdateCloseChoice.installAndQuit) {
         try {
-          // Swaps files and exits the process (no relaunch — we're quitting).
-          await _service.applyUpdate(zip, restartAfter: false);
+          // Show a blocking "installing…" modal so the file swap (a few seconds
+          // of sync I/O before the process exits) doesn't read as a frozen
+          // window. Don't await it — it never pops; applyUpdate exits under it.
+          final modalCtx = navigatorKey.currentContext;
+          if (modalCtx != null && modalCtx.mounted) {
+            unawaited(showInstallingUpdateDialog(modalCtx));
+            // Let the modal paint a frame before the synchronous unzip blocks
+            // the UI isolate.
+            await Future<void>.delayed(const Duration(milliseconds: 80));
+          }
+          await _service.applyUpdate(zip, restartAfter: false); // exits
           return;
         } catch (_) {
           // Any failure (bad zip, checksum, IO) — fall through to a plain quit
@@ -72,9 +92,9 @@ class WindowCloseHandler with WindowListener {
   }
 }
 
-/// Modal shown on close when an update is downloaded and ready. Themed to match
-/// the app. Returns the user's [UpdateCloseChoice]; a barrier/esc dismissal
-/// counts as [UpdateCloseChoice.cancel] (stay open).
+/// Modal shown on close when an update is downloaded and ready. Returns the
+/// user's [UpdateCloseChoice]; a barrier/esc dismissal counts as
+/// [UpdateCloseChoice.cancel] (stay open).
 Future<UpdateCloseChoice> showUpdateOnCloseDialog(BuildContext context) async {
   final result = await showDialog<UpdateCloseChoice>(
     context: context,
@@ -129,4 +149,44 @@ Future<UpdateCloseChoice> showUpdateOnCloseDialog(BuildContext context) async {
     },
   );
   return result ?? UpdateCloseChoice.cancel;
+}
+
+/// Non-dismissible "installing the update…" modal shown while the files are
+/// swapped on close, so the brief pause before the app exits doesn't look like
+/// a hang. It is never dismissed in code — the process exits under it.
+Future<void> showInstallingUpdateDialog(BuildContext context) {
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) {
+      final m = context.meow;
+      return PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: m.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: m.border),
+          ),
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2, color: m.accent),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  'Installing update…\nThe app will close in a moment.',
+                  style: TextStyle(color: m.textPrimary, fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }

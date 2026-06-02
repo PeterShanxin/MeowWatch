@@ -71,4 +71,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(picked, UpdateCloseChoice.cancel);
   });
+
+  testWidgets('the installing modal shows a spinner and cannot be dismissed',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: themeDataFor(MeowThemeId.cozy),
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showInstallingUpdateDialog(context),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pump(); // start the dialog route
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.textContaining('Installing update'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    // Esc / back must not dismiss it (PopScope canPop: false).
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pump();
+    expect(find.textContaining('Installing update'), findsOneWidget);
+  });
 }

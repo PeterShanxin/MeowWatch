@@ -80,6 +80,22 @@ void main() {
       expect(action.position, const Duration(seconds: 10));
     });
 
+    test('does not rewind to a setter-less global (empty-room reset to 0)', () {
+      // After both clients drop and rejoin, the server's fresh room state is
+      // position 0 with no setBy. We are mid-film and "far ahead" of it, but
+      // must NOT rewind to that phantom zero — only a real peer position counts.
+      final action = decideFollow(
+        global: const PeerPlayState(
+          position: Duration.zero,
+          paused: false,
+        ),
+        localPaused: false,
+        localPosition: const Duration(seconds: 500),
+        username: 'me',
+      );
+      expect(action.shouldApply, isFalse);
+    });
+
     test('does not rewind when local player is behind the room', () {
       final action = decideFollow(
         global: const PeerPlayState(

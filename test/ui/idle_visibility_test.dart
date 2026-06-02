@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/ui/idle_visibility.dart';
 
 void main() {
+  final ghost = kChatIdleGhostOpacity;
+
   group('chatOverlayOpacity', () {
     test('fully visible when not idle, regardless of other flags', () {
       for (final collapsed in [true, false]) {
@@ -35,7 +37,7 @@ void main() {
         () {
       expect(
         chatOverlayOpacity(idle: true, collapsed: false, autoDim: true),
-        0.1,
+        ghost,
       );
     });
 
@@ -55,7 +57,7 @@ void main() {
           autoDim: true,
           deepIdle: false,
         ),
-        0.1,
+        ghost,
       );
     });
 
@@ -129,7 +131,7 @@ void main() {
           hasUnread: true,
           wakeToFullyVisible: false,
         ),
-        0.1,
+        ghost,
       );
     });
 
@@ -146,8 +148,10 @@ void main() {
       );
     });
 
-    test('unread expanded card does not hide in deep idle (#43)', () {
-      // Without unread this would be 0.0 (#34); unread keeps it a ghost.
+    test('unread expanded card still fades out in deep idle', () {
+      // A wake-on-message brighten must not linger forever: once idle persists
+      // into deep idle, the expanded card fades fully out even with unread. A
+      // fresh message re-arms the countdown (HomeScreen), so it wakes again.
       expect(
         chatOverlayOpacity(
           idle: true,
@@ -157,7 +161,19 @@ void main() {
           hasUnread: true,
           wakeToFullyVisible: false,
         ),
-        0.1,
+        0.0,
+      );
+      // Even with the fully-wake setting, deep idle eventually hides it.
+      expect(
+        chatOverlayOpacity(
+          idle: true,
+          collapsed: false,
+          autoDim: true,
+          deepIdle: true,
+          hasUnread: true,
+          wakeToFullyVisible: true,
+        ),
+        0.0,
       );
     });
   });

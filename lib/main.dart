@@ -36,5 +36,5 @@ Future<void> main() async {
 
   // Intercept the window-close button so a downloaded update can be applied on
   // the way out instead of re-prompting next launch (#62).
-  await WindowCloseHandler(navigatorKey: navigatorKey).register();
+  WindowCloseHandler(navigatorKey: navigatorKey).register();
 }
