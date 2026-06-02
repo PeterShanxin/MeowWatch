@@ -19,6 +19,14 @@ const String kChatWakeOnNewMessageSettingKey = 'chat_wake_on_new_message';
 /// dimmed chat stays.
 const String kChatIdleDimSettingKey = 'chat_idle_dim';
 
+/// Key for the persisted primary notification sound (value = a NotifySound id
+/// from `kPrimarySounds`; absent/unknown → `kDefaultPrimarySoundId`).
+const String kNotifyPrimarySoundKey = 'notify_primary_sound';
+
+/// Key for the persisted secondary (quiet) notification sound (value = a
+/// NotifySound id from `kSecondarySounds`; absent/unknown → default).
+const String kNotifySecondarySoundKey = 'notify_secondary_sound';
+
 /// Commands-in access to persisted key/value app settings.
 abstract class SettingsStore {
   Future<String?> get(String key);
