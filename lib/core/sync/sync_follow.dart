@@ -54,9 +54,18 @@ FollowAction decideFollow({
     return FollowAction.apply(position: global.position, paused: global.paused);
   }
 
-  // 3. Rewind only if WE are ahead of the room beyond the threshold.
+  // 3. Rewind only if WE are ahead of the room beyond the threshold AND a real
+  //    peer set this position. The server's empty-room default state has
+  //    position 0 and no [setBy]; without this guard, when both clients drop
+  //    and rejoin together (one PC, one network blip → the room empties and
+  //    resets to 0), each is "far ahead" of that phantom 0 and rewinds to it —
+  //    dragging a mid-film session back to 00:00. A genuine drift-rewind always
+  //    has the peer's name on it, so requiring [setBy] loses nothing real.
   final aheadBy = localPosition - global.position;
-  if (!global.doSeek && !isSelf && aheadBy > rewindThreshold) {
+  if (!global.doSeek &&
+      !isSelf &&
+      global.setBy != null &&
+      aheadBy > rewindThreshold) {
     return FollowAction.apply(position: global.position, paused: global.paused);
   }
 

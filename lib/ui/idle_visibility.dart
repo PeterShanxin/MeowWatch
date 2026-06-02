@@ -26,6 +26,12 @@ library;
 /// `hasUnread` is whether the chat has unread messages; `wakeToFullyVisible` is
 /// the user's "Fully wake chat on message" setting (expanded card only —
 /// a collapsed unread tab is always fully visible).
+///
+/// The dimmed (non-deep) ghost uses [kChatIdleGhostOpacity] — faint enough to
+/// stay out of the way, but readable. In *deep* idle the expanded card fades
+/// fully out even with unread messages, so a wake-on-message brighten doesn't
+/// leave it lingering on screen forever; a fresh message re-arms the deep-idle
+/// countdown (see HomeScreen), so it wakes and then settles back out.
 double chatOverlayOpacity({
   required bool idle,
   required bool collapsed,
@@ -33,21 +39,36 @@ double chatOverlayOpacity({
   bool deepIdle = false,
   bool hasUnread = false,
   bool wakeToFullyVisible = false,
+  double ghostOpacity = kChatIdleGhostOpacity,
 }) {
   if (!idle) return 1.0;
 
   if (collapsed) {
+    // The minimized unread tab/badge survives idle and deep idle so a missed
+    // message stays flagged (#43); without unread it hides.
     return hasUnread ? 1.0 : 0.0;
   }
 
   if (!autoDim) return 1.0;
 
+  // Deep idle wins: the expanded card fades fully out even while unread.
+  if (deepIdle) return 0.0;
+
   if (hasUnread) {
-    return wakeToFullyVisible ? 1.0 : 0.1;
+    return wakeToFullyVisible ? 1.0 : ghostOpacity;
   }
 
-  return deepIdle ? 0.0 : 0.1;
+  return ghostOpacity;
 }
+
+/// Default opacity of the dimmed-but-not-hidden chat card on first idle. Raised
+/// to stay readable; the user can tune it via the gear slider, clamped to
+/// [kChatIdleDimMin]–[kChatIdleDimMax].
+const double kChatIdleGhostOpacity = 0.5;
+
+/// User-tunable bounds for the idle dim opacity (gear slider).
+const double kChatIdleDimMin = 0.15;
+const double kChatIdleDimMax = 0.95;
 
 /// Opacity for the secondary overlays (gear button, reaction bar) that simply
 /// fade fully out when idle and back in otherwise.

@@ -26,6 +26,21 @@ void main() {
     expect(script, contains(r'-WorkingDirectory "D:\MeowWatch-windows-x64"'));
   });
 
+  test('restart:false swaps files but does not relaunch the app (#62)', () {
+    final noRestart = buildUpdaterScript(
+      extractedDir: r'C:\tmp\meow\extracted',
+      appDir: r'D:\MeowWatch-windows-x64',
+      tempDir: r'C:\tmp\meow',
+      exeName: 'meowwatch.exe',
+      restart: false,
+    );
+    // Still copies the new files over the install...
+    expect(noRestart, contains('robocopy '));
+    // ...but never relaunches the app the user just closed.
+    expect(noRestart, isNot(contains('Start-Process -FilePath')));
+    expect(noRestart, contains('not restarting (app closed)'));
+  });
+
   test('writes a diagnostic log under the temp dir', () {
     expect(script, contains(r'C:\tmp\meow\updater.log'));
   });

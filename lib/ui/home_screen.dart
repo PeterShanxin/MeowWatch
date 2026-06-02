@@ -106,6 +106,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// The name of the last peer who left the room.
   String? _lastPeerLeft;
 
+  /// Persistent "your friend started playback — load a video to join" prompt
+  /// shown on the empty (no-video) screen when a peer controls playback before
+  /// we've loaded anything (#60). Cleared once we load a video or the peer
+  /// leaves. The reverse direction is handled by the same code running on the
+  /// friend's machine.
+  String? _joinPrompt;
+
   /// Debounce before auto-pausing: a brief blip (e.g. a heartbeat timeout that
   /// recovers a second later, common when two instances share one PC) should
   /// NOT pause — only a sustained loss of sync.
@@ -163,6 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _chatAutoDim = true;
   bool _chatHasUnread = false;
   bool _chatWakeOnMessage = false;
+  double _chatIdleDim = kChatIdleGhostOpacity;
 
   /// Collapses bursts of seek notifications into a single line/banner (#26).
   final SyncActivityThrottle _activityThrottle = SyncActivityThrottle();
@@ -194,6 +202,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_chatLayout.collapsed && isNewMessage) _pulsePeek();
 
       if (isNewMessage && lastMsg != null && lastMsg.username != _username) {
+        // Real peer chat (not a system/sync line) wakes the dimmed card, which
+        // then settles back out — so a brighten never lingers forever.
+        if (!lastMsg.system) _wakeChatThenReArmDeepIdle();
         final focused = await windowManager.isFocused();
         if (!mounted || focused) return;
         if (_notifyClock.isRunning && _notifyClock.elapsed < _notifyThrottle) {
@@ -247,6 +258,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _peers.remove(e.username);
           _lastPeerLeft = e.username;
           if (_peerFile?.username == e.username) _peerFile = null;
+          // The "load a video to join" prompt is stale once they've left (#60).
+          _joinPrompt = null;
           _showTransientNotice('👋 ${e.username} left');
           _chat.addSystem('${e.username} left the room');
         }
@@ -269,7 +282,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _activityThrottleSub = _activityThrottle.stream.listen((a) {
       if (!mounted || !_syncHealthyNow) return;
       final t = syncActivityText(a, selfUsername: _username);
-      setState(() => _showTransientNotice(t.banner));
+      setState(() {
+        _showTransientNotice(t.banner);
+        // A peer drove playback while we have no video loaded: the transient
+        // banner is easy to miss on the empty screen, so also pin a persistent
+        // "load a video to join" prompt there (#60).
+        if (_core.state.fileName == null && a.username != _username) {
+          _joinPrompt = '${a.username} started playback — load a video to join';
+        }
+      });
       _chat.addSystem(t.chatLine);
     });
     _noticeSub = _core.stateStream.listen((s) {
@@ -314,6 +335,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (wakeSetting == 'true' && mounted) {
       setState(() => _chatWakeOnMessage = true);
     }
+    final dimSettingRaw = await widget.settings.get(kChatIdleDimSettingKey);
+    final dim = double.tryParse(dimSettingRaw ?? '');
+    if (dim != null && mounted) {
+      setState(() => _chatIdleDim = dim.clamp(kChatIdleDimMin, kChatIdleDimMax));
+    }
   }
 
   void _onUserInteraction() {
@@ -329,11 +355,25 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted || _core.state.status != PlaybackStatus.playing) return;
       setState(() => _isUiIdle = true);
       // Stage two: once idle persists, fully hide the dimmed chat card (#34).
-      _uiDeepIdleTimer = Timer(_uiDeepIdleDelay, () {
-        if (!mounted || _core.state.status != PlaybackStatus.playing) return;
-        setState(() => _isUiDeepIdle = true);
-      });
+      _uiDeepIdleTimer = Timer(_uiDeepIdleDelay, _enterDeepIdle);
     });
+  }
+
+  void _enterDeepIdle() {
+    if (!mounted || _core.state.status != PlaybackStatus.playing) return;
+    setState(() => _isUiDeepIdle = true);
+  }
+
+  /// A fresh peer message during idle should wake the dimmed chat and then let
+  /// it settle out again, instead of lingering on screen forever. Drop deep
+  /// idle so the card brightens (ghost, or full per the wake setting) and
+  /// restart the deep-idle countdown so it fades back out if ignored. We keep
+  /// `_isUiIdle` as-is — only the chat wakes, the controls/gear stay hidden.
+  void _wakeChatThenReArmDeepIdle() {
+    if (!_isUiIdle) return;
+    _uiDeepIdleTimer?.cancel();
+    if (_isUiDeepIdle) setState(() => _isUiDeepIdle = false);
+    _uiDeepIdleTimer = Timer(_uiDeepIdleDelay, _enterDeepIdle);
   }
 
   @override
@@ -374,6 +414,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// watchdog clears them in case the "stopped" signal is dropped.
   void _onTyping(TypingEvent e) {
     if (!mounted || e.username == _username) return;
+    // A peer who wasn't typing now is — brighten the collapsed tab the same as
+    // a fresh message would, so typing is noticeable without expanding (#53).
+    final newlyTyping = e.isTyping && !_typingUsers.contains(e.username);
     setState(() {
       _typingTimers[e.username]?.cancel();
       _typingTimers.remove(e.username);
@@ -390,6 +433,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _typingUsers.remove(e.username);
       }
     });
+    if (newlyTyping && _chatLayout.collapsed) _pulsePeek();
   }
 
   /// "lin is typing…" / "2 people are typing…", or null when nobody is.
@@ -503,7 +547,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Banner text shown over the video, or null when nothing to say. Priority:
   /// a fresh "friend joined" notice, then a file-mismatch warning, then the
-  /// auto-pause reason, then the plain waiting/connect hint.
+  /// auto-pause reason, then a "friend hasn't loaded a video" heads-up, then the
+  /// plain waiting/connect hint.
   String? get _banner {
     if (_presenceNotice != null) return _presenceNotice;
     final mismatch = _fileMismatchBanner;
@@ -511,7 +556,22 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_autoPausedNotice) {
       return '⏸ ${_autoPausedReason ?? 'Paused — lost sync with your friend'}';
     }
+    final waitingForPeerVideo = _peerNoVideoHint;
+    if (waitingForPeerVideo != null) return waitingForPeerVideo;
     return _syncHint;
+  }
+
+  /// The flip side of the empty-screen join prompt (#60): once WE have a video
+  /// loaded and a friend is in the room but hasn't loaded one yet (no announced
+  /// peer file), tell us they can't follow along until they load it — so a
+  /// one-sided session isn't silent on our end either.
+  String? get _peerNoVideoHint {
+    if (_core.state.fileName == null) return null; // their concern, not ours
+    if (!_syncHealthyNow) return null; // need a connected friend present
+    if (_peerFile != null) return null; // they've announced a file
+    final peer = _peers.isNotEmpty ? _peers.first : null;
+    if (peer == null) return null;
+    return '⏳ $peer hasn\'t loaded a video yet';
   }
 
   /// Warn when the peer's loaded file clearly differs from ours.
@@ -556,6 +616,8 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Load (but do not auto-play). In a room, hitting play yourself starts both
   /// of you in sync; auto-playing on load made the two clients fight at 0.
   Future<void> _load(String path) async {
+    // We now have a video, so the "load a video to join" prompt is moot (#60).
+    if (_joinPrompt != null && mounted) setState(() => _joinPrompt = null);
     await _core.load(path);
     await _announceCurrentFile();
     await _recordOpen(path);
@@ -681,6 +743,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 autoDim: _chatAutoDim,
                 hasUnread: _chatHasUnread,
                 wakeToFullyVisible: _chatWakeOnMessage,
+                ghostOpacity: _chatIdleDim,
               );
               return Stack(
                 fit: StackFit.expand,
@@ -691,7 +754,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         : BoxDecoration(color: m.background),
                   ),
                   if (state.fileName == null)
-                    EmptyState(onBrowse: _browse)
+                    EmptyState(onBrowse: _browse, notice: _joinPrompt)
                   else
                     VideoSurface(
                       core: _core,
@@ -785,6 +848,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           onChatWakeOnMessageChanged: (val) {
                             setState(() => _chatWakeOnMessage = val);
                             widget.settings.set(kChatWakeOnNewMessageSettingKey, val.toString());
+                          },
+                          chatIdleDim: _chatIdleDim,
+                          onChatIdleDimChanged: (val) {
+                            setState(() => _chatIdleDim = val);
+                            widget.settings.set(
+                                kChatIdleDimSettingKey, val.toStringAsFixed(2));
                           },
                         ),
                       ),

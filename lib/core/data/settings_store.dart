@@ -13,6 +13,12 @@ const String kChatAutoDimSettingKey = 'chat_auto_dim';
 /// message arrives during idle (value = "true" or "false", default = "false").
 const String kChatWakeOnNewMessageSettingKey = 'chat_wake_on_new_message';
 
+/// Key for the persisted opacity of the dimmed (idle, not-deep) chat card
+/// (value = a double in `[kChatIdleDimMin, kChatIdleDimMax]` as a string,
+/// default = `kChatIdleGhostOpacity`). Lets the user tune how readable the
+/// dimmed chat stays.
+const String kChatIdleDimSettingKey = 'chat_idle_dim';
+
 /// Commands-in access to persisted key/value app settings.
 abstract class SettingsStore {
   Future<String?> get(String key);
