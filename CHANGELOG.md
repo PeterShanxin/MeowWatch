@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.12.0-alpha] - 2026-06-02
+- New notification sounds you can pick from. There are now two: a clearer "notification sound" that plays when MeowWatch is in the background, and a softer "quiet sound" that's just felt when a message arrives while the chat is hidden and the video is playing — so you're nudged without being yanked off the video. Choose either in the gear → Settings, each with a ▶ preview button (#58).
+- System/sync lines (like a friend pausing or seeking) no longer make a notification sound — only real chat messages do (#57).
+
 ## [0.11.0-alpha] - 2026-06-02
 - You can now select and copy chat messages — drag across a message to grab links, timestamps, or quotes (#54).
 - When a friend is typing, the collapsed chat tab now lights up and shows a little animated "…" so you can tell someone's writing without opening the chat (#53).

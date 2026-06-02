@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/audio/notify_sounds.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
 import 'idle_visibility.dart';
@@ -26,6 +27,11 @@ class PlayerMenuButton extends StatelessWidget {
     required this.onChatWakeOnMessageChanged,
     required this.chatIdleDim,
     required this.onChatIdleDimChanged,
+    required this.primarySoundId,
+    required this.onPrimarySoundChanged,
+    required this.secondarySoundId,
+    required this.onSecondarySoundChanged,
+    required this.onPreviewSound,
     super.key,
   });
 
@@ -47,6 +53,14 @@ class PlayerMenuButton extends StatelessWidget {
   /// card stays while idle.
   final double chatIdleDim;
   final ValueChanged<double> onChatIdleDimChanged;
+
+  /// Selected notification-sound preset ids and their setters, plus a preview
+  /// callback that plays a preset's asset URI on demand.
+  final String primarySoundId;
+  final ValueChanged<String> onPrimarySoundChanged;
+  final String secondarySoundId;
+  final ValueChanged<String> onSecondarySoundChanged;
+  final ValueChanged<String> onPreviewSound;
 
   @override
   Widget build(BuildContext context) {
@@ -107,6 +121,11 @@ class PlayerMenuButton extends StatelessWidget {
             onChatWakeOnMessageChanged: onChatWakeOnMessageChanged,
             chatIdleDim: chatIdleDim,
             onChatIdleDimChanged: onChatIdleDimChanged,
+            primarySoundId: primarySoundId,
+            onPrimarySoundChanged: onPrimarySoundChanged,
+            secondarySoundId: secondarySoundId,
+            onSecondarySoundChanged: onSecondarySoundChanged,
+            onPreviewSound: onPreviewSound,
           ),
         ),
       ],
@@ -131,6 +150,11 @@ class _MenuPanel extends StatefulWidget {
     required this.onChatWakeOnMessageChanged,
     required this.chatIdleDim,
     required this.onChatIdleDimChanged,
+    required this.primarySoundId,
+    required this.onPrimarySoundChanged,
+    required this.secondarySoundId,
+    required this.onSecondarySoundChanged,
+    required this.onPreviewSound,
   });
 
   final String roomCode;
@@ -146,6 +170,11 @@ class _MenuPanel extends StatefulWidget {
   final ValueChanged<bool> onChatWakeOnMessageChanged;
   final double chatIdleDim;
   final ValueChanged<double> onChatIdleDimChanged;
+  final String primarySoundId;
+  final ValueChanged<String> onPrimarySoundChanged;
+  final String secondarySoundId;
+  final ValueChanged<String> onSecondarySoundChanged;
+  final ValueChanged<String> onPreviewSound;
 
   @override
   State<_MenuPanel> createState() => _MenuPanelState();
@@ -241,6 +270,23 @@ class _MenuPanelState extends State<_MenuPanel> {
                               )
                             : const SizedBox(width: double.infinity),
                       ),
+                      const SizedBox(height: 4),
+                      SoundPickerRow(
+                        key: const Key('primary-sound-picker'),
+                        title: 'Notification sound',
+                        options: kPrimarySounds,
+                        currentId: widget.primarySoundId,
+                        onChanged: widget.onPrimarySoundChanged,
+                        onPreview: widget.onPreviewSound,
+                      ),
+                      SoundPickerRow(
+                        key: const Key('secondary-sound-picker'),
+                        title: 'Quiet sound (chat hidden)',
+                        options: kSecondarySounds,
+                        currentId: widget.secondarySoundId,
+                        onChanged: widget.onSecondarySoundChanged,
+                        onPreview: widget.onPreviewSound,
+                      ),
                     ],
                   )
                 : const SizedBox(width: double.infinity),
@@ -291,6 +337,83 @@ class _SectionHeader extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// A labelled dropdown of notify-sound presets with a ▶ preview button.
+/// Picking fires [onChanged] with the preset id; preview fires [onPreview] with
+/// the selected preset's asset URI. Public so it can be unit-tested directly.
+class SoundPickerRow extends StatelessWidget {
+  const SoundPickerRow({
+    required this.title,
+    required this.options,
+    required this.currentId,
+    required this.onChanged,
+    required this.onPreview,
+    super.key,
+  });
+
+  final String title;
+  final List<NotifySound> options;
+  final String currentId;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onPreview;
+
+  // Key prefix derived from the widget's own Key so the dropdown/preview child
+  // keys are stable and match tests (e.g. 'primary-sound-picker').
+  String get _slug =>
+      (key is ValueKey<String>) ? (key! as ValueKey<String>).value : 'sound-picker';
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    final current = options.firstWhere(
+      (s) => s.id == currentId,
+      orElse: () => options.first,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: TextStyle(color: m.textDim, fontSize: 13)),
+                DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    key: Key('$_slug-dropdown'),
+                    value: current.id,
+                    isDense: true,
+                    isExpanded: true,
+                    dropdownColor: m.surface,
+                    iconEnabledColor: m.accent,
+                    style: TextStyle(color: m.textPrimary, fontSize: 15),
+                    items: <DropdownMenuItem<String>>[
+                      for (final s in options)
+                        DropdownMenuItem<String>(
+                          value: s.id,
+                          child: Text(s.label),
+                        ),
+                    ],
+                    onChanged: (id) {
+                      if (id != null) onChanged(id);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            key: Key('$_slug-preview'),
+            tooltip: 'Preview',
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.play_circle_outline, size: 20, color: m.accent),
+            onPressed: () => onPreview(current.asset),
+          ),
+        ],
       ),
     );
   }

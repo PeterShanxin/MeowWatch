@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../core/audio/notify_sounds.dart';
 import '../core/chat/chat_store.dart';
 import '../core/connect/room_config.dart';
 import '../core/data/settings_store.dart';
@@ -28,6 +29,7 @@ import 'chat/chat_overlay_layout.dart';
 import 'drop_target.dart';
 import 'empty_state.dart';
 import 'idle_visibility.dart';
+import 'notify_decision.dart';
 import 'player_menu_button.dart';
 import 'reactions/floating_reactions.dart';
 import 'reactions/reaction_bar.dart';
@@ -65,10 +67,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final DebugLog _syncLog = DebugLog.temp('meowwatch_sync.log');
   late final Player _audioPlayer;
 
-  // Notification chime: a bundled asset (portable, no dependency on a
-  // system-specific sound file), throttled so a burst of messages while
-  // unfocused doesn't stack overlapping playbacks.
-  static const String _notifySoundAsset = 'asset:///assets/sounds/notify.wav';
+  // Notification chime: bundled assets (portable, no dependency on a
+  // system-specific sound file), throttled so a burst of messages doesn't
+  // stack overlapping playbacks. Which preset plays is chosen in Settings and
+  // resolved via [resolvePrimary]/[resolveSecondary].
   static const Duration _notifyThrottle = Duration(seconds: 2);
   final Stopwatch _notifyClock = Stopwatch();
 
@@ -171,6 +173,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _chatHasUnread = false;
   bool _chatWakeOnMessage = false;
   double _chatIdleDim = kChatIdleGhostOpacity;
+  String _primarySoundId = kDefaultPrimarySoundId;
+  String _secondarySoundId = kDefaultSecondarySoundId;
 
   /// Collapses bursts of seek notifications into a single line/banner (#26).
   final SyncActivityThrottle _activityThrottle = SyncActivityThrottle();
@@ -205,16 +209,28 @@ class _HomeScreenState extends State<HomeScreen> {
         // Real peer chat (not a system/sync line) wakes the dimmed card, which
         // then settles back out — so a brighten never lingers forever.
         if (!lastMsg.system) _wakeChatThenReArmDeepIdle();
+
         final focused = await windowManager.isFocused();
-        if (!mounted || focused) return;
+        if (!mounted) return;
+        final kind = decideNotify(
+          isSystem: lastMsg.system,
+          isOwnMessage: lastMsg.username == _username,
+          windowFocused: focused,
+          chatCollapsed: _chatLayout.collapsed,
+          videoPlaying: _core.state.status == PlaybackStatus.playing,
+        );
+        if (kind == NotifyKind.none) return;
         if (_notifyClock.isRunning && _notifyClock.elapsed < _notifyThrottle) {
           return;
         }
         _notifyClock
           ..reset()
           ..start();
+        final asset = kind == NotifyKind.primary
+            ? resolvePrimary(_primarySoundId).asset
+            : resolveSecondary(_secondarySoundId).asset;
         try {
-          await _audioPlayer.open(Media(_notifySoundAsset), play: true);
+          await _audioPlayer.open(Media(asset), play: true);
         } catch (e) {
           debugPrint('Failed to play notification: $e');
         }
@@ -339,6 +355,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final dim = double.tryParse(dimSettingRaw ?? '');
     if (dim != null && mounted) {
       setState(() => _chatIdleDim = dim.clamp(kChatIdleDimMin, kChatIdleDimMax));
+    }
+    final primary = await widget.settings.get(kNotifyPrimarySoundKey);
+    final secondary = await widget.settings.get(kNotifySecondarySoundKey);
+    if (mounted) {
+      setState(() {
+        _primarySoundId = resolvePrimary(primary).id;
+        _secondarySoundId = resolveSecondary(secondary).id;
+      });
     }
   }
 
@@ -466,6 +490,16 @@ class _HomeScreenState extends State<HomeScreen> {
         _rootFocus.requestFocus();
       }
     });
+  }
+
+  /// Play a preset on demand for the Settings preview. Bypasses the notify
+  /// throttle so a preview always sounds, but reuses the same player.
+  Future<void> _previewSound(String asset) async {
+    try {
+      await _audioPlayer.open(Media(asset), play: true);
+    } catch (e) {
+      debugPrint('Failed to preview sound: $e');
+    }
   }
 
   void _pulsePeek() {
@@ -855,6 +889,17 @@ class _HomeScreenState extends State<HomeScreen> {
                             widget.settings.set(
                                 kChatIdleDimSettingKey, val.toStringAsFixed(2));
                           },
+                          primarySoundId: _primarySoundId,
+                          onPrimarySoundChanged: (id) {
+                            setState(() => _primarySoundId = id);
+                            widget.settings.set(kNotifyPrimarySoundKey, id);
+                          },
+                          secondarySoundId: _secondarySoundId,
+                          onSecondarySoundChanged: (id) {
+                            setState(() => _secondarySoundId = id);
+                            widget.settings.set(kNotifySecondarySoundKey, id);
+                          },
+                          onPreviewSound: _previewSound,
                         ),
                       ),
                     ),

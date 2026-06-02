@@ -21,6 +21,11 @@ PlayerMenuButton _button({
   ValueChanged<bool>? onChatWakeOnMessageChanged,
   double chatIdleDim = 0.5,
   ValueChanged<double>? onChatIdleDimChanged,
+  String primarySoundId = 'marimba',
+  ValueChanged<String>? onPrimarySoundChanged,
+  String secondarySoundId = 'low_thud',
+  ValueChanged<String>? onSecondarySoundChanged,
+  ValueChanged<String>? onPreviewSound,
 }) =>
     PlayerMenuButton(
       roomCode: 'MEOW42',
@@ -36,6 +41,11 @@ PlayerMenuButton _button({
       onChatWakeOnMessageChanged: onChatWakeOnMessageChanged ?? (_) {},
       chatIdleDim: chatIdleDim,
       onChatIdleDimChanged: onChatIdleDimChanged ?? (_) {},
+      primarySoundId: primarySoundId,
+      onPrimarySoundChanged: onPrimarySoundChanged ?? (_) {},
+      secondarySoundId: secondarySoundId,
+      onSecondarySoundChanged: onSecondarySoundChanged ?? (_) {},
+      onPreviewSound: onPreviewSound ?? (_) {},
     );
 
 /// Open the gear and expand the collapsible Settings section.
