@@ -61,6 +61,40 @@ double chatOverlayOpacity({
   return ghostOpacity;
 }
 
+/// Whether a freshly-arrived peer message lands on an *expanded* chat card the
+/// user can't actually read because idle has faded it — the quiet-sound
+/// counterpart, for `decideNotify`, of a collapsed chat (issue: secondary sound
+/// in idle-dim / deep-idle states).
+///
+/// This defers to [chatOverlayOpacity] so the "is the card readable?" question
+/// has a single source of truth and the two can't drift: the chat counts as
+/// dimmed exactly when its opacity is below `1.0`. We evaluate the opacity the
+/// user will actually see *after* the message arrives — a peer message wakes
+/// the card out of deep idle (`_wakeChatThenReArmDeepIdle` in HomeScreen, so
+/// `deepIdle: false`) and marks the chat unread (`hasUnread: true`). That means
+/// auto-dim off keeps the card fully visible (readable → not dimmed), and the
+/// "fully wake chat on message" setting brightens it back to full (readable →
+/// not dimmed) so the quiet sound stays silent for a card the user can read.
+/// A collapsed card is handled by `decideNotify`'s own collapsed gate and
+/// returns `false` here.
+bool chatDimmedByIdle({
+  required bool idle,
+  required bool collapsed,
+  required bool autoDim,
+  required bool wakeToFullyVisible,
+}) {
+  if (collapsed) return false;
+  final opacity = chatOverlayOpacity(
+    idle: idle,
+    collapsed: false,
+    autoDim: autoDim,
+    deepIdle: false,
+    hasUnread: true,
+    wakeToFullyVisible: wakeToFullyVisible,
+  );
+  return opacity < 1.0;
+}
+
 /// Default opacity of the dimmed-but-not-hidden chat card on first idle. Raised
 /// to stay readable; the user can tune it via the gear slider, clamped to
 /// [kChatIdleDimMin]–[kChatIdleDimMax].
