@@ -127,6 +127,21 @@ void main() {
       expect(m, isA<HelloMessage>());
     });
 
+    test('Hello carries the server-assigned username', () {
+      // The server can rename us to dodge a collision ("meow" -> "meow_");
+      // the assigned name comes back in the Hello reply (#40).
+      final m = decodeServerMessage({'Hello': {'username': 'meow_'}})
+          as HelloMessage;
+      expect(m.username, 'meow_');
+    });
+
+    test('Hello without a username decodes to a null username', () {
+      final m = decodeServerMessage({
+        'Hello': {'room': {'name': 'r'}},
+      }) as HelloMessage;
+      expect(m.username, isNull);
+    });
+
     test('classifies a State with playstate and ping', () {
       final m = decodeServerMessage({
         'State': {

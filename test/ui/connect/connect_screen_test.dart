@@ -200,6 +200,47 @@ void main() {
     expect(find.byKey(const Key('continue-2')), findsOneWidget);
   });
 
+  HistoryEntry historyEntryAs(int id, String name, String username) =>
+      HistoryEntry(
+        id: id,
+        filePath: '/$name.mkv',
+        fileName: '$name.mkv',
+        fileSizeBytes: 1,
+        durationMs: 600000,
+        lastPositionMs: 120000,
+        playedAt: DateTime(2026, 5, 29),
+        room: 'cozy-fox-42',
+        username: username,
+      );
+
+  testWidgets(
+      'continue-watching resumes with the saved username when name is blank',
+      (tester) async {
+    // #40: resuming with an empty name field must reuse the name the file was
+    // watched as, not silently fall back to the "meow" default.
+    history.recent.add(historyEntryAs(1, 'ep1', 'meowPEOW'));
+    await pump(tester);
+
+    await tester.ensureVisible(find.byKey(const Key('continue-1')));
+    await tester.tap(find.byKey(const Key('continue-1')));
+    await tester.pumpAndSettle();
+
+    expect(connected!.username, 'meowPEOW');
+  });
+
+  testWidgets('continue-watching prefers a freshly typed name over the saved one',
+      (tester) async {
+    history.recent.add(historyEntryAs(1, 'ep1', 'meowPEOW'));
+    await pump(tester);
+
+    await tester.enterText(find.byKey(const Key('connect-name')), 'alice');
+    await tester.ensureVisible(find.byKey(const Key('continue-1')));
+    await tester.tap(find.byKey(const Key('continue-1')));
+    await tester.pumpAndSettle();
+
+    expect(connected!.username, 'alice');
+  });
+
   testWidgets('Clear all empties continue-watching', (tester) async {
     history.recent
       ..add(historyEntry(1, 'ep1'))

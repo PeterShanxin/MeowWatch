@@ -143,12 +143,26 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _resumeHistory(HistoryEntry entry, SavedProfile? recent) async {
+    // Identity priority: a freshly typed name wins; otherwise reuse the name
+    // this file was watched as, then the most-recent room's name, then the
+    // default. Falling straight to "meow" lost the user's identity on resume
+    // and, by colliding with a peer's default, triggered a server rename that
+    // flipped chat ownership (#40).
+    final typed = _name.text.trim();
+    final entryName = entry.username;
+    final username = typed.isNotEmpty
+        ? typed
+        : (entryName != null && entryName.isNotEmpty)
+            ? entryName
+            : (recent?.username ?? 'meow');
+    // Reflect the resolved name in the field so the user sees who they joined as.
+    _name.text = username;
     final room = recent?.room ?? generateRoomCode();
     await _connect(RoomConfig(
       server: recent?.server ?? _serverValue,
       port: recent?.port ?? _portValue,
       room: room,
-      username: _username,
+      username: username,
       password: recent?.password ?? _passwordValue,
       resumeFilePath: entry.filePath,
       resumePositionMs: entry.lastPositionMs,

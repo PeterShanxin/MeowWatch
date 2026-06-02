@@ -218,6 +218,12 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _syncStatus = s.status;
           _syncError = s.message;
+          // Adopt a server-side rename so chat ownership, the gear member list,
+          // typing attribution and self-notifications all use the name peers
+          // actually see us as (#40).
+          if (s.username != null && s.username!.isNotEmpty) {
+            _username = s.username!;
+          }
           if (s.status != SyncConnectionStatus.connected) _peers.clear();
           _evaluateSyncHealth();
         });

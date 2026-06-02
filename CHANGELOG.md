@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.10.5-alpha] - 2026-06-02
+- Fixed your name getting swapped when you used "Continue watching". Resuming a file now rejoins under the name you watched it as (instead of silently falling back to the default "meow"), and if the server has to rename you to avoid a clash, the app now follows that rename — so chat bubbles, the typing indicator and the member list all show the right person instead of flipping you and your friend around (#40).
+
 ## [0.10.4-alpha] - 2026-06-02
 - Fixed a bug where incoming messages while you were idle would not wake the dimmed chat card (it would stay dimmed as a ghost).
 - System messages (like "friend joined") no longer incorrectly trigger the unread badge or the "New Messages" divider in the chat.

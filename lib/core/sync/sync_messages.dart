@@ -127,7 +127,13 @@ sealed class ServerMessage {
 }
 
 class HelloMessage extends ServerMessage {
-  const HelloMessage();
+  const HelloMessage({this.username});
+
+  /// The username the server assigned us. Usually the one we requested, but the
+  /// server appends a suffix to dodge a collision ("meow" -> "meow_"); adopting
+  /// it keeps our self-identity aligned with what peers and the chat echo see.
+  /// Null when the reply carried no username.
+  final String? username;
 }
 
 class StateMessage extends ServerMessage {
@@ -200,7 +206,11 @@ ServerMessage decodeServerMessage(
   Map<dynamic, dynamic> message, {
   String? selfRoom,
 }) {
-  if (message.containsKey('Hello')) return const HelloMessage();
+  if (message.containsKey('Hello')) {
+    final hello = message['Hello'];
+    final name = hello is Map ? hello['username'] : null;
+    return HelloMessage(username: name is String && name.isNotEmpty ? name : null);
+  }
   if (message.containsKey('State')) return _decodeState(message['State'] as Map);
   if (message.containsKey('Set')) return _decodeSet(message['Set'] as Map);
   if (message.containsKey('List')) {

@@ -289,13 +289,22 @@ class SyncplayClient extends SyncCore {
 
   void _handleMessage(ServerMessage msg) {
     switch (msg) {
-      case HelloMessage():
+      case HelloMessage(:final username):
         _loggedIn = true;
         // A completed login means the (re)connect succeeded — reset the backoff
         // so the next drop starts over from the short end.
         _reconnectAttempt = 0;
+        // The server appends a suffix to dedupe a name collision ("meow" ->
+        // "meow_") and echoes the assigned name here. Adopt it so our own
+        // identity matches what peers and the chat echo call us — otherwise
+        // chat-bubble ownership and the gear member list show the wrong name
+        // and flip self/peer (#40).
+        if (username != null && username.isNotEmpty) _username = username;
         emitConnectionState(
-          const SyncConnectionState(status: SyncConnectionStatus.connected),
+          SyncConnectionState(
+            status: SyncConnectionStatus.connected,
+            username: _username,
+          ),
         );
         // Ask for the room roster immediately — otherwise a client that joins
         // without a file loaded never learns who is already here (it would only
