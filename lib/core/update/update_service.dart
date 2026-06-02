@@ -309,7 +309,10 @@ class UpdateService extends ChangeNotifier {
   ///
   /// The PowerShell script waits for this process to exit, copies the new files
   /// over the existing installation, restarts the app, and cleans up temp files.
-  Future<void> applyUpdate(String zipPath) async {
+  ///
+  /// Pass [restartAfter] false to swap the files without relaunching — used by
+  /// the apply-on-close path (#62), where the user is quitting.
+  Future<void> applyUpdate(String zipPath, {bool restartAfter = true}) async {
     final zipBytes = await File(zipPath).readAsBytes();
 
     // Integrity gate: confirm the bytes match the hash published in
@@ -343,6 +346,7 @@ class UpdateService extends ChangeNotifier {
       appDir: appDir,
       tempDir: tempDir.path,
       exeName: p.basename(Platform.resolvedExecutable),
+      restart: restartAfter,
     );
 
     await File(scriptPath).writeAsString(script);
@@ -479,12 +483,27 @@ class UpdateService extends ChangeNotifier {
 /// robocopy exit codes 0–7 are success (8+ is failure); the script only
 /// restarts when the copy succeeded, writes a log to [tempDir] for diagnosis,
 /// and deletes its own script + temp payload at the end (keeping the log).
+/// When [restart] is false the script swaps the files but does NOT relaunch the
+/// app — used by the apply-on-close path (#62), where the user is quitting and
+/// would not want the app to pop back open. The in-dialog "Install & Restart"
+/// button keeps the default ([restart] true).
 String buildUpdaterScript({
   required String extractedDir,
   required String appDir,
   required String tempDir,
   required String exeName,
+  bool restart = true,
 }) {
+  final restartBlock = restart
+      ? '''
+# Restart the updated app from its own folder.
+"[\$(Get-Date -Format o)] files updated; restarting" | Out-File -FilePath \$log -Append -Encoding utf8
+Start-Process -FilePath "$appDir\\$exeName" -WorkingDirectory "$appDir"
+'''
+      : '''
+# Files swapped; the app was closing, so do not relaunch (#62).
+"[\$(Get-Date -Format o)] files updated; not restarting (app closed)" | Out-File -FilePath \$log -Append -Encoding utf8
+''';
   // PowerShell double-quoted strings treat backslash literally (the escape char
   // is the backtick), so Windows paths go in verbatim — no escaping needed. The
   // `\\` separators below are single backslashes after Dart unescapes them.
@@ -515,10 +534,7 @@ if (-not \$ok) {
     exit 1
 }
 
-# Restart the updated app from its own folder.
-"[\$(Get-Date -Format o)] files updated; restarting" | Out-File -FilePath \$log -Append -Encoding utf8
-Start-Process -FilePath "$appDir\\$exeName" -WorkingDirectory "$appDir"
-
+$restartBlock
 # Clean up temp files (keep the log). Also remove this script itself so it
 # doesn't linger as an executable artifact; PowerShell has already read it into
 # memory, so self-deletion is safe.

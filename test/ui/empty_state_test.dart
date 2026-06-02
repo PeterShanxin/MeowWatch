@@ -21,4 +21,22 @@ void main() {
     await tester.pump();
     expect(browseCalled, isTrue);
   });
+
+  testWidgets('shows a join notice above the prompt when provided (#60)',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: themeDataFor(MeowThemeId.cozy),
+      home: Scaffold(
+        body: EmptyState(
+          onBrowse: () {},
+          notice: 'lin started playback — load a video to join',
+        ),
+      ),
+    ));
+
+    expect(find.textContaining('started playback'), findsOneWidget);
+    // The usual prompt + Browse button still render.
+    expect(find.textContaining('Drop a video'), findsOneWidget);
+    expect(find.text('Browse…'), findsOneWidget);
+  });
 }

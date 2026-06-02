@@ -16,6 +16,7 @@ class MeowWatchApp extends StatefulWidget {
     required this.initialTheme,
     this.initialCardWidthPx,
     this.initialCardHeightPx,
+    this.navigatorKey,
     super.key,
   });
 
@@ -25,6 +26,10 @@ class MeowWatchApp extends StatefulWidget {
   final MeowThemeId initialTheme;
   final double? initialCardWidthPx;
   final double? initialCardHeightPx;
+
+  /// Optional navigator key so the apply-on-close handler can show its confirm
+  /// dialog over the live route (#62). Null in tests.
+  final GlobalKey<NavigatorState>? navigatorKey;
 
   @override
   State<MeowWatchApp> createState() => _MeowWatchAppState();
@@ -44,6 +49,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'MeowWatch',
+      navigatorKey: widget.navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: themeDataFor(_theme),
       home: Builder(

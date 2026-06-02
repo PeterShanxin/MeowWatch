@@ -5,6 +5,13 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.11.0-alpha] - 2026-06-02
+- You can now select and copy chat messages — drag across a message to grab links, timestamps, or quotes (#54).
+- When a friend is typing, the collapsed chat tab now lights up and shows a little animated "…" so you can tell someone's writing without opening the chat (#53).
+- If a friend starts playback before you've loaded a video, the start screen now tells you ("lin started playback — load a video to join") instead of it happening silently. It works both ways — your friend sees the same heads-up if you start first (#60).
+- The gear menu now hides the "Fully wake chat on message" switch unless "Dim chat when idle" is on — it did nothing in that state, so it no longer shows as a dead toggle (#51).
+- If you've downloaded an update but haven't installed it, closing the app now offers to install it on the way out, so you start up on the new version next time instead of being nagged to download it again (#62).
+
 ## [0.10.6-alpha] - 2026-06-02
 - Long chat messages are no longer silently cut off. The message box now caps at 150 characters (the server's limit) and shows a counter as you near it, so nothing gets eaten mid-word on send (#55).
 - Shift+Enter now starts a new line in chat instead of sending. Plain Enter still sends, and the box grows to fit a multi-line message (#56).

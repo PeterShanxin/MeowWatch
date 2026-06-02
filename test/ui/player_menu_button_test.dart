@@ -144,4 +144,16 @@ void main() {
     await tester.tap(find.text('Fully wake chat on message'));
     expect(changed, isTrue);
   });
+
+  testWidgets('hides the wake toggle while "Dim chat when idle" is off (#51)',
+      (tester) async {
+    await tester.pumpWidget(_host(_button(chatAutoDim: false)));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    // Auto-dim row is always there; the wake toggle is meaningless without it
+    // and so is hidden.
+    expect(find.text('Dim chat when idle'), findsOneWidget);
+    expect(find.text('Fully wake chat on message'), findsNothing);
+  });
 }

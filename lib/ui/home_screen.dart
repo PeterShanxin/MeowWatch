@@ -106,6 +106,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// The name of the last peer who left the room.
   String? _lastPeerLeft;
 
+  /// Persistent "your friend started playback — load a video to join" prompt
+  /// shown on the empty (no-video) screen when a peer controls playback before
+  /// we've loaded anything (#60). Cleared once we load a video or the peer
+  /// leaves. The reverse direction is handled by the same code running on the
+  /// friend's machine.
+  String? _joinPrompt;
+
   /// Debounce before auto-pausing: a brief blip (e.g. a heartbeat timeout that
   /// recovers a second later, common when two instances share one PC) should
   /// NOT pause — only a sustained loss of sync.
@@ -247,6 +254,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _peers.remove(e.username);
           _lastPeerLeft = e.username;
           if (_peerFile?.username == e.username) _peerFile = null;
+          // The "load a video to join" prompt is stale once they've left (#60).
+          _joinPrompt = null;
           _showTransientNotice('👋 ${e.username} left');
           _chat.addSystem('${e.username} left the room');
         }
@@ -269,7 +278,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _activityThrottleSub = _activityThrottle.stream.listen((a) {
       if (!mounted || !_syncHealthyNow) return;
       final t = syncActivityText(a, selfUsername: _username);
-      setState(() => _showTransientNotice(t.banner));
+      setState(() {
+        _showTransientNotice(t.banner);
+        // A peer drove playback while we have no video loaded: the transient
+        // banner is easy to miss on the empty screen, so also pin a persistent
+        // "load a video to join" prompt there (#60).
+        if (_core.state.fileName == null && a.username != _username) {
+          _joinPrompt = '${a.username} started playback — load a video to join';
+        }
+      });
       _chat.addSystem(t.chatLine);
     });
     _noticeSub = _core.stateStream.listen((s) {
@@ -374,6 +391,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// watchdog clears them in case the "stopped" signal is dropped.
   void _onTyping(TypingEvent e) {
     if (!mounted || e.username == _username) return;
+    // A peer who wasn't typing now is — brighten the collapsed tab the same as
+    // a fresh message would, so typing is noticeable without expanding (#53).
+    final newlyTyping = e.isTyping && !_typingUsers.contains(e.username);
     setState(() {
       _typingTimers[e.username]?.cancel();
       _typingTimers.remove(e.username);
@@ -390,6 +410,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _typingUsers.remove(e.username);
       }
     });
+    if (newlyTyping && _chatLayout.collapsed) _pulsePeek();
   }
 
   /// "lin is typing…" / "2 people are typing…", or null when nobody is.
@@ -556,6 +577,8 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Load (but do not auto-play). In a room, hitting play yourself starts both
   /// of you in sync; auto-playing on load made the two clients fight at 0.
   Future<void> _load(String path) async {
+    // We now have a video, so the "load a video to join" prompt is moot (#60).
+    if (_joinPrompt != null && mounted) setState(() => _joinPrompt = null);
     await _core.load(path);
     await _announceCurrentFile();
     await _recordOpen(path);
@@ -691,7 +714,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         : BoxDecoration(color: m.background),
                   ),
                   if (state.fileName == null)
-                    EmptyState(onBrowse: _browse)
+                    EmptyState(onBrowse: _browse, notice: _joinPrompt)
                   else
                     VideoSurface(
                       core: _core,

@@ -575,6 +575,7 @@ class _ChatOverlayState extends State<ChatOverlay>
             alignment: Alignment.centerRight,
             child: PeekTab(
               pulsing: widget.pulsing,
+              typing: widget.typingLabel != null,
               unreadCount: _unreadCount,
               onTap: widget.onToggleCollapsed,
             ),
@@ -831,40 +832,47 @@ class _GlassCard extends StatelessWidget {
                           )
                         : Stack(
                             children: [
-                              ListView(
-                                controller: scrollController,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
-                                ),
-                                children: [
-                                  for (int i = 0; i < messages.length; i++) ...[
-                                    if (i == dividerIndex)
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                                        child: Row(
-                                          children: [
-                                            Expanded(child: Divider(color: m.accent.withValues(alpha: 0.5), thickness: 1)),
-                                            Padding(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                                              child: Text(
-                                                'New Messages',
-                                                style: TextStyle(
-                                                  color: m.accent,
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.bold,
+                              // Wrap the message list in a SelectionArea so the
+                              // user can drag-select and copy message text —
+                              // links, timestamps, quotes (#54). The plain Text
+                              // bubbles become selectable without changing how
+                              // they render.
+                              SelectionArea(
+                                child: ListView(
+                                  controller: scrollController,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  children: [
+                                    for (int i = 0; i < messages.length; i++) ...[
+                                      if (i == dividerIndex)
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                                          child: Row(
+                                            children: [
+                                              Expanded(child: Divider(color: m.accent.withValues(alpha: 0.5), thickness: 1)),
+                                              Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                child: Text(
+                                                  'New Messages',
+                                                  style: TextStyle(
+                                                    color: m.accent,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
                                                 ),
                                               ),
-                                            ),
-                                            Expanded(child: Divider(color: m.accent.withValues(alpha: 0.5), thickness: 1)),
-                                          ],
+                                              Expanded(child: Divider(color: m.accent.withValues(alpha: 0.5), thickness: 1)),
+                                            ],
+                                          ),
                                         ),
+                                      ChatBubble(
+                                        message: messages[i],
+                                        myUsername: myUsername,
                                       ),
-                                    ChatBubble(
-                                      message: messages[i],
-                                      myUsername: myUsername,
-                                    ),
+                                    ],
                                   ],
-                                ],
+                                ),
                               ),
                               if (unreadCount > 0)
                                 Positioned(
