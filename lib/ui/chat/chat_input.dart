@@ -131,6 +131,13 @@ class _ChatInputState extends State<ChatInput> {
           Expanded(
             child: Focus(
               onKeyEvent: _onKeyEvent,
+              // Pure key-interceptor: it must never take focus itself, or
+              // desktop Tab traversal could land on this invisible wrapper
+              // (typed chars go nowhere, yet Enter still submits). It stays in
+              // the tree as an ancestor, so _onKeyEvent still fires while the
+              // TextField below is focused.
+              canRequestFocus: false,
+              skipTraversal: true,
               child: TextField(
                 controller: _controller,
                 focusNode: widget.focusNode,
