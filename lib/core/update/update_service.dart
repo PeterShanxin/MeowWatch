@@ -105,12 +105,31 @@ class UpdateService extends ChangeNotifier {
   // an in-progress download survives the dialog being dismissed and reopened.
   UpdatePhase _phase = UpdatePhase.idle;
   double _downloadProgress = 0;
+  int _downloadReceivedBytes = 0;
+  int? _downloadTotalBytes;
   String? _downloadedZipPath;
   String _errorMessage = '';
   List<ChangelogEntry> _changelog = const [];
 
   UpdatePhase get phase => _phase;
+
+  /// 0.0–1.0 download fraction. Meaningful only when [hasDownloadTotal] is true;
+  /// stays 0 when the server sent no Content-Length, in which case the UI should
+  /// show an indeterminate indicator rather than a frozen 0% bar (#63).
   double get downloadProgress => _downloadProgress;
+
+  /// Bytes received so far — gives the UI something moving even when the total
+  /// is unknown.
+  int get downloadReceivedBytes => _downloadReceivedBytes;
+
+  /// Total bytes from the response Content-Length, or null when the server
+  /// didn't advertise one (chunked/CDN responses).
+  int? get downloadTotalBytes => _downloadTotalBytes;
+
+  /// True when a usable total is known, so [downloadProgress] is a real
+  /// fraction. False ⇒ the download is indeterminate.
+  bool get hasDownloadTotal => (_downloadTotalBytes ?? 0) > 0;
+
   String? get downloadedZipPath => _downloadedZipPath;
   String get errorMessage => _errorMessage;
   List<ChangelogEntry> get changelog => _changelog;
@@ -227,11 +246,18 @@ class UpdateService extends ChangeNotifier {
     if (phase == UpdatePhase.downloading) return;
     _phase = UpdatePhase.downloading;
     _downloadProgress = 0;
+    _downloadReceivedBytes = 0;
+    _downloadTotalBytes = null;
     notifyListeners();
 
     try {
-      final path = await downloadUpdate((p) {
-        _downloadProgress = p;
+      final path = await downloadUpdate((received, total) {
+        _downloadReceivedBytes = received;
+        _downloadTotalBytes = total;
+        // Only a real fraction when the total is known; otherwise leave progress
+        // at 0 and let the UI render an indeterminate bar (#63).
+        _downloadProgress =
+            (total != null && total > 0) ? received / total : 0;
         notifyListeners();
       });
       _downloadedZipPath = path;
@@ -244,11 +270,15 @@ class UpdateService extends ChangeNotifier {
     }
   }
 
-  /// Download the update zip to a temp directory, calling [onProgress] with
-  /// a 0.0–1.0 fraction as bytes arrive.
+  /// Download the update zip to a temp directory, calling [onProgress] with the
+  /// running byte count and the total (from Content-Length, or null when the
+  /// server didn't advertise one — a chunked/CDN response). Fires on every chunk
+  /// even when the total is unknown, so the UI always has visible motion.
   ///
   /// Returns the path to the downloaded zip file.
-  Future<String> downloadUpdate(void Function(double progress) onProgress) async {
+  Future<String> downloadUpdate(
+    void Function(int received, int? total) onProgress,
+  ) async {
     final info = _latestUpdate;
     if (info == null) throw StateError('No update info — call checkForUpdate first');
 
@@ -258,7 +288,7 @@ class UpdateService extends ChangeNotifier {
       const Duration(seconds: 120),
     );
 
-    final total = streamed.contentLength ?? 0;
+    final total = streamed.contentLength;
     var received = 0;
 
     final tempDir = Directory.systemTemp.createTempSync('meowwatch_update_');
@@ -268,7 +298,7 @@ class UpdateService extends ChangeNotifier {
     await for (final chunk in streamed.stream) {
       sink.add(chunk);
       received += chunk.length;
-      if (total > 0) onProgress(received / total);
+      onProgress(received, total);
     }
     await sink.close();
 

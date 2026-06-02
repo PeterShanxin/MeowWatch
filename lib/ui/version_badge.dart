@@ -83,6 +83,11 @@ class _VersionBadgeState extends State<VersionBadge> {
         behavior: SnackBarBehavior.floating,
         backgroundColor: m.surface,
         duration: const Duration(seconds: 6),
+        // Explicit cross so the notice can be dismissed on demand, not only by
+        // waiting out the auto-timeout (#61). The once-per-session check means
+        // it won't pop back up after being closed.
+        showCloseIcon: true,
+        closeIconColor: m.textDim,
         content: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

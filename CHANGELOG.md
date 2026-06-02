@@ -5,6 +5,13 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.10.6-alpha] - 2026-06-02
+- Long chat messages are no longer silently cut off. The message box now caps at 150 characters (the server's limit) and shows a counter as you near it, so nothing gets eaten mid-word on send (#55).
+- Shift+Enter now starts a new line in chat instead of sending. Plain Enter still sends, and the box grows to fit a multi-line message (#56).
+- Your typed-but-unsent chat draft no longer vanishes when you click away from the window and back, minimize and restore, or collapse the chat — it's kept until you send or clear it (#59).
+- The "update available" pop-up now has a close (✕) button so you can dismiss it on the spot instead of waiting for it to fade (#61).
+- The update download bar no longer looks frozen at 0%. When the server doesn't report a file size, it now shows a moving "downloading…" bar with the amount downloaded so far, instead of a stuck empty bar (#63).
+
 ## [0.10.5-alpha] - 2026-06-02
 - Fixed your name getting swapped when you used "Continue watching". Resuming a file now rejoins under the name you watched it as (instead of silently falling back to the default "meow"), and if the server has to rename you to avoid a clash, the app now follows that rename — so chat bubbles, the typing indicator and the member list all show the right person instead of flipping you and your friend around (#40).
 

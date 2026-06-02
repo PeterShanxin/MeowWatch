@@ -62,6 +62,23 @@ void main() {
     expect(find.widgetWithText(SnackBarAction, 'Update'), findsOneWidget);
   });
 
+  testWidgets('update toast can be dismissed via its close button (#61)',
+      (tester) async {
+    await tester.pumpWidget(host(factoryFor(clientReporting('99.0.0'))));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SnackBar), findsOneWidget);
+    final closeBtn = find.descendant(
+      of: find.byType(SnackBar),
+      matching: find.byIcon(Icons.close),
+    );
+    expect(closeBtn, findsOneWidget);
+
+    await tester.tap(closeBtn);
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
+  });
+
   testWidgets('tapping the toast Update action opens the UpdateDialog',
       (tester) async {
     await tester.pumpWidget(host(factoryFor(clientReporting('99.0.0'))));

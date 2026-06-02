@@ -121,6 +121,48 @@ void main() {
     expect(find.text('Install & Restart'), findsOneWidget);
   });
 
+  group('DownloadProgressBody (#63)', () {
+    Widget bodyHost(Widget child) => MaterialApp(
+          theme: themeDataFor(MeowThemeId.cozy),
+          home: Scaffold(body: child),
+        );
+
+    testWidgets('no total → indeterminate bar with a byte label', (tester) async {
+      await tester.pumpWidget(bodyHost(const DownloadProgressBody(
+        hasTotal: false,
+        progress: 0,
+        receivedBytes: 3 * 1024 * 1024,
+      )));
+
+      final bar = tester.widget<LinearProgressIndicator>(
+        find.byType(LinearProgressIndicator),
+      );
+      expect(bar.value, isNull); // indeterminate, not a frozen 0%
+      expect(find.text('Downloading… 3.0 MB'), findsOneWidget);
+    });
+
+    testWidgets('known total → determinate bar with a percentage',
+        (tester) async {
+      await tester.pumpWidget(bodyHost(const DownloadProgressBody(
+        hasTotal: true,
+        progress: 0.42,
+        receivedBytes: 420,
+      )));
+
+      final bar = tester.widget<LinearProgressIndicator>(
+        find.byType(LinearProgressIndicator),
+      );
+      expect(bar.value, 0.42);
+      expect(find.text('Downloading… 42%'), findsOneWidget);
+    });
+
+    test('formatDownloadBytes scales B/KB/MB', () {
+      expect(formatDownloadBytes(900), '900 B');
+      expect(formatDownloadBytes(2048), '2 KB');
+      expect(formatDownloadBytes(3 * 1024 * 1024), '3.0 MB');
+    });
+  });
+
   test('checkUpdateForDialog coalesces concurrent calls (#47)', () async {
     var latestChecks = 0;
     final mock = MockClient((req) async {
