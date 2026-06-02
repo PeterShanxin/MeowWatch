@@ -81,9 +81,11 @@ class WindowCloseHandler with WindowListener {
           }
           await _service.applyUpdate(zip, restartAfter: false); // exits
           return;
-        } catch (_) {
-          // Any failure (bad zip, checksum, IO) — fall through to a plain quit
-          // rather than trapping the user in an un-closable window.
+        } catch (e, st) {
+          // Any failure (bad zip, checksum, IO) — log it for diagnosis, then
+          // fall through to a plain quit rather than trapping the user in an
+          // un-closable window.
+          debugPrint('apply-on-close failed: $e\n$st');
         }
       }
     }
