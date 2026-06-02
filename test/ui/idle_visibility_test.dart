@@ -178,6 +178,75 @@ void main() {
     });
   });
 
+  group('chatDimmedByIdle', () {
+    test('not idle → not dimmed (readable), whatever the flags', () {
+      for (final autoDim in [true, false]) {
+        for (final wake in [true, false]) {
+          expect(
+            chatDimmedByIdle(
+              idle: false,
+              collapsed: false,
+              autoDim: autoDim,
+              wakeToFullyVisible: wake,
+            ),
+            isFalse,
+            reason: 'autoDim=$autoDim wake=$wake',
+          );
+        }
+      }
+    });
+
+    test('collapsed → not dimmed (the collapsed gate handles it)', () {
+      expect(
+        chatDimmedByIdle(
+          idle: true,
+          collapsed: true,
+          autoDim: true,
+          wakeToFullyVisible: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('idle + auto-dim on → dimmed (idle ghost / deep-idle fade)', () {
+      expect(
+        chatDimmedByIdle(
+          idle: true,
+          collapsed: false,
+          autoDim: true,
+          wakeToFullyVisible: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('idle but auto-dim off → not dimmed (card stays fully visible)', () {
+      expect(
+        chatDimmedByIdle(
+          idle: true,
+          collapsed: false,
+          autoDim: false,
+          wakeToFullyVisible: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('idle + wake-to-fully-visible → not dimmed (message brightens it)', () {
+      // The arriving message wakes the card to full opacity, so it's readable
+      // and the quiet sound stays silent — matching chatOverlayOpacity.
+      expect(
+        chatDimmedByIdle(
+          idle: true,
+          collapsed: false,
+          autoDim: true,
+          wakeToFullyVisible: true,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('overlayOpacity', () {
     test('fades out when idle', () {
       expect(overlayOpacity(idle: true), 0.0);
