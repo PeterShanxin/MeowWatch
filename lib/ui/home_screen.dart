@@ -217,6 +217,14 @@ class _HomeScreenState extends State<HomeScreen> {
           isOwnMessage: lastMsg.username == _username,
           windowFocused: focused,
           chatCollapsed: _chatLayout.collapsed,
+          // An expanded card the user can't read either: idle has dimmed it
+          // (or, in deep idle, hidden it). Only the auto-dim path fades the
+          // card — with it off the expanded chat stays fully visible, so it's
+          // still readable and shouldn't trigger the quiet sound. `_isUiIdle`
+          // stays true through the wake-on-message brighten that already ran
+          // above, so this reflects what the user was seeing on arrival.
+          chatDimmedByIdle:
+              !_chatLayout.collapsed && _isUiIdle && _chatAutoDim,
           videoPlaying: _core.state.status == PlaybackStatus.playing,
         );
         if (kind == NotifyKind.none) return;
