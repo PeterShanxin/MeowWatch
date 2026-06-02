@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.13.0-alpha] - 2026-06-03
+- MeowWatch now plays video using your computer's built-in graphics hardware decoder by default, instead of grinding through every frame on the CPU. On a Snapdragon X / ARM laptop (and any machine with a capable graphics chip) that means much lower CPU use, noticeably better battery, less heat and fan noise, and smoother playback — most of all on 4K or HEVC files. Machines without a usable hardware decoder fall back to the old software decoding automatically, so nothing breaks anywhere. (Software decoding can still be forced with the `MEOWWATCH_FORCE_SW_DECODE` environment variable, which is only needed when running two app instances on one PC for local sync testing.)
+
 ## [0.12.1-alpha] - 2026-06-02
 - The quiet "felt" sound now also plays when a message arrives while the chat is dimmed or hidden by idle — not just when it's collapsed. So if the expanded chat has faded into the idle dim (or fully vanished in deep idle) while the video plays, you'll still get the soft nudge, since you can't read it then either. With chat open and fully visible, or paused, it stays silent as before (#58).
 

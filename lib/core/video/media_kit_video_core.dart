@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -6,6 +7,7 @@ import 'package:path/path.dart' as p;
 
 import 'playback_state.dart';
 import 'video_core.dart';
+import 'video_decode_config.dart';
 
 class MediaKitVideoCore extends VideoCore {
   MediaKitVideoCore() : _player = Player() {
@@ -25,16 +27,20 @@ class MediaKitVideoCore extends VideoCore {
 
   Player get player => _player;
 
-  /// Force software video decoding. Two app instances on one PC contend for the
-  /// single hardware decoder session, freezing whichever opens its file second
-  /// (seen in two-instance testing: the second client stalls at frame 0). With
-  /// software decode each instance decodes independently — one local stream per
-  /// instance is light. On real two-machine use there is only one decoder per
-  /// machine, so this changes nothing there.
+  /// Configure the libmpv `hwdec` property. Defaults to hardware decoding
+  /// (`auto-safe`) — a big CPU/battery/heat win on Snapdragon X / Adreno and
+  /// other GPUs, with automatic software fallback where HW decode is
+  /// unavailable. Set [forceSoftwareDecodeEnvVar] to force software decode for
+  /// two-instance-on-one-PC local testing (the two instances would otherwise
+  /// contend for the single hardware decoder session and the second would stall
+  /// at frame 0). See [video_decode_config.dart] for the full rationale.
   void _configureDecoding() {
     final platform = _player.platform;
     if (platform is NativePlayer) {
-      unawaited(platform.setProperty('hwdec', 'no'));
+      final forceSoftware = forceSoftwareDecodeFromEnv(Platform.environment);
+      unawaited(
+        platform.setProperty('hwdec', resolveHwdec(forceSoftware: forceSoftware)),
+      );
     }
   }
 
