@@ -1357,14 +1357,17 @@ Literal → token map for this area (from the audit):
 | chat_overlay | fontSize 13 ×2, 12, 11 ×2 | `meowText.body` (12→13) / `meowText.caption` |
 | chat_overlay | fontWeight.bold labels | `.copyWith(fontWeight: TypeScale.bold)` |
 | chat_overlay | `BorderRadius.circular(16)` ×4 | `Radii.lg` |
+| chat_overlay | header `EdgeInsets.only(left: 24, right: 12)` (#76) | `EdgeInsets.only(left: Spacing.xxl, right: Spacing.md)` — both exact |
 | all | `EdgeInsets`/`SizedBox` numbers | nearest `Spacing.*` |
 | all | `Duration(milliseconds: …)`, `Curves.*` | nearest `Motion.*` |
 
-- [ ] **Step 1:** Apply the map above across the four files. Keep behavior identical; only swap literals for tokens.
+> **#76 coupling caution:** the header's `left: 24` inset is deliberately tuned to clear the **22px top-left resize grip** (`_grip`) so the move-drag icon doesn't overlap the resize Listener. 24 maps cleanly to `Spacing.xxl`; the grip's **22** is NOT a scale step — **leave the 22px grip bespoke** (don't snap it to 20 or 24), or the header-clears-grip invariant breaks. If you do touch the grip, keep `grip ≤ header-left-inset`. Re-run `chat_overlay_resize_test.dart` after this file.
+
+- [ ] **Step 1:** Apply the map above across the four files. Keep behavior identical; only swap literals for tokens. Run `chat_overlay_resize_test.dart` as part of Step 3 (the grip/resize path).
 - [ ] **Step 2:** `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze` → No issues found!
 - [ ] **Step 3:** Run chat widget tests (non-golden):
-  `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_bubble_test.dart test/ui/chat/chat_input_test.dart test/ui/chat/peek_tab_test.dart test/ui/chat/chat_overlay_test.dart test/ui/chat/chat_overlay_repaint_test.dart`
-  Fix any exact-pixel assertions to the new token value. The repaint guard MUST stay green.
+  `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_bubble_test.dart test/ui/chat/chat_input_test.dart test/ui/chat/peek_tab_test.dart test/ui/chat/chat_overlay_test.dart test/ui/chat/chat_overlay_repaint_test.dart test/ui/chat/chat_overlay_resize_test.dart`
+  Fix any exact-pixel assertions to the new token value. The repaint guard MUST stay green; the resize test guards the #76 grip coupling.
 - [ ] **Step 4:** Regenerate + inspect goldens:
   `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_overlay_golden_test.dart --update-goldens`
   Open `test/ui/chat/goldens/chat_overlay_empty.png` and `chat_overlay_expanded.png`; confirm only the intended small shifts (text +/-1px, corner 16) are visible — no layout breakage, no white wash.
@@ -1475,15 +1478,15 @@ git commit -m "refactor: convert remaining straggler literals to tokens"
 **Files:** `pubspec.yaml`, `lib/core/app_version.dart`, `CHANGELOG.md`
 
 - [ ] **Step 1:** Read current values to confirm the from-version.
-  Read `pubspec.yaml` (`version:`) and `lib/core/app_version.dart` (`appVersion`). Expected current: `0.13.0-alpha`.
+  Read `pubspec.yaml` (`version:`) and `lib/core/app_version.dart` (`appVersion`). Expected current: `0.14.0-alpha` (pubspec shows `0.14.0-alpha+1`) — PR #76 already shipped 0.14.0, so the design system is the **next** MINOR.
 
-- [ ] **Step 2:** Bump all three to `0.14.0-alpha` (MINOR — a `feat:`).
-  - `pubspec.yaml`: `version: 0.14.0-alpha` (preserve any `+build` suffix convention already in the file).
-  - `lib/core/app_version.dart`: `appVersion = '0.14.0-alpha'`.
+- [ ] **Step 2:** Bump all three to `0.15.0-alpha` (MINOR — a `feat:`).
+  - `pubspec.yaml`: `version: 0.15.0-alpha+1` (keep the existing `+1` build-suffix convention).
+  - `lib/core/app_version.dart`: `appVersion = '0.15.0-alpha'`.
   - `CHANGELOG.md`: add a new top entry:
 
 ```markdown
-## [0.14.0-alpha] - 2026-06-03
+## [0.15.0-alpha] - 2026-06-03
 
 ### Added
 - Design-system token scales (type, spacing, radius, motion, icon/glyph, opacity, shadow) under `lib/core/theme/tokens/`, plus a `context.meowText` helper composing type with the active theme.
@@ -1500,7 +1503,7 @@ git commit -m "refactor: convert remaining straggler literals to tokens"
 - [ ] **Step 4:** Commit
 ```bash
 git add pubspec.yaml lib/core/app_version.dart CHANGELOG.md
-git commit -m "chore: bump to 0.14.0-alpha (design system)"
+git commit -m "chore: bump to 0.15.0-alpha (design system)"
 ```
 
 ## Task 21: Manual two-instance Release verification

@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-03
 **Status:** Approved (brainstorm), pending implementation plan
-**Version target:** `0.14.0-alpha` (a `feat:` MINOR bump from `0.13.0-alpha`)
+**Version target:** `0.15.0-alpha` (a `feat:` MINOR bump from `0.14.0-alpha` — PR #76 already shipped 0.14.0-alpha)
 
 ## Goal
 
@@ -162,7 +162,7 @@ Incremental, on a feature branch, small verified commits:
 
 ## Versioning
 
-`feat:` → MINOR bump: **0.13.0-alpha → 0.14.0-alpha**, in lockstep across `pubspec.yaml` (`version:`), `lib/core/app_version.dart` (`appVersion`), and `CHANGELOG.md` (new top `## [0.14.0-alpha] - 2026-06-03` entry). Keep the `-alpha` suffix.
+`feat:` → MINOR bump: **0.14.0-alpha → 0.15.0-alpha**, in lockstep across `pubspec.yaml` (`version:`), `lib/core/app_version.dart` (`appVersion`), and `CHANGELOG.md` (new top `## [0.15.0-alpha] - 2026-06-03` entry). Keep the `-alpha` suffix.
 
 ## Risks / known traps
 
