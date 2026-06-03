@@ -9,15 +9,20 @@ void main() {
   // ListView is lazy, so the bottom "Components" section must be scrolled into
   // view before it exists in the element tree.
 
-  testWidgets('gallery renders its sections and the component zoo', (tester) async {
+  testWidgets('gallery renders the hero and its sections', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: DesignGallery()));
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('TYPOGRAPHY'), findsOneWidget);
+    expect(find.text('Design System'), findsOneWidget); // hero
+    expect(find.text('COLOR'), findsOneWidget); // first section
 
-    // Scroll to the bottom to build the lazy "Components" section.
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -2000));
-    await tester.pump(const Duration(milliseconds: 300));
+    // Scroll down in steps to build the lazy "Components" section (the list is
+    // tall; one big drag can over/under-shoot, so step until it appears).
+    final scrollable = find.byType(Scrollable).first;
+    for (var i = 0; i < 20 && find.text('COMPONENTS').evaluate().isEmpty; i++) {
+      await tester.drag(scrollable, const Offset(0, -500));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
 
     expect(find.text('COMPONENTS'), findsOneWidget);
     expect(tester.takeException(), isNull);
