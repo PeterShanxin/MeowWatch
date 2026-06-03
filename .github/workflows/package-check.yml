@@ -1,0 +1,64 @@
+name: Package Check
+
+# Validates the release artifact round-trip — upload-artifact -> download-artifact
+# -> the "locate" find step — WITHOUT publishing anything. This is the one part of
+# the release job (build.yml) that the PR gate can't otherwise exercise, because
+# build/release there are tag-only.
+#
+# Why it exists: bumping download-artifact v4 -> v8 once changed the downloaded
+# file's on-disk layout, so the release job's hardcoded path no longer matched.
+# The GitHub release shipped with no asset and the R2 upload failed — and none of
+# it surfaced until the tag push, since PR CI never ran the release path.
+#
+# This job reproduces that exact failure mode in ~20s on a cheap runner using a
+# stand-in zip (the bug was artifact-action layout, not the Flutter build, so no
+# Windows build is needed). Keep the action versions and the artifact name/path
+# in lockstep with build.yml's build-windows-x64 + release jobs.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'pubspec.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-roundtrip:
+    name: Artifact round-trip
+    runs-on: ubuntu-latest
+    steps:
+      - name: Make a stand-in release zip
+        # Mirrors build.yml's "Package release": a single zip named exactly as the
+        # release artifact, so the round-trip exercises the real name/path.
+        run: |
+          mkdir -p pkg
+          echo "package-check stand-in" > pkg/app.txt
+          (cd pkg && zip -q ../MeowWatch-windows-x64.zip app.txt)
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: MeowWatch-windows-x64
+          path: MeowWatch-windows-x64.zip
+          retention-days: 1
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Locate release zip
+        # Identical guard to build.yml's release job. If a future artifact-action
+        # bump shifts the layout, this fails here on the PR instead of silently
+        # shipping an assetless release on the tag.
+        run: |
+          set -euo pipefail
+          ZIP=$(find artifacts -type f -name 'MeowWatch-windows-x64.zip' | head -n1)
+          if [ -z "$ZIP" ]; then
+            echo "::error::artifact round-trip failed — MeowWatch-windows-x64.zip not found under artifacts/; upload/download-artifact layout changed"
+            find artifacts -maxdepth 3 -print
+            exit 1
+          fi
+          echo "Resolved release zip: $ZIP"
