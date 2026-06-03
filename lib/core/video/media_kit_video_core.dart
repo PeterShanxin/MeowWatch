@@ -27,10 +27,11 @@ class MediaKitVideoCore extends VideoCore {
 
   Player get player => _player;
 
-  /// Configure the libmpv `hwdec` property. Defaults to hardware decoding
-  /// (`auto-safe`) — a big CPU/battery/heat win on Snapdragon X / Adreno and
-  /// other GPUs, with automatic software fallback where HW decode is
-  /// unavailable. Set [forceSoftwareDecodeEnvVar] to force software decode for
+  /// Configure the libmpv `hwdec` property. Defaults to hardware decoding —
+  /// zero-copy `d3d11va` on Windows, `auto-safe` elsewhere — a big
+  /// CPU/battery/heat win on Snapdragon X / Adreno and other GPUs, with
+  /// automatic software fallback where HW decode is unavailable. Set
+  /// [forceSoftwareDecodeEnvVar] to force software decode for
   /// two-instance-on-one-PC local testing (the two instances would otherwise
   /// contend for the single hardware decoder session and the second would stall
   /// at frame 0). See [video_decode_config.dart] for the full rationale.
@@ -39,7 +40,13 @@ class MediaKitVideoCore extends VideoCore {
     if (platform is NativePlayer) {
       final forceSoftware = forceSoftwareDecodeFromEnv(Platform.environment);
       unawaited(
-        platform.setProperty('hwdec', resolveHwdec(forceSoftware: forceSoftware)),
+        platform.setProperty(
+          'hwdec',
+          resolveHwdec(
+            forceSoftware: forceSoftware,
+            isWindows: Platform.isWindows,
+          ),
+        ),
       );
     }
   }
