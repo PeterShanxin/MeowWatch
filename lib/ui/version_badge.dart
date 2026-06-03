@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/app_version.dart';
 import '../core/theme/meow_context.dart';
 import '../core/update/update_service.dart';
+import 'gallery/design_gallery.dart';
 import 'update_dialog.dart';
 
 /// Bright amber for the "update available" dot — deliberately punchier than the
@@ -122,6 +123,16 @@ class _VersionBadgeState extends State<VersionBadge> {
     );
   }
 
+  // Hidden entry to the design-system gallery. Long-press (not tap, which is
+  // taken by the update dialog) so it never fires by accident and there is no
+  // visible menu item. Also reachable via MEOWWATCH_GALLERY=1 (see main.dart).
+  void _openGallery() {
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const DesignGallery()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
@@ -132,6 +143,7 @@ class _VersionBadgeState extends State<VersionBadge> {
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: _openDialog,
+          onLongPress: _openGallery,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(

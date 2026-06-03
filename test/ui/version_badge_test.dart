@@ -9,6 +9,7 @@ import 'package:meowwatch/core/app_version.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/core/update/update_service.dart';
+import 'package:meowwatch/ui/gallery/design_gallery.dart';
 import 'package:meowwatch/ui/version_badge.dart';
 
 void main() {
@@ -103,6 +104,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(dotFinder, findsNothing);
+  });
+
+  testWidgets('long-pressing the version badge opens the DesignGallery',
+      (tester) async {
+    // Up-to-date client → no dot, no toast, no dialog stealing focus.
+    await tester.pumpWidget(host(factoryFor(clientReporting(appVersion))));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.byType(VersionBadge));
+    // The gallery embeds EmptyState -> IdleMascot (infinite animation), so pump
+    // a fixed duration rather than pumpAndSettle.
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byType(DesignGallery), findsOneWidget);
   });
 
   testWidgets('records the update even if the badge unmounts mid-check',
