@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme/meow_context.dart';
+import '../core/theme/tokens/radii.dart';
+import '../core/theme/tokens/spacing.dart';
+import '../core/theme/tokens/type_scale.dart';
 import 'idle_mascot.dart';
 
 class EmptyState extends StatelessWidget {
@@ -23,28 +26,28 @@ class EmptyState extends StatelessWidget {
           children: [
             if (notice != null) ...[
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: Spacing.lg, vertical: Spacing.md),
                 decoration: BoxDecoration(
                   color: m.accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(Radii.xl),
                   border: Border.all(color: m.accent),
                 ),
                 child: Text(
                   '🐾 $notice',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: m.textPrimary, fontSize: 14),
+                  style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
                 ),
               ),
               const SizedBox(height: 28),
             ],
             const IdleMascot(size: 104),
-            const SizedBox(height: 20),
+            const SizedBox(height: Spacing.xl),
             Text(
               'Drop a video file to start',
-              style: TextStyle(color: m.textPrimary, fontSize: 18),
+              style: TextStyle(color: m.textPrimary, fontSize: TypeScale.title),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: Spacing.xxl),
             OutlinedButton(
               style: OutlinedButton.styleFrom(
                 foregroundColor: m.accent,

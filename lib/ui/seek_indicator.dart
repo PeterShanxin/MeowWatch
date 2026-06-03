@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme/meow_context.dart';
+import '../core/theme/tokens/radii.dart';
+import '../core/theme/tokens/spacing.dart';
+import '../core/theme/tokens/type_scale.dart';
 
 /// Persistent indicator shown while the user holds the seek keys. Three
 /// chevrons march in the seek direction and the accumulated jump is shown.
@@ -67,10 +70,10 @@ class _SeekIndicatorState extends State<SeekIndicator>
     return IgnorePointer(
       child: Center(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: Spacing.xl, vertical: Spacing.md),
           decoration: BoxDecoration(
             color: m.scrim.withValues(alpha: 0.60),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(Radii.lg),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -78,13 +81,13 @@ class _SeekIndicatorState extends State<SeekIndicator>
                 widget.forward ? TextDirection.ltr : TextDirection.rtl,
             children: [
               chevrons,
-              const SizedBox(width: 10),
+              const SizedBox(width: Spacing.md),
               Text(
                 label,
                 textDirection: TextDirection.ltr,
                 style: TextStyle(
                   color: m.textPrimary,
-                  fontSize: 18,
+                  fontSize: TypeScale.title,
                   fontWeight: FontWeight.w600,
                 ),
               ),

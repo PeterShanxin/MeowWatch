@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../core/app_version.dart';
 import '../core/theme/meow_context.dart';
+import '../core/theme/tokens/icon_sizes.dart';
+import '../core/theme/tokens/radii.dart';
+import '../core/theme/tokens/spacing.dart';
+import '../core/theme/tokens/type_scale.dart';
 import '../core/update/update_service.dart';
 
 /// Modal dialog for checking, downloading, and applying updates.
@@ -60,13 +64,13 @@ class _UpdateDialogState extends State<UpdateDialog> {
     return Dialog(
       backgroundColor: m.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(Radii.lg),
         side: BorderSide(color: m.border),
       ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 380, minWidth: 320),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(Spacing.xxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,32 +78,32 @@ class _UpdateDialogState extends State<UpdateDialog> {
               // Header
               Row(
                 children: [
-                  Icon(Icons.system_update, color: m.accent, size: 22),
-                  const SizedBox(width: 10),
+                  Icon(Icons.system_update, color: m.accent, size: IconSizes.md),
+                  const SizedBox(width: Spacing.md),
                   Expanded(
                     child: Text(
                       'MeowWatch Updates',
                       style: TextStyle(
                         color: m.textPrimary,
-                        fontSize: 18,
+                        fontSize: TypeScale.title,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close, color: m.textDim, size: 18),
+                    icon: Icon(Icons.close, color: m.textDim, size: IconSizes.md),
                     onPressed: () => Navigator.of(context).pop(),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: Spacing.sm),
               Text(
                 'Current version: v$appVersion',
-                style: TextStyle(color: m.textDim, fontSize: 12),
+                style: TextStyle(color: m.textDim, fontSize: TypeScale.body),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: Spacing.xl),
 
               // Body — varies by phase
               ListenableBuilder(
@@ -136,7 +140,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _statusRow(
-              icon: Icon(Icons.check_circle, color: m.online as Color, size: 20),
+              icon: Icon(Icons.check_circle, color: m.online as Color, size: IconSizes.md),
               text: 'You\'re up to date!',
               m: m,
               trailing: TextButton(
@@ -146,16 +150,16 @@ class _UpdateDialogState extends State<UpdateDialog> {
               ),
             ),
             if (_service.changelog.isNotEmpty) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: Spacing.lg),
               Text(
                 "What's new",
                 style: TextStyle(
                   color: m.textDim as Color,
-                  fontSize: 12,
+                  fontSize: TypeScale.body,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: Spacing.sm),
               _changelogPanel(m),
             ],
           ],
@@ -168,41 +172,41 @@ class _UpdateDialogState extends State<UpdateDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _statusRow(
-              icon: Icon(Icons.new_releases, color: m.accent as Color, size: 20),
+              icon: Icon(Icons.new_releases, color: m.accent as Color, size: IconSizes.md),
               text: 'New version available: v${info.version}',
               m: m,
             ),
             if (_service.changelog.isNotEmpty) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: Spacing.md),
               _changelogPanel(m),
             ] else if (info.releaseNotes.isNotEmpty) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: Spacing.md),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(Spacing.md),
                 decoration: BoxDecoration(
                   color: (m.background as Color).withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(Radii.sm),
                   border: Border.all(color: (m.border as Color).withValues(alpha: 0.5)),
                 ),
                 child: Text(
                   info.releaseNotes,
-                  style: TextStyle(color: m.textDim as Color, fontSize: 12),
+                  style: TextStyle(color: m.textDim as Color, fontSize: TypeScale.body),
                   maxLines: 6,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: Spacing.lg),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                icon: const Icon(Icons.download, size: 18),
+                icon: const Icon(Icons.download, size: IconSizes.md),
                 label: const Text('Download Update'),
                 style: FilledButton.styleFrom(
                   backgroundColor: m.accent as Color,
                   foregroundColor: m.background as Color,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(vertical: Spacing.md),
                 ),
                 onPressed: _download,
               ),
@@ -222,28 +226,28 @@ class _UpdateDialogState extends State<UpdateDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _statusRow(
-              icon: Icon(Icons.check_circle, color: m.online as Color, size: 20),
+              icon: Icon(Icons.check_circle, color: m.online as Color, size: IconSizes.md),
               text: 'Download complete!',
               m: m,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: Spacing.lg),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                icon: const Icon(Icons.restart_alt, size: 18),
+                icon: const Icon(Icons.restart_alt, size: IconSizes.md),
                 label: const Text('Install & Restart'),
                 style: FilledButton.styleFrom(
                   backgroundColor: m.accent as Color,
                   foregroundColor: m.background as Color,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(vertical: Spacing.md),
                 ),
                 onPressed: _install,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: Spacing.sm),
             Text(
               'The app will close and reopen with the new version.',
-              style: TextStyle(color: m.textDim as Color, fontSize: 11),
+              style: TextStyle(color: m.textDim as Color, fontSize: TypeScale.caption),
               textAlign: TextAlign.center,
             ),
           ],
@@ -254,11 +258,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _statusRow(
-              icon: const Icon(Icons.error_outline, color: Colors.redAccent, size: 20),
+              icon: const Icon(Icons.error_outline, color: Colors.redAccent, size: IconSizes.md),
               text: _service.errorMessage,
               m: m,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: Spacing.md),
             TextButton(
               onPressed: _checkForUpdate,
               child: Text('Retry', style: TextStyle(color: m.accent as Color)),
@@ -274,17 +278,17 @@ class _UpdateDialogState extends State<UpdateDialog> {
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxHeight: 220),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(Spacing.md),
       decoration: BoxDecoration(
         color: (m.background as Color).withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(Radii.sm),
         border: Border.all(color: (m.border as Color).withValues(alpha: 0.5)),
       ),
       child: ListView.separated(
         shrinkWrap: true,
         itemCount: _service.changelog.length,
         separatorBuilder: (_, _) => Divider(
-          height: 16,
+          height: Spacing.lg,
           color: (m.border as Color).withValues(alpha: 0.4),
         ),
         itemBuilder: (context, i) {
@@ -298,14 +302,14 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 header,
                 style: TextStyle(
                   color: m.textPrimary as Color,
-                  fontSize: 12,
+                  fontSize: TypeScale.body,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: Spacing.xs),
               Text(
                 e.notes,
-                style: TextStyle(color: m.textDim as Color, fontSize: 12),
+                style: TextStyle(color: m.textDim as Color, fontSize: TypeScale.body),
               ),
             ],
           );
@@ -323,9 +327,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
     return Row(
       children: [
         icon,
-        const SizedBox(width: 10),
+        const SizedBox(width: Spacing.md),
         Expanded(
-          child: Text(text, style: TextStyle(color: m.textPrimary as Color, fontSize: 14)),
+          child: Text(text, style: TextStyle(color: m.textPrimary as Color, fontSize: TypeScale.label)),
         ),
         ?trailing,
       ],
@@ -366,18 +370,18 @@ class DownloadProgressBody extends StatelessWidget {
               height: 18,
               child: CircularProgressIndicator(strokeWidth: 2, color: m.accent),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Spacing.md),
             Expanded(
               child: Text(
                 label,
-                style: TextStyle(color: m.textPrimary, fontSize: 14),
+                style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: Spacing.md),
         ClipRRect(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(Radii.xs),
           child: LinearProgressIndicator(
             // null ⇒ indeterminate sweep when the total is unknown.
             value: hasTotal ? progress : null,
