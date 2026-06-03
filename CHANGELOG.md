@@ -5,8 +5,8 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
-## [0.15.1-alpha] - 2026-06-04
-- Maintenance only, nothing changes in the app: updated the behind-the-scenes build-and-release machinery to the latest tooling that GitHub now requires, so future updates keep building and shipping to you without interruption.
+## [0.15.2-alpha] - 2026-06-04
+- Maintenance only, nothing changes in the app: updated the behind-the-scenes build-and-release machinery to the latest tooling that GitHub now requires, and fixed how the release packages the download so updates keep building and shipping to you without interruption.
 
 ## [0.15.0-alpha] - 2026-06-03
 - An under-the-hood design-system pass: every text size, spacing, corner radius, and animation timing across the app now comes from one small, consistent set of values instead of being hand-picked screen by screen. Most of this is invisible — the cozy look is unchanged — but a handful of spots tighten up by a pixel or two so the whole app feels more uniform. Also adds a hidden "design gallery" (long-press the version badge) that shows every style token and component live across all three themes, for tuning the look as the app grows.

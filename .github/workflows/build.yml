@@ -89,6 +89,23 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: artifacts
+          # Flatten into artifacts/ (no per-artifact subdir). download-artifact
+          # changed its default nesting across majors, so don't hardcode a layout
+          # — resolve the zip's real path in the next step instead.
+          merge-multiple: true
+
+      - name: Locate release zip
+        id: zip
+        run: |
+          set -euo pipefail
+          ZIP=$(find artifacts -type f -name 'MeowWatch-windows-x64.zip' | head -n1)
+          if [ -z "$ZIP" ]; then
+            echo "::error::MeowWatch-windows-x64.zip not found under artifacts/"
+            find artifacts -maxdepth 3 -print
+            exit 1
+          fi
+          echo "path=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "Resolved release zip: $ZIP"
 
       - name: Determine prerelease
         id: prerelease
@@ -106,8 +123,11 @@ jobs:
           draft: false
           prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
           generate_release_notes: true
+          # Fail loudly if the asset is missing instead of publishing an empty
+          # release (a silent glob-miss once shipped an assetless release).
+          fail_on_unmatched_files: true
           files: |
-            artifacts/MeowWatch-windows-x64/MeowWatch-windows-x64.zip
+            ${{ steps.zip.outputs.path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -134,14 +154,14 @@ jobs:
       - name: Upload to R2
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          rclone copy artifacts/MeowWatch-windows-x64/MeowWatch-windows-x64.zip \
+          rclone copy "${{ steps.zip.outputs.path }}" \
             r2:${{ secrets.R2_BUCKET_NAME }}/releases/$TAG/
 
       - name: Update latest.json on R2
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
-          SHA=$(sha256sum artifacts/MeowWatch-windows-x64/MeowWatch-windows-x64.zip | cut -d' ' -f1)
+          SHA=$(sha256sum "${{ steps.zip.outputs.path }}" | cut -d' ' -f1)
           cat > latest.json << EOF
           {
             "version": "$VERSION",
