@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/meow_context.dart';
+import '../../core/theme/tokens/motion.dart';
+import '../../core/theme/tokens/radii.dart';
+import '../../core/theme/tokens/spacing.dart';
+import '../../core/theme/tokens/type_scale.dart';
 
 /// The collapsed chat: a 14px tab hugging the right edge. Tap to expand.
 /// [pulsing] brightens it to hint at a freshly arrived message; [typing]
@@ -37,15 +41,16 @@ class PeekTab extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 13),
+        padding: const EdgeInsets.symmetric(
+            vertical: Spacing.lg, horizontal: Spacing.md),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
+          duration: Motion.slow,
           width: hasContent ? 22 : 14,
           height: 64,
           decoration: BoxDecoration(
             color: bright ? m.accent : m.background.withValues(alpha: 0.80),
             borderRadius: const BorderRadius.horizontal(
-              left: Radius.circular(8),
+              left: Radius.circular(Radii.sm),
             ),
             border: Border.all(color: m.border),
           ),
@@ -59,7 +64,7 @@ class PeekTab extends StatelessWidget {
     // Priority: an unread count badge, then the typing dots, then the idle icon.
     if (unreadCount > 0) {
       return Container(
-        padding: const EdgeInsets.all(2),
+        padding: const EdgeInsets.all(Spacing.xxs),
         decoration: const BoxDecoration(
           color: Colors.redAccent,
           shape: BoxShape.circle,
@@ -69,8 +74,8 @@ class PeekTab extends StatelessWidget {
           unreadCount > 99 ? '99+' : unreadCount.toString(),
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 9,
-            fontWeight: FontWeight.bold,
+            fontSize: TypeScale.caption,
+            fontWeight: TypeScale.bold,
             height: 1,
           ),
           textAlign: TextAlign.center,
@@ -81,6 +86,8 @@ class PeekTab extends StatelessWidget {
       // Dots are dark on the brightened (accent) tab so they read clearly.
       return _PeekTypingDots(color: m.background as Color);
     }
+    // 10px glyph is sized to the slim 14px tab — below the IconSizes scale (16+)
+    // on purpose; snapping it up would overflow the tab.
     return Icon(
       Icons.chat_bubble_outline,
       size: 10,
@@ -103,6 +110,8 @@ class _PeekTypingDots extends StatefulWidget {
 
 class _PeekTypingDotsState extends State<_PeekTypingDots>
     with SingleTickerProviderStateMixin {
+  // 1100ms is the bespoke typing-cycle period, not a UI transition — kept off
+  // the Motion scale.
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1100),

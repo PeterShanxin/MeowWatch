@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/sync/peer_state.dart';
 import '../../core/theme/meow_context.dart';
+import '../../core/theme/meow_text.dart';
+import '../../core/theme/tokens/radii.dart';
+import '../../core/theme/tokens/spacing.dart';
+import '../../core/theme/tokens/type_scale.dart';
 
 /// One chat message. Own messages sit right (amber); the friend's sit left
 /// (dark). A dim HH:MM time shows under the text.
@@ -23,19 +27,20 @@ class ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
+    final t = context.meowText;
     final ts = message.timestamp;
 
     // System/event lines (joins, leaves) render centered and dim — not bubbles.
     if (message.system) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+        padding: const EdgeInsets.symmetric(
+            vertical: Spacing.xs, horizontal: Spacing.md),
         child: Center(
           child: Text(
             message.text,
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: t.caption.copyWith(
               color: m.textDim,
-              fontSize: 11,
               fontStyle: FontStyle.italic,
             ),
           ),
@@ -46,11 +51,13 @@ class ChatBubble extends StatelessWidget {
     return Align(
       alignment: _mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        margin: const EdgeInsets.symmetric(
+            vertical: Spacing.xs, horizontal: Spacing.sm),
+        padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.md, vertical: Spacing.sm),
         decoration: BoxDecoration(
           color: _mine ? m.myBubble : m.peerBubble,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(Radii.lg),
           border: Border.all(color: m.accent.withValues(alpha: 0.20)),
         ),
         child: Column(
@@ -60,27 +67,26 @@ class ChatBubble extends StatelessWidget {
           children: [
             if (!_mine)
               Padding(
-                padding: const EdgeInsets.only(bottom: 2),
+                padding: const EdgeInsets.only(bottom: Spacing.xxs),
                 child: Text(
                   message.username,
-                  style: TextStyle(
+                  style: t.caption.copyWith(
                     color: m.accent,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: TypeScale.semibold,
                     fontFamily: m.titleFontFamily,
                   ),
                 ),
               ),
             Text(
               message.text,
-              style: TextStyle(color: m.textPrimary, fontSize: 14),
+              style: t.body,
             ),
             if (ts != null)
               Padding(
-                padding: const EdgeInsets.only(top: 2),
+                padding: const EdgeInsets.only(top: Spacing.xxs),
                 child: Text(
                   _hhmm(ts),
-                  style: TextStyle(color: m.textDim, fontSize: 10),
+                  style: t.caption.copyWith(color: m.textDim),
                 ),
               ),
           ],
