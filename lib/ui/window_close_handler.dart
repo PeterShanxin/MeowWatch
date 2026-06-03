@@ -172,7 +172,7 @@ Future<void> showInstallingUpdateDialog(BuildContext context) {
         child: AlertDialog(
           backgroundColor: m.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(Radii.lg),
             side: BorderSide(color: m.border),
           ),
           content: Row(
