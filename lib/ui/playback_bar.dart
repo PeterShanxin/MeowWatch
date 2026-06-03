@@ -10,12 +10,14 @@ class PlaybackBar extends StatelessWidget {
     required this.state,
     required this.onSeek,
     required this.onTogglePlay,
+    required this.onToggleMute,
     super.key,
   });
 
   final PlaybackState state;
   final ValueChanged<Duration> onSeek;
   final VoidCallback onTogglePlay;
+  final VoidCallback onToggleMute;
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +71,17 @@ class PlaybackBar extends StatelessWidget {
           ),
           Text(_fmt(state.duration),
               style: TextStyle(color: m.textPrimary, fontSize: 12)),
+          IconButton(
+            onPressed: onToggleMute,
+            icon: Icon(
+              state.volume <= 0.0
+                  ? Icons.volume_off_rounded
+                  : state.volume < 0.5
+                      ? Icons.volume_down_rounded
+                      : Icons.volume_up_rounded,
+              color: m.textPrimary,
+            ),
+          ),
         ],
       ),
     );

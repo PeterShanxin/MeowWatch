@@ -746,7 +746,7 @@ class _GlassCard extends StatelessWidget {
                     onPanEnd: (_) => onHeaderDragEnd(),
                     child: Container(
                       height: 36,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.only(left: 24, right: 12),
                       child: Row(
                         children: [
                           Tooltip(

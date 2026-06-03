@@ -93,7 +93,7 @@ void main() {
     // +10px clears the 22x22 top-left resize grip, which overlaps the move
     // handle's center. Without the nudge the gesture lands on the grip's
     // Listener (bypasses the arena) and starts a resize instead of a move.
-    final gesture = await tester.startGesture(tester.getCenter(handle) + const Offset(10, 0));
+    final gesture = await tester.startGesture(tester.getCenter(handle));
     await gesture.moveBy(move);
     await tester.pump();
     final after = tester.getTopLeft(handle);
@@ -127,7 +127,7 @@ void main() {
     final handle = find.byIcon(Icons.drag_indicator);
     // +10px clears the top-left resize grip (see the move test above); landing
     // on the grip would start a resize, which suppresses the dock hints.
-    final gesture = await tester.startGesture(tester.getCenter(handle) + const Offset(10, 0));
+    final gesture = await tester.startGesture(tester.getCenter(handle));
     await gesture.moveBy(const Offset(40, -30));
     await tester.pump();
 

@@ -21,6 +21,7 @@ void main() {
           state: _sample,
           onSeek: (_) {},
           onTogglePlay: () {},
+          onToggleMute: () {},
         ),
       ),
     ));
@@ -37,6 +38,7 @@ void main() {
           state: _sample,
           onSeek: (_) {},
           onTogglePlay: () => toggled = true,
+          onToggleMute: () {},
         ),
       ),
     ));
