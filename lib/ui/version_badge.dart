@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../core/app_version.dart';
 import '../core/theme/meow_context.dart';
+import '../core/theme/tokens/icon_sizes.dart';
+import '../core/theme/tokens/radii.dart';
+import '../core/theme/tokens/spacing.dart';
+import '../core/theme/tokens/type_scale.dart';
 import '../core/update/update_service.dart';
 import 'gallery/design_gallery.dart';
 import 'update_dialog.dart';
@@ -92,8 +96,8 @@ class _VersionBadgeState extends State<VersionBadge> {
         content: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.new_releases, size: 18, color: m.accent),
-            const SizedBox(width: 10),
+            Icon(Icons.new_releases, size: IconSizes.md, color: m.accent),
+            const SizedBox(width: Spacing.md),
             Expanded(
               child: Text(
                 '🐾 New version available!',
@@ -141,32 +145,33 @@ class _VersionBadgeState extends State<VersionBadge> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(Radii.md),
           onTap: _openDialog,
           onLongPress: _openGallery,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            padding: const EdgeInsets.symmetric(
+                horizontal: Spacing.md, vertical: Spacing.xs),
             decoration: BoxDecoration(
               color: m.surface.withValues(alpha: 0.7),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(Radii.md),
               border: Border.all(color: m.border.withValues(alpha: 0.5)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.pets, size: 12, color: m.textDim),
-                const SizedBox(width: 5),
+                const SizedBox(width: Spacing.xs),
                 Text(
                   'v$appVersion',
                   style: TextStyle(
                     color: m.textDim,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                    fontSize: TypeScale.caption,
+                    fontWeight: TypeScale.medium,
                     letterSpacing: 0.3,
                   ),
                 ),
                 if (_hasUpdate) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Spacing.sm),
                   Container(
                     key: const Key('version-badge-update-dot'),
                     width: 6,
