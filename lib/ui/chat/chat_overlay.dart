@@ -746,6 +746,11 @@ class _GlassCard extends StatelessWidget {
                     onPanEnd: (_) => onHeaderDragEnd(),
                     child: Container(
                       height: 36,
+                      // Asymmetric left inset: the 22px top-left resize grip
+                      // (see _grip) overlays this header's top-left corner.
+                      // left:24 pushes the drag-to-move icon clear of that grip
+                      // so its hint and hit-center land on the move gesture,
+                      // not the resize Listener.
                       padding: const EdgeInsets.only(left: 24, right: 12),
                       child: Row(
                         children: [
