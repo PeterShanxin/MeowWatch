@@ -74,7 +74,10 @@ class PeekTab extends StatelessWidget {
           unreadCount > 99 ? '99+' : unreadCount.toString(),
           style: const TextStyle(
             color: Colors.white,
-            fontSize: TypeScale.caption,
+            // 9px badge text is sized to the slim 22px tab — below the
+            // TypeScale.caption (11) floor on purpose; '99+' bold at 11px
+            // crowds/overflows the circle. Kept off-scale like the 10px glyph.
+            fontSize: 9,
             fontWeight: TypeScale.bold,
             height: 1,
           ),
