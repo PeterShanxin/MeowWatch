@@ -8,7 +8,12 @@ import '../../core/data/saved_profile.dart';
 import '../../core/data/stores.dart';
 import '../../core/sync/syncplay_constants.dart';
 import '../../core/theme/meow_context.dart';
+import '../../core/theme/meow_text.dart';
 import '../../core/theme/meow_theme.dart';
+import '../../core/theme/tokens/icon_sizes.dart';
+import '../../core/theme/tokens/radii.dart';
+import '../../core/theme/tokens/spacing.dart';
+import '../../core/theme/tokens/type_scale.dart';
 import '../theme/theme_swatches.dart';
 import '../version_badge.dart';
 import 'history_format.dart';
@@ -108,8 +113,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
         content: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle, size: 18, color: m.online),
-            const SizedBox(width: 10),
+            Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
+            const SizedBox(width: Spacing.md),
             Expanded(
               child: Text('Room code $room copied — share it with your friend',
                   style: TextStyle(color: m.textPrimary)),
@@ -208,7 +213,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                             constraints: BoxConstraints(
                                 maxWidth: twoColumn ? 920 : 460),
                             child: Padding(
-                              padding: const EdgeInsets.all(24),
+                              padding: const EdgeInsets.all(Spacing.xxl),
                               child: twoColumn
                                   ? Row(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -219,7 +224,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                                 CrossAxisAlignment.stretch,
                                             children: [
                                               ..._formColumn(),
-                                              const SizedBox(height: 16),
+                                              const SizedBox(height: Spacing.lg),
                                               _advancedSection(),
                                             ],
                                           ),
@@ -241,7 +246,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                       children: [
                                         ..._formColumn(),
                                         ..._libraryColumn(savedProfiles, mostRecent),
-                                        const SizedBox(height: 16),
+                                        const SizedBox(height: Spacing.lg),
                                         _advancedSection(),
                                       ],
                                     ),
@@ -257,8 +262,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
           ),
           // Version badge — bottom-right, always visible on connect screen.
           const Positioned(
-            right: 12,
-            bottom: 12,
+            right: Spacing.md,
+            bottom: Spacing.md,
             child: VersionBadge(),
           ),
         ],
@@ -272,40 +277,37 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final m = context.meow;
     return [
       Text('MeowWatch',
-          style: TextStyle(
-              color: m.textPrimary,
-              fontSize: 30,
-              fontWeight: FontWeight.w600,
-              fontFamily: m.titleFontFamily)),
-      const SizedBox(height: 4),
+          style: context.meowText.display
+              .copyWith(fontWeight: TypeScale.semibold)),
+      const SizedBox(height: Spacing.xs),
       Text('Watch together, in sync.',
-          style: TextStyle(color: m.textDim, fontSize: 14)),
-      const SizedBox(height: 16),
+          style: context.meowText.body.copyWith(color: m.textDim)),
+      const SizedBox(height: Spacing.lg),
       _label('Theme'),
       ThemeSwatches(
         current: widget.currentTheme,
         onChanged: widget.onThemeChanged,
       ),
-      const SizedBox(height: 24),
+      const SizedBox(height: Spacing.xxl),
       _label('Your name'),
       _textField(
           key: const Key('connect-name'), controller: _name, hint: 'e.g. lin'),
-      const SizedBox(height: 20),
+      const SizedBox(height: Spacing.xl),
       FilledButton(
         key: const Key('connect-start-new'),
         style: FilledButton.styleFrom(
           backgroundColor: m.accent,
           foregroundColor: m.background,
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
         ),
         onPressed: _startNewRoom,
         child: const Text('Start new room',
-            style: TextStyle(fontWeight: FontWeight.w700)),
+            style: TextStyle(fontWeight: TypeScale.bold)),
       ),
       const SizedBox(height: 8),
       Text('A code is generated and copied to clipboard.',
-          style: TextStyle(color: m.textDim, fontSize: 12)),
-      const SizedBox(height: 20),
+          style: context.meowText.body.copyWith(color: m.textDim)),
+      const SizedBox(height: Spacing.xl),
       _label('Enter code from friend'),
       Row(children: [
         Expanded(
@@ -314,7 +316,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
               controller: _code,
               hint: 'cozy-fox-42'),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: Spacing.sm),
         FilledButton(
           key: const Key('connect-join'),
           style: FilledButton.styleFrom(
@@ -332,7 +334,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       List<SavedProfile> savedProfiles, SavedProfile? mostRecent) {
     return [
       if (savedProfiles.isNotEmpty) ...[
-        const SizedBox(height: 24),
+        const SizedBox(height: Spacing.xxl),
         _label('Saved rooms'),
         ...savedProfiles
             .map((p) => _profileCard(p, isMostRecent: p == mostRecent)),
@@ -347,8 +349,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
   Widget _label(String text) {
     final m = context.meow;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(text, style: TextStyle(color: m.textDim, fontSize: 13)),
+      padding: const EdgeInsets.only(bottom: Spacing.sm),
+      child: Text(text, style: context.meowText.body.copyWith(color: m.textDim)),
     );
   }
 
@@ -371,11 +373,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
         fillColor: m.surface,
         isDense: true,
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(Radii.md),
           borderSide: BorderSide(color: m.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(Radii.md),
           borderSide: BorderSide(color: m.accent),
         ),
       ),
@@ -387,7 +389,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
     return Card(
       color: m.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(Radii.md),
         side: BorderSide(color: m.border),
       ),
       child: ListTile(
@@ -396,10 +398,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
             size: 10, color: isMostRecent ? m.online : m.textDim),
         title: Text(p.name, style: TextStyle(color: m.textPrimary)),
         subtitle: Text('${p.username} · ${p.server}',
-            style: TextStyle(color: m.textDim, fontSize: 12)),
+            style: context.meowText.body.copyWith(color: m.textDim)),
         trailing: IconButton(
           key: Key('connect-delete-${p.id}'),
-          icon: Icon(Icons.close, color: m.textDim, size: 18),
+          icon: Icon(Icons.close, color: m.textDim, size: IconSizes.md),
           onPressed: () => widget.profiles.delete(p.id),
         ),
       ),
@@ -416,14 +418,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
         onExpansionChanged: (v) => setState(() => _advancedOpen = v),
         title: Text('Advanced', style: TextStyle(color: m.textDim)),
         tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(bottom: 8),
+        childrenPadding: const EdgeInsets.only(bottom: Spacing.sm),
         children: [
           _label('Server'),
           _textField(controller: _server, hint: SyncplayConstants.defaultServer),
-          const SizedBox(height: 12),
+          const SizedBox(height: Spacing.md),
           _label('Port'),
           _textField(controller: _port, hint: '${SyncplayConstants.defaultPort}'),
-          const SizedBox(height: 12),
+          const SizedBox(height: Spacing.md),
           _label('Room password (optional)'),
           _textField(controller: _password, hint: 'leave blank for none'),
         ],
@@ -450,27 +452,28 @@ class _ContinueWatching extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 24),
+            const SizedBox(height: Spacing.xxl),
             Row(
               children: [
                 Expanded(
                   child: Text('Continue watching',
-                      style: TextStyle(color: m.textDim, fontSize: 13)),
+                      style: context.meowText.body.copyWith(color: m.textDim)),
                 ),
                 TextButton(
                   key: const Key('continue-clear-all'),
                   onPressed: () => history.clearAll(),
                   style: TextButton.styleFrom(
                     foregroundColor: m.textDim,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
                     minimumSize: const Size(0, 32),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: const Text('Clear all', style: TextStyle(fontSize: 12)),
+                  child:
+                      const Text('Clear all', style: TextStyle(fontSize: TypeScale.body)),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: Spacing.xs),
             ...recent.map(
               (e) => _HistoryCard(
                 entry: e,
@@ -506,7 +509,7 @@ class _HistoryCard extends StatelessWidget {
     return Card(
       color: m.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(Radii.md),
         side: BorderSide(color: m.border),
       ),
       child: Column(
@@ -528,21 +531,21 @@ class _HistoryCard extends StatelessWidget {
                   historySubtitle(entry, DateTime.now()),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: m.textDim, fontSize: 12),
+                  style: context.meowText.body.copyWith(color: m.textDim),
                 ),
                 if (roomLine != null)
                   Padding(
-                    padding: const EdgeInsets.only(top: 2),
+                    padding: const EdgeInsets.only(top: Spacing.xxs),
                     child: Row(
                       children: [
                         Icon(Icons.groups, size: 12, color: m.accent),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: Spacing.xs),
                         Flexible(
                           child: Text(
                             roomLine,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: m.accent, fontSize: 12),
+                            style: context.meowText.body.copyWith(color: m.accent),
                           ),
                         ),
                       ],
@@ -552,16 +555,17 @@ class _HistoryCard extends StatelessWidget {
             ),
             trailing: IconButton(
               key: Key('continue-delete-${entry.id}'),
-              icon: Icon(Icons.close, color: m.textDim, size: 18),
+              icon: Icon(Icons.close, color: m.textDim, size: IconSizes.md),
               tooltip: 'Remove',
               onPressed: onDelete,
             ),
           ),
           if (frac != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              padding: const EdgeInsets.fromLTRB(
+                  Spacing.lg, 0, Spacing.lg, Spacing.md),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
+                borderRadius: BorderRadius.circular(Radii.xs),
                 child: LinearProgressIndicator(
                   value: frac,
                   minHeight: 4,
