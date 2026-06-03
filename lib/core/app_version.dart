@@ -1,7 +1,7 @@
 /// Single source of truth for the app version and update configuration.
 ///
 /// Keep [appVersion] in sync with the `version:` field in pubspec.yaml.
-const String appVersion = '0.12.1-alpha';
+const String appVersion = '0.13.0-alpha';
 
 /// GitHub repository (owner/name) — used for release page links.
 const String appRepo = 'PeterShanxin/MeowWatch';
