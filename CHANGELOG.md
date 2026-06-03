@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.14.0-alpha] - 2026-06-03
+- The playback bar now has a volume button. Click it to mute, click again to restore the level you were at — and the icon shows at a glance whether sound is off, low, or up. (#45)
+- Fixed the chat overlay's drag-to-move handle so it no longer sits underneath the corner resize grip. The move icon now sits clear of the corner, so grabbing it reliably moves the card instead of accidentally starting a resize. (#7)
+
 ## [0.13.0-alpha] - 2026-06-03
 - MeowWatch now plays video using your computer's built-in graphics hardware decoder by default, instead of grinding through every frame on the CPU. On a Snapdragon X / ARM laptop (and any machine with a capable graphics chip) that means much lower CPU use, noticeably better battery, less heat and fan noise, and smoother playback — most of all on 4K or HEVC files. Machines without a usable hardware decoder fall back to the old software decoding automatically, so nothing breaks anywhere. (Software decoding can still be forced with the `MEOWWATCH_FORCE_SW_DECODE` environment variable, which is only needed when running two app instances on one PC for local sync testing.)
 

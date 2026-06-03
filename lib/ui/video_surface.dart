@@ -54,6 +54,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
   // Volume indicator (null => hidden).
   double? _volumeShown;
   Timer? _volumeHideTimer;
+  double _lastUnmutedVolume = 1.0;
 
   bool _isFullscreen = false;
 
@@ -137,6 +138,17 @@ class _VideoSurfaceState extends State<VideoSurface> {
     });
     // Volume keys are consumed here (KeyEventResult.handled), so the ancestor
     // idle-reset hook never sees them — wake the UI directly, like play/seek.
+    _handleUserInteraction();
+  }
+
+  void _toggleMute() {
+    final core = widget.core;
+    if (core.state.volume > 0.0) {
+      _lastUnmutedVolume = core.state.volume;
+      core.setVolume(0.0);
+    } else {
+      core.setVolume(_lastUnmutedVolume > 0.0 ? _lastUnmutedVolume : 1.0);
+    }
     _handleUserInteraction();
   }
 
@@ -241,6 +253,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
                         state: state,
                         onSeek: widget.core.seek,
                         onTogglePlay: _togglePlay,
+                        onToggleMute: _toggleMute,
                       ),
                     );
                   },
