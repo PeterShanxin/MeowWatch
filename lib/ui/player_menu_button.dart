@@ -6,6 +6,11 @@ import 'package:flutter/services.dart';
 import '../core/audio/notify_sounds.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
+import '../core/theme/tokens/icon_sizes.dart';
+import '../core/theme/tokens/motion.dart';
+import '../core/theme/tokens/radii.dart';
+import '../core/theme/tokens/spacing.dart';
+import '../core/theme/tokens/type_scale.dart';
 import 'idle_visibility.dart';
 import 'theme/theme_swatches.dart';
 
@@ -72,22 +77,22 @@ class PlayerMenuButton extends StatelessWidget {
         backgroundColor: WidgetStatePropertyAll<Color>(m.surface),
         side: WidgetStatePropertyAll<BorderSide>(BorderSide(color: m.border)),
         shape: WidgetStatePropertyAll<OutlinedBorder>(
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.lg)),
         ),
         padding: const WidgetStatePropertyAll<EdgeInsets>(
-          EdgeInsets.fromLTRB(14, 12, 14, 8),
+          EdgeInsets.fromLTRB(Spacing.lg, Spacing.md, Spacing.lg, Spacing.sm),
         ),
       ),
       builder: (context, controller, _) => Material(
         color: m.background.withValues(alpha: 0.80),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(Radii.xl),
           side: BorderSide(color: m.border),
         ),
         child: IconButton(
           key: const Key('player-menu-gear'),
           tooltip: 'Options',
-          icon: Icon(Icons.settings, size: 18, color: m.textPrimary),
+          icon: Icon(Icons.settings, size: IconSizes.md, color: m.textPrimary),
           onPressed: () =>
               controller.isOpen ? controller.close() : controller.open(),
         ),
@@ -99,7 +104,7 @@ class PlayerMenuButton extends StatelessWidget {
         TweenAnimationBuilder<double>(
           tween: Tween<double>(begin: 0, end: 1),
           duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
+          curve: Motion.standard,
           builder: (context, t, child) => Opacity(
             opacity: t,
             child: Transform.translate(
@@ -187,8 +192,8 @@ class _MenuPanelState extends State<_MenuPanel> {
   Widget build(BuildContext context) {
     final m = context.meow;
     Widget label(String text) => Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Text(text, style: TextStyle(color: m.textDim, fontSize: 14)),
+          padding: const EdgeInsets.only(bottom: Spacing.sm),
+          child: Text(text, style: TextStyle(color: m.textDim, fontSize: TypeScale.label)),
         );
 
     return SizedBox(
@@ -201,20 +206,20 @@ class _MenuPanelState extends State<_MenuPanel> {
         children: [
           label('Room code'),
           _RoomCodeRow(code: widget.roomCode),
-          const SizedBox(height: 8),
-          Divider(color: m.border, height: 16),
+          const SizedBox(height: Spacing.sm),
+          Divider(color: m.border, height: Spacing.lg),
           label('In the room (${widget.members.length})'),
           for (final name in widget.members)
             _MemberRow(name: name, isMe: name == widget.myUsername),
-          const SizedBox(height: 8),
-          Divider(color: m.border, height: 16),
+          const SizedBox(height: Spacing.sm),
+          Divider(color: m.border, height: Spacing.lg),
           _MenuAction(
             key: const Key('player-menu-load'),
             icon: Icons.video_library_outlined,
             text: 'Load video…',
             onTap: widget.onLoadVideo,
           ),
-          Divider(color: m.border, height: 16),
+          Divider(color: m.border, height: Spacing.lg),
           label('Theme'),
           Center(
             child: ThemeSwatches(
@@ -222,8 +227,8 @@ class _MenuPanelState extends State<_MenuPanel> {
               onChanged: widget.onThemeChanged,
             ),
           ),
-          const SizedBox(height: 8),
-          Divider(color: m.border, height: 16),
+          const SizedBox(height: Spacing.sm),
+          Divider(color: m.border, height: Spacing.lg),
           // Collapsible Settings — keeps the menu short until you want the
           // chat-dim controls.
           _SectionHeader(
@@ -233,8 +238,8 @@ class _MenuPanelState extends State<_MenuPanel> {
             onTap: () => setState(() => _settingsOpen = !_settingsOpen),
           ),
           AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
+            duration: Motion.base,
+            curve: Motion.symmetric,
             alignment: Alignment.topCenter,
             child: _settingsOpen
                 ? Column(
@@ -249,8 +254,8 @@ class _MenuPanelState extends State<_MenuPanel> {
                       // The wake toggle + dim slider only mean something while
                       // auto-dim is on; reveal/collapse them smoothly (#51).
                       AnimatedSize(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeInOut,
+                        duration: Motion.base,
+                        curve: Motion.symmetric,
                         alignment: Alignment.topCenter,
                         child: widget.chatAutoDim
                             ? Column(
@@ -270,7 +275,7 @@ class _MenuPanelState extends State<_MenuPanel> {
                               )
                             : const SizedBox(width: double.infinity),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: Spacing.xs),
                       SoundPickerRow(
                         key: const Key('primary-sound-picker'),
                         title: 'Notification sound',
@@ -291,7 +296,7 @@ class _MenuPanelState extends State<_MenuPanel> {
                   )
                 : const SizedBox(width: double.infinity),
           ),
-          Divider(color: m.border, height: 16),
+          Divider(color: m.border, height: Spacing.lg),
           _MenuAction(
             key: const Key('player-menu-leave'),
             icon: Icons.arrow_back,
@@ -322,18 +327,18 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(Radii.md),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.sm),
         child: Row(
           children: [
-            Text(text, style: TextStyle(color: m.textDim, fontSize: 14)),
+            Text(text, style: TextStyle(color: m.textDim, fontSize: TypeScale.label)),
             const Spacer(),
             AnimatedRotation(
               turns: expanded ? 0.5 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: Icon(Icons.expand_more, size: 18, color: m.textDim),
+              duration: Motion.base,
+              child: Icon(Icons.expand_more, size: IconSizes.md, color: m.textDim),
             ),
           ],
         ),
@@ -374,14 +379,14 @@ class SoundPickerRow extends StatelessWidget {
       orElse: () => options.first,
     );
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.sm),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(color: m.textDim, fontSize: 13)),
+                Text(title, style: TextStyle(color: m.textDim, fontSize: TypeScale.body)),
                 DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     key: Key('$_slug-dropdown'),
@@ -390,7 +395,7 @@ class SoundPickerRow extends StatelessWidget {
                     isExpanded: true,
                     dropdownColor: m.surface,
                     iconEnabledColor: m.accent,
-                    style: TextStyle(color: m.textPrimary, fontSize: 15),
+                    style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
                     items: <DropdownMenuItem<String>>[
                       for (final s in options)
                         DropdownMenuItem<String>(
@@ -410,7 +415,7 @@ class SoundPickerRow extends StatelessWidget {
             key: Key('$_slug-preview'),
             tooltip: 'Preview',
             visualDensity: VisualDensity.compact,
-            icon: Icon(Icons.play_circle_outline, size: 20, color: m.accent),
+            icon: Icon(Icons.play_circle_outline, size: IconSizes.md, color: m.accent),
             onPressed: () => onPreview(current.asset),
           ),
         ],
@@ -446,7 +451,7 @@ class _DimSliderState extends State<_DimSlider> {
   Widget build(BuildContext context) {
     final m = context.meow;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+      padding: const EdgeInsets.fromLTRB(Spacing.sm, Spacing.xs, Spacing.sm, Spacing.xs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -456,13 +461,13 @@ class _DimSliderState extends State<_DimSlider> {
                 child: Text(
                   'Dimmed chat readability',
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: m.textDim, fontSize: 13),
+                  style: TextStyle(color: m.textDim, fontSize: TypeScale.body),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: Spacing.sm),
               Text(
                 '${(_v * 100).round()}%',
-                style: TextStyle(color: m.textPrimary, fontSize: 13),
+                style: TextStyle(color: m.textPrimary, fontSize: TypeScale.body),
               ),
               // Reset to the default opacity.
               IconButton(
@@ -471,7 +476,7 @@ class _DimSliderState extends State<_DimSlider> {
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                icon: Icon(Icons.restart_alt, size: 16, color: m.accent),
+                icon: Icon(Icons.restart_alt, size: IconSizes.sm, color: m.accent),
                 onPressed: () {
                   setState(() => _v = kChatIdleGhostOpacity);
                   widget.onChanged(kChatIdleGhostOpacity);
@@ -520,7 +525,7 @@ class _MenuAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(Radii.md),
       onTap: () {
         // Close the popover first: a raw InkWell (unlike MenuItemButton) leaves
         // the menu open, and the open menu's FocusScope traps keyboard focus —
@@ -530,13 +535,13 @@ class _MenuAction extends StatelessWidget {
         onTap();
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.md),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 20, color: m.textPrimary),
-            const SizedBox(width: 12),
-            Text(text, style: TextStyle(color: m.textPrimary, fontSize: 15)),
+            Icon(icon, size: IconSizes.md, color: m.textPrimary),
+            const SizedBox(width: Spacing.md),
+            Text(text, style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label)),
           ],
         ),
       ),
@@ -560,14 +565,14 @@ class _MenuSwitch extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(Radii.md),
       onTap: () => onChanged(!value),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.lg, vertical: Spacing.sm),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Flexible(child: Text(text, style: TextStyle(color: m.textPrimary, fontSize: 15))),
+            Flexible(child: Text(text, style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label))),
             Switch(
               value: value,
               onChanged: onChanged,
@@ -592,7 +597,7 @@ class _MemberRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.xs),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -606,7 +611,7 @@ class _MemberRow extends StatelessWidget {
             child: Text(
               isMe ? '$name (you)' : name,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: m.textPrimary, fontSize: 15),
+              style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
             ),
           ),
         ],
@@ -649,8 +654,8 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
         content: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle, size: 18, color: m.online),
-            const SizedBox(width: 10),
+            Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
+            const SizedBox(width: Spacing.md),
             Text('Room code ${widget.code} copied',
                 style: TextStyle(color: m.textPrimary)),
           ],
@@ -668,10 +673,10 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
     final m = context.meow;
     return InkWell(
       key: const Key('player-menu-room-code'),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(Radii.sm),
       onTap: _copy,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.md),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -681,16 +686,16 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: m.textPrimary,
-                  fontSize: 18,
+                  fontSize: TypeScale.title,
                   fontFamily: 'monospace',
                   letterSpacing: 1.5,
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: Spacing.md),
             // Fixed-size slot so flipping copy→check never reflows the row.
             Icon(_copied ? Icons.check : Icons.copy,
-                size: 18, color: _copied ? m.online : m.accent),
+                size: IconSizes.md, color: _copied ? m.online : m.accent),
           ],
         ),
       ),

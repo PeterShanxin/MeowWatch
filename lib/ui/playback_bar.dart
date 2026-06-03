@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme/meow_context.dart';
+import '../core/theme/tokens/spacing.dart';
+import '../core/theme/tokens/type_scale.dart';
 import '../core/video/playback_state.dart';
 
 /// Bottom overlay bar: current time, a draggable scrubber, total duration,
@@ -29,7 +31,8 @@ class PlaybackBar extends StatelessWidget {
     final isPlaying = state.status == PlaybackStatus.playing;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 24, 16, 8),
+      padding: const EdgeInsets.fromLTRB(
+          Spacing.sm, Spacing.xxl, Spacing.lg, Spacing.sm),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -47,7 +50,7 @@ class PlaybackBar extends StatelessWidget {
             ),
           ),
           Text(_fmt(state.position),
-              style: TextStyle(color: m.textPrimary, fontSize: 12)),
+              style: TextStyle(color: m.textPrimary, fontSize: TypeScale.body)),
           Expanded(
             child: SliderTheme(
               data: SliderThemeData(
@@ -70,7 +73,7 @@ class PlaybackBar extends StatelessWidget {
             ),
           ),
           Text(_fmt(state.duration),
-              style: TextStyle(color: m.textPrimary, fontSize: 12)),
+              style: TextStyle(color: m.textPrimary, fontSize: TypeScale.body)),
           IconButton(
             onPressed: onToggleMute,
             icon: Icon(

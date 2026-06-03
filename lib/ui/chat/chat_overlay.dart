@@ -6,6 +6,14 @@ import 'package:flutter/material.dart';
 
 import '../../core/sync/peer_state.dart';
 import '../../core/theme/meow_context.dart';
+import '../../core/theme/meow_text.dart';
+import '../../core/theme/tokens/icon_sizes.dart';
+import '../../core/theme/tokens/motion.dart';
+import '../../core/theme/tokens/opacities.dart';
+import '../../core/theme/tokens/radii.dart';
+import '../../core/theme/tokens/shadows.dart';
+import '../../core/theme/tokens/spacing.dart';
+import '../../core/theme/tokens/type_scale.dart';
 import 'chat_bubble.dart';
 import 'chat_corner.dart';
 import 'chat_input.dart';
@@ -263,7 +271,7 @@ class _ChatOverlayState extends State<ChatOverlay>
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOutCubic,
+          curve: Motion.standard,
         );
       });
       return;
@@ -320,7 +328,7 @@ class _ChatOverlayState extends State<ChatOverlay>
   /// Resting top-left for [c], matching the Align + padding used below so the
   /// glide ends exactly where the docked card will sit (no settle-jump).
   Offset _cornerTopLeft(ChatCorner c, Size card, Size win) {
-    const pad = 12.0;
+    const pad = Spacing.md;
     const bottomPad = 64.0;
     final left = pad;
     final right = win.width - pad - card.width;
@@ -346,7 +354,7 @@ class _ChatOverlayState extends State<ChatOverlay>
       () => _dragTopLeft = Offset.lerp(
         from,
         to,
-        Curves.easeOutCubic.transform(_snapCtrl.value),
+        Motion.standard.transform(_snapCtrl.value),
       ),
     );
   }
@@ -584,7 +592,8 @@ class _ChatOverlayState extends State<ChatOverlay>
             key: const ValueKey<String>('card'),
             alignment: _alignmentFor(widget.corner),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 64),
+              padding: const EdgeInsets.fromLTRB(
+                  Spacing.md, Spacing.md, Spacing.md, 64),
               child: _buildCard(cardSize),
             ),
           );
@@ -657,7 +666,7 @@ class _GlassCard extends StatelessWidget {
     final blur = context.meow.glassBlur;
     if (blur <= 0) return child;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(Radii.lg),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: child,
@@ -714,14 +723,8 @@ class _GlassCard extends StatelessWidget {
       children: [
         DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: m.scrim.withValues(alpha: 0.60),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            borderRadius: BorderRadius.circular(Radii.lg),
+            boxShadow: Shadows.overlay(m.scrim),
           ),
           child: _frosted(
             context,
@@ -730,7 +733,7 @@ class _GlassCard extends StatelessWidget {
               height: height,
               decoration: BoxDecoration(
                 color: m.surface,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(Radii.lg),
                 border: Border.all(
                   color: m.accent.withValues(alpha: 0.80),
                   width: 1.5,
@@ -751,7 +754,8 @@ class _GlassCard extends StatelessWidget {
                       // left:24 pushes the drag-to-move icon clear of that grip
                       // so its hint and hit-center land on the move gesture,
                       // not the resize Listener.
-                      padding: const EdgeInsets.only(left: 24, right: 12),
+                      padding:
+                          const EdgeInsets.only(left: Spacing.xxl, right: Spacing.md),
                       child: Row(
                         children: [
                           Tooltip(
@@ -759,17 +763,14 @@ class _GlassCard extends StatelessWidget {
                             waitDuration: _kTooltipWait,
                             child: Icon(
                               Icons.drag_indicator,
-                              size: 16,
+                              size: IconSizes.sm,
                               color: m.textDim,
                             ),
                           ),
                           const Spacer(),
                           Text(
                             'Chat',
-                            style: TextStyle(
-                              color: m.textPrimary,
-                              fontSize: 13,
-                            ),
+                            style: context.meowText.body,
                           ),
                           const Spacer(),
                           GestureDetector(
@@ -781,12 +782,12 @@ class _GlassCard extends StatelessWidget {
                               waitDuration: _kTooltipWait,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 8,
+                                  horizontal: Spacing.sm,
+                                  vertical: Spacing.sm,
                                 ),
                                 child: Icon(
                                   Icons.crop_free,
-                                  size: 16,
+                                  size: IconSizes.sm,
                                   color: m.textDim,
                                 ),
                               ),
@@ -802,12 +803,12 @@ class _GlassCard extends StatelessWidget {
                               waitDuration: _kTooltipWait,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
+                                  horizontal: Spacing.md,
+                                  vertical: Spacing.sm,
                                 ),
                                 child: Icon(
                                   Icons.chevron_right,
-                                  size: 18,
+                                  size: IconSizes.md,
                                   color: m.accent,
                                 ),
                               ),
@@ -822,15 +823,14 @@ class _GlassCard extends StatelessWidget {
                         ? Center(
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 24,
+                                horizontal: Spacing.lg,
+                                vertical: Spacing.xxl,
                               ),
                               child: Text(
                                 'No messages yet — say hi 🐾',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(
+                                style: context.meowText.body.copyWith(
                                   color: m.textDim,
-                                  fontSize: 13,
                                 ),
                               ),
                             ),
@@ -846,28 +846,27 @@ class _GlassCard extends StatelessWidget {
                                 child: ListView(
                                   controller: scrollController,
                                   padding: const EdgeInsets.symmetric(
-                                    vertical: 4,
+                                    vertical: Spacing.xs,
                                   ),
                                   children: [
                                     for (int i = 0; i < messages.length; i++) ...[
                                       if (i == dividerIndex)
                                         Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                                          padding: const EdgeInsets.symmetric(vertical: Spacing.sm, horizontal: Spacing.lg),
                                           child: Row(
                                             children: [
-                                              Expanded(child: Divider(color: m.accent.withValues(alpha: 0.5), thickness: 1)),
+                                              Expanded(child: Divider(color: m.accent.withValues(alpha: Opacities.scrim), thickness: 1)),
                                               Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
                                                 child: Text(
                                                   'New Messages',
-                                                  style: TextStyle(
+                                                  style: context.meowText.caption.copyWith(
                                                     color: m.accent,
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.bold,
+                                                    fontWeight: TypeScale.bold,
                                                   ),
                                                 ),
                                               ),
-                                              Expanded(child: Divider(color: m.accent.withValues(alpha: 0.5), thickness: 1)),
+                                              Expanded(child: Divider(color: m.accent.withValues(alpha: Opacities.scrim), thickness: 1)),
                                             ],
                                           ),
                                         ),
@@ -881,7 +880,7 @@ class _GlassCard extends StatelessWidget {
                               ),
                               if (unreadCount > 0)
                                 Positioned(
-                                  bottom: 8,
+                                  bottom: Spacing.sm,
                                   left: 0,
                                   right: 0,
                                   child: Center(
@@ -889,8 +888,8 @@ class _GlassCard extends StatelessWidget {
                                       onTap: onScrollToBottom,
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 6,
+                                          horizontal: Spacing.md,
+                                          vertical: Spacing.sm,
                                         ),
                                         decoration: BoxDecoration(
                                           color: m.accent,
@@ -911,8 +910,8 @@ class _GlassCard extends StatelessWidget {
                                           '↓ $unreadCount new message${unreadCount > 1 ? 's' : ''}',
                                           style: const TextStyle(
                                             color: Colors.white,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
+                                            fontSize: TypeScale.caption,
+                                            fontWeight: TypeScale.bold,
                                           ),
                                         ),
                                       ),
@@ -998,12 +997,12 @@ class _TypingStripState extends State<_TypingStrip> {
           opacity: widget.label == null ? 0 : 1,
           duration: const Duration(milliseconds: 150),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+            padding: const EdgeInsets.fromLTRB(
+                Spacing.lg, 0, Spacing.lg, Spacing.xxs),
             child: Text(
               _shown,
-              style: TextStyle(
+              style: context.meowText.body.copyWith(
                 color: m.textDim,
-                fontSize: 12,
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -1142,13 +1141,13 @@ class _HintZone extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
+      duration: Motion.fast,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: active
             ? m.accent.withValues(alpha: 0.30)
             : m.surface.withValues(alpha: 0.28),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(Radii.lg),
         border: Border.all(
           color: m.accent.withValues(alpha: active ? 1.0 : 0.40),
           width: active ? 2.5 : 1,

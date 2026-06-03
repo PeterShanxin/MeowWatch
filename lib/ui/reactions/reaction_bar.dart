@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/meow_context.dart';
+import '../../core/theme/tokens/icon_sizes.dart';
+import '../../core/theme/tokens/radii.dart';
+import '../../core/theme/tokens/spacing.dart';
 
 /// The emoji palette offered by the reaction button.
 const List<String> kReactionEmojis = <String>['❤️', '😂', '👍', '😮', '🎉', '🔥'];
@@ -36,12 +39,12 @@ class _ReactionBarState extends State<ReactionBar> {
           curve: Curves.easeOut,
           child: _open
               ? Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  margin: const EdgeInsets.only(right: Spacing.sm),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: Spacing.sm, vertical: Spacing.xs),
                   decoration: BoxDecoration(
                     color: m.surface,
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(Radii.pill),
                     border: Border.all(color: m.border),
                   ),
                   child: Row(
@@ -52,7 +55,7 @@ class _ReactionBarState extends State<ReactionBar> {
                           key: Key('reaction-$e'),
                           visualDensity: VisualDensity.compact,
                           onPressed: () => _pick(e),
-                          icon: Text(e, style: const TextStyle(fontSize: 20)),
+                          icon: Text(e, style: const TextStyle(fontSize: Glyphs.react)),
                         ),
                     ],
                   ),
@@ -62,7 +65,7 @@ class _ReactionBarState extends State<ReactionBar> {
         Material(
           color: m.background.withValues(alpha: 0.80),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(Radii.pill),
             side: BorderSide(color: m.border),
           ),
           child: IconButton(
@@ -71,7 +74,7 @@ class _ReactionBarState extends State<ReactionBar> {
             icon: Icon(
               _open ? Icons.close : Icons.add_reaction_outlined,
               color: m.textPrimary,
-              size: 20,
+              size: IconSizes.md,
             ),
             onPressed: () => setState(() => _open = !_open),
           ),

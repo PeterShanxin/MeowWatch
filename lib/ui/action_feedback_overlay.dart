@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme/meow_context.dart';
+import '../core/theme/tokens/spacing.dart';
 import 'playback_action.dart';
 
 /// Flashes a translucent icon in the center of the video when an action is
@@ -71,7 +72,7 @@ class _ActionFeedbackOverlayState extends State<ActionFeedbackOverlay>
             );
           },
           child: Container(
-            padding: const EdgeInsets.all(22),
+            padding: const EdgeInsets.all(Spacing.xxl),
             decoration: BoxDecoration(
               color: m.scrim.withValues(alpha: 0.60),
               shape: BoxShape.circle,

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../core/theme/tokens/motion.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/playback_state.dart';
 import 'action_feedback_overlay.dart';
@@ -248,7 +249,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
                         !widget.isUiIdle || state.status != PlaybackStatus.playing;
                     return AnimatedOpacity(
                       opacity: visible ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 200),
+                      duration: Motion.base,
                       child: PlaybackBar(
                         state: state,
                         onSeek: widget.core.seek,

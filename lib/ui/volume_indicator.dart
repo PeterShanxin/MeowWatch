@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme/meow_context.dart';
+import '../core/theme/tokens/icon_sizes.dart';
+import '../core/theme/tokens/radii.dart';
+import '../core/theme/tokens/spacing.dart';
+import '../core/theme/tokens/type_scale.dart';
 
 /// Transient volume level indicator shown while the user adjusts volume:
 /// a speaker icon, a horizontal level bar, and the percentage.
@@ -24,20 +28,20 @@ class VolumeIndicator extends StatelessWidget {
       child: Align(
         alignment: const Alignment(0, -0.55),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: Spacing.xl, vertical: Spacing.md),
           decoration: BoxDecoration(
             color: m.scrim.withValues(alpha: 0.60),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(Radii.lg),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(_icon, size: 26, color: m.textPrimary),
-              const SizedBox(width: 12),
+              Icon(_icon, size: IconSizes.lg, color: m.textPrimary),
+              const SizedBox(width: Spacing.md),
               SizedBox(
                 width: 120,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
+                  borderRadius: BorderRadius.circular(Radii.xs),
                   child: LinearProgressIndicator(
                     value: volume.clamp(0.0, 1.0),
                     minHeight: 6,
@@ -46,7 +50,7 @@ class VolumeIndicator extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: Spacing.md),
               SizedBox(
                 width: 44,
                 child: Text(
@@ -54,7 +58,7 @@ class VolumeIndicator extends StatelessWidget {
                   textAlign: TextAlign.right,
                   style: TextStyle(
                     color: m.textPrimary,
-                    fontSize: 15,
+                    fontSize: TypeScale.label,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

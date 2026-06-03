@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../core/theme/meow_context.dart';
+import '../core/theme/tokens/icon_sizes.dart';
+import '../core/theme/tokens/radii.dart';
+import '../core/theme/tokens/spacing.dart';
+import '../core/theme/tokens/type_scale.dart';
 import '../core/update/update_service.dart';
 
 /// What the user chose when prompted on close with a downloaded update ready.
@@ -106,19 +110,19 @@ Future<UpdateCloseChoice> showUpdateOnCloseDialog(BuildContext context) async {
       return AlertDialog(
         backgroundColor: m.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(Radii.lg),
           side: BorderSide(color: m.border),
         ),
         title: Row(
           children: [
-            Icon(Icons.system_update, color: m.accent, size: 22),
-            const SizedBox(width: 10),
+            Icon(Icons.system_update, color: m.accent, size: IconSizes.md),
+            const SizedBox(width: Spacing.md),
             Expanded(
               child: Text(
                 'Install update before closing?',
                 style: TextStyle(
                   color: m.textPrimary,
-                  fontSize: 17,
+                  fontSize: TypeScale.title,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -128,9 +132,10 @@ Future<UpdateCloseChoice> showUpdateOnCloseDialog(BuildContext context) async {
         content: Text(
           'An update is downloaded and ready. Install it now so you start up '
           'on the new version next time?',
-          style: TextStyle(color: m.textDim, fontSize: 13),
+          style: TextStyle(color: m.textDim, fontSize: TypeScale.body),
         ),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        actionsPadding: const EdgeInsets.fromLTRB(
+            Spacing.lg, 0, Spacing.lg, Spacing.md),
         actions: [
           TextButton(
             onPressed: () =>
@@ -167,7 +172,7 @@ Future<void> showInstallingUpdateDialog(BuildContext context) {
         child: AlertDialog(
           backgroundColor: m.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(Radii.lg),
             side: BorderSide(color: m.border),
           ),
           content: Row(
@@ -178,11 +183,11 @@ Future<void> showInstallingUpdateDialog(BuildContext context) {
                 height: 22,
                 child: CircularProgressIndicator(strokeWidth: 2, color: m.accent),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: Spacing.lg),
               Expanded(
                 child: Text(
                   'Installing update…\nThe app will close in a moment.',
-                  style: TextStyle(color: m.textPrimary, fontSize: 14),
+                  style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
                 ),
               ),
             ],

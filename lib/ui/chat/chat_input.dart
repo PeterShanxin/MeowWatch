@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 
 import '../../core/sync/syncplay_constants.dart';
 import '../../core/theme/meow_context.dart';
+import '../../core/theme/meow_text.dart';
+import '../../core/theme/tokens/opacities.dart';
+import '../../core/theme/tokens/spacing.dart';
 
 /// Message composer: a text field plus a send button. Fires [onSend] with the
 /// trimmed text (never blank) and clears itself. While the user is typing it
@@ -113,9 +116,10 @@ class _ChatInputState extends State<ChatInput> {
     final atLimit = currentLength >= maxLength;
     return Text(
       '$currentLength/$maxLength',
-      style: TextStyle(
-        color: atLimit ? Colors.redAccent : m.textPrimary.withValues(alpha: 0.5),
-        fontSize: 11,
+      style: context.meowText.caption.copyWith(
+        color: atLimit
+            ? Colors.redAccent
+            : m.textPrimary.withValues(alpha: Opacities.scrim),
       ),
     );
   }
@@ -124,7 +128,8 @@ class _ChatInputState extends State<ChatInput> {
   Widget build(BuildContext context) {
     final m = context.meow;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      padding: const EdgeInsets.fromLTRB(
+          Spacing.sm, Spacing.xs, Spacing.sm, Spacing.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -148,7 +153,7 @@ class _ChatInputState extends State<ChatInput> {
                 textInputAction: TextInputAction.newline,
                 maxLength: SyncplayConstants.maxChatMessageLength,
                 buildCounter: _buildCounter,
-                style: TextStyle(color: m.textPrimary, fontSize: 14),
+                style: context.meowText.body,
                 decoration: InputDecoration(
                   hintText: 'Message…',
                   hintStyle:
