@@ -32,7 +32,7 @@ The text sizes pile up at 11/12/13/14 — four sizes within 3px doing nearly the
 2. **Philosophy:** **rationalize** to clean scales, not faithful 1:1 capture. Today's strays snap to the nearest scale step; every change is small (text ≤2px, radius ≤2px, spacing ≤3px) and **reviewed in the gallery before it ships**.
 3. **Families:** **all seven** — spacing, typography, radius, motion, icon/glyph, opacity, shadow.
 4. **Architecture:** **plain constants per family** (Option 1), not ThemeExtensions. Structural tokens are global (identical across all 3 themes); only the text-style seam touches the theme.
-5. **Gallery access:** **hidden in release** (Option B) — ships in every build, no visible entry point; opens via **tap the version badge 5× within 3s**, plus `MEOWWATCH_GALLERY=1` env var as a backup door.
+5. **Gallery access:** **hidden in release** (Option B) — ships in every build, no visible entry point; opens via **long-pressing the version badge**, plus `MEOWWATCH_GALLERY=1` env var as a backup door. *(The brainstorm chose "tap 5×"; planning found the badge already opens the update dialog on single tap — a modal that would block taps 2–5 — so long-press was substituted and confirmed by the user.)*
 
 ## Why plain constants, not ThemeExtensions
 
@@ -143,7 +143,7 @@ One scrollable screen. A top bar switches Cozy / Cinema Noir / Glass Aurora live
 1. The seven scales, each rendered as a labeled specimen strip (like the brainstorm panels: type ramp, radius ladder, spacing bars, motion list, icon/glyph row, opacity swatches, shadow cards).
 2. A **component zoo** — the real widgets shown live so a token edit's effect is obvious: chat bubble, peek tab, connect profile card, player gear menu, update dialog, friend-join banner, reaction bar, empty state.
 
-**Access:** ships in every build (release included) but has **no visible entry point**. Opens via **tapping the version badge 5× within 3s**; `MEOWWATCH_GALLERY=1` env var is a backup door (consistent with the existing `MEOWWATCH_FORCE_SW_DECODE` convention). The gallery route is otherwise unreachable in normal use.
+**Access:** ships in every build (release included) but has **no visible entry point**. Opens via **long-pressing the version badge** (single tap keeps its existing job — opening the update dialog); `MEOWWATCH_GALLERY=1` env var is a backup door (consistent with the existing `MEOWWATCH_FORCE_SW_DECODE` convention). The gallery route is otherwise unreachable in normal use.
 
 ## Rollout
 
