@@ -21,6 +21,10 @@ import '../core/sync/sync_activity_throttle.dart';
 import '../core/sync/syncplay_client.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
+import '../core/theme/tokens/motion.dart';
+import '../core/theme/tokens/radii.dart';
+import '../core/theme/tokens/spacing.dart';
+import '../core/theme/tokens/type_scale.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/playback_state.dart';
 import '../core/video/seek_when_ready.dart';
@@ -822,7 +826,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   AnimatedOpacity(
                     opacity: chatOpacity,
-                    duration: const Duration(milliseconds: 200),
+                    duration: Motion.base,
                     child: IgnorePointer(
                       ignoring: chatOpacity == 0.0,
                       child: ChatOverlay(
@@ -920,7 +924,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       bottom: 84,
                       child: AnimatedOpacity(
                         opacity: overlayOpacity(idle: _isUiIdle),
-                        duration: const Duration(milliseconds: 200),
+                        duration: Motion.base,
                         child: IgnorePointer(
                           ignoring: _isUiIdle,
                           child: ReactionBar(onReact: _chat.sendReaction),
@@ -948,13 +952,15 @@ class _SyncHintBanner extends StatelessWidget {
     final m = context.meow;
     return IgnorePointer(
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.lg, vertical: Spacing.sm),
         decoration: BoxDecoration(
           color: m.background.withValues(alpha: 0.80),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(Radii.xl),
           border: Border.all(color: m.border),
         ),
-        child: Text(text, style: TextStyle(color: m.textPrimary, fontSize: 14)),
+        child: Text(text,
+            style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label)),
       ),
     );
   }

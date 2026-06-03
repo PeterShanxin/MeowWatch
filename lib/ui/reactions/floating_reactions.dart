@@ -3,6 +3,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/theme/tokens/icon_sizes.dart';
+
 /// Overlay that renders emoji "reactions" floating up over the video, like a
 /// live-stream's heart burst. Each emoji pushed onto [emojis] spawns one
 /// rising, fading, gently swaying glyph that removes itself when done.
@@ -140,7 +142,7 @@ class _FloatingEmojiState extends State<_FloatingEmoji>
             opacity: opacity.clamp(0.0, 1.0),
             child: Transform.scale(
               scale: scale,
-              child: Text(widget.emoji, style: const TextStyle(fontSize: 34)),
+              child: Text(widget.emoji, style: const TextStyle(fontSize: Glyphs.burst)),
             ),
           ),
         );
