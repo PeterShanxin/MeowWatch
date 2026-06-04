@@ -16,7 +16,6 @@ Widget _host({
           children: [
             ChatOverlay(
               messages: const [],
-              myUsername: 'me',
               collapsed: false,
               corner: ChatCorner.bottomLeft,
               onSend: (_) {},

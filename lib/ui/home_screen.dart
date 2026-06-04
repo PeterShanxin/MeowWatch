@@ -831,7 +831,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ignoring: chatOpacity == 0.0,
                       child: ChatOverlay(
                         messages: _messages,
-                        myUsername: _username,
                         collapsed: _chatLayout.collapsed,
                         isUiIdle: _isUiIdle,
                         corner: _chatLayout.corner,

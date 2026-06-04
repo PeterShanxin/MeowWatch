@@ -1,4 +1,5 @@
 .superpowers/
+.claude/scheduled_tasks.lock
 *.log
 .tmp_*
 build/

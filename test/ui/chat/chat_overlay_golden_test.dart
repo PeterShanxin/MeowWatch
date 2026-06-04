@@ -23,10 +23,9 @@ void main() {
             const ColoredBox(color: Colors.black),
             ChatOverlay(
               messages: const [
-                ChatMessage(username: 'lin', text: 'hi'),
-                ChatMessage(username: 'me', text: 'yo'),
+                ChatMessage(username: 'lin', text: 'hi', isMine: false),
+                ChatMessage(username: 'me', text: 'yo', isMine: true),
               ],
-              myUsername: 'me',
               collapsed: false,
               onSend: (_) {},
               onToggleCollapsed: () {},
@@ -60,7 +59,6 @@ void main() {
             const ColoredBox(color: Colors.black),
             ChatOverlay(
               messages: const [],
-              myUsername: 'me',
               collapsed: false,
               onSend: (_) {},
               onToggleCollapsed: () {},

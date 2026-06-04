@@ -32,14 +32,27 @@ class ChatStore {
   // initializing formals don't apply here.
   // ignore_for_file: prefer_initializing_formals
   ChatStore({required SyncCore sync, DateTime Function() now = DateTime.now})
-      : _sync = sync,
-        _now = now {
+    : _sync = sync,
+      _now = now {
+    _connSub = _sync.connectionState.listen((state) {
+      if (state.username != null && state.username!.isNotEmpty) {
+        _myUsername = state.username;
+      }
+    });
     _sub = _sync.chat.listen(_onChat);
   }
 
   final SyncCore _sync;
   final DateTime Function() _now;
   late final StreamSubscription<ChatMessage> _sub;
+  late final StreamSubscription<SyncConnectionState> _connSub;
+  // The name the server currently has us under. The server may rename us on
+  // (re)connect to dedupe a collision ("meow" -> "meow_"); we always track the
+  // latest assignment. Ownership is stamped at receipt against this current
+  // name only — we deliberately do NOT remember past names, because once the
+  // server frees an old name a peer can claim it, and their messages must not
+  // count as ours.
+  String? _myUsername;
 
   final List<ChatMessage> _messages = <ChatMessage>[];
   final StreamController<List<ChatMessage>> _controller =
@@ -72,7 +85,11 @@ class ChatStore {
       }
       return; // Control messages never appear in chat history.
     }
-    _messages.add(m.timestamp == null ? m.copyWith(timestamp: _now()) : m);
+    _messages.add(
+      m.timestamp == null
+          ? m.copyWith(timestamp: _now(), isMine: m.username == _myUsername)
+          : m,
+    );
     _controller.add(messages);
   }
 
@@ -85,7 +102,9 @@ class ChatStore {
   /// Append a local-only event line (e.g. "lin joined the room"). Not sent over
   /// the wire — each client annotates its own history.
   void addSystem(String text) {
-    _messages.add(ChatMessage(username: '', text: text, timestamp: _now(), system: true));
+    _messages.add(
+      ChatMessage(username: '', text: text, timestamp: _now(), system: true),
+    );
     _controller.add(messages);
   }
 
@@ -97,6 +116,7 @@ class ChatStore {
       _sync.sendChat(encodeTyping(isTyping));
 
   Future<void> dispose() async {
+    await _connSub.cancel();
     await _sub.cancel();
     await _controller.close();
     await _reactions.close();

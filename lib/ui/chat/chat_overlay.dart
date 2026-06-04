@@ -32,7 +32,6 @@ class ChatOverlay extends StatefulWidget {
   const ChatOverlay({
     super.key,
     required this.messages,
-    required this.myUsername,
     required this.collapsed,
     required this.onSend,
     required this.onToggleCollapsed,
@@ -51,7 +50,6 @@ class ChatOverlay extends StatefulWidget {
   });
 
   final List<ChatMessage> messages;
-  final String myUsername;
   final bool collapsed;
   final bool isUiIdle;
   final ChatCorner corner;
@@ -219,13 +217,13 @@ class _ChatOverlayState extends State<ChatOverlay>
       _scrollToBottom(animate: false);
     } else if (old.messages.length < widget.messages.length) {
       final newMsgs = widget.messages.sublist(old.messages.length);
-      final isMyMessage = newMsgs.isNotEmpty && newMsgs.last.username == widget.myUsername;
+      final isMyMessage = newMsgs.isNotEmpty && newMsgs.last.isMine;
 
       int newUnread = 0;
       int? firstUnreadIndex;
       for (int i = 0; i < newMsgs.length; i++) {
         final m = newMsgs[i];
-        if (!m.system && m.username != widget.myUsername) {
+        if (!m.system && !m.isMine) {
           newUnread++;
           firstUnreadIndex ??= old.messages.length + i;
         }
@@ -498,7 +496,6 @@ class _ChatOverlayState extends State<ChatOverlay>
     onHeaderDragEnd: _endHeaderDrag,
     onCollapse: widget.onToggleCollapsed,
     messages: widget.messages,
-    myUsername: widget.myUsername,
     unreadCount: _unreadCount,
     dividerIndex: _dividerIndex,
     onScrollToBottom: () {
@@ -621,7 +618,6 @@ class _GlassCard extends StatelessWidget {
     required this.onHeaderDragEnd,
     required this.onCollapse,
     required this.messages,
-    required this.myUsername,
     required this.unreadCount,
     required this.dividerIndex,
     required this.onScrollToBottom,
@@ -644,7 +640,6 @@ class _GlassCard extends StatelessWidget {
   final VoidCallback onHeaderDragEnd;
   final VoidCallback onCollapse;
   final List<ChatMessage> messages;
-  final String myUsername;
   final int unreadCount;
   final int? dividerIndex;
   final VoidCallback onScrollToBottom;
@@ -872,7 +867,6 @@ class _GlassCard extends StatelessWidget {
                                         ),
                                       ChatBubble(
                                         message: messages[i],
-                                        myUsername: myUsername,
                                       ),
                                     ],
                                   ],

@@ -9,6 +9,13 @@ class FakeSync extends SyncCore {
 
   void incoming(ChatMessage m) => emitChat(m);
 
+  void connectedAs(String username) => emitConnectionState(
+    SyncConnectionState(
+      status: SyncConnectionStatus.connected,
+      username: username,
+    ),
+  );
+
   @override
   Future<void> connect({
     required String server,
@@ -125,20 +132,77 @@ void main() {
     await sync.dispose();
   });
 
-  test('addSystem inserts a local system line, not sent over the wire',
-      () async {
+  test(
+    'addSystem inserts a local system line, not sent over the wire',
+    () async {
+      final sync = FakeSync();
+      final store = ChatStore(sync: sync);
+
+      store.addSystem('lin joined the room');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(sync.sent, isEmpty); // never transmitted
+      final msg = store.messages.single;
+      expect(msg.system, isTrue);
+      expect(msg.text, 'lin joined the room');
+      expect(msg.timestamp, isNotNull);
+
+      await store.dispose();
+      await sync.dispose();
+    },
+  );
+
+  test('stamps isMine on messages from our assigned username', () async {
     final sync = FakeSync();
     final store = ChatStore(sync: sync);
 
-    store.addSystem('lin joined the room');
+    sync.connectedAs('meow');
+    sync.incoming(const ChatMessage(username: 'meow', text: 'mine'));
+    sync.incoming(const ChatMessage(username: 'lin', text: 'theirs'));
     await Future<void>.delayed(Duration.zero);
 
-    expect(sync.sent, isEmpty); // never transmitted
-    final msg = store.messages.single;
-    expect(msg.system, isTrue);
-    expect(msg.text, 'lin joined the room');
-    expect(msg.timestamp, isNotNull);
+    final byText = {for (final m in store.messages) m.text: m.isMine};
+    expect(byText['mine'], isTrue);
+    expect(byText['theirs'], isFalse);
+    await store.dispose();
+    await sync.dispose();
+  });
 
+  test('a message arriving before any connection state is not mine', () async {
+    final sync = FakeSync();
+    final store = ChatStore(sync: sync);
+
+    sync.incoming(const ChatMessage(username: 'meow', text: 'early'));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(store.messages.single.isMine, isFalse);
+    await store.dispose();
+    await sync.dispose();
+  });
+
+  test('tracks ownership across a reconnect rename (collision dedupe)', () async {
+    // The server can hand us a different name on reconnect ("meow" -> "meow_").
+    // Ownership is stamped at receipt against our *current* name, so a message
+    // received while we were "meow" stays ours, and our later echoes arrive
+    // under "meow_". This is the #40/#77 flip the fix targets.
+    final sync = FakeSync();
+    final store = ChatStore(sync: sync);
+
+    sync.connectedAs('meow');
+    sync.incoming(const ChatMessage(username: 'meow', text: 'before'));
+    sync.connectedAs('meow_');
+    sync.incoming(const ChatMessage(username: 'meow_', text: 'after'));
+    // A peer has since claimed the name the server freed when it renamed us.
+    // Their messages under the old name must NOT count as ours.
+    sync.incoming(const ChatMessage(username: 'meow', text: 'peer-took-old'));
+    sync.incoming(const ChatMessage(username: 'lin', text: 'peer'));
+    await Future<void>.delayed(Duration.zero);
+
+    final byText = {for (final m in store.messages) m.text: m.isMine};
+    expect(byText['before'], isTrue); // stamped while we were "meow"
+    expect(byText['after'], isTrue); // our echo under the new name
+    expect(byText['peer-took-old'], isFalse); // freed name, now a peer's
+    expect(byText['peer'], isFalse);
     await store.dispose();
     await sync.dispose();
   });

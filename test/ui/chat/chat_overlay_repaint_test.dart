@@ -47,7 +47,6 @@ void main() {
               CustomPaint(painter: probe, child: const SizedBox.expand()),
               ChatOverlay(
                 messages: const [],
-                myUsername: 'me',
                 collapsed: false,
                 onSend: (_) {},
                 onToggleCollapsed: () {},
@@ -117,7 +116,6 @@ void main() {
             ignoring: false,
             child: ChatOverlay(
               messages: const [],
-              myUsername: 'me',
               collapsed: false,
               onSend: (_) {},
               onToggleCollapsed: () {},
