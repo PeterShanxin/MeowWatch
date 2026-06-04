@@ -32,8 +32,8 @@ class ChatStore {
   // initializing formals don't apply here.
   // ignore_for_file: prefer_initializing_formals
   ChatStore({required SyncCore sync, DateTime Function() now = DateTime.now})
-      : _sync = sync,
-        _now = now {
+    : _sync = sync,
+      _now = now {
     _connSub = _sync.connectionState.listen((state) {
       if (state.username != null && state.username!.isNotEmpty) {
         _myAliases.add(state.username!);
@@ -46,6 +46,12 @@ class ChatStore {
   final DateTime Function() _now;
   late final StreamSubscription<ChatMessage> _sub;
   late final StreamSubscription<SyncConnectionState> _connSub;
+  // Every name the server has assigned us this session. The server may rename us
+  // on reconnect (collision dedupe: "meow" -> "meow_"), so we accumulate rather
+  // than replace — a message echoed under any past alias is still ours. Names
+  // are never removed; the store lives for the whole app session, and the only
+  // theoretical cost is a peer who later reuses an old alias of ours being
+  // mis-stamped as mine — an acceptable edge for a co-watch app.
   final Set<String> _myAliases = <String>{};
 
   final List<ChatMessage> _messages = <ChatMessage>[];
@@ -79,12 +85,14 @@ class ChatStore {
       }
       return; // Control messages never appear in chat history.
     }
-    _messages.add(m.timestamp == null
-        ? m.copyWith(
-            timestamp: _now(),
-            isMine: _myAliases.contains(m.username),
-          )
-        : m);
+    _messages.add(
+      m.timestamp == null
+          ? m.copyWith(
+              timestamp: _now(),
+              isMine: _myAliases.contains(m.username),
+            )
+          : m,
+    );
     _controller.add(messages);
   }
 
@@ -97,7 +105,9 @@ class ChatStore {
   /// Append a local-only event line (e.g. "lin joined the room"). Not sent over
   /// the wire — each client annotates its own history.
   void addSystem(String text) {
-    _messages.add(ChatMessage(username: '', text: text, timestamp: _now(), system: true));
+    _messages.add(
+      ChatMessage(username: '', text: text, timestamp: _now(), system: true),
+    );
     _controller.add(messages);
   }
 

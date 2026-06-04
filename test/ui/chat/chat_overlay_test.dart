@@ -9,23 +9,25 @@ import 'package:meowwatch/ui/chat/peek_tab.dart';
 
 void main() {
   Widget host(Widget child) => MaterialApp(
-        theme: themeDataFor(MeowThemeId.cozy),
-        home: Scaffold(
-          body: Stack(children: [child]),
-        ),
-      );
+    theme: themeDataFor(MeowThemeId.cozy),
+    home: Scaffold(body: Stack(children: [child])),
+  );
 
   testWidgets('renders messages and an input when expanded', (tester) async {
-    await tester.pumpWidget(host(ChatOverlay(
-      messages: const [
-        ChatMessage(username: 'lin', text: 'hi', isMine: false),
-        ChatMessage(username: 'me', text: 'yo', isMine: true),
-      ],
-      collapsed: false,
-      onSend: (_) {},
-      onToggleCollapsed: () {},
-      onSnap: (_) {},
-    )));
+    await tester.pumpWidget(
+      host(
+        ChatOverlay(
+          messages: const [
+            ChatMessage(username: 'lin', text: 'hi', isMine: false),
+            ChatMessage(username: 'me', text: 'yo', isMine: true),
+          ],
+          collapsed: false,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        ),
+      ),
+    );
 
     expect(find.text('hi'), findsOneWidget);
     expect(find.text('yo'), findsOneWidget);
@@ -34,13 +36,19 @@ void main() {
   });
 
   testWidgets('renders only the peek tab when collapsed', (tester) async {
-    await tester.pumpWidget(host(ChatOverlay(
-      messages: const [ChatMessage(username: 'lin', text: 'hi', isMine: false)],
-      collapsed: true,
-      onSend: (_) {},
-      onToggleCollapsed: () {},
-      onSnap: (_) {},
-    )));
+    await tester.pumpWidget(
+      host(
+        ChatOverlay(
+          messages: const [
+            ChatMessage(username: 'lin', text: 'hi', isMine: false),
+          ],
+          collapsed: true,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        ),
+      ),
+    );
 
     expect(find.byType(PeekTab), findsOneWidget);
     expect(find.byType(ChatInput), findsNothing);
@@ -49,13 +57,17 @@ void main() {
 
   testWidgets('tapping the peek tab requests expand', (tester) async {
     var toggled = false;
-    await tester.pumpWidget(host(ChatOverlay(
-      messages: const [],
-      collapsed: true,
-      onSend: (_) {},
-      onToggleCollapsed: () => toggled = true,
-      onSnap: (_) {},
-    )));
+    await tester.pumpWidget(
+      host(
+        ChatOverlay(
+          messages: const [],
+          collapsed: true,
+          onSend: (_) {},
+          onToggleCollapsed: () => toggled = true,
+          onSnap: (_) {},
+        ),
+      ),
+    );
 
     await tester.tap(find.byType(PeekTab));
     await tester.pump();
@@ -68,16 +80,20 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
 
-    await tester.pumpWidget(host(ChatOverlay(
-      messages: const [
-        ChatMessage(username: 'lin', text: 'hi', isMine: false),
-        ChatMessage(username: 'me', text: 'yo', isMine: true),
-      ],
-      collapsed: false,
-      onSend: (_) {},
-      onToggleCollapsed: () {},
-      onSnap: (_) {},
-    )));
+    await tester.pumpWidget(
+      host(
+        ChatOverlay(
+          messages: const [
+            ChatMessage(username: 'lin', text: 'hi', isMine: false),
+            ChatMessage(username: 'me', text: 'yo', isMine: true),
+          ],
+          collapsed: false,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        ),
+      ),
+    );
     await tester.pump();
 
     // The drag handle anchors the header; grabbing it should move the card
@@ -106,13 +122,19 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
 
-    await tester.pumpWidget(host(ChatOverlay(
-      messages: const [ChatMessage(username: 'lin', text: 'hi', isMine: false)],
-      collapsed: false,
-      onSend: (_) {},
-      onToggleCollapsed: () {},
-      onSnap: (_) {},
-    )));
+    await tester.pumpWidget(
+      host(
+        ChatOverlay(
+          messages: const [
+            ChatMessage(username: 'lin', text: 'hi', isMine: false),
+          ],
+          collapsed: false,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        ),
+      ),
+    );
     await tester.pump();
 
     // No hints at rest.
@@ -141,13 +163,15 @@ void main() {
   });
 
   testWidgets('opening the card focuses the message box', (tester) async {
-    Widget overlay(bool collapsed) => host(ChatOverlay(
-          messages: const [],
-              collapsed: collapsed,
-          onSend: (_) {},
-          onToggleCollapsed: () {},
-          onSnap: (_) {},
-        ));
+    Widget overlay(bool collapsed) => host(
+      ChatOverlay(
+        messages: const [],
+        collapsed: collapsed,
+        onSend: (_) {},
+        onToggleCollapsed: () {},
+        onSnap: (_) {},
+      ),
+    );
 
     // Start collapsed (peek tab) — no text field, nothing focused.
     await tester.pumpWidget(overlay(true));
@@ -166,22 +190,26 @@ void main() {
   // list children are not matched by find.text, so finding the last message
   // proves the list scrolled down to it.
   List<ChatMessage> manyMessages(int n) => [
-        for (var i = 0; i < n; i++) ChatMessage(username: 'lin', text: 'msg-$i', isMine: false),
-      ];
+    for (var i = 0; i < n; i++)
+      ChatMessage(username: 'lin', text: 'msg-$i', isMine: false),
+  ];
 
-  testWidgets('a new message scrolls into view if already at bottom',
-      (tester) async {
+  testWidgets('a new message scrolls into view if already at bottom', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
 
-    Widget overlay(List<ChatMessage> messages) => host(ChatOverlay(
-          messages: messages,
-              collapsed: false,
-          onSend: (_) {},
-          onToggleCollapsed: () {},
-          onSnap: (_) {},
-        ));
+    Widget overlay(List<ChatMessage> messages) => host(
+      ChatOverlay(
+        messages: messages,
+        collapsed: false,
+        onSend: (_) {},
+        onToggleCollapsed: () {},
+        onSnap: (_) {},
+      ),
+    );
 
     await tester.pumpWidget(overlay(manyMessages(40)));
     await tester.pumpAndSettle();
@@ -196,19 +224,22 @@ void main() {
     expect(find.text('msg-40'), findsOneWidget);
   });
 
-  testWidgets('a new message shows unread badge if scrolled up',
-      (tester) async {
+  testWidgets('a new message shows unread badge if scrolled up', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
 
-    Widget overlay(List<ChatMessage> messages) => host(ChatOverlay(
-          messages: messages,
-              collapsed: false,
-          onSend: (_) {},
-          onToggleCollapsed: () {},
-          onSnap: (_) {},
-        ));
+    Widget overlay(List<ChatMessage> messages) => host(
+      ChatOverlay(
+        messages: messages,
+        collapsed: false,
+        onSend: (_) {},
+        onToggleCollapsed: () {},
+        onSnap: (_) {},
+      ),
+    );
 
     await tester.pumpWidget(overlay(manyMessages(40)));
     await tester.pumpAndSettle();
@@ -240,26 +271,30 @@ void main() {
     final unreadEvents = <bool>[];
     late StateSetter setOuter;
 
-    await tester.pumpWidget(host(StatefulBuilder(
-      builder: (context, setState) {
-        setOuter = setState;
-        return ChatOverlay(
-          messages: manyMessages(count),
+    await tester.pumpWidget(
+      host(
+        StatefulBuilder(
+          builder: (context, setState) {
+            setOuter = setState;
+            return ChatOverlay(
+              messages: manyMessages(count),
               collapsed: false,
-          onSend: (_) {},
-          onToggleCollapsed: () {},
-          onSnap: (_) {},
-          // Mirror HomeScreen: the callback drives a parent setState. The new
-          // message arrives via didUpdateWidget (the parent's build phase), so
-          // firing this synchronously would throw "setState() called during
-          // build" — it must be deferred past the frame.
-          onUnreadChanged: (has) {
-            unreadEvents.add(has);
-            setOuter(() {});
+              onSend: (_) {},
+              onToggleCollapsed: () {},
+              onSnap: (_) {},
+              // Mirror HomeScreen: the callback drives a parent setState. The new
+              // message arrives via didUpdateWidget (the parent's build phase), so
+              // firing this synchronously would throw "setState() called during
+              // build" — it must be deferred past the frame.
+              onUnreadChanged: (has) {
+                unreadEvents.add(has);
+                setOuter(() {});
+              },
+            );
           },
-        );
-      },
-    )));
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     // First build doesn't auto-scroll, so the card is scrolled up: a new
     // message bumps unread rather than scrolling into view.
@@ -278,14 +313,15 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
 
-    Widget overlay({required bool collapsed, required int count}) =>
-        host(ChatOverlay(
-          messages: manyMessages(count),
-              collapsed: collapsed,
-          onSend: (_) {},
-          onToggleCollapsed: () {},
-          onSnap: (_) {},
-        ));
+    Widget overlay({required bool collapsed, required int count}) => host(
+      ChatOverlay(
+        messages: manyMessages(count),
+        collapsed: collapsed,
+        onSend: (_) {},
+        onToggleCollapsed: () {},
+        onSnap: (_) {},
+      ),
+    );
 
     // Collapsed with a backlog: the list is unmounted, so no scroll runs.
     await tester.pumpWidget(overlay(collapsed: true, count: 40));
@@ -309,14 +345,15 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
 
-    Widget overlay({required bool collapsed, required int count}) =>
-        host(ChatOverlay(
-          messages: manyMessages(count),
-              collapsed: collapsed,
-          onSend: (_) {},
-          onToggleCollapsed: () {},
-          onSnap: (_) {},
-        ));
+    Widget overlay({required bool collapsed, required int count}) => host(
+      ChatOverlay(
+        messages: manyMessages(count),
+        collapsed: collapsed,
+        onSend: (_) {},
+        onToggleCollapsed: () {},
+        onSnap: (_) {},
+      ),
+    );
 
     // Open with a backlog, then collapse: a message that lands while collapsed
     // marks the unread boundary (divider just above the first unread one).
@@ -341,20 +378,23 @@ void main() {
     expect(find.text('New Messages'), findsNothing);
   });
 
-  testWidgets('typing indicator toggling does not resize the message list',
-      (tester) async {
+  testWidgets('typing indicator toggling does not resize the message list', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
 
-    Widget overlay(String? typingLabel) => host(ChatOverlay(
-          messages: manyMessages(40),
-              collapsed: false,
-          onSend: (_) {},
-          onToggleCollapsed: () {},
-          onSnap: (_) {},
-          typingLabel: typingLabel,
-        ));
+    Widget overlay(String? typingLabel) => host(
+      ChatOverlay(
+        messages: manyMessages(40),
+        collapsed: false,
+        onSend: (_) {},
+        onToggleCollapsed: () {},
+        onSnap: (_) {},
+        typingLabel: typingLabel,
+      ),
+    );
 
     // Nobody typing: measure the list viewport height.
     await tester.pumpWidget(overlay(null));
@@ -370,51 +410,60 @@ void main() {
     expect(heightTyping, heightIdle);
   });
 
-  testWidgets('incoming messages increment unread when isUiIdle is true even if at bottom, and clear on wake', (tester) async {
-    tester.view.physicalSize = const Size(1280, 720);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
+  testWidgets(
+    'incoming messages increment unread when isUiIdle is true even if at bottom, and clear on wake',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 720);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
 
-    var isUiIdle = true;
-    var messageCount = 40;
-    late StateSetter setOuter;
+      var isUiIdle = true;
+      var messageCount = 40;
+      late StateSetter setOuter;
 
-    await tester.pumpWidget(host(StatefulBuilder(
-      builder: (context, setState) {
-        setOuter = setState;
-        return ChatOverlay(
-          messages: manyMessages(messageCount),
-              collapsed: false,
-          isUiIdle: isUiIdle,
-          onSend: (_) {},
-          onToggleCollapsed: () {},
-          onSnap: (_) {},
-        );
-      },
-    )));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        host(
+          StatefulBuilder(
+            builder: (context, setState) {
+              setOuter = setState;
+              return ChatOverlay(
+                messages: manyMessages(messageCount),
+                collapsed: false,
+                isUiIdle: isUiIdle,
+                onSend: (_) {},
+                onToggleCollapsed: () {},
+                onSnap: (_) {},
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    // Scroll to bottom
-    final list = tester.widget<ListView>(find.byType(ListView));
-    list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
-    await tester.pumpAndSettle();
+      // Scroll to bottom
+      final list = tester.widget<ListView>(find.byType(ListView));
+      list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
+      await tester.pumpAndSettle();
 
-    // While idle, an incoming message should NOT clear the unread count, 
-    // even though we are at the bottom.
-    setOuter(() => messageCount = 41);
-    await tester.pumpAndSettle();
+      // While idle, an incoming message should NOT clear the unread count,
+      // even though we are at the bottom.
+      setOuter(() => messageCount = 41);
+      await tester.pumpAndSettle();
 
-    expect(find.text('↓ 1 new message'), findsOneWidget);
+      expect(find.text('↓ 1 new message'), findsOneWidget);
 
-    // Wake the UI
-    setOuter(() => isUiIdle = false);
-    await tester.pumpAndSettle();
+      // Wake the UI
+      setOuter(() => isUiIdle = false);
+      await tester.pumpAndSettle();
 
-    // Since we are at the bottom, waking the UI should clear the unread count
-    expect(find.text('↓ 1 new message'), findsNothing);
-  });
+      // Since we are at the bottom, waking the UI should clear the unread count
+      expect(find.text('↓ 1 new message'), findsNothing);
+    },
+  );
 
-  testWidgets('system messages do not increment unread or show badge', (tester) async {
+  testWidgets('system messages do not increment unread or show badge', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -422,20 +471,24 @@ void main() {
     var messages = manyMessages(40);
     late StateSetter setOuter;
 
-    await tester.pumpWidget(host(StatefulBuilder(
-      builder: (context, setState) {
-        setOuter = setState;
-        return ChatOverlay(
-          messages: messages,
+    await tester.pumpWidget(
+      host(
+        StatefulBuilder(
+          builder: (context, setState) {
+            setOuter = setState;
+            return ChatOverlay(
+              messages: messages,
               collapsed: false,
-          onSend: (_) {},
-          onToggleCollapsed: () {},
-          onSnap: (_) {},
-        );
-      },
-    )));
+              onSend: (_) {},
+              onToggleCollapsed: () {},
+              onSnap: (_) {},
+            );
+          },
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
-    
+
     // First build doesn't auto-scroll, so we are not at bottom.
     // Adding a system message should NOT trigger a new message badge.
     setOuter(() {

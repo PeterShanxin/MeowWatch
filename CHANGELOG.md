@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.16.1-alpha] - 2026-06-04
+- Fixed two long-standing room glitches. First, your own chat messages could show up as if a friend sent them (and vice-versa) after a brief disconnect — the server sometimes hands you a slightly different name when you rejoin, and ownership was decided by comparing names. Each message now remembers whether *you* sent it the moment it arrives, so it stays correct no matter how your name shifts during the session. Second, "continue watching" a file from your history now rejoins the exact room you watched it in, instead of dropping you into whatever room you used most recently. (#40, #77)
+
 ## [0.16.0-alpha] - 2026-06-04
 - On Windows, MeowWatch now asks the graphics chip for a "zero-copy" hardware decode path (`d3d11va`) instead of letting the player pick whatever it likes. The old default sometimes decoded a frame on the GPU, copied it down to ordinary memory, then pushed it back up to the GPU to draw — a wasteful round-trip. The new path keeps each frame on the GPU the whole time, which cuts memory traffic and power draw, most noticeably on Snapdragon X / ARM laptops. If your machine can't do this, the player quietly falls back to software decoding as before, so nothing breaks. Other platforms (macOS, Linux) are unchanged. (#72)
 
