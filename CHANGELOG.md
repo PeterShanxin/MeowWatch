@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.16.0-alpha] - 2026-06-04
+- On Windows, MeowWatch now asks the graphics chip for a "zero-copy" hardware decode path (`d3d11va`) instead of letting the player pick whatever it likes. The old default sometimes decoded a frame on the GPU, copied it down to ordinary memory, then pushed it back up to the GPU to draw — a wasteful round-trip. The new path keeps each frame on the GPU the whole time, which cuts memory traffic and power draw, most noticeably on Snapdragon X / ARM laptops. If your machine can't do this, the player quietly falls back to software decoding as before, so nothing breaks. Other platforms (macOS, Linux) are unchanged. (#72)
+
 ## [0.15.2-alpha] - 2026-06-04
 - Maintenance only, nothing changes in the app: updated the behind-the-scenes build-and-release machinery to the latest tooling that GitHub now requires, and fixed how the release packages the download so updates keep building and shipping to you without interruption.
 

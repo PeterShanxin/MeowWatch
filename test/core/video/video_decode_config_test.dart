@@ -3,12 +3,17 @@ import 'package:meowwatch/core/video/video_decode_config.dart';
 
 void main() {
   group('resolveHwdec', () {
-    test('hardware path resolves to auto-safe (engages Adreno etc.)', () {
-      expect(resolveHwdec(forceSoftware: false), 'auto-safe');
+    test('Windows hardware path resolves to d3d11va (zero-copy)', () {
+      expect(resolveHwdec(forceSoftware: false, isWindows: true), 'd3d11va');
     });
 
-    test('forced-software path resolves to no', () {
-      expect(resolveHwdec(forceSoftware: true), 'no');
+    test('non-Windows hardware path resolves to auto-safe', () {
+      expect(resolveHwdec(forceSoftware: false, isWindows: false), 'auto-safe');
+    });
+
+    test('forced-software path resolves to no, regardless of platform', () {
+      expect(resolveHwdec(forceSoftware: true, isWindows: true), 'no');
+      expect(resolveHwdec(forceSoftware: true, isWindows: false), 'no');
     });
   });
 
