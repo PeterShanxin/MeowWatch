@@ -106,15 +106,13 @@ void main() {
       final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await gesture.addPointer();
 
-      // Enter the widget (just the icon initially, ~48px, centered at 400,300)
       await gesture.moveTo(tester.getCenter(find.byType(VolumeControl)));
       await tester.pump();
       expect(find.byType(Slider), findsOneWidget);
 
-      // Move well below the widget. After slider appears the widget extends
-      // upward (slider 120px + icon 48px = 168px tall, centered at y=300,
-      // so bottom edge ≈ y=384). Moving to y=580 exits the MouseRegion.
-      await gesture.moveTo(const Offset(400, 580));
+      // Move 200px below the widget's bottom edge to guarantee exit.
+      final bottom = tester.getBottomLeft(find.byType(VolumeControl));
+      await gesture.moveTo(bottom + const Offset(0, 200));
       await tester.pump(); // process onExit, schedule hide timer
       await tester.pump(const Duration(milliseconds: 300)); // fire 150ms timer
       await tester.pump(); // process resulting setState

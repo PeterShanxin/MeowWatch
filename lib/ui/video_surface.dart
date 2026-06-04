@@ -141,6 +141,9 @@ class _VideoSurfaceState extends State<VideoSurface> {
     // idle-reset hook never sees them — wake the UI directly, like play/seek.
   }
 
+  // Mute/unmute is intentionally separate from _setVolume: it saves the current
+  // level before zeroing and restores it afterward, rather than tracking the
+  // last non-zero value as a side effect of every level change.
   void _toggleMute() {
     final core = widget.core;
     if (core.state.volume > 0.0) {
@@ -152,6 +155,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
     _handleUserInteraction();
   }
 
+  // Used by both the volume slider and keyboard up/down keys.
   void _setVolume(double volume) {
     if (volume > 0.0) _lastUnmutedVolume = volume;
     widget.core.setVolume(volume);

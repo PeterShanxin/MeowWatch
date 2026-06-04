@@ -35,6 +35,8 @@ class _VolumeControlState extends State<VolumeControl> {
   bool _sliderVisible = false;
   Timer? _hideTimer;
   static const _hideDelay = Duration(milliseconds: 150);
+  static const double _panelWidth = 36;
+  static const double _panelHeight = 120;
 
   void _onEnter(_) {
     _hideTimer?.cancel();
@@ -71,8 +73,8 @@ class _VolumeControlState extends State<VolumeControl> {
         children: [
           if (_sliderVisible)
             Container(
-              width: 36,
-              height: 120,
+              width: _panelWidth,
+              height: _panelHeight,
               margin: const EdgeInsets.only(bottom: Spacing.xs),
               padding: const EdgeInsets.symmetric(vertical: Spacing.sm),
               decoration: BoxDecoration(
@@ -90,9 +92,12 @@ class _VolumeControlState extends State<VolumeControl> {
                     thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                     overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
                   ),
-                  child: Slider(
-                    value: widget.volume.clamp(0.0, 1.0),
-                    onChanged: widget.onSetVolume,
+                  child: Semantics(
+                    label: 'Volume',
+                    child: Slider(
+                      value: widget.volume.clamp(0.0, 1.0),
+                      onChanged: widget.onSetVolume,
+                    ),
                   ),
                 ),
               ),
