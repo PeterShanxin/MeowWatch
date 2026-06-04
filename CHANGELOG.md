@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.18.0-alpha] - 2026-06-04
+- The mouse cursor now hides automatically when you've been watching without touching the mouse for a few seconds, just like the playback bar and chat overlay. Move the mouse and everything — including the cursor — reappears instantly. (#78)
+- The volume button in the playback bar is now a proper volume control: hover over it to reveal a vertical slider you can drag to any level, or click it to mute and unmute. The level you set is remembered, so unmuting restores it instead of jumping back to full. (#80)
+
 ## [0.17.0-alpha] - 2026-06-04
 - MeowWatch now sets `video-sync=display-resample` so mpv locks each frame to your monitor's refresh cycle instead of the audio clock. In practice this means smoother motion and fewer dropped or stuttered frames, especially on high-refresh displays. The change comes with a tiny CPU cost from audio resampling to keep audio and video locked together. If you ever need to revert to the old behaviour (e.g. for a VRR display or sync debugging), set `MEOWWATCH_FORCE_AUDIO_SYNC=1` before launching. (#74)
 

@@ -4,15 +4,18 @@ import '../core/theme/meow_context.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 import '../core/video/playback_state.dart';
+import 'volume_control.dart';
 
 /// Bottom overlay bar: current time, a draggable scrubber, total duration,
-/// and a play/pause button. Auto-hide behaviour is owned by the parent.
+/// a play/pause button, and a volume control (hover-to-slider, tap-to-mute).
+/// Auto-hide behaviour is owned by the parent.
 class PlaybackBar extends StatelessWidget {
   const PlaybackBar({
     required this.state,
     required this.onSeek,
     required this.onTogglePlay,
     required this.onToggleMute,
+    required this.onSetVolume,
     super.key,
   });
 
@@ -20,6 +23,7 @@ class PlaybackBar extends StatelessWidget {
   final ValueChanged<Duration> onSeek;
   final VoidCallback onTogglePlay;
   final VoidCallback onToggleMute;
+  final ValueChanged<double> onSetVolume;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +45,7 @@ class PlaybackBar extends StatelessWidget {
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           IconButton(
             onPressed: onTogglePlay,
@@ -74,16 +79,10 @@ class PlaybackBar extends StatelessWidget {
           ),
           Text(_fmt(state.duration),
               style: TextStyle(color: m.textPrimary, fontSize: TypeScale.body)),
-          IconButton(
-            onPressed: onToggleMute,
-            icon: Icon(
-              state.volume <= 0.0
-                  ? Icons.volume_off_rounded
-                  : state.volume < 0.5
-                      ? Icons.volume_down_rounded
-                      : Icons.volume_up_rounded,
-              color: m.textPrimary,
-            ),
+          VolumeControl(
+            volume: state.volume,
+            onSetVolume: onSetVolume,
+            onToggleMute: onToggleMute,
           ),
         ],
       ),
