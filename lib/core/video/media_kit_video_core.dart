@@ -27,25 +27,35 @@ class MediaKitVideoCore extends VideoCore {
 
   Player get player => _player;
 
-  /// Configure the libmpv `hwdec` property. Defaults to hardware decoding —
-  /// zero-copy `d3d11va` on Windows, `auto-safe` elsewhere — a big
-  /// CPU/battery/heat win on Snapdragon X / Adreno and other GPUs, with
-  /// automatic software fallback where HW decode is unavailable. Set
-  /// [forceSoftwareDecodeEnvVar] to force software decode for
-  /// two-instance-on-one-PC local testing (the two instances would otherwise
-  /// contend for the single hardware decoder session and the second would stall
-  /// at frame 0). See [video_decode_config.dart] for the full rationale.
+  /// Configure libmpv decode and sync properties. Reads [Platform.environment]
+  /// once so both env lookups share the same snapshot.
+  ///
+  /// **hwdec:** defaults to hardware decoding — zero-copy `d3d11va` on Windows,
+  /// `auto-safe` elsewhere. Set [forceSoftwareDecodeEnvVar] for
+  /// two-instance-on-one-PC local testing. See [video_decode_config.dart].
+  ///
+  /// **video-sync:** defaults to `display-resample` — locks frame presentation
+  /// to the monitor refresh rate, resampling audio slightly to maintain A/V
+  /// lock. Reduces judder and dropped frames. Set [forceAudioSyncEnvVar] to
+  /// revert to mpv's `audio` (audio-clock master) mode, e.g. for VRR monitors
+  /// or sync debugging.
   void _configureDecoding() {
     final platform = _player.platform;
     if (platform is NativePlayer) {
-      final forceSoftware = forceSoftwareDecodeFromEnv(Platform.environment);
+      final env = Platform.environment;
       unawaited(
         platform.setProperty(
           'hwdec',
           resolveHwdec(
-            forceSoftware: forceSoftware,
+            forceSoftware: forceSoftwareDecodeFromEnv(env),
             isWindows: Platform.isWindows,
           ),
+        ),
+      );
+      unawaited(
+        platform.setProperty(
+          'video-sync',
+          resolveVideoSync(forceAudioSync: forceAudioSyncFromEnv(env)),
         ),
       );
     }

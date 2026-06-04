@@ -17,6 +17,69 @@ void main() {
     });
   });
 
+  group('resolveVideoSync', () {
+    test('default resolves to display-resample', () {
+      expect(resolveVideoSync(forceAudioSync: false), 'display-resample');
+    });
+
+    test('forced-audio-sync resolves to audio (mpv default)', () {
+      expect(resolveVideoSync(forceAudioSync: true), 'audio');
+    });
+  });
+
+  group('forceAudioSyncFromEnv', () {
+    test('unset env var means display-resample (false)', () {
+      expect(forceAudioSyncFromEnv(const {}), isFalse);
+    });
+
+    test('"1" forces audio sync', () {
+      expect(
+        forceAudioSyncFromEnv(const {forceAudioSyncEnvVar: '1'}),
+        isTrue,
+      );
+    });
+
+    test('"true" forces audio sync regardless of case', () {
+      expect(
+        forceAudioSyncFromEnv(const {forceAudioSyncEnvVar: 'TRUE'}),
+        isTrue,
+      );
+    });
+
+    test('"yes" and "on" force audio sync', () {
+      expect(
+        forceAudioSyncFromEnv(const {forceAudioSyncEnvVar: 'yes'}),
+        isTrue,
+      );
+      expect(
+        forceAudioSyncFromEnv(const {forceAudioSyncEnvVar: 'on'}),
+        isTrue,
+      );
+    });
+
+    test('surrounding whitespace is tolerated', () {
+      expect(
+        forceAudioSyncFromEnv(const {forceAudioSyncEnvVar: '  1  '}),
+        isTrue,
+      );
+    });
+
+    test('"0", "false", and empty mean display-resample (false)', () {
+      expect(
+        forceAudioSyncFromEnv(const {forceAudioSyncEnvVar: '0'}),
+        isFalse,
+      );
+      expect(
+        forceAudioSyncFromEnv(const {forceAudioSyncEnvVar: 'false'}),
+        isFalse,
+      );
+      expect(
+        forceAudioSyncFromEnv(const {forceAudioSyncEnvVar: ''}),
+        isFalse,
+      );
+    });
+  });
+
   group('forceSoftwareDecodeFromEnv', () {
     test('unset env var means hardware decode (false)', () {
       expect(forceSoftwareDecodeFromEnv(const {}), isFalse);
