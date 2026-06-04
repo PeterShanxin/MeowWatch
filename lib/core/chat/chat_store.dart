@@ -36,7 +36,7 @@ class ChatStore {
       _now = now {
     _connSub = _sync.connectionState.listen((state) {
       if (state.username != null && state.username!.isNotEmpty) {
-        _myAliases.add(state.username!);
+        _myUsername = state.username;
       }
     });
     _sub = _sync.chat.listen(_onChat);
@@ -46,13 +46,13 @@ class ChatStore {
   final DateTime Function() _now;
   late final StreamSubscription<ChatMessage> _sub;
   late final StreamSubscription<SyncConnectionState> _connSub;
-  // Every name the server has assigned us this session. The server may rename us
-  // on reconnect (collision dedupe: "meow" -> "meow_"), so we accumulate rather
-  // than replace — a message echoed under any past alias is still ours. Names
-  // are never removed; the store lives for the whole app session, and the only
-  // theoretical cost is a peer who later reuses an old alias of ours being
-  // mis-stamped as mine — an acceptable edge for a co-watch app.
-  final Set<String> _myAliases = <String>{};
+  // The name the server currently has us under. The server may rename us on
+  // (re)connect to dedupe a collision ("meow" -> "meow_"); we always track the
+  // latest assignment. Ownership is stamped at receipt against this current
+  // name only — we deliberately do NOT remember past names, because once the
+  // server frees an old name a peer can claim it, and their messages must not
+  // count as ours.
+  String? _myUsername;
 
   final List<ChatMessage> _messages = <ChatMessage>[];
   final StreamController<List<ChatMessage>> _controller =
@@ -87,10 +87,7 @@ class ChatStore {
     }
     _messages.add(
       m.timestamp == null
-          ? m.copyWith(
-              timestamp: _now(),
-              isMine: _myAliases.contains(m.username),
-            )
+          ? m.copyWith(timestamp: _now(), isMine: m.username == _myUsername)
           : m,
     );
     _controller.add(messages);

@@ -180,9 +180,11 @@ void main() {
     await sync.dispose();
   });
 
-  test('keeps ownership across a reconnect rename (collision dedupe)', () async {
+  test('tracks ownership across a reconnect rename (collision dedupe)', () async {
     // The server can hand us a different name on reconnect ("meow" -> "meow_").
-    // Both names are ours; a peer's name is not. This is the #40/#77 flip.
+    // Ownership is stamped at receipt against our *current* name, so a message
+    // received while we were "meow" stays ours, and our later echoes arrive
+    // under "meow_". This is the #40/#77 flip the fix targets.
     final sync = FakeSync();
     final store = ChatStore(sync: sync);
 
@@ -190,14 +192,16 @@ void main() {
     sync.incoming(const ChatMessage(username: 'meow', text: 'before'));
     sync.connectedAs('meow_');
     sync.incoming(const ChatMessage(username: 'meow_', text: 'after'));
-    sync.incoming(const ChatMessage(username: 'meow', text: 'old-alias'));
+    // A peer has since claimed the name the server freed when it renamed us.
+    // Their messages under the old name must NOT count as ours.
+    sync.incoming(const ChatMessage(username: 'meow', text: 'peer-took-old'));
     sync.incoming(const ChatMessage(username: 'lin', text: 'peer'));
     await Future<void>.delayed(Duration.zero);
 
     final byText = {for (final m in store.messages) m.text: m.isMine};
-    expect(byText['before'], isTrue);
-    expect(byText['after'], isTrue);
-    expect(byText['old-alias'], isTrue); // earlier alias still counts as ours
+    expect(byText['before'], isTrue); // stamped while we were "meow"
+    expect(byText['after'], isTrue); // our echo under the new name
+    expect(byText['peer-took-old'], isFalse); // freed name, now a peer's
     expect(byText['peer'], isFalse);
     await store.dispose();
     await sync.dispose();
