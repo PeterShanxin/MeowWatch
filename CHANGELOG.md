@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.17.0-alpha] - 2026-06-04
+- MeowWatch now sets `video-sync=display-resample` so mpv locks each frame to your monitor's refresh cycle instead of the audio clock. In practice this means smoother motion and fewer dropped or stuttered frames, especially on high-refresh displays. The change comes with a tiny CPU cost from audio resampling to keep audio and video locked together. If you ever need to revert to the old behaviour (e.g. for a VRR display or sync debugging), set `MEOWWATCH_FORCE_AUDIO_SYNC=1` before launching. (#74)
+
 ## [0.16.1-alpha] - 2026-06-04
 - Fixed two long-standing room glitches. First, your own chat messages could show up as if a friend sent them (and vice-versa) after a brief disconnect — the server sometimes hands you a slightly different name when you rejoin, and ownership was decided by comparing names. Each message now remembers whether *you* sent it the moment it arrives, so it stays correct no matter how your name shifts during the session. Second, "continue watching" a file from your history now rejoins the exact room you watched it in, instead of dropping you into whatever room you used most recently. (#40, #77)
 

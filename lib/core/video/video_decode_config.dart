@@ -49,3 +49,31 @@ bool forceSoftwareDecodeFromEnv(Map<String, String> environment) {
   final raw = environment[forceSoftwareDecodeEnvVar]?.trim().toLowerCase();
   return raw == '1' || raw == 'true' || raw == 'yes' || raw == 'on';
 }
+
+/// Environment variable that, when truthy, reverts video sync to mpv's default
+/// audio-clock mode (`video-sync=audio`).
+///
+/// Set it before launching to disable display-resample, e.g. for VRR monitors,
+/// multi-monitor setups, or sync debugging:
+/// PowerShell: `$env:MEOWWATCH_FORCE_AUDIO_SYNC = '1'`.
+const String forceAudioSyncEnvVar = 'MEOWWATCH_FORCE_AUDIO_SYNC';
+
+/// The mpv `video-sync` property value for the chosen sync mode.
+///
+/// - [forceAudioSync] true → `'audio'` (mpv default; audio clock is master).
+/// - Otherwise → `'display-resample'`: locks frame presentation to the monitor
+///   refresh rate, resampling audio slightly to maintain A/V lock. Reduces
+///   judder and dropped frames on the primary display at the cost of a small
+///   CPU overhead for the resampler.
+String resolveVideoSync({required bool forceAudioSync}) {
+  return forceAudioSync ? 'audio' : 'display-resample';
+}
+
+/// Whether [environment] requests forced audio-clock sync via
+/// [forceAudioSyncEnvVar]. Accepts `1`, `true`, `yes`, `on`
+/// (case-insensitive, whitespace-trimmed); anything else — including unset,
+/// empty, `0`, and `false` — means display-resample.
+bool forceAudioSyncFromEnv(Map<String, String> environment) {
+  final raw = environment[forceAudioSyncEnvVar]?.trim().toLowerCase();
+  return raw == '1' || raw == 'true' || raw == 'yes' || raw == 'on';
+}
