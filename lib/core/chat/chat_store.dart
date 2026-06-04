@@ -34,12 +34,19 @@ class ChatStore {
   ChatStore({required SyncCore sync, DateTime Function() now = DateTime.now})
       : _sync = sync,
         _now = now {
+    _connSub = _sync.connectionState.listen((state) {
+      if (state.username != null && state.username!.isNotEmpty) {
+        _myAliases.add(state.username!);
+      }
+    });
     _sub = _sync.chat.listen(_onChat);
   }
 
   final SyncCore _sync;
   final DateTime Function() _now;
   late final StreamSubscription<ChatMessage> _sub;
+  late final StreamSubscription<SyncConnectionState> _connSub;
+  final Set<String> _myAliases = <String>{};
 
   final List<ChatMessage> _messages = <ChatMessage>[];
   final StreamController<List<ChatMessage>> _controller =
@@ -72,7 +79,12 @@ class ChatStore {
       }
       return; // Control messages never appear in chat history.
     }
-    _messages.add(m.timestamp == null ? m.copyWith(timestamp: _now()) : m);
+    _messages.add(m.timestamp == null
+        ? m.copyWith(
+            timestamp: _now(),
+            isMine: _myAliases.contains(m.username),
+          )
+        : m);
     _controller.add(messages);
   }
 
@@ -97,6 +109,7 @@ class ChatStore {
       _sync.sendChat(encodeTyping(isTyping));
 
   Future<void> dispose() async {
+    await _connSub.cancel();
     await _sub.cancel();
     await _controller.close();
     await _reactions.close();

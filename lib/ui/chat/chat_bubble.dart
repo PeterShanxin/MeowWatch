@@ -13,13 +13,11 @@ class ChatBubble extends StatelessWidget {
   const ChatBubble({
     super.key,
     required this.message,
-    required this.myUsername,
   });
 
   final ChatMessage message;
-  final String myUsername;
 
-  bool get _mine => message.username == myUsername;
+  bool get _mine => message.isMine;
 
   String _hhmm(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';

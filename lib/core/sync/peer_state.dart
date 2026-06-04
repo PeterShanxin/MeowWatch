@@ -136,6 +136,7 @@ class ChatMessage {
     required this.text,
     this.timestamp,
     this.system = false,
+    this.isMine = false,
   });
 
   final String username;
@@ -149,11 +150,17 @@ class ChatMessage {
   /// dim rather than as a chat bubble. Never sent over the wire.
   final bool system;
 
-  ChatMessage copyWith({DateTime? timestamp}) => ChatMessage(
+  /// True if this message was sent by the local user. Stamped by the chat store
+  /// upon receipt, so it remains accurate even if the user's name changes
+  /// during a reconnection.
+  final bool isMine;
+
+  ChatMessage copyWith({DateTime? timestamp, bool? isMine}) => ChatMessage(
         username: username,
         text: text,
         timestamp: timestamp ?? this.timestamp,
         system: system,
+        isMine: isMine ?? this.isMine,
       );
 
   @override
@@ -162,10 +169,11 @@ class ChatMessage {
       other.username == username &&
       other.text == text &&
       other.timestamp == timestamp &&
-      other.system == system;
+      other.system == system &&
+      other.isMine == isMine;
 
   @override
-  int get hashCode => Object.hash(username, text, timestamp, system);
+  int get hashCode => Object.hash(username, text, timestamp, system, isMine);
 }
 
 /// A deliberate playback action a peer took (play/pause/seek), surfaced as a

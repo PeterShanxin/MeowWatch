@@ -359,17 +359,14 @@ class ComponentZoo extends StatelessWidget {
             children: [
               ChatBubble(
                 message: ChatMessage(username: 'Mochi', text: 'this part is so good omg', timestamp: stamp),
-                myUsername: me,
               ),
               const SizedBox(height: Spacing.xs),
               ChatBubble(
                 message: ChatMessage(username: me, text: 'right?? rewinding 10s', timestamp: stamp),
-                myUsername: me,
               ),
               const SizedBox(height: Spacing.xs),
               const ChatBubble(
                 message: ChatMessage(username: '', text: '🐾 Mochi joined the room', system: true),
-                myUsername: me,
               ),
             ],
           ),

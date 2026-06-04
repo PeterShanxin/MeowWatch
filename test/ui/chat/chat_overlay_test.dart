@@ -18,10 +18,9 @@ void main() {
   testWidgets('renders messages and an input when expanded', (tester) async {
     await tester.pumpWidget(host(ChatOverlay(
       messages: const [
-        ChatMessage(username: 'lin', text: 'hi'),
-        ChatMessage(username: 'me', text: 'yo'),
+        ChatMessage(username: 'lin', text: 'hi', isMine: false),
+        ChatMessage(username: 'me', text: 'yo', isMine: true),
       ],
-      myUsername: 'me',
       collapsed: false,
       onSend: (_) {},
       onToggleCollapsed: () {},
@@ -36,8 +35,7 @@ void main() {
 
   testWidgets('renders only the peek tab when collapsed', (tester) async {
     await tester.pumpWidget(host(ChatOverlay(
-      messages: const [ChatMessage(username: 'lin', text: 'hi')],
-      myUsername: 'me',
+      messages: const [ChatMessage(username: 'lin', text: 'hi', isMine: false)],
       collapsed: true,
       onSend: (_) {},
       onToggleCollapsed: () {},
@@ -53,7 +51,6 @@ void main() {
     var toggled = false;
     await tester.pumpWidget(host(ChatOverlay(
       messages: const [],
-      myUsername: 'me',
       collapsed: true,
       onSend: (_) {},
       onToggleCollapsed: () => toggled = true,
@@ -73,10 +70,9 @@ void main() {
 
     await tester.pumpWidget(host(ChatOverlay(
       messages: const [
-        ChatMessage(username: 'lin', text: 'hi'),
-        ChatMessage(username: 'me', text: 'yo'),
+        ChatMessage(username: 'lin', text: 'hi', isMine: false),
+        ChatMessage(username: 'me', text: 'yo', isMine: true),
       ],
-      myUsername: 'me',
       collapsed: false,
       onSend: (_) {},
       onToggleCollapsed: () {},
@@ -111,8 +107,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     await tester.pumpWidget(host(ChatOverlay(
-      messages: const [ChatMessage(username: 'lin', text: 'hi')],
-      myUsername: 'me',
+      messages: const [ChatMessage(username: 'lin', text: 'hi', isMine: false)],
       collapsed: false,
       onSend: (_) {},
       onToggleCollapsed: () {},
@@ -148,8 +143,7 @@ void main() {
   testWidgets('opening the card focuses the message box', (tester) async {
     Widget overlay(bool collapsed) => host(ChatOverlay(
           messages: const [],
-          myUsername: 'me',
-          collapsed: collapsed,
+              collapsed: collapsed,
           onSend: (_) {},
           onToggleCollapsed: () {},
           onSnap: (_) {},
@@ -172,7 +166,7 @@ void main() {
   // list children are not matched by find.text, so finding the last message
   // proves the list scrolled down to it.
   List<ChatMessage> manyMessages(int n) => [
-        for (var i = 0; i < n; i++) ChatMessage(username: 'lin', text: 'msg-$i'),
+        for (var i = 0; i < n; i++) ChatMessage(username: 'lin', text: 'msg-$i', isMine: false),
       ];
 
   testWidgets('a new message scrolls into view if already at bottom',
@@ -183,8 +177,7 @@ void main() {
 
     Widget overlay(List<ChatMessage> messages) => host(ChatOverlay(
           messages: messages,
-          myUsername: 'me',
-          collapsed: false,
+              collapsed: false,
           onSend: (_) {},
           onToggleCollapsed: () {},
           onSnap: (_) {},
@@ -211,8 +204,7 @@ void main() {
 
     Widget overlay(List<ChatMessage> messages) => host(ChatOverlay(
           messages: messages,
-          myUsername: 'me',
-          collapsed: false,
+              collapsed: false,
           onSend: (_) {},
           onToggleCollapsed: () {},
           onSnap: (_) {},
@@ -253,8 +245,7 @@ void main() {
         setOuter = setState;
         return ChatOverlay(
           messages: manyMessages(count),
-          myUsername: 'me',
-          collapsed: false,
+              collapsed: false,
           onSend: (_) {},
           onToggleCollapsed: () {},
           onSnap: (_) {},
@@ -290,8 +281,7 @@ void main() {
     Widget overlay({required bool collapsed, required int count}) =>
         host(ChatOverlay(
           messages: manyMessages(count),
-          myUsername: 'me',
-          collapsed: collapsed,
+              collapsed: collapsed,
           onSend: (_) {},
           onToggleCollapsed: () {},
           onSnap: (_) {},
@@ -322,8 +312,7 @@ void main() {
     Widget overlay({required bool collapsed, required int count}) =>
         host(ChatOverlay(
           messages: manyMessages(count),
-          myUsername: 'me',
-          collapsed: collapsed,
+              collapsed: collapsed,
           onSend: (_) {},
           onToggleCollapsed: () {},
           onSnap: (_) {},
@@ -360,8 +349,7 @@ void main() {
 
     Widget overlay(String? typingLabel) => host(ChatOverlay(
           messages: manyMessages(40),
-          myUsername: 'me',
-          collapsed: false,
+              collapsed: false,
           onSend: (_) {},
           onToggleCollapsed: () {},
           onSnap: (_) {},
@@ -396,8 +384,7 @@ void main() {
         setOuter = setState;
         return ChatOverlay(
           messages: manyMessages(messageCount),
-          myUsername: 'me',
-          collapsed: false,
+              collapsed: false,
           isUiIdle: isUiIdle,
           onSend: (_) {},
           onToggleCollapsed: () {},
@@ -440,8 +427,7 @@ void main() {
         setOuter = setState;
         return ChatOverlay(
           messages: messages,
-          myUsername: 'me',
-          collapsed: false,
+              collapsed: false,
           onSend: (_) {},
           onToggleCollapsed: () {},
           onSnap: (_) {},

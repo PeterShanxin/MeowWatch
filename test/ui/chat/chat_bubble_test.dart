@@ -17,8 +17,8 @@ void main() {
         username: 'lin',
         text: 'hello there',
         timestamp: DateTime(2026, 5, 28, 9, 5),
+        isMine: false,
       ),
-      myUsername: 'me',
     )));
 
     expect(find.text('hello there'), findsOneWidget);
@@ -28,12 +28,10 @@ void main() {
   testWidgets('friend bubble shows sender name, mine does not', (tester) async {
     await tester.pumpWidget(host(const Column(children: [
       ChatBubble(
-        message: ChatMessage(username: 'lin', text: 'theirs'),
-        myUsername: 'me',
+        message: ChatMessage(username: 'lin', text: 'theirs', isMine: false),
       ),
       ChatBubble(
-        message: ChatMessage(username: 'me', text: 'mine'),
-        myUsername: 'me',
+        message: ChatMessage(username: 'me', text: 'mine', isMine: true),
       ),
     ])));
 
@@ -50,7 +48,6 @@ void main() {
         text: 'lin joined the room',
         system: true,
       ),
-      myUsername: 'me',
     )));
 
     expect(find.text('lin joined the room'), findsOneWidget);
@@ -62,12 +59,10 @@ void main() {
   testWidgets('mine aligns right, friend aligns left', (tester) async {
     await tester.pumpWidget(host(const Column(children: [
       ChatBubble(
-        message: ChatMessage(username: 'me', text: 'mine'),
-        myUsername: 'me',
+        message: ChatMessage(username: 'me', text: 'mine', isMine: true),
       ),
       ChatBubble(
-        message: ChatMessage(username: 'lin', text: 'theirs'),
-        myUsername: 'me',
+        message: ChatMessage(username: 'lin', text: 'theirs', isMine: false),
       ),
     ])));
 
