@@ -162,7 +162,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
             : (recent?.username ?? 'meow');
     // Reflect the resolved name in the field so the user sees who they joined as.
     _name.text = username;
-    final room = recent?.room ?? generateRoomCode();
+    final room = (entry.room != null && entry.room!.isNotEmpty)
+        ? entry.room!
+        : (recent?.room ?? generateRoomCode());
     await _connect(RoomConfig(
       server: recent?.server ?? _serverValue,
       port: recent?.port ?? _portValue,
