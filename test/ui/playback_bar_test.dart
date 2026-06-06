@@ -45,6 +45,8 @@ void main() {
       ),
     ));
     await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    // Drain the play/pause icon's double-tap recognizer countdown timer.
+    await tester.pump(const Duration(milliseconds: 400));
     expect(toggled, isTrue);
   });
 
@@ -64,6 +66,8 @@ void main() {
     ));
     // _sample leaves volume at its 1.0 default → "up" icon.
     await tester.tap(find.byIcon(Icons.volume_up_rounded));
+    // Drain the volume icon's double-tap recognizer countdown timer.
+    await tester.pump(const Duration(milliseconds: 400));
     expect(muted, isTrue);
   });
 

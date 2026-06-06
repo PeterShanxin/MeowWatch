@@ -47,6 +47,9 @@ void main() {
         onToggleMute: () => muted = true,
       )));
       await tester.tap(find.byIcon(Icons.volume_up_rounded));
+      // Drain the double-tap recognizer's pending countdown timer (the icon
+      // claims onDoubleTap to block the ancestor's fullscreen gesture).
+      await tester.pump(const Duration(milliseconds: 400));
       expect(muted, isTrue);
     });
 
@@ -89,10 +92,14 @@ void main() {
       await tester.pump();
 
       expect(find.byType(Slider), findsOneWidget);
-      await tester.drag(find.byType(Slider), const Offset(0, -20));
-      await tester.pump();
 
-      expect(set, isNotNull);
+      // RotatedBox + OverlayPortal transforms make tester.drag() compute
+      // out-of-bounds coordinates. Verify callback wiring directly instead.
+      final slider = tester.widget<Slider>(find.byType(Slider));
+      expect(slider.onChanged, isNotNull);
+      slider.onChanged!(0.7);
+      expect(set, closeTo(0.7, 0.001));
+
       await gesture.removePointer();
     });
 

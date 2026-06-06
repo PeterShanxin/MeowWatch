@@ -4,6 +4,7 @@ import '../core/theme/meow_context.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 import '../core/video/playback_state.dart';
+import 'instant_tap_icon.dart';
 import 'volume_control.dart';
 
 /// Bottom overlay bar: current time, a draggable scrubber, total duration,
@@ -45,14 +46,12 @@ class PlaybackBar extends StatelessWidget {
         ),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          IconButton(
+          InstantTapIcon(
+            icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            color: m.textPrimary,
+            semanticLabel: isPlaying ? 'Pause' : 'Play',
             onPressed: onTogglePlay,
-            icon: Icon(
-              isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              color: m.textPrimary,
-            ),
           ),
           Text(_fmt(state.position),
               style: TextStyle(color: m.textPrimary, fontSize: TypeScale.body)),
