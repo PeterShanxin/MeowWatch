@@ -138,8 +138,12 @@ class _VolumeControlState extends State<VolumeControl> {
     // directly to overlay-local coordinates.
     final topLeft = box.localToGlobal(Offset.zero);
     final iconCenterX = topLeft.dx + box.size.width / 2;
-    final left = iconCenterX - _panelWidth / 2;
-    final top = topLeft.dy - _panelHeight - _gap;
+    // Clamp to the window so the panel can't clip past an edge near a corner.
+    final screen = MediaQuery.sizeOf(context);
+    final left = (iconCenterX - _panelWidth / 2)
+        .clamp(0.0, (screen.width - _panelWidth).clamp(0.0, double.infinity));
+    final top = (topLeft.dy - _panelHeight - _gap)
+        .clamp(0.0, (screen.height - _panelHeight).clamp(0.0, double.infinity));
 
     final m = context.meow;
     return Positioned(

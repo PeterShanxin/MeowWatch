@@ -12,6 +12,10 @@ import 'package:flutter/material.dart';
 /// entirely (instant), while the no-op [GestureDetector] tap/double-tap claim
 /// those gestures for this deeper detector so the ancestor never toggles
 /// play/pause or fullscreen when you click the button.
+///
+/// Keyboard parity with the [IconButton] it replaces is kept via
+/// [FocusableActionDetector]: the button is focusable and Enter/Space activate
+/// it (mapped from [ActivateIntent]).
 class InstantTapIcon extends StatelessWidget {
   const InstantTapIcon({
     required this.icon,
@@ -35,17 +39,29 @@ class InstantTapIcon extends StatelessWidget {
     return Semantics(
       button: true,
       label: semanticLabel,
-      child: Listener(
-        onPointerDown: (_) => onPressed(),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          // No-ops: present only to win these gestures over the ancestor.
-          onTap: () {},
-          onDoubleTap: () {},
-          child: SizedBox(
-            width: size,
-            height: size,
-            child: Center(child: Icon(icon, color: color)),
+      child: FocusableActionDetector(
+        // Restore the keyboard activation the replaced IconButton provided:
+        // focusable, and Enter/Space (→ ActivateIntent) fire onPressed.
+        actions: <Type, Action<Intent>>{
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              onPressed();
+              return null;
+            },
+          ),
+        },
+        child: Listener(
+          onPointerDown: (_) => onPressed(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            // No-ops: present only to win these gestures over the ancestor.
+            onTap: () {},
+            onDoubleTap: () {},
+            child: SizedBox(
+              width: size,
+              height: size,
+              child: Center(child: Icon(icon, color: color)),
+            ),
           ),
         ),
       ),

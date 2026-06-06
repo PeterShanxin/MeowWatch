@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/ui/instant_tap_icon.dart';
 
@@ -31,6 +32,25 @@ void main() {
 
       await gesture.up();
       await tester.pump(const Duration(milliseconds: 400));
+    });
+
+    testWidgets('Enter activates it when focused (keyboard parity)',
+        (tester) async {
+      var pressed = 0;
+      await tester.pumpWidget(_wrap(InstantTapIcon(
+        icon: Icons.play_arrow_rounded,
+        onPressed: () => pressed++,
+      )));
+
+      // Move focus to the first focusable in the scope — the button's
+      // FocusableActionDetector — then activate it with Enter.
+      FocusScope.of(tester.element(find.byType(InstantTapIcon))).nextFocus();
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+
+      expect(pressed, 1);
     });
 
     testWidgets('absorbs tap and double-tap from an ancestor GestureDetector',
