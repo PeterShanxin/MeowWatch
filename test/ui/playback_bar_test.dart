@@ -22,6 +22,7 @@ void main() {
           onSeek: (_) {},
           onTogglePlay: () {},
           onToggleMute: () {},
+          onSetVolume: (_) {},
         ),
       ),
     ));
@@ -39,10 +40,13 @@ void main() {
           onSeek: (_) {},
           onTogglePlay: () => toggled = true,
           onToggleMute: () {},
+          onSetVolume: (_) {},
         ),
       ),
     ));
     await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    // Drain the play/pause icon's double-tap recognizer countdown timer.
+    await tester.pump(const Duration(milliseconds: 400));
     expect(toggled, isTrue);
   });
 
@@ -56,12 +60,33 @@ void main() {
           onSeek: (_) {},
           onTogglePlay: () {},
           onToggleMute: () => muted = true,
+          onSetVolume: (_) {},
         ),
       ),
     ));
     // _sample leaves volume at its 1.0 default → "up" icon.
     await tester.tap(find.byIcon(Icons.volume_up_rounded));
+    // Drain the volume icon's double-tap recognizer countdown timer.
+    await tester.pump(const Duration(milliseconds: 400));
     expect(muted, isTrue);
+  });
+
+  testWidgets('PlaybackBar accepts onSetVolume callback', (tester) async {
+    double? set;
+    await tester.pumpWidget(MaterialApp(
+      theme: themeDataFor(MeowThemeId.cozy),
+      home: Scaffold(
+        body: PlaybackBar(
+          state: _sample,
+          onSeek: (_) {},
+          onTogglePlay: () {},
+          onToggleMute: () {},
+          onSetVolume: (v) => set = v,
+        ),
+      ),
+    ));
+    // Param wired — compile-time check sufficient; runtime wiring tested in volume_control_test.
+    expect(set, isNull); // slider not yet interacted
   });
 
   testWidgets('volume icon reflects the current level', (tester) async {
@@ -74,6 +99,7 @@ void main() {
             onSeek: (_) {},
             onTogglePlay: () {},
             onToggleMute: () {},
+            onSetVolume: (_) {},
           ),
         ),
       ));

@@ -131,7 +131,7 @@ class _VideoSurfaceState extends State<VideoSurface> {
   void _onVolumeKey(bool up) {
     final core = widget.core;
     final next = (core.state.volume + (up ? 0.05 : -0.05)).clamp(0.0, 1.0);
-    core.setVolume(next);
+    _setVolume(next);
     _volumeHideTimer?.cancel();
     setState(() => _volumeShown = next);
     _volumeHideTimer = Timer(_volumeLinger, () {
@@ -139,9 +139,11 @@ class _VideoSurfaceState extends State<VideoSurface> {
     });
     // Volume keys are consumed here (KeyEventResult.handled), so the ancestor
     // idle-reset hook never sees them — wake the UI directly, like play/seek.
-    _handleUserInteraction();
   }
 
+  // Mute/unmute is intentionally separate from _setVolume: it saves the current
+  // level before zeroing and restores it afterward, rather than tracking the
+  // last non-zero value as a side effect of every level change.
   void _toggleMute() {
     final core = widget.core;
     if (core.state.volume > 0.0) {
@@ -150,6 +152,13 @@ class _VideoSurfaceState extends State<VideoSurface> {
     } else {
       core.setVolume(_lastUnmutedVolume > 0.0 ? _lastUnmutedVolume : 1.0);
     }
+    _handleUserInteraction();
+  }
+
+  // Used by both the volume slider and keyboard up/down keys.
+  void _setVolume(double volume) {
+    if (volume > 0.0) _lastUnmutedVolume = volume;
+    widget.core.setVolume(volume);
     _handleUserInteraction();
   }
 
@@ -210,11 +219,17 @@ class _VideoSurfaceState extends State<VideoSurface> {
 
   @override
   Widget build(BuildContext context) {
+    // Hide the OS cursor during idle playback; any mouse movement wakes it via
+    // the Listener/MouseRegion chain in HomeScreen calling onUserInteraction,
+    // which flips isUiIdle back to false and restores the cursor (#78).
+    final cursor = widget.isUiIdle ? SystemMouseCursors.none : MouseCursor.defer;
+
     return Focus(
       focusNode: _focus,
       onKeyEvent: _onKey,
       autofocus: true,
       child: MouseRegion(
+        cursor: cursor,
         onHover: (_) => _handleUserInteraction(),
         child: GestureDetector(
           onTap: _handleTap,
@@ -247,14 +262,18 @@ class _VideoSurfaceState extends State<VideoSurface> {
                     final state = snapshot.data!;
                     final visible =
                         !widget.isUiIdle || state.status != PlaybackStatus.playing;
-                    return AnimatedOpacity(
-                      opacity: visible ? 1.0 : 0.0,
-                      duration: Motion.base,
-                      child: PlaybackBar(
-                        state: state,
-                        onSeek: widget.core.seek,
-                        onTogglePlay: _togglePlay,
-                        onToggleMute: _toggleMute,
+                    return IgnorePointer(
+                      ignoring: !visible,
+                      child: AnimatedOpacity(
+                        opacity: visible ? 1.0 : 0.0,
+                        duration: Motion.base,
+                        child: PlaybackBar(
+                          state: state,
+                          onSeek: widget.core.seek,
+                          onTogglePlay: _togglePlay,
+                          onToggleMute: _toggleMute,
+                          onSetVolume: _setVolume,
+                        ),
                       ),
                     );
                   },
