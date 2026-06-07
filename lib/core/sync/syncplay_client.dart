@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../chat/chat_signals.dart';
 import 'connection_watchdog.dart';
 import 'peer_state.dart';
 import 'ping_service.dart';
@@ -473,12 +474,21 @@ class SyncplayClient extends SyncCore {
   }
 
   void _send(Map<String, Object?> message) {
+    if (kDebugMode) _debugSentMessages.add(message);
     final socket = _socket;
     if (socket == null) return;
     final line = json.encode(message);
     onLog?.call('>> $line');
     socket.add(utf8.encode('$line\r\n'));
   }
+
+  /// Test hook: outbound messages recorded by [_send] (debug builds only).
+  @visibleForTesting
+  final List<Map<String, Object?>> _debugSentMessages = [];
+
+  @visibleForTesting
+  List<Map<String, Object?>> get debugSentMessages =>
+      List.unmodifiable(_debugSentMessages);
 
   void _sendRaw(Socket socket, Map<String, Object?> message) {
     socket.add(utf8.encode('${json.encode(message)}\r\n'));
@@ -560,6 +570,17 @@ class SyncplayClient extends SyncCore {
 
   @override
   Future<void> disconnect() async {
+    // Announce the departure before closing so peers can distinguish a clean
+    // leave from a connection drop (issue #92). Best-effort: the flush timeout
+    // ensures a half-open socket can't wedge the Leave button (the original
+    // close() bug — see CLAUDE.md); a lost bye degrades gracefully to peers
+    // seeing "lost connection" instead of "left the room".
+    if (_loggedIn) {
+      _send(encodeChat(encodeLeaving()));
+      try {
+        await _socket?.flush().timeout(const Duration(milliseconds: 300));
+      } catch (_) {}
+    }
     // User asked to leave: stop the watchdog and cancel any pending reconnect so
     // we don't immediately dial back in.
     _stopReconnecting();
