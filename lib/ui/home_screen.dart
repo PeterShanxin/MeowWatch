@@ -92,8 +92,14 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<List<String>>? _rosterSub;
   StreamSubscription<String>? _leavingSub;
 
-  /// Previous connection status — used to generate local connection chat lines.
+  /// Previous connection status — used to detect the drop edge.
   SyncConnectionStatus _prevSyncStatus = SyncConnectionStatus.disconnected;
+
+  /// Latched true on a local drop (connected → reconnecting) and cleared when we
+  /// reconnect or stop trying. Needed because the reconnect path passes through
+  /// an intermediate `handshaking` state, so the "Reconnected to room." line
+  /// can't be detected from `prev` alone (issue #92).
+  bool _wasReconnecting = false;
 
   /// Peers who sent a [LeavingSignal] before their [PresenceKind.left] event;
   /// consumed once on departure to determine clean vs. connection-drop wording.
@@ -281,17 +287,35 @@ class _HomeScreenState extends State<HomeScreen> {
           if (s.username != null && s.username!.isNotEmpty) {
             _username = s.username!;
           }
-          if (s.status != SyncConnectionStatus.connected) _peers.clear();
+          if (s.status != SyncConnectionStatus.connected) {
+            // Our own connection changed — peer membership and the per-peer
+            // departure/leaving bookkeeping are no longer valid. Clearing here
+            // also bounds these maps across repeated local reconnect cycles.
+            _peers.clear();
+            _departedAt.clear();
+            _cleanlyLeaving.clear();
+          }
           _evaluateSyncHealth();
         });
       }
-      // Local connection transition chat line (issue #92). Run after setState so
-      // _syncStatus is already updated; addSystem pushes its own stream emission.
-      final connLine = localConnectionLine(
-        prev: _prevSyncStatus,
+      // Local connection transition chat lines (issue #92). Run after setState
+      // so _syncStatus is already updated; addSystem pushes its own emission.
+      if (isConnectionDrop(prev: _prevSyncStatus, next: s.status)) {
+        _wasReconnecting = true;
+        _chat.addSystem(connectionLostMessage);
+      } else if (isReconnectSuccess(
+        wasReconnecting: _wasReconnecting,
         next: s.status,
-      );
-      if (connLine != null) _chat.addSystem(connLine);
+      )) {
+        _wasReconnecting = false;
+        _chat.addSystem(reconnectedToRoomMessage);
+      }
+      // A deliberate leave or fatal error ends the reconnect attempt — drop the
+      // latch so a later fresh connect isn't mistaken for a reconnect.
+      if (s.status == SyncConnectionStatus.disconnected ||
+          s.status == SyncConnectionStatus.error) {
+        _wasReconnecting = false;
+      }
       _prevSyncStatus = s.status;
       if (s.status == SyncConnectionStatus.connected) {
         unawaited(_announceCurrentFile());

@@ -151,17 +151,6 @@ void main() {
     await sync.dispose();
   });
 
-  test('sendLeaving sends encodeLeaving() over the wire', () async {
-    final sync = FakeSync();
-    final store = ChatStore(sync: sync);
-
-    store.sendLeaving();
-
-    expect(sync.sent, [encodeLeaving()]);
-    await store.dispose();
-    await sync.dispose();
-  });
-
   test(
     'addSystem inserts a local system line, not sent over the wire',
     () async {

@@ -35,64 +35,97 @@ void main() {
     });
   });
 
-  group('localConnectionLine', () {
-    test('first connect: connecting → connected returns null', () {
+  group('isConnectionDrop', () {
+    test('connected → reconnecting is a drop', () {
       expect(
-        localConnectionLine(
-          prev: SyncConnectionStatus.connecting,
-          next: SyncConnectionStatus.connected,
-        ),
-        isNull,
-      );
-    });
-
-    test('first connect: handshaking → connected returns null', () {
-      expect(
-        localConnectionLine(
-          prev: SyncConnectionStatus.handshaking,
-          next: SyncConnectionStatus.connected,
-        ),
-        isNull,
-      );
-    });
-
-    test('reconnect: reconnecting → connected returns Reconnected line', () {
-      expect(
-        localConnectionLine(
-          prev: SyncConnectionStatus.reconnecting,
-          next: SyncConnectionStatus.connected,
-        ),
-        'Reconnected to room.',
-      );
-    });
-
-    test('drop: connected → reconnecting returns Connection lost line', () {
-      expect(
-        localConnectionLine(
+        isConnectionDrop(
           prev: SyncConnectionStatus.connected,
           next: SyncConnectionStatus.reconnecting,
         ),
-        'Connection lost — reconnecting…',
+        isTrue,
       );
     });
 
-    test('unrelated transition returns null', () {
+    test('repeated backoff (handshaking → reconnecting) is not a drop', () {
+      // Avoids re-announcing "connection lost" on every retry attempt.
       expect(
-        localConnectionLine(
-          prev: SyncConnectionStatus.disconnected,
-          next: SyncConnectionStatus.connecting,
+        isConnectionDrop(
+          prev: SyncConnectionStatus.handshaking,
+          next: SyncConnectionStatus.reconnecting,
         ),
-        isNull,
+        isFalse,
       );
     });
 
-    test('error transition returns null', () {
+    test('connected → connected is not a drop', () {
       expect(
-        localConnectionLine(
+        isConnectionDrop(
           prev: SyncConnectionStatus.connected,
-          next: SyncConnectionStatus.error,
+          next: SyncConnectionStatus.connected,
         ),
-        isNull,
+        isFalse,
+      );
+    });
+  });
+
+  group('isReconnectSuccess', () {
+    test('latched + arriving at connected is a success', () {
+      expect(
+        isReconnectSuccess(
+          wasReconnecting: true,
+          next: SyncConnectionStatus.connected,
+        ),
+        isTrue,
+      );
+    });
+
+    test('fires across the intermediate handshaking state', () {
+      // The reconnect path is connected → reconnecting → handshaking →
+      // connected. The latch (set on the drop) must survive handshaking so the
+      // success still fires when connected finally arrives.
+      var wasReconnecting = false;
+      // Drop:
+      if (isConnectionDrop(
+        prev: SyncConnectionStatus.connected,
+        next: SyncConnectionStatus.reconnecting,
+      )) {
+        wasReconnecting = true;
+      }
+      // Intermediate handshaking — not connected, no success yet:
+      expect(
+        isReconnectSuccess(
+          wasReconnecting: wasReconnecting,
+          next: SyncConnectionStatus.handshaking,
+        ),
+        isFalse,
+      );
+      // Connected — success now fires:
+      expect(
+        isReconnectSuccess(
+          wasReconnecting: wasReconnecting,
+          next: SyncConnectionStatus.connected,
+        ),
+        isTrue,
+      );
+    });
+
+    test('first connect (no latch) is not a reconnect success', () {
+      expect(
+        isReconnectSuccess(
+          wasReconnecting: false,
+          next: SyncConnectionStatus.connected,
+        ),
+        isFalse,
+      );
+    });
+
+    test('latched but not yet connected is not a success', () {
+      expect(
+        isReconnectSuccess(
+          wasReconnecting: true,
+          next: SyncConnectionStatus.reconnecting,
+        ),
+        isFalse,
       );
     });
   });

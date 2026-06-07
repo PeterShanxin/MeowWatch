@@ -482,10 +482,9 @@ class SyncplayClient extends SyncCore {
     socket.add(utf8.encode('$line\r\n'));
   }
 
-  /// Test hook: outbound messages recorded by [_send] (debug builds only).
-  @visibleForTesting
   final List<Map<String, Object?>> _debugSentMessages = [];
 
+  /// Test hook: outbound messages recorded by [_send] (debug builds only).
   @visibleForTesting
   List<Map<String, Object?>> get debugSentMessages =>
       List.unmodifiable(_debugSentMessages);
@@ -568,19 +567,25 @@ class SyncplayClient extends SyncCore {
     if (_loggedIn) _send(encodeChat(text));
   }
 
+  /// Announce a deliberate departure before tearing the socket down, so peers
+  /// can distinguish a clean leave from a connection drop (issue #92). Shared by
+  /// the Leave button ([disconnect]) and app close ([disposeBackend]).
+  ///
+  /// Best-effort: the bounded flush ensures a half-open socket can't wedge the
+  /// teardown (the original close() bug — see CLAUDE.md); a lost bye degrades
+  /// gracefully to peers seeing "lost connection" instead of "left the room".
+  /// Guards on [_loggedIn] so a Leave-then-dispose sequence doesn't double-send.
+  Future<void> _announceLeaving() async {
+    if (!_loggedIn) return;
+    _send(encodeChat(encodeLeaving()));
+    try {
+      await _socket?.flush().timeout(const Duration(milliseconds: 300));
+    } catch (_) {}
+  }
+
   @override
   Future<void> disconnect() async {
-    // Announce the departure before closing so peers can distinguish a clean
-    // leave from a connection drop (issue #92). Best-effort: the flush timeout
-    // ensures a half-open socket can't wedge the Leave button (the original
-    // close() bug — see CLAUDE.md); a lost bye degrades gracefully to peers
-    // seeing "lost connection" instead of "left the room".
-    if (_loggedIn) {
-      _send(encodeChat(encodeLeaving()));
-      try {
-        await _socket?.flush().timeout(const Duration(milliseconds: 300));
-      } catch (_) {}
-    }
+    await _announceLeaving();
     // User asked to leave: stop the watchdog and cancel any pending reconnect so
     // we don't immediately dial back in.
     _stopReconnecting();
@@ -599,6 +604,10 @@ class SyncplayClient extends SyncCore {
 
   @override
   Future<void> disposeBackend() async {
+    // App is closing — also a deliberate leave, so announce it. No-op if a prior
+    // disconnect() already cleared _loggedIn.
+    await _announceLeaving();
+    _loggedIn = false;
     _stopReconnecting();
     final old = _socket;
     _socket = null;

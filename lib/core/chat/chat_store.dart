@@ -128,10 +128,6 @@ class ChatStore {
   void sendTyping({required bool isTyping}) =>
       _sync.sendChat(encodeTyping(isTyping));
 
-  /// Broadcast a leaving signal to the room just before disconnecting so peers
-  /// can distinguish a clean leave from a connection drop.
-  void sendLeaving() => _sync.sendChat(encodeLeaving());
-
   Future<void> dispose() async {
     await _connSub.cancel();
     await _sub.cancel();

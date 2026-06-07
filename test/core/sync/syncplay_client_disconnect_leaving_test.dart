@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/chat/chat_signals.dart';
-import 'package:meowwatch/core/sync/sync_messages.dart';
 import 'package:meowwatch/core/sync/syncplay_client.dart';
 
 /// disconnect() must broadcast a leaving signal before tearing down when
@@ -33,5 +32,30 @@ void main() {
     await client.disconnect();
 
     expect(client.debugSentMessages, isEmpty);
+  });
+
+  test('app close (dispose) also sends a leaving signal when logged in',
+      () async {
+    client.debugMarkLoggedIn('me');
+
+    await client.dispose();
+
+    expect(
+      client.debugSentMessages.any((m) => m['Chat'] == encodeLeaving()),
+      isTrue,
+      reason: 'closing the app should announce a deliberate departure',
+    );
+  });
+
+  test('leave then dispose does not double-send the leaving signal', () async {
+    client.debugMarkLoggedIn('me');
+
+    await client.disconnect();
+    await client.dispose();
+
+    final leavingCount = client.debugSentMessages
+        .where((m) => m['Chat'] == encodeLeaving())
+        .length;
+    expect(leavingCount, 1);
   });
 }
