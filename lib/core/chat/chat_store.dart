@@ -62,6 +62,12 @@ class ChatStore {
   final StreamController<TypingEvent> _typing =
       StreamController<TypingEvent>.broadcast();
 
+  /// Fires the username of a peer who sent a [LeavingSignal] — meaning they are
+  /// departing deliberately (clean leave). Peers that vanish without this signal
+  /// are treated as connection drops.
+  final StreamController<String> _leaving =
+      StreamController<String>.broadcast();
+
   /// Current history, oldest first. Unmodifiable snapshot.
   List<ChatMessage> get messages => List.unmodifiable(_messages);
 
@@ -74,6 +80,11 @@ class ChatStore {
   /// Fires when a room member's typing state changes.
   Stream<TypingEvent> get typing => _typing.stream;
 
+  /// Fires the username of a peer who announced a deliberate leave. Consumed by
+  /// the UI to distinguish "left the room" from "lost connection" when the
+  /// server-side [PresenceKind.left] event arrives.
+  Stream<String> get leaving => _leaving.stream;
+
   void _onChat(ChatMessage m) {
     final signal = parseChatControl(m.text);
     if (signal != null) {
@@ -82,6 +93,8 @@ class ChatStore {
           _reactions.add(ReactionEvent(username: m.username, emoji: emoji));
         case TypingSignal(:final isTyping):
           _typing.add(TypingEvent(username: m.username, isTyping: isTyping));
+        case LeavingSignal():
+          _leaving.add(m.username);
       }
       return; // Control messages never appear in chat history.
     }
@@ -115,11 +128,16 @@ class ChatStore {
   void sendTyping({required bool isTyping}) =>
       _sync.sendChat(encodeTyping(isTyping));
 
+  /// Broadcast a leaving signal to the room just before disconnecting so peers
+  /// can distinguish a clean leave from a connection drop.
+  void sendLeaving() => _sync.sendChat(encodeLeaving());
+
   Future<void> dispose() async {
     await _connSub.cancel();
     await _sub.cancel();
     await _controller.close();
     await _reactions.close();
     await _typing.close();
+    await _leaving.close();
   }
 }
