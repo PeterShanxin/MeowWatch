@@ -575,7 +575,7 @@ class SyncplayClient extends SyncCore {
   /// synchronously after recording the send, so callers that read connection
   /// state right after `await disconnect()` aren't deferred by a stray microtask.
   /// Best-effort — the bounded flush ensures a half-open socket can't wedge the
-  /// teardown (the original close() bug — see CLAUDE.md); a lost bye degrades
+  /// teardown (the original close() bug — see docs/AGENT_GUIDE.md); a lost bye degrades
   /// gracefully to peers seeing "lost connection" instead of "left the room".
   Future<void> _announceLeaving() async {
     _send(encodeChat(encodeLeaving()));
