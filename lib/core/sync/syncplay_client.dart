@@ -567,28 +567,31 @@ class SyncplayClient extends SyncCore {
     if (_loggedIn) _send(encodeChat(text));
   }
 
-  /// Announce a deliberate departure before tearing the socket down, so peers
-  /// can distinguish a clean leave from a connection drop (issue #92). Shared by
-  /// the Leave button ([disconnect]) and app close ([disposeBackend]).
+  /// Announce a deliberate departure so peers can distinguish a clean leave from
+  /// a connection drop (issue #92). Shared by the Leave button ([disconnect]) and
+  /// app close ([disposeBackend]); call only when [_loggedIn].
   ///
-  /// Best-effort: the bounded flush ensures a half-open socket can't wedge the
+  /// Only awaits when there is a real socket to flush — with no socket it returns
+  /// synchronously after recording the send, so callers that read connection
+  /// state right after `await disconnect()` aren't deferred by a stray microtask.
+  /// Best-effort — the bounded flush ensures a half-open socket can't wedge the
   /// teardown (the original close() bug — see CLAUDE.md); a lost bye degrades
   /// gracefully to peers seeing "lost connection" instead of "left the room".
-  /// Guards on [_loggedIn] so a Leave-then-dispose sequence doesn't double-send.
   Future<void> _announceLeaving() async {
-    if (!_loggedIn) return;
     _send(encodeChat(encodeLeaving()));
+    final socket = _socket;
+    if (socket == null) return;
     try {
-      await _socket?.flush().timeout(const Duration(milliseconds: 300));
+      await socket.flush().timeout(const Duration(milliseconds: 300));
     } catch (_) {}
   }
 
   @override
   Future<void> disconnect() async {
-    await _announceLeaving();
-    // User asked to leave: stop the watchdog and cancel any pending reconnect so
-    // we don't immediately dial back in.
+    // Cancel the watchdog and any pending reconnect FIRST (synchronously) so a
+    // timer can't fire during the flush await below and resurrect the link.
     _stopReconnecting();
+    if (_loggedIn) await _announceLeaving();
     // destroy(), not close(): a half-open socket's close() awaits a flush that
     // can never complete (the peer is gone), which is exactly what wedged the
     // "Leave room" button. destroy() drops it immediately. Clear _socket first
@@ -606,9 +609,9 @@ class SyncplayClient extends SyncCore {
   Future<void> disposeBackend() async {
     // App is closing — also a deliberate leave, so announce it. No-op if a prior
     // disconnect() already cleared _loggedIn.
-    await _announceLeaving();
-    _loggedIn = false;
     _stopReconnecting();
+    if (_loggedIn) await _announceLeaving();
+    _loggedIn = false;
     final old = _socket;
     _socket = null;
     old?.destroy();
