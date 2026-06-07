@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.20.2-alpha] - 2026-06-08
+- After installing an update, the app now comes back to the front instead of hiding behind your other windows.
+- Fixed the empty PowerShell window that used to linger after an update restart — and closing it no longer closes the app along with it.
+
 ## [0.20.1-alpha] - 2026-06-07
 - Closing the app with the window's X button now tells your friend you left the room, instead of showing them "lost connection" as if your network dropped. (#92)
 - A friend who deliberately left and then comes back within a minute now shows as "joined the room" again, rather than "reconnected" — "reconnected" is now reserved for recovering from an actual connection drop. (#92)
