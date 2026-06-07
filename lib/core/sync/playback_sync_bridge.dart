@@ -43,6 +43,13 @@ class PlaybackSyncBridge {
   Duration _lastPosition = Duration.zero;
   DateTime _lastTick = DateTime.now();
 
+  /// The filePath seen on the last state event. Tracks the full path (not the
+  /// display name) so same-basename files from different directories are not
+  /// confused. Also, the player transitions through [PlaybackStatus.loading]
+  /// on every load — including a same-file reload — so either condition
+  /// suffices to mark the tick as a load event rather than a user seek.
+  String? _lastFilePath;
+
   void start() {
     _videoSub = video.stateStream.listen(_onLocalState);
     _peerSub = sync.peerState.listen(_onPeerState);
@@ -53,6 +60,20 @@ class PlaybackSyncBridge {
 
     // Always feed the latest position to the sync layer for its heartbeat.
     sync.updateLocalState(position: s.position, paused: paused);
+
+    // Suppress seek detection on a file-load event. Two conditions cover all
+    // cases: a different filePath means a new (or different) file was opened;
+    // PlaybackStatus.loading fires on every load including a same-file reload,
+    // catching the position-reset-to-0 that would otherwise look like a seek.
+    final isLoadEvent =
+        s.filePath != _lastFilePath || s.status == PlaybackStatus.loading;
+    if (isLoadEvent) {
+      _lastFilePath = s.filePath;
+      _lastPaused = paused;
+      _lastPosition = s.position;
+      _lastTick = DateTime.now();
+      return;
+    }
 
     final suppressed =
         _applyingRemote || DateTime.now().isBefore(_remoteApplyUntil);

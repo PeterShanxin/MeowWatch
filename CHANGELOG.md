@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.19.0-alpha] - 2026-06-07
+- When you join a Syncplay room, chat now greets you with who is already there — "Alice, Bob are in the room — say hi ~" — or tells you the room is empty so you know you're waiting. (#90)
+- Loading a video file no longer shows a misleading "jumped to 00:00" system message. Instead you see "Loaded matching file — you're in sync!" when your file matches your friend's, or simply "Loaded <filename>" otherwise. (#91)
+
 ## [0.18.0-alpha] - 2026-06-07
 - The mouse cursor now hides automatically when you've been watching without touching the mouse for a few seconds, just like the playback bar and chat overlay. Move the mouse and everything — including the cursor — reappears instantly. (#78)
 - The volume button in the playback bar is now a proper volume control: hover over it to reveal a vertical slider you can drag to any level, or click it to mute and unmute. The level you set is remembered, so unmuting restores it instead of jumping back to full. (#80)

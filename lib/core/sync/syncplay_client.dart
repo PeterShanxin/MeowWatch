@@ -59,6 +59,10 @@ class SyncplayClient extends SyncCore {
 
   bool _loggedIn = false;
 
+  // True once the initial roster greeting has been emitted. Set on the first
+  // RosterMessage and never reset — reconnects are silent (issue #90).
+  bool _rosterGreeted = false;
+
   // Latest local playback state for the heartbeat.
   Duration _localPosition = Duration.zero;
   bool _localPaused = true;
@@ -333,6 +337,12 @@ class SyncplayClient extends SyncCore {
         }
         for (final f in files) {
           if (f.username != _username) emitPeerFile(f);
+        }
+        if (!_rosterGreeted) {
+          _rosterGreeted = true;
+          final others =
+              usernames.where((n) => n != _username).toList();
+          emitInitialRoster(others);
         }
       case ChatServerMessage(:final message):
         emitChat(message);
