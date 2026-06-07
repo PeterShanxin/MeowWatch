@@ -37,5 +37,16 @@ void main() {
     test('sentinel starts with a non-typable control char', () {
       expect(chatControlSentinel.codeUnitAt(0), 0x01);
     });
+
+    test('round-trips leaving signal', () {
+      final encoded = encodeLeaving();
+      final signal = parseChatControl(encoded);
+      expect(signal, isA<LeavingSignal>());
+    });
+
+    test('leaving signal without payload parses correctly', () {
+      final signal = parseChatControl('${chatControlSentinel}leaving');
+      expect(signal, isA<LeavingSignal>());
+    });
   });
 }
