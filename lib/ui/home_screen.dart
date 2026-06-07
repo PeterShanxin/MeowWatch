@@ -16,6 +16,7 @@ import '../core/debug/debug_log.dart';
 import '../core/sync/auto_pause.dart';
 import '../core/sync/file_match.dart';
 import '../core/sync/loaded_file_message.dart';
+import '../core/sync/presence_messages.dart';
 import '../core/sync/room_greeting.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
@@ -89,6 +90,18 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<PeerFile>? _peerFileSub;
   StreamSubscription<SyncActivity>? _activitySub;
   StreamSubscription<List<String>>? _rosterSub;
+  StreamSubscription<String>? _leavingSub;
+
+  /// Previous connection status — used to generate local connection chat lines.
+  SyncConnectionStatus _prevSyncStatus = SyncConnectionStatus.disconnected;
+
+  /// Peers who sent a [LeavingSignal] before their [PresenceKind.left] event;
+  /// consumed once on departure to determine clean vs. connection-drop wording.
+  final Set<String> _cleanlyLeaving = <String>{};
+
+  /// When each peer last departed, so a quick rejoin reads as "reconnected"
+  /// rather than "joined the room" (issue #92).
+  final Map<String, DateTime> _departedAt = <String, DateTime>{};
 
   /// Most recent file a peer announced, and our own loaded file's byte size —
   /// together they drive the file-mismatch warning. MeowWatch is a two-person
@@ -272,10 +285,21 @@ class _HomeScreenState extends State<HomeScreen> {
           _evaluateSyncHealth();
         });
       }
+      // Local connection transition chat line (issue #92). Run after setState so
+      // _syncStatus is already updated; addSystem pushes its own stream emission.
+      final connLine = localConnectionLine(
+        prev: _prevSyncStatus,
+        next: s.status,
+      );
+      if (connLine != null) _chat.addSystem(connLine);
+      _prevSyncStatus = s.status;
       if (s.status == SyncConnectionStatus.connected) {
         unawaited(_announceCurrentFile());
       }
     });
+    // Track peers who announced a deliberate leave so the presence listener can
+    // distinguish "left the room" from "lost connection" (issue #92).
+    _leavingSub = _chat.leaving.listen((name) => _cleanlyLeaving.add(name));
     _presenceSub = _sync.presence.listen((e) {
       if (!mounted) return;
       setState(() {
@@ -284,8 +308,14 @@ class _HomeScreenState extends State<HomeScreen> {
           // Roster entries (people already here when we arrived) update
           // membership silently; only a live join gets a banner + event line.
           if (isNew && !e.fromRoster) {
-            _showTransientNotice('🐾 ${e.username} joined');
-            _chat.addSystem('${e.username} joined the room');
+            final reconnected = isPeerReconnect(
+              departedAt: _departedAt[e.username],
+              now: DateTime.now(),
+            );
+            _departedAt.remove(e.username);
+            final banner = reconnected ? '🐾 ${e.username} reconnected' : '🐾 ${e.username} joined';
+            _showTransientNotice(banner);
+            _chat.addSystem(peerJoinMessage(username: e.username, reconnected: reconnected));
           }
         } else {
           _peers.remove(e.username);
@@ -293,8 +323,11 @@ class _HomeScreenState extends State<HomeScreen> {
           if (_peerFile?.username == e.username) _peerFile = null;
           // The "load a video to join" prompt is stale once they've left (#60).
           _joinPrompt = null;
-          _showTransientNotice('👋 ${e.username} left');
-          _chat.addSystem('${e.username} left the room');
+          final clean = _cleanlyLeaving.remove(e.username);
+          _departedAt[e.username] = DateTime.now();
+          final banner = clean ? '👋 ${e.username} left' : '📵 ${e.username} lost connection';
+          _showTransientNotice(banner);
+          _chat.addSystem(peerDepartureMessage(username: e.username, clean: clean));
         }
         _evaluateSyncHealth();
       });
@@ -441,6 +474,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_peerFileSub?.cancel());
     unawaited(_activitySub?.cancel());
     unawaited(_rosterSub?.cancel());
+    unawaited(_leavingSub?.cancel());
     unawaited(_activityThrottleSub?.cancel());
     unawaited(_activityThrottle.dispose());
     _presenceTimer?.cancel();
