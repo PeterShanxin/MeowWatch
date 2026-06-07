@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.20.1-alpha] - 2026-06-07
+- Closing the app with the window's X button now tells your friend you left the room, instead of showing them "lost connection" as if your network dropped. (#92)
+- A friend who deliberately left and then comes back within a minute now shows as "joined the room" again, rather than "reconnected" — "reconnected" is now reserved for recovering from an actual connection drop. (#92)
+
 ## [0.20.0-alpha] - 2026-06-07
 - The chat overlay now shows system messages when room members connect or disconnect. When a friend leaves deliberately you see "Alice left the room."; if they lose connection without warning you see "Alice lost connection." and then "Alice reconnected." if they come back within a minute. Your own reconnect after a blip shows "Connection lost — reconnecting…" and "Reconnected to room." so you know when you're back without messaging out-of-band. (#92)
 

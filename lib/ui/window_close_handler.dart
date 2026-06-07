@@ -9,34 +9,46 @@ import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 import '../core/update/update_service.dart';
+import 'app_close_hook.dart';
 
 /// What the user chose when prompted on close with a downloaded update ready.
 enum UpdateCloseChoice { installAndQuit, justQuit, cancel }
 
-/// Intercepts the window-close (X) button **only when a downloaded-but-not-
-/// installed update is waiting** (#62), so it can be applied on the way out
-/// instead of re-nagging next launch.
+/// Intercepts the window-close (X) button when either a downloaded-but-not-
+/// installed update is waiting (#62) or a room is active (#92) — the former so
+/// the update can be applied on the way out, the latter so we can announce a
+/// deliberate leave before the socket dies (otherwise peers see "lost
+/// connection" instead of "left the room").
 ///
-/// Crucially, `preventClose` is toggled on *only* while an update is ready and
-/// off otherwise — so a normal quit closes instantly through the OS path and is
-/// never routed through Dart (an earlier always-on version made every close slow
-/// and could wedge a playing window). Registered once from `main()`, not the
-/// widget tree, so tests that pump the app never touch window plumbing.
+/// `preventClose` is toggled on *only* while one of those holds and off
+/// otherwise — so an idle quit still closes instantly through the OS path with
+/// no Dart in it (an earlier always-on version made every close slow and could
+/// wedge a playing window). The in-room leave-announce is bounded (see
+/// [runAppCloseHook]) so it can't wedge the quit. Registered once from `main()`,
+/// not the widget tree, so tests that pump the app never touch window plumbing.
 class WindowCloseHandler with WindowListener {
   WindowCloseHandler({
     required this.navigatorKey,
     UpdateService? service,
-  }) : _service = service ?? UpdateService.instance;
+    Future<void> Function()? destroyWindow,
+  })  : _service = service ?? UpdateService.instance,
+        _destroyWindow = destroyWindow ?? windowManager.destroy;
 
   final GlobalKey<NavigatorState> navigatorKey;
   final UpdateService _service;
 
+  /// How the window is torn down — `windowManager.destroy` in production,
+  /// injectable in tests (the real call hangs without platform plumbing).
+  final Future<void> Function() _destroyWindow;
+
   bool _preventing = false;
 
-  /// Start watching for a ready update and intercepting close while one waits.
+  /// Start watching for a ready update / active room and intercepting close
+  /// while either waits.
   void register() {
     windowManager.addListener(this);
     _service.addListener(_syncPreventClose);
+    appCloseHook.addListener(_syncPreventClose);
     _syncPreventClose();
   }
 
@@ -44,10 +56,10 @@ class WindowCloseHandler with WindowListener {
       _service.phase == UpdatePhase.readyToInstall &&
       _service.downloadedZipPath != null;
 
-  /// Prevent close only while an update is ready; otherwise let the OS close the
-  /// window normally (fast, no Dart in the path).
+  /// Prevent close only while an update is ready or a room is active; otherwise
+  /// let the OS close the window normally (fast, no Dart in the path).
   void _syncPreventClose() {
-    final shouldPrevent = _updateReady;
+    final shouldPrevent = _updateReady || appCloseHook.value != null;
     if (shouldPrevent == _preventing) return;
     _preventing = shouldPrevent;
     unawaited(windowManager.setPreventClose(shouldPrevent));
@@ -56,10 +68,11 @@ class WindowCloseHandler with WindowListener {
   @override
   void onWindowClose() => unawaited(handleClose());
 
-  /// Reached only while close is prevented (an update is ready). Offers to
-  /// install on the way out; always ends by applying the update (which exits the
-  /// process) or destroying the window — never traps the user, except the
-  /// deliberate "cancel" path.
+  /// Reached only while close is prevented (an update is ready, or a room is
+  /// active). Offers to install a waiting update on the way out, then announces a
+  /// deliberate leave to the room before exiting; always ends by applying the
+  /// update (which exits the process) or destroying the window — never traps the
+  /// user, except the deliberate "cancel" path.
   @visibleForTesting
   Future<void> handleClose() async {
     final zip = _service.downloadedZipPath;
@@ -83,6 +96,8 @@ class WindowCloseHandler with WindowListener {
             // the UI isolate.
             await Future<void>.delayed(const Duration(milliseconds: 80));
           }
+          // Tell the room we're leaving before the process exits (#92).
+          await runAppCloseHook();
           await _service.applyUpdate(zip, restartAfter: false); // exits
           return;
         } catch (e, st) {
@@ -94,7 +109,10 @@ class WindowCloseHandler with WindowListener {
       }
     }
 
-    await windowManager.destroy();
+    // Announce a deliberate leave (if in a room) before tearing the window down,
+    // so peers see "left the room" rather than "lost connection" (#92).
+    await runAppCloseHook();
+    await _destroyWindow();
   }
 }
 

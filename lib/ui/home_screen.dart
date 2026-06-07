@@ -31,6 +31,7 @@ import '../core/theme/tokens/type_scale.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/playback_state.dart';
 import '../core/video/seek_when_ready.dart';
+import 'app_close_hook.dart';
 import 'chat/chat_overlay.dart';
 import 'chat/chat_overlay_layout.dart';
 import 'drop_target.dart';
@@ -91,6 +92,12 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<SyncActivity>? _activitySub;
   StreamSubscription<List<String>>? _rosterSub;
   StreamSubscription<String>? _leavingSub;
+
+  /// Our registered window-close hook (announces a deliberate leave so peers see
+  /// "left the room" not "lost connection" when the app is closed via the X
+  /// rather than the Leave button — #92). Held so dispose only clears the global
+  /// when it's still ours.
+  Future<void> Function()? _closeHook;
 
   /// Previous connection status — used to detect the drop edge.
   SyncConnectionStatus _prevSyncStatus = SyncConnectionStatus.disconnected;
@@ -348,7 +355,14 @@ class _HomeScreenState extends State<HomeScreen> {
           // The "load a video to join" prompt is stale once they've left (#60).
           _joinPrompt = null;
           final clean = _cleanlyLeaving.remove(e.username);
-          _departedAt[e.username] = DateTime.now();
+          // Only a *drop* makes a quick return read as "reconnected"; a
+          // deliberate leave that comes back is a fresh "joined", not a network
+          // blip recovering (#92 follow-up).
+          if (clean) {
+            _departedAt.remove(e.username);
+          } else {
+            _departedAt[e.username] = DateTime.now();
+          }
           final banner = clean ? '👋 ${e.username} left' : '📵 ${e.username} lost connection';
           _showTransientNotice(banner);
           _chat.addSystem(peerDepartureMessage(username: e.username, clean: clean));
@@ -413,6 +427,11 @@ class _HomeScreenState extends State<HomeScreen> {
         password: widget.config.password,
       ),
     );
+    // Announce a deliberate leave if the window is closed (X button) while we're
+    // in the room — disconnect() sends the leaving signal with a bounded flush
+    // (#92). The Leave button already does this directly via _leave().
+    _closeHook = () => _sync.disconnect();
+    appCloseHook.value = _closeHook;
     final resume = widget.config.resumeFilePath;
     if (resume != null) {
       unawaited(_resume(resume, widget.config.resumePositionMs));
@@ -479,6 +498,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    // Drop the window-close hook (only if it's still ours) so a closed room
+    // doesn't keep preventing the OS fast-close path.
+    if (identical(appCloseHook.value, _closeHook)) appCloseHook.value = null;
     _uiIdleTimer?.cancel();
     _uiDeepIdleTimer?.cancel();
     _historyTimer?.cancel();
