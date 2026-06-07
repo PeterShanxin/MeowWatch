@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -41,6 +42,12 @@ Future<void> main() async {
   // the way out instead of re-prompting next launch (#62).
   WindowCloseHandler(navigatorKey: navigatorKey).register();
 
+  // Raise our window on launch. The auto-updater relaunches us from a hidden
+  // PowerShell process, and Windows' foreground-lock then blocks the new window
+  // from raising itself, so it lands behind other windows. Run after the first
+  // frame so the native window exists.
+  WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(bringToFront()));
+
   // Backup door to the hidden design gallery (the primary entry is a long-press
   // on the version badge). Lets us open it on a real install without the badge.
   if (Platform.environment['MEOWWATCH_GALLERY'] == '1') {
@@ -50,4 +57,19 @@ Future<void> main() async {
       );
     });
   }
+}
+
+/// Bring the window to the foreground without needing foreground rights.
+///
+/// The `alwaysOnTop` true→false bump raises via `HWND_TOPMOST` (`SetWindowPos`),
+/// which lifts a window above others even when the OS would refuse a plain
+/// `focus()` (the updater relaunches us from a background process, so Windows'
+/// foreground-lock applies). Releasing topmost immediately means we don't pin
+/// over the user's other apps. Invisible on a normal launch (already in front),
+/// decisive on an updater relaunch.
+Future<void> bringToFront() async {
+  await windowManager.show();
+  await windowManager.setAlwaysOnTop(true);
+  await windowManager.focus();
+  await windowManager.setAlwaysOnTop(false);
 }
