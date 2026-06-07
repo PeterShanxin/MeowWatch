@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
+import 'package:meowwatch/core/update/update_service.dart';
+import 'package:meowwatch/ui/app_close_hook.dart';
 import 'package:meowwatch/ui/window_close_handler.dart';
 
 void main() {
@@ -96,5 +98,38 @@ void main() {
     await tester.tapAt(const Offset(10, 10));
     await tester.pump();
     expect(find.textContaining('Installing update'), findsOneWidget);
+  });
+
+  test('handleClose announces a leave before tearing down (#92)', () async {
+    final order = <String>[];
+    appCloseHook.value = () async => order.add('leave');
+    addTearDown(() => appCloseHook.value = null);
+
+    final handler = WindowCloseHandler(
+      navigatorKey: GlobalKey<NavigatorState>(),
+      service: UpdateService.forTest(), // phase idle → no update dialog
+      destroyWindow: () async => order.add('destroy'),
+    );
+
+    await handler.handleClose();
+
+    // The leave must be announced before the window is destroyed, else the
+    // socket dies first and peers see "lost connection" (#92).
+    expect(order, ['leave', 'destroy']);
+  });
+
+  test('handleClose without a hook still destroys the window', () async {
+    appCloseHook.value = null;
+    var destroyed = false;
+
+    final handler = WindowCloseHandler(
+      navigatorKey: GlobalKey<NavigatorState>(),
+      service: UpdateService.forTest(),
+      destroyWindow: () async => destroyed = true,
+    );
+
+    await handler.handleClose();
+
+    expect(destroyed, isTrue);
   });
 }
