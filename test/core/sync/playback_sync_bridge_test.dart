@@ -164,22 +164,24 @@ void main() {
 
   // ── File-load suppression (#91) ───────────────────────────────────────────
 
-  test('loading a file (fileName change) does not emit a seek notification',
+  test('loading a new file (filePath change) does not emit a seek notification',
       () async {
     // Establish baseline at non-zero position on file 'a'.
     video.push(const PlaybackState(
       status: PlaybackStatus.playing,
       position: Duration(seconds: 60),
-      fileName: 'a',
+      filePath: '/videos/a.mkv',
+      fileName: 'a.mkv',
     ));
     await Future<void>.delayed(Duration.zero);
     sync.changes.clear();
 
-    // Load a new file — position resets to 0, fileName changes.
+    // Load a new file — different filePath, position resets to 0.
     video.push(const PlaybackState(
       status: PlaybackStatus.paused,
       position: Duration.zero,
-      fileName: 'b',
+      filePath: '/videos/b.mkv',
+      fileName: 'b.mkv',
     ));
     await Future<void>.delayed(Duration.zero);
 
@@ -187,32 +189,92 @@ void main() {
         reason: 'file load must not be classified as a seek');
   });
 
-  test('seek within the same file still emits a seek notification', () async {
+  test('same basename in different directory is treated as a new file load',
+      () async {
+    // Establish baseline on /folderA/movie.mkv.
     video.push(const PlaybackState(
       status: PlaybackStatus.playing,
-      position: Duration(seconds: 5),
-      fileName: 'a',
+      position: Duration(seconds: 60),
+      filePath: '/folderA/movie.mkv',
+      fileName: 'movie.mkv',
     ));
     await Future<void>.delayed(Duration.zero);
     sync.changes.clear();
 
-    // Same fileName, large position jump → real seek.
+    // Same basename, different directory → filePath differs → load, not seek.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration.zero,
+      filePath: '/folderB/movie.mkv',
+      fileName: 'movie.mkv',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.changes, isEmpty,
+        reason: 'different path with same basename must be treated as a load');
+  });
+
+  test('reloading the same file (loading status) does not emit a seek',
+      () async {
+    // Establish baseline at 60s.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.playing,
+      position: Duration(seconds: 60),
+      filePath: '/videos/a.mkv',
+      fileName: 'a.mkv',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    sync.changes.clear();
+
+    // Player transitions through loading when reloading the same file.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.loading,
+      position: Duration.zero,
+      filePath: '/videos/a.mkv',
+      fileName: 'a.mkv',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    video.push(const PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration.zero,
+      filePath: '/videos/a.mkv',
+      fileName: 'a.mkv',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.changes, isEmpty,
+        reason: 'same-file reload must not be classified as a seek');
+  });
+
+  test('seek within the same file still emits a seek notification', () async {
+    video.push(const PlaybackState(
+      status: PlaybackStatus.playing,
+      position: Duration(seconds: 5),
+      filePath: '/videos/a.mkv',
+      fileName: 'a.mkv',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    sync.changes.clear();
+
+    // Same filePath, large position jump → real seek.
     video.push(const PlaybackState(
       status: PlaybackStatus.playing,
       position: Duration(seconds: 90),
-      fileName: 'a',
+      filePath: '/videos/a.mkv',
+      fileName: 'a.mkv',
     ));
     await Future<void>.delayed(Duration.zero);
 
     expect(sync.changes, contains(true));
   });
 
-  test('first-ever file load (null → fileName) does not emit a seek', () async {
-    // No prior push — _lastFileName is null. Loading the first file must not
+  test('first-ever file load (null → filePath) does not emit a seek', () async {
+    // No prior push — _lastFilePath is null. Loading the first file must not
     // trigger seek detection even though position starts at 0.
     video.push(const PlaybackState(
       status: PlaybackStatus.paused,
       position: Duration.zero,
+      filePath: '/videos/movie.mkv',
       fileName: 'movie.mkv',
     ));
     await Future<void>.delayed(Duration.zero);
