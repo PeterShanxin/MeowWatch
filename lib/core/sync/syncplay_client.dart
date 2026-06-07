@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../chat/chat_signals.dart';
 import 'connection_watchdog.dart';
 import 'peer_state.dart';
 import 'ping_service.dart';
@@ -473,12 +474,20 @@ class SyncplayClient extends SyncCore {
   }
 
   void _send(Map<String, Object?> message) {
+    if (kDebugMode) _debugSentMessages.add(message);
     final socket = _socket;
     if (socket == null) return;
     final line = json.encode(message);
     onLog?.call('>> $line');
     socket.add(utf8.encode('$line\r\n'));
   }
+
+  final List<Map<String, Object?>> _debugSentMessages = [];
+
+  /// Test hook: outbound messages recorded by [_send] (debug builds only).
+  @visibleForTesting
+  List<Map<String, Object?>> get debugSentMessages =>
+      List.unmodifiable(_debugSentMessages);
 
   void _sendRaw(Socket socket, Map<String, Object?> message) {
     socket.add(utf8.encode('${json.encode(message)}\r\n'));
@@ -558,11 +567,31 @@ class SyncplayClient extends SyncCore {
     if (_loggedIn) _send(encodeChat(text));
   }
 
+  /// Announce a deliberate departure so peers can distinguish a clean leave from
+  /// a connection drop (issue #92). Shared by the Leave button ([disconnect]) and
+  /// app close ([disposeBackend]); call only when [_loggedIn].
+  ///
+  /// Only awaits when there is a real socket to flush — with no socket it returns
+  /// synchronously after recording the send, so callers that read connection
+  /// state right after `await disconnect()` aren't deferred by a stray microtask.
+  /// Best-effort — the bounded flush ensures a half-open socket can't wedge the
+  /// teardown (the original close() bug — see CLAUDE.md); a lost bye degrades
+  /// gracefully to peers seeing "lost connection" instead of "left the room".
+  Future<void> _announceLeaving() async {
+    _send(encodeChat(encodeLeaving()));
+    final socket = _socket;
+    if (socket == null) return;
+    try {
+      await socket.flush().timeout(const Duration(milliseconds: 300));
+    } catch (_) {}
+  }
+
   @override
   Future<void> disconnect() async {
-    // User asked to leave: stop the watchdog and cancel any pending reconnect so
-    // we don't immediately dial back in.
+    // Cancel the watchdog and any pending reconnect FIRST (synchronously) so a
+    // timer can't fire during the flush await below and resurrect the link.
     _stopReconnecting();
+    if (_loggedIn) await _announceLeaving();
     // destroy(), not close(): a half-open socket's close() awaits a flush that
     // can never complete (the peer is gone), which is exactly what wedged the
     // "Leave room" button. destroy() drops it immediately. Clear _socket first
@@ -578,7 +607,11 @@ class SyncplayClient extends SyncCore {
 
   @override
   Future<void> disposeBackend() async {
+    // App is closing — also a deliberate leave, so announce it. No-op if a prior
+    // disconnect() already cleared _loggedIn.
     _stopReconnecting();
+    if (_loggedIn) await _announceLeaving();
+    _loggedIn = false;
     final old = _socket;
     _socket = null;
     old?.destroy();

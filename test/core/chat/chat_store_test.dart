@@ -132,6 +132,25 @@ void main() {
     await sync.dispose();
   });
 
+  test('leaving signal routes to leaving stream, not chat history', () async {
+    final sync = FakeSync();
+    final store = ChatStore(sync: sync);
+    final leavingFuture = store.leaving.first;
+
+    sync.incoming(
+      ChatMessage(username: 'lin', text: encodeLeaving()),
+    );
+    sync.incoming(const ChatMessage(username: 'bob', text: 'real msg'));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(await leavingFuture, 'lin');
+    // Leaving signal must not appear in history.
+    expect(store.messages.map((m) => m.text), ['real msg']);
+
+    await store.dispose();
+    await sync.dispose();
+  });
+
   test(
     'addSystem inserts a local system line, not sent over the wire',
     () async {

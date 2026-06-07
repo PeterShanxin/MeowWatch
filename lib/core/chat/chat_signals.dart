@@ -32,6 +32,13 @@ class TypingSignal extends ChatSignal {
   final bool isTyping;
 }
 
+/// A peer is about to disconnect deliberately. Sent by a MeowWatch client just
+/// before closing the socket so others can distinguish a clean leave from a
+/// connection drop.
+class LeavingSignal extends ChatSignal {
+  const LeavingSignal();
+}
+
 /// Parse [text] as a control message, or null if it is ordinary chat.
 ChatSignal? parseChatControl(String text) {
   if (!text.startsWith(chatControlSentinel)) return null;
@@ -44,6 +51,8 @@ ChatSignal? parseChatControl(String text) {
       return payload.isEmpty ? null : ReactionSignal(payload);
     case 'typing':
       return TypingSignal(payload == '1');
+    case 'leaving':
+      return const LeavingSignal();
     default:
       return null;
   }
@@ -55,3 +64,7 @@ String encodeReaction(String emoji) => '${chatControlSentinel}react:$emoji';
 /// Encode a typing-state control message.
 String encodeTyping(bool isTyping) =>
     '${chatControlSentinel}typing:${isTyping ? '1' : '0'}';
+
+/// Encode a leaving signal — sent just before deliberate disconnect so peers
+/// know the departure was intentional (clean leave vs connection drop).
+String encodeLeaving() => '${chatControlSentinel}leaving';
