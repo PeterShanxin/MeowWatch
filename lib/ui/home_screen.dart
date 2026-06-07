@@ -15,6 +15,8 @@ import '../core/data/stores.dart';
 import '../core/debug/debug_log.dart';
 import '../core/sync/auto_pause.dart';
 import '../core/sync/file_match.dart';
+import '../core/sync/loaded_file_message.dart';
+import '../core/sync/room_greeting.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
 import '../core/sync/sync_activity_throttle.dart';
@@ -86,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<PlaybackState>? _noticeSub;
   StreamSubscription<PeerFile>? _peerFileSub;
   StreamSubscription<SyncActivity>? _activitySub;
+  StreamSubscription<List<String>>? _rosterSub;
 
   /// Most recent file a peer announced, and our own loaded file's byte size —
   /// together they drive the file-mismatch warning. MeowWatch is a two-person
@@ -323,6 +326,9 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       _chat.addSystem(t.chatLine);
     });
+    _rosterSub = _sync.initialRoster.listen((members) {
+      if (mounted) _chat.addSystem(roomGreeting(members));
+    });
     _noticeSub = _core.stateStream.listen((s) {
       if (!mounted) return;
       if (_autoPausedNotice && s.status == PlaybackStatus.playing) {
@@ -434,6 +440,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_noticeSub?.cancel());
     unawaited(_peerFileSub?.cancel());
     unawaited(_activitySub?.cancel());
+    unawaited(_rosterSub?.cancel());
     unawaited(_activityThrottleSub?.cancel());
     unawaited(_activityThrottle.dispose());
     _presenceTimer?.cancel();
@@ -667,8 +674,24 @@ class _HomeScreenState extends State<HomeScreen> {
     // We now have a video, so the "load a video to join" prompt is moot (#60).
     if (_joinPrompt != null && mounted) setState(() => _joinPrompt = null);
     await _core.load(path);
-    await _announceCurrentFile();
     await _recordOpen(path);
+    await _announceCurrentFile();
+    _addLoadedFileMessage();
+  }
+
+  /// Append a "Loaded …" system line to chat. Shows "in sync!" when the peer's
+  /// file matches ours; otherwise just names the file. Replaces the misleading
+  /// "jumped to 00:00" that appeared on first load (#91).
+  void _addLoadedFileMessage() {
+    final fileName = _core.state.fileName;
+    if (fileName == null) return;
+    final match = compareFiles(
+      localName: fileName,
+      localSize: _localFileSizeBytes,
+      peerName: _peerFile?.name,
+      peerSize: _peerFile?.sizeBytes,
+    );
+    _chat.addSystem(loadedFileMessage(fileName: fileName, match: match));
   }
 
   Future<void> _resume(String path, int positionMs) async {

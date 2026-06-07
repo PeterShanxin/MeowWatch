@@ -20,6 +20,13 @@ abstract class SyncCore {
       StreamController<PeerFile>.broadcast();
   final StreamController<SyncActivity> _activity =
       StreamController<SyncActivity>.broadcast();
+
+  /// Fires once — on the first roster reply after login — with the names of
+  /// members already in the room when the local user arrived. Empty list means
+  /// the room was empty. Does NOT fire again on reconnect.
+  final StreamController<List<String>> _initialRoster =
+      StreamController<List<String>>.broadcast();
+
   bool _disposed = false;
 
   Stream<SyncConnectionState> get connectionState => _connection.stream;
@@ -33,6 +40,9 @@ abstract class SyncCore {
 
   /// Deliberate peer playback actions (play/pause/seek) to announce.
   Stream<SyncActivity> get activity => _activity.stream;
+
+  /// Fires once with the roster members present on first join.
+  Stream<List<String>> get initialRoster => _initialRoster.stream;
 
   @protected
   void emitConnectionState(SyncConnectionState s) {
@@ -62,6 +72,11 @@ abstract class SyncCore {
   @protected
   void emitActivity(SyncActivity a) {
     if (!_disposed) _activity.add(a);
+  }
+
+  @protected
+  void emitInitialRoster(List<String> members) {
+    if (!_disposed) _initialRoster.add(members);
   }
 
   Future<void> connect({
@@ -106,5 +121,6 @@ abstract class SyncCore {
     await _chat.close();
     await _peerFile.close();
     await _activity.close();
+    await _initialRoster.close();
   }
 }

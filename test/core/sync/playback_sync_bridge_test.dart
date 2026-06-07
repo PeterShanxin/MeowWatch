@@ -161,4 +161,62 @@ void main() {
     expect(video.state.status, PlaybackStatus.paused);
     expect(video.state.position, const Duration(seconds: 10));
   });
+
+  // ── File-load suppression (#91) ───────────────────────────────────────────
+
+  test('loading a file (fileName change) does not emit a seek notification',
+      () async {
+    // Establish baseline at non-zero position on file 'a'.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.playing,
+      position: Duration(seconds: 60),
+      fileName: 'a',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    sync.changes.clear();
+
+    // Load a new file — position resets to 0, fileName changes.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration.zero,
+      fileName: 'b',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.changes, isEmpty,
+        reason: 'file load must not be classified as a seek');
+  });
+
+  test('seek within the same file still emits a seek notification', () async {
+    video.push(const PlaybackState(
+      status: PlaybackStatus.playing,
+      position: Duration(seconds: 5),
+      fileName: 'a',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    sync.changes.clear();
+
+    // Same fileName, large position jump → real seek.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.playing,
+      position: Duration(seconds: 90),
+      fileName: 'a',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.changes, contains(true));
+  });
+
+  test('first-ever file load (null → fileName) does not emit a seek', () async {
+    // No prior push — _lastFileName is null. Loading the first file must not
+    // trigger seek detection even though position starts at 0.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration.zero,
+      fileName: 'movie.mkv',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.changes, isEmpty);
+  });
 }

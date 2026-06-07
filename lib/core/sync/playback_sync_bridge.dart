@@ -43,6 +43,11 @@ class PlaybackSyncBridge {
   Duration _lastPosition = Duration.zero;
   DateTime _lastTick = DateTime.now();
 
+  /// The fileName seen on the last state event. Loading a new file changes this
+  /// value; we treat the transition as a load event (not a seek) and skip seek
+  /// detection for that tick — the position jump to 0 is not user intent.
+  String? _lastFileName;
+
   void start() {
     _videoSub = video.stateStream.listen(_onLocalState);
     _peerSub = sync.peerState.listen(_onPeerState);
@@ -53,6 +58,17 @@ class PlaybackSyncBridge {
 
     // Always feed the latest position to the sync layer for its heartbeat.
     sync.updateLocalState(position: s.position, paused: paused);
+
+    // A new file was loaded. Reset baselines so the position jump to 0 is not
+    // mistaken for a backward seek — the user didn't seek, they just opened a
+    // file. Skip all change detection for this tick.
+    if (s.fileName != _lastFileName) {
+      _lastFileName = s.fileName;
+      _lastPaused = paused;
+      _lastPosition = s.position;
+      _lastTick = DateTime.now();
+      return;
+    }
 
     final suppressed =
         _applyingRemote || DateTime.now().isBefore(_remoteApplyUntil);
