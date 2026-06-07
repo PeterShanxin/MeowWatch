@@ -58,20 +58,33 @@ class SyncplayClient extends SyncCore {
   // every (re)connect Hello requests THIS name. Kept distinct from [_username]
   // (the server-assigned identity) so a server-side dedupe suffix can't feed
   // back into the next Hello and compound ("meow" -> "meow_" -> "meow__" …) on
-  // each reconnect against a lingering ghost session (#93).
+  // each reconnect against a lingering ghost session (#93). NOT used to decide
+  // self-ness — see [_isSelf].
   String _requestedUsername = '';
+
+  // The server-assigned identities we've held earlier in THIS connect() session.
+  // Each reconnect against a ghost of our own dropped session leaves that ghost
+  // in the roster under the name we previously held; the server hands us a fresh
+  // suffixed name. A ghost is therefore always one of OUR past assigned names —
+  // never a real peer's — so this set identifies ghosts without ever
+  // mis-filtering a genuine same-name peer (the #40 collision case). Reset only
+  // on a fresh connect(), so it accumulates across the reconnect chain.
+  final Set<String> _pastSelfNames = <String>{};
 
   String _username = '';
   String _room = '';
   String? _password;
 
-  /// True when [name] is us: either the server-assigned identity or the name we
-  /// originally requested. After a reconnect against a ghost of our own dropped
-  /// session, the server hands us a suffixed name ("meow_") while the roster
-  /// still lists the ghost under the requested name ("meow"). Both are self —
-  /// neither must surface as a peer, or the ghost's file/leave would corrupt
-  /// peer state and make a loaded friend read as "hasn't loaded" (#93).
-  bool _isSelf(String name) => name == _username || name == _requestedUsername;
+  /// True when [name] is us: the current server-assigned identity, or any
+  /// identity the server assigned us earlier this session (a stale reconnect
+  /// ghost — see [_pastSelfNames]). A ghost must not surface as a peer, or its
+  /// file/leave corrupts peer state and makes a loaded friend read as "hasn't
+  /// loaded" (#93). We deliberately do NOT treat [_requestedUsername] as self:
+  /// when the server suffixes us because a REAL live member already owns that
+  /// name (#40), the requested name is that peer's — filtering it would erase a
+  /// genuine peer.
+  bool _isSelf(String name) =>
+      name == _username || _pastSelfNames.contains(name);
 
   bool _loggedIn = false;
 
@@ -108,7 +121,12 @@ class SyncplayClient extends SyncCore {
     _server = server;
     _port = port;
     _requestedUsername = username;
-    _username = username;
+    // Leave [_username] empty until the server assigns it in the Hello reply.
+    // Seeding it with the requested name would, on a first-login collision (#40),
+    // push the colliding REAL peer's name into [_pastSelfNames] when we adopt the
+    // suffixed name — wrongly marking that peer as a ghost of ourselves.
+    _username = '';
+    _pastSelfNames.clear();
     _room = room;
     _password = password;
     _manualDisconnect = false;
@@ -322,8 +340,15 @@ class SyncplayClient extends SyncCore {
         // "meow_") and echoes the assigned name here. Adopt it so our own
         // identity matches what peers and the chat echo call us — otherwise
         // chat-bubble ownership and the gear member list show the wrong name
-        // and flip self/peer (#40).
-        if (username != null && username.isNotEmpty) _username = username;
+        // and flip self/peer (#40). Before overwriting, remember the identity we
+        // held — on a reconnect that's the name our now-stale ghost still
+        // occupies in the roster, so [_isSelf] can filter it (#93).
+        if (username != null && username.isNotEmpty) {
+          if (_username.isNotEmpty && _username != username) {
+            _pastSelfNames.add(_username);
+          }
+          _username = username;
+        }
         emitConnectionState(
           SyncConnectionState(
             status: SyncConnectionStatus.connected,
@@ -563,12 +588,23 @@ class SyncplayClient extends SyncCore {
     _loggedIn = true;
   }
 
-  /// Test hook: seed the requested + assigned name the way [connect] does,
-  /// without dialing a socket. Lets a test exercise the reconnect Hello path.
+  /// Test hook: seed an already-established session (requested name + the
+  /// server-assigned identity equal), without dialing a socket. Lets a test
+  /// exercise the reconnect Hello path where a ghost holds our old name.
   @visibleForTesting
   void debugSeedIdentity(String username) {
     _requestedUsername = username;
     _username = username;
+  }
+
+  /// Test hook: seed only the requested name, leaving the assigned identity
+  /// unset — mirrors the moment after [connect] but before the first Hello.
+  /// Lets a test exercise a first-login collision against a real same-name peer.
+  @visibleForTesting
+  void debugSeedRequested(String username) {
+    _requestedUsername = username;
+    _username = '';
+    _pastSelfNames.clear();
   }
 
   /// Test hook: the name the next Hello will request. Stays the originally
