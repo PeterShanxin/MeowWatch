@@ -348,6 +348,12 @@ class SyncplayClient extends SyncCore {
             _pastSelfNames.add(_username);
           }
           _username = username;
+        } else if (_username.isEmpty) {
+          // Older/allowed Hello shape with no username echoed. connect() leaves
+          // _username empty until the server assigns one, so fall back to the
+          // name we requested — otherwise we'd report a blank identity and then
+          // treat our own requested name in the roster as a peer.
+          _username = _requestedUsername;
         }
         emitConnectionState(
           SyncConnectionState(
@@ -364,7 +370,17 @@ class SyncplayClient extends SyncCore {
         for (final e in events) {
           // Drop our own (or our ghost's) join/left — a ghost-self "left" would
           // otherwise clear the real peer's file in the UI (#93).
-          if (!_isSelf(e.username)) emitPresence(e);
+          if (_isSelf(e.username)) {
+            // A past-self ghost being reaped frees its name for reuse. Stop
+            // treating it as self, so a future REAL user who joins under that
+            // freed name isn't filtered out forever. (Never prune the current
+            // identity — that's still us.)
+            if (e.kind == PresenceKind.left && e.username != _username) {
+              _pastSelfNames.remove(e.username);
+            }
+            continue;
+          }
+          emitPresence(e);
         }
         for (final f in files) {
           if (!_isSelf(f.username)) emitPeerFile(f);

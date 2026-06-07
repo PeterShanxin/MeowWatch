@@ -225,4 +225,68 @@ void main() {
     await fSub.cancel();
     await client.dispose();
   });
+
+  // Codex review on #100: a server may send the older/allowed Hello shape with
+  // no username. connect() now leaves _username empty until the server assigns
+  // one, so this path must fall back to the requested name — otherwise we'd
+  // report a blank identity and treat our own name in the roster as a peer.
+  test('a blank Hello on first login falls back to the requested name',
+      () async {
+    final client = SyncplayClient();
+    final states = <SyncConnectionState>[];
+    final peers = <String>[];
+    final sSub = client.connectionState.listen(states.add);
+    final pSub = client.presence.listen((e) => peers.add(e.username));
+
+    // After connect() but before the (username-less) first Hello.
+    client.debugSeedRequested('lin');
+    client.debugHandleMessage(const HelloMessage());
+    await Future<void>.delayed(Duration.zero);
+
+    expect(states.last.username, 'lin');
+
+    // The roster lists us under the requested name alongside a friend; we must
+    // not surface as our own peer.
+    client.debugHandleMessage(const RosterMessage(['lin', 'bob']));
+    await Future<void>.delayed(Duration.zero);
+    expect(peers, ['bob']);
+
+    await sSub.cancel();
+    await pSub.cancel();
+    await client.dispose();
+  });
+
+  // Codex review on #100: past self-names accumulate, so a reaped ghost would
+  // shadow its name forever. Once the server reaps the ghost (a "left" for that
+  // name), the name is free again — a real user who later joins under it must be
+  // visible, not filtered as a lingering self.
+  test('a reaped ghost frees its name for a real user to reuse', () async {
+    final client = SyncplayClient();
+    final peers = <String>[];
+    final peerFiles = <PeerFile>[];
+    final pSub = client.presence
+        .where((e) => e.kind == PresenceKind.joined)
+        .listen((e) => peers.add(e.username));
+    final fSub = client.peerFile.listen(peerFiles.add);
+
+    client.debugSeedIdentity('meow');
+    client.debugHandleMessage(const HelloMessage(username: 'meow_'));
+    // 'meow' is now a past self (our ghost). The server reaps it.
+    client.debugHandleMessage(const PresenceMessage([
+      PresenceEvent(username: 'meow', kind: PresenceKind.left),
+    ]));
+    // A genuinely different user later grabs the freed name and loads a file.
+    client.debugHandleMessage(const PresenceMessage(
+      [PresenceEvent(username: 'meow', kind: PresenceKind.joined)],
+      files: [PeerFile(username: 'meow', name: 'new.mkv')],
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(peers, ['meow'], reason: 'the reuser must surface once the ghost is reaped');
+    expect(peerFiles.map((f) => f.username), ['meow']);
+
+    await pSub.cancel();
+    await fSub.cancel();
+    await client.dispose();
+  });
 }
