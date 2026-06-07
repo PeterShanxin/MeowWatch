@@ -18,6 +18,7 @@ import '../core/sync/file_match.dart';
 import '../core/sync/loaded_file_message.dart';
 import '../core/sync/presence_messages.dart';
 import '../core/sync/room_greeting.dart';
+import '../core/sync/peer_files.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
 import '../core/sync/sync_activity_throttle.dart';
@@ -116,12 +117,17 @@ class _HomeScreenState extends State<HomeScreen> {
   /// rather than "joined the room" (issue #92).
   final Map<String, DateTime> _departedAt = <String, DateTime>{};
 
-  /// Most recent file a peer announced, and our own loaded file's byte size —
-  /// together they drive the file-mismatch warning. MeowWatch is a two-person
-  /// app, so tracking a single peer file is sufficient; a later announcement
-  /// (or the peer leaving) replaces/clears it.
-  PeerFile? _peerFile;
+  /// Files announced by peers, keyed by username, plus our own loaded file's
+  /// byte size — together they drive the file-mismatch warning. Keying by user
+  /// (rather than a single slot) means a transient ghost of our own dropped
+  /// session can't wipe a real friend's file when it departs (#93). [_peerFile]
+  /// surfaces only a currently-present peer's file.
+  PeerFiles _peerFiles = const PeerFiles();
   int? _localFileSizeBytes;
+
+  /// The file of the peer we're currently watching with, or null if no present
+  /// peer has announced one. Derived from [_peerFiles] restricted to [_peers].
+  PeerFile? get _peerFile => _peerFiles.currentAmong(_peers);
 
   /// Was the session in sync (connected + a peer present) at the last check?
   /// Used to detect the healthy -> unhealthy edge that triggers auto-pause.
@@ -301,11 +307,12 @@ class _HomeScreenState extends State<HomeScreen> {
             _peers.clear();
             _departedAt.clear();
             _cleanlyLeaving.clear();
-            // Drop the cached peer file too, so it is rebuilt deterministically
-            // from the post-reconnect roster rather than masking a stale value
-            // (#93). _peerNoVideoHint is gated on _syncHealthyNow, so this can't
-            // flash "hasn't loaded" while we're disconnected.
-            _peerFile = null;
+            // Drop the cached peer files too, so they are rebuilt
+            // deterministically from the post-reconnect roster rather than
+            // masking a stale value (#93). _peerNoVideoHint is gated on
+            // _syncHealthyNow, so this can't flash "hasn't loaded" while
+            // we're disconnected.
+            _peerFiles = const PeerFiles();
           }
           _evaluateSyncHealth();
         });
@@ -356,7 +363,7 @@ class _HomeScreenState extends State<HomeScreen> {
         } else {
           _peers.remove(e.username);
           _lastPeerLeft = e.username;
-          if (_peerFile?.username == e.username) _peerFile = null;
+          _peerFiles = _peerFiles.remove(e.username);
           // The "load a video to join" prompt is stale once they've left (#60).
           _joinPrompt = null;
           final clean = _cleanlyLeaving.remove(e.username);
@@ -376,7 +383,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     });
     _peerFileSub = _sync.peerFile.listen((f) {
-      if (mounted) setState(() => _peerFile = f);
+      if (mounted) setState(() => _peerFiles = _peerFiles.set(f));
     });
     // Sync activities (peer + our own) flow through the throttle so a scrub
     // burst collapses to one line/banner (#26); the throttled output drives the
