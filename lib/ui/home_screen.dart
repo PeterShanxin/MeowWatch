@@ -301,6 +301,11 @@ class _HomeScreenState extends State<HomeScreen> {
             _peers.clear();
             _departedAt.clear();
             _cleanlyLeaving.clear();
+            // Drop the cached peer file too, so it is rebuilt deterministically
+            // from the post-reconnect roster rather than masking a stale value
+            // (#93). _peerNoVideoHint is gated on _syncHealthyNow, so this can't
+            // flash "hasn't loaded" while we're disconnected.
+            _peerFile = null;
           }
           _evaluateSyncHealth();
         });

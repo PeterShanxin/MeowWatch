@@ -54,9 +54,24 @@ class SyncplayClient extends SyncCore {
   // matches.
   int _generation = 0;
 
+  // The name the user asked for. Set once at connect() and NEVER overwritten —
+  // every (re)connect Hello requests THIS name. Kept distinct from [_username]
+  // (the server-assigned identity) so a server-side dedupe suffix can't feed
+  // back into the next Hello and compound ("meow" -> "meow_" -> "meow__" …) on
+  // each reconnect against a lingering ghost session (#93).
+  String _requestedUsername = '';
+
   String _username = '';
   String _room = '';
   String? _password;
+
+  /// True when [name] is us: either the server-assigned identity or the name we
+  /// originally requested. After a reconnect against a ghost of our own dropped
+  /// session, the server hands us a suffixed name ("meow_") while the roster
+  /// still lists the ghost under the requested name ("meow"). Both are self —
+  /// neither must surface as a peer, or the ghost's file/leave would corrupt
+  /// peer state and make a loaded friend read as "hasn't loaded" (#93).
+  bool _isSelf(String name) => name == _username || name == _requestedUsername;
 
   bool _loggedIn = false;
 
@@ -92,6 +107,7 @@ class SyncplayClient extends SyncCore {
   }) async {
     _server = server;
     _port = port;
+    _requestedUsername = username;
     _username = username;
     _room = room;
     _password = password;
@@ -285,8 +301,11 @@ class SyncplayClient extends SyncCore {
   }
 
   void _sendHello() {
+    // Always request the ORIGINAL name, never the server-assigned one — see
+    // [_requestedUsername]. This is what stops the "_" suffix compounding on
+    // each reconnect.
     _send(encodeHello(
-      username: _username,
+      username: _requestedUsername,
       room: _room,
       password: _password,
     ));
@@ -318,18 +337,20 @@ class SyncplayClient extends SyncCore {
         _send(encodeList());
       case PresenceMessage(:final events, :final files):
         for (final e in events) {
-          emitPresence(e);
+          // Drop our own (or our ghost's) join/left — a ghost-self "left" would
+          // otherwise clear the real peer's file in the UI (#93).
+          if (!_isSelf(e.username)) emitPresence(e);
         }
         for (final f in files) {
-          if (f.username != _username) emitPeerFile(f);
+          if (!_isSelf(f.username)) emitPeerFile(f);
         }
       case PeerFileMessage(:final files):
         for (final f in files) {
-          if (f.username != _username) emitPeerFile(f);
+          if (!_isSelf(f.username)) emitPeerFile(f);
         }
       case RosterMessage(:final usernames, :final files):
         for (final name in usernames) {
-          if (name != _username) {
+          if (!_isSelf(name)) {
             emitPresence(PresenceEvent(
                 username: name,
                 kind: PresenceKind.joined,
@@ -337,12 +358,11 @@ class SyncplayClient extends SyncCore {
           }
         }
         for (final f in files) {
-          if (f.username != _username) emitPeerFile(f);
+          if (!_isSelf(f.username)) emitPeerFile(f);
         }
         if (!_rosterGreeted) {
           _rosterGreeted = true;
-          final others =
-              usernames.where((n) => n != _username).toList();
+          final others = usernames.where((n) => !_isSelf(n)).toList();
           emitInitialRoster(others);
         }
       case ChatServerMessage(:final message):
@@ -534,12 +554,33 @@ class SyncplayClient extends SyncCore {
   }
 
   /// Test hook: simulate a completed login so local-change classification has a
-  /// username to attribute, without standing up a real socket/handshake.
+  /// username to attribute, without standing up a real socket/handshake. Sets
+  /// the requested name to match, mirroring a real connect().
   @visibleForTesting
   void debugMarkLoggedIn(String username) {
+    _requestedUsername = username;
     _username = username;
     _loggedIn = true;
   }
+
+  /// Test hook: seed the requested + assigned name the way [connect] does,
+  /// without dialing a socket. Lets a test exercise the reconnect Hello path.
+  @visibleForTesting
+  void debugSeedIdentity(String username) {
+    _requestedUsername = username;
+    _username = username;
+  }
+
+  /// Test hook: the name the next Hello will request. Stays the originally
+  /// requested name across reconnects, even after the server assigns a suffixed
+  /// one — proving the "_" suffix can't compound (#93).
+  @visibleForTesting
+  String get debugRequestedUsername => _requestedUsername;
+
+  /// Test hook: run [_sendHello] without a socket so the requested username is
+  /// recorded in [debugSentMessages].
+  @visibleForTesting
+  void debugSendHello() => _sendHello();
 
   /// Test hook: pretend the server fell silent / the socket dropped, exercising
   /// the reconnect state machine without a real network. Mirrors what the
