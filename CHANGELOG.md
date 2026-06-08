@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.20.3-alpha] - 2026-06-08
+- Fixed your name growing an extra "_" each time you reconnected (e.g. "meowPEOW" turning into "meowPEOW_", then "meowPEOW__"). The app now always asks the server for your original name on every reconnect, so the dedupe suffix can't pile up. (#93)
+- Fixed a friend who already loaded a video showing as "hasn't loaded a video yet" after you reconnected. A leftover "ghost" of your own dropped session was being mistaken for your friend; the app now ignores that ghost and rebuilds who's really in the room — with their loaded files — fresh after each reconnect. (#93)
+
 ## [0.20.2-alpha] - 2026-06-08
 - After installing an update, the app now comes back to the front instead of hiding behind your other windows.
 - Fixed the empty PowerShell window that used to linger after an update restart — and closing it no longer closes the app along with it.
