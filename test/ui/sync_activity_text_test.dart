@@ -34,6 +34,29 @@ void main() {
     expect(t.chatLine, 'lin jumped back to 10:00');
   });
 
+  test('drift correction reads as a system notice, no actor name (#98)', () {
+    final t = text(SyncActivityKind.driftRewound, const Duration(seconds: 754));
+    expect(t.banner, '🔄 Sync correction — rewound to 12:34');
+    expect(t.chatLine,
+        'Sync correction: rewound to 12:34 to keep both screens together');
+    // Never attributes the jump to a person.
+    expect(t.banner, isNot(contains('lin')));
+    expect(t.chatLine, isNot(contains('lin')));
+  });
+
+  test('drift correction renders the same even with selfUsername (#98)', () {
+    final t = syncActivityText(
+      const SyncActivity(
+        kind: SyncActivityKind.driftRewound,
+        username: 'lin',
+        position: Duration(seconds: 754),
+      ),
+      selfUsername: 'me',
+    );
+    expect(t.banner, '🔄 Sync correction — rewound to 12:34');
+    expect(t.banner, isNot(contains('You')));
+  });
+
   test('over an hour uses h:mm:ss', () {
     final t = text(SyncActivityKind.paused, const Duration(seconds: 3725));
     expect(t.chatLine, 'lin paused at 1:02:05');

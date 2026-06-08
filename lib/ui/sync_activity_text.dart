@@ -39,5 +39,12 @@ SyncActivityText syncActivityText(SyncActivity a, {String? selfUsername}) {
         banner: '⏪ $user jumped back to $at',
         chatLine: '$user jumped back to $at',
       );
+    case SyncActivityKind.driftRewound:
+      // Automatic correction (#98). No actor name — this reads as the app
+      // keeping both screens together, not a person skipping backward.
+      return SyncActivityText(
+        banner: '🔄 Sync correction — rewound to $at',
+        chatLine: 'Sync correction: rewound to $at to keep both screens together',
+      );
   }
 }
