@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.21.1-alpha] - 2026-06-09
+- Closing the app with the Windows X button while connected to a room now feels instant: the window disappears before the best-effort "left the room" signal runs, so a slow or wedged close hook cannot make the app look stuck. (#106)
+
 ## [0.21.0-alpha] - 2026-06-08
 - When the app automatically rewinds your video to stay in sync with your friend (because your side had run ahead), you now see a gentle notice — a "🔄 Sync correction — rewound to 12:34" banner and a matching chat line — instead of playback silently jumping. It's worded as the app keeping you together, never as if someone deliberately skipped back, and repeated corrections are rate-limited so they can't spam the chat. (#98)
 
