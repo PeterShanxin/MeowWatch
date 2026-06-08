@@ -7,7 +7,7 @@
           {
             "type": "command",
             "shell": "powershell",
-            "command": "$root = git rev-parse --show-toplevel 2>$null; if ($root) { $p = Join-Path $root 'docs/AGENT_GUIDE.md'; if (Test-Path $p) { Get-Content -Raw $p } }",
+            "command": "$root = git rev-parse --show-toplevel 2>$null; if ($root) { $s = Join-Path $root '.claude/hooks/load-agent-guide.ps1'; if (Test-Path $s) { pwsh -NoProfile -ExecutionPolicy Bypass -File $s } }",
             "timeout": 15,
             "statusMessage": "Loading AGENT_GUIDE.md"
           }
