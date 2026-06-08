@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "$root = git rev-parse --show-toplevel 2>$null; if ($root) { $p = Join-Path $root 'docs/AGENT_GUIDE.md'; if (Test-Path $p) { Get-Content -Raw $p } }",
+            "timeout": 15,
+            "statusMessage": "Loading AGENT_GUIDE.md"
+          }
+        ]
+      }
+    ]
+  }
+}
