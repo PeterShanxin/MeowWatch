@@ -30,9 +30,11 @@ class WindowCloseHandler with WindowListener {
   WindowCloseHandler({
     required this.navigatorKey,
     UpdateService? service,
+    Future<void> Function()? hideWindow,
     Future<void> Function()? destroyWindow,
-  })  : _service = service ?? UpdateService.instance,
-        _destroyWindow = destroyWindow ?? windowManager.destroy;
+  }) : _service = service ?? UpdateService.instance,
+       _hideWindow = hideWindow ?? windowManager.hide,
+       _destroyWindow = destroyWindow ?? windowManager.destroy;
 
   final GlobalKey<NavigatorState> navigatorKey;
   final UpdateService _service;
@@ -40,6 +42,11 @@ class WindowCloseHandler with WindowListener {
   /// How the window is torn down — `windowManager.destroy` in production,
   /// injectable in tests (the real call hangs without platform plumbing).
   final Future<void> Function() _destroyWindow;
+
+  /// How the window is made invisible before best-effort close cleanup.
+  /// Injectable so tests can prove close feels instant without platform
+  /// plumbing.
+  final Future<void> Function() _hideWindow;
 
   bool _preventing = false;
 
@@ -109,6 +116,13 @@ class WindowCloseHandler with WindowListener {
       }
     }
 
+    // Make the X-button close feel instant; the room leave remains best-effort
+    // and bounded, but it happens after the visible window is gone (#106).
+    try {
+      await _hideWindow();
+    } catch (e, st) {
+      debugPrint('hide-on-close failed: $e\n$st');
+    }
     // Announce a deliberate leave (if in a room) before tearing the window down,
     // so peers see "left the room" rather than "lost connection" (#92).
     await runAppCloseHook();
@@ -153,7 +167,11 @@ Future<UpdateCloseChoice> showUpdateOnCloseDialog(BuildContext context) async {
           style: TextStyle(color: m.textDim, fontSize: TypeScale.body),
         ),
         actionsPadding: const EdgeInsets.fromLTRB(
-            Spacing.lg, 0, Spacing.lg, Spacing.md),
+          Spacing.lg,
+          0,
+          Spacing.lg,
+          Spacing.md,
+        ),
         actions: [
           TextButton(
             onPressed: () =>
@@ -199,13 +217,19 @@ Future<void> showInstallingUpdateDialog(BuildContext context) {
               SizedBox(
                 width: 22,
                 height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2, color: m.accent),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: m.accent,
+                ),
               ),
               const SizedBox(width: Spacing.lg),
               Expanded(
                 child: Text(
                   'Installing update…\nThe app will close in a moment.',
-                  style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
+                  style: TextStyle(
+                    color: m.textPrimary,
+                    fontSize: TypeScale.label,
+                  ),
                 ),
               ),
             ],

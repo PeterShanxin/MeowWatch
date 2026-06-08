@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
@@ -13,19 +15,21 @@ void main() {
     String tapLabel,
   ) async {
     UpdateCloseChoice? picked;
-    await tester.pumpWidget(MaterialApp(
-      theme: themeDataFor(MeowThemeId.cozy),
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => TextButton(
-            onPressed: () async {
-              picked = await showUpdateOnCloseDialog(context);
-            },
-            child: const Text('open'),
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: themeDataFor(MeowThemeId.cozy),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                picked = await showUpdateOnCloseDialog(context);
+              },
+              child: const Text('open'),
+            ),
           ),
         ),
       ),
-    ));
+    );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
     expect(find.text('Install update before closing?'), findsOneWidget);
@@ -43,28 +47,28 @@ void main() {
   });
 
   testWidgets('"Just quit" returns justQuit', (tester) async {
-    expect(
-      await openAndPick(tester, 'Just quit'),
-      UpdateCloseChoice.justQuit,
-    );
+    expect(await openAndPick(tester, 'Just quit'), UpdateCloseChoice.justQuit);
   });
 
-  testWidgets('dismissing the dialog counts as cancel (stay open)',
-      (tester) async {
+  testWidgets('dismissing the dialog counts as cancel (stay open)', (
+    tester,
+  ) async {
     UpdateCloseChoice? picked;
-    await tester.pumpWidget(MaterialApp(
-      theme: themeDataFor(MeowThemeId.cozy),
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => TextButton(
-            onPressed: () async {
-              picked = await showUpdateOnCloseDialog(context);
-            },
-            child: const Text('open'),
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: themeDataFor(MeowThemeId.cozy),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                picked = await showUpdateOnCloseDialog(context);
+              },
+              child: const Text('open'),
+            ),
           ),
         ),
       ),
-    ));
+    );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
@@ -74,19 +78,22 @@ void main() {
     expect(picked, UpdateCloseChoice.cancel);
   });
 
-  testWidgets('the installing modal shows a spinner and cannot be dismissed',
-      (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      theme: themeDataFor(MeowThemeId.cozy),
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => showInstallingUpdateDialog(context),
-            child: const Text('open'),
+  testWidgets('the installing modal shows a spinner and cannot be dismissed', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: themeDataFor(MeowThemeId.cozy),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showInstallingUpdateDialog(context),
+              child: const Text('open'),
+            ),
           ),
         ),
       ),
-    ));
+    );
     await tester.tap(find.text('open'));
     await tester.pump(); // start the dialog route
     await tester.pump(const Duration(milliseconds: 50));
@@ -108,6 +115,7 @@ void main() {
     final handler = WindowCloseHandler(
       navigatorKey: GlobalKey<NavigatorState>(),
       service: UpdateService.forTest(), // phase idle → no update dialog
+      hideWindow: () async => order.add('hide'),
       destroyWindow: () async => order.add('destroy'),
     );
 
@@ -115,8 +123,39 @@ void main() {
 
     // The leave must be announced before the window is destroyed, else the
     // socket dies first and peers see "lost connection" (#92).
-    expect(order, ['leave', 'destroy']);
+    expect(order, ['hide', 'leave', 'destroy']);
   });
+
+  test(
+    'handleClose hides the window before waiting on a slow room leave',
+    () async {
+      final order = <String>[];
+      final releaseHook = Completer<void>();
+      appCloseHook.value = () async {
+        order.add('leave-start');
+        await releaseHook.future;
+        order.add('leave-done');
+      };
+      addTearDown(() => appCloseHook.value = null);
+
+      final handler = WindowCloseHandler(
+        navigatorKey: GlobalKey<NavigatorState>(),
+        service: UpdateService.forTest(),
+        hideWindow: () async => order.add('hide'),
+        destroyWindow: () async => order.add('destroy'),
+      );
+
+      final close = handler.handleClose();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(order, ['hide', 'leave-start']);
+
+      releaseHook.complete();
+      await close;
+
+      expect(order, ['hide', 'leave-start', 'leave-done', 'destroy']);
+    },
+  );
 
   test('handleClose without a hook still destroys the window', () async {
     appCloseHook.value = null;
@@ -125,6 +164,7 @@ void main() {
     final handler = WindowCloseHandler(
       navigatorKey: GlobalKey<NavigatorState>(),
       service: UpdateService.forTest(),
+      hideWindow: () async {},
       destroyWindow: () async => destroyed = true,
     );
 
