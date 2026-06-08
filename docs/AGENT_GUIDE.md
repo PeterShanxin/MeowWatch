@@ -91,3 +91,5 @@ Keep the `-alpha` suffix until we move off alpha. CI parses `CHANGELOG.md` → `
 ## Maintaining this file
 
 Keep this file current. When you discover a new sharp edge (a build quirk, a test trap, a non-obvious convention) or make a structural change to the architecture above, update the relevant section in the same change — don't let it drift. Prefer fixing/expanding an existing bullet over appending duplicates.
+
+`CLAUDE.md` and `AGENTS.md` mirror a short, deliberate subset of this file — the highest-cost items agents kept missing (Puro Flutter path, the tag→R2 release chain, version lockstep, Release-build manual testing). If you change any of those four here, update the matching one-liner in **both** entrypoints in the same commit so they don't drift.
