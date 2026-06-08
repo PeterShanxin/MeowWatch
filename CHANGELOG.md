@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.21.0-alpha] - 2026-06-08
+- When the app automatically rewinds your video to stay in sync with your friend (because your side had run ahead), you now see a gentle notice — a "🔄 Sync correction — rewound to 12:34" banner and a matching chat line — instead of playback silently jumping. It's worded as the app keeping you together, never as if someone deliberately skipped back, and repeated corrections are rate-limited so they can't spam the chat. (#98)
+
 ## [0.20.3-alpha] - 2026-06-08
 - Fixed your name growing an extra "_" each time you reconnected (e.g. "meowPEOW" turning into "meowPEOW_", then "meowPEOW__"). The app now always asks the server for your original name on every reconnect, so the dedupe suffix can't pile up. (#93)
 - Fixed a friend who already loaded a video showing as "hasn't loaded a video yet" after you reconnected. A leftover "ghost" of your own dropped session was being mistaken for your friend; the app now ignores that ghost and rebuilds who's really in the room — with their loaded files — fresh after each reconnect. (#93)

@@ -81,6 +81,55 @@ void main() {
     });
   });
 
+  test('first drift correction passes straight through (#98)', () {
+    withThrottle((async, throttle, out) {
+      throttle.add(activity(SyncActivityKind.driftRewound, 80));
+      async.flushMicrotasks();
+      expect(out, hasLength(1));
+      expect(out.single.kind, SyncActivityKind.driftRewound);
+    });
+  });
+
+  test('a repeated drift inside the cooldown is dropped (#98)', () {
+    fakeAsync((async) {
+      final throttle = SyncActivityThrottle(
+        window: const Duration(milliseconds: 40),
+        driftCooldown: const Duration(seconds: 8),
+      );
+      final out = <SyncActivity>[];
+      throttle.stream.listen(out.add);
+
+      throttle.add(activity(SyncActivityKind.driftRewound, 80));
+      async.elapse(const Duration(seconds: 3));
+      throttle.add(activity(SyncActivityKind.driftRewound, 70));
+      async.flushMicrotasks();
+      // Only the first survives; the second is inside the cooldown.
+      expect(out, hasLength(1));
+      expect(out.single.position, const Duration(seconds: 80));
+
+      // Once the cooldown elapses, a fresh correction gets through again.
+      async.elapse(const Duration(seconds: 6));
+      throttle.add(activity(SyncActivityKind.driftRewound, 60));
+      async.flushMicrotasks();
+      expect(out, hasLength(2));
+      expect(out.last.position, const Duration(seconds: 60));
+
+      throttle.dispose();
+      async.flushMicrotasks();
+    });
+  });
+
+  test('drift flushes a pending seek ahead of itself, preserving order (#98)',
+      () {
+    withThrottle((async, throttle, out) {
+      throttle.add(activity(SyncActivityKind.seekedForward, 20));
+      throttle.add(activity(SyncActivityKind.driftRewound, 18));
+      async.flushMicrotasks();
+      expect(out.map((a) => a.kind),
+          [SyncActivityKind.seekedForward, SyncActivityKind.driftRewound]);
+    });
+  });
+
   test('add() after dispose is a no-op and never throws', () {
     withThrottle((async, throttle, out) {
       throttle.dispose();

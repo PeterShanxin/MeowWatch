@@ -176,10 +176,12 @@ class ChatMessage {
   int get hashCode => Object.hash(username, text, timestamp, system, isMine);
 }
 
-/// A deliberate playback action a peer took (play/pause/seek), surfaced as a
-/// notification so the other watcher understands why playback jumped. Drift
-/// corrections are NOT activities — see classifySyncActivity.
-enum SyncActivityKind { played, paused, seekedForward, seekedBack }
+/// A playback change surfaced as a notification so the other watcher
+/// understands why playback jumped. Most kinds are deliberate peer actions
+/// (play/pause/seek). [driftRewound] is the one automatic case: the client
+/// nudged us back to the room because we ran ahead — worded as a system
+/// correction, never as someone deliberately skipping (#98).
+enum SyncActivityKind { played, paused, seekedForward, seekedBack, driftRewound }
 
 @immutable
 class SyncActivity {

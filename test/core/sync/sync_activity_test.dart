@@ -69,12 +69,67 @@ void main() {
     expect(a, isNull);
   });
 
-  test('drift rewind (no flip, no seek) → null', () {
+  test('drift rewind (no flip, no seek, ahead past threshold) → driftRewound '
+      'at the room position (#98)', () {
     final a = classify(
       peerPaused: false,
       localPaused: false,
       peerPos: const Duration(seconds: 80),
       localPos: const Duration(seconds: 100),
+    );
+    expect(a, isNotNull);
+    expect(a!.kind, SyncActivityKind.driftRewound);
+    // Lands on the room position, not where we drifted to.
+    expect(a.position, const Duration(seconds: 80));
+    expect(a.username, 'lin');
+  });
+
+  test('drift correction is NOT classified as a deliberate seek-back (#98)', () {
+    final drift = classify(
+      peerPaused: false,
+      localPaused: false,
+      doSeek: false,
+      peerPos: const Duration(seconds: 80),
+      localPos: const Duration(seconds: 100),
+    );
+    final seekBack = classify(
+      peerPaused: false,
+      localPaused: false,
+      doSeek: true,
+      peerPos: const Duration(seconds: 80),
+      localPos: const Duration(seconds: 100),
+    );
+    expect(drift!.kind, SyncActivityKind.driftRewound);
+    expect(seekBack!.kind, SyncActivityKind.seekedBack);
+  });
+
+  test('ahead but within the rewind threshold → null (no real correction)', () {
+    final a = classify(
+      peerPaused: false,
+      localPaused: false,
+      peerPos: const Duration(seconds: 98),
+      localPos: const Duration(seconds: 100),
+    );
+    expect(a, isNull);
+  });
+
+  test('behind the room with no flip/seek → null (one-directional)', () {
+    final a = classify(
+      peerPaused: false,
+      localPaused: false,
+      peerPos: const Duration(seconds: 100),
+      localPos: const Duration(seconds: 80),
+    );
+    expect(a, isNull);
+  });
+
+  test('drift rewind with no setter → null (ignored empty-room reset, #98)', () {
+    final a = classify(
+      peerPaused: false,
+      localPaused: false,
+      peerPos: const Duration(seconds: 0),
+      localPos: const Duration(seconds: 100),
+      setBy: null,
     );
     expect(a, isNull);
   });
