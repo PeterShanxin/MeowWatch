@@ -69,6 +69,8 @@ jobs:
           $releaseDir = "build\windows\x64\runner\Release"
           Compress-Archive -Path "$releaseDir\*" -DestinationPath "MeowWatch-windows-x64.zip" -Force
 
+      # Keep the artifact name and upload-artifact version in sync with
+      # package-check.yml's PR-time artifact round-trip smoke test.
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
@@ -85,6 +87,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Keep the download-artifact version, merge-multiple layout, and locate
+      # guard in sync with package-check.yml's PR-time smoke test.
       - name: Download all artifacts
         uses: actions/download-artifact@v8
         with:
