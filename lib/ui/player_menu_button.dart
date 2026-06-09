@@ -22,6 +22,7 @@ class PlayerMenuButton extends StatelessWidget {
     required this.roomCode,
     required this.members,
     required this.myUsername,
+    required this.myDisplayName,
     required this.currentTheme,
     required this.onThemeChanged,
     required this.onLoadVideo,
@@ -42,9 +43,20 @@ class PlayerMenuButton extends StatelessWidget {
 
   final String roomCode;
 
-  /// Everyone in the room (including you).
+  /// Everyone in the room (including you), keyed by their server-assigned wire
+  /// identity — what self-filtering, chat-echo ownership, and peer roster all
+  /// agree on. May briefly include a phantom of our own old name after a
+  /// reconnect (#100), so dedupe/identity must stay on these wire names.
   final List<String> members;
+
+  /// Our wire identity in [members] (server-assigned). Used to pick the "you"
+  /// row — NOT for what that row displays. After a reconnect against a lingering
+  /// ghost this can carry a dedupe suffix ("meow" -> "meow_").
   final String myUsername;
+
+  /// The name we actually chose, shown for the "you" row instead of the wire
+  /// [myUsername] so a transient reconnect suffix never surfaces to us (#107).
+  final String myDisplayName;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
   final VoidCallback onLoadVideo;
@@ -116,6 +128,7 @@ class PlayerMenuButton extends StatelessWidget {
             roomCode: roomCode,
             members: members,
             myUsername: myUsername,
+            myDisplayName: myDisplayName,
             currentTheme: currentTheme,
             onThemeChanged: onThemeChanged,
             onLoadVideo: onLoadVideo,
@@ -145,6 +158,7 @@ class _MenuPanel extends StatefulWidget {
     required this.roomCode,
     required this.members,
     required this.myUsername,
+    required this.myDisplayName,
     required this.currentTheme,
     required this.onThemeChanged,
     required this.onLoadVideo,
@@ -165,6 +179,7 @@ class _MenuPanel extends StatefulWidget {
   final String roomCode;
   final List<String> members;
   final String myUsername;
+  final String myDisplayName;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
   final VoidCallback onLoadVideo;
@@ -210,7 +225,12 @@ class _MenuPanelState extends State<_MenuPanel> {
           Divider(color: m.border, height: Spacing.lg),
           label('In the room (${widget.members.length})'),
           for (final name in widget.members)
-            _MemberRow(name: name, isMe: name == widget.myUsername),
+            // isMe matches the wire identity; the matched "you" row renders our
+            // chosen name so a transient reconnect dedupe suffix never shows (#107).
+            _MemberRow(
+              name: name == widget.myUsername ? widget.myDisplayName : name,
+              isMe: name == widget.myUsername,
+            ),
           const SizedBox(height: Spacing.sm),
           Divider(color: m.border, height: Spacing.lg),
           _MenuAction(

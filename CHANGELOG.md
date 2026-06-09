@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.21.2-alpha] - 2026-06-09
+- After a quick reconnect to your room, the people list in the gear menu now always shows your own name the way you chose it — even when the server briefly adds a trailing underscore (like `meowPEOW_`) to avoid clashing with the ghost of your dropped session. Friends and chat still use the behind-the-scenes name so message ownership stays correct; only your own visible label is cleaned up. (#107)
+
 ## [0.21.1-alpha] - 2026-06-09
 - Closing the app with the Windows X button while connected to a room now feels instant: the window disappears before the best-effort "left the room" signal runs, so a slow or wedged close hook cannot make the app look stuck. (#106)
 
