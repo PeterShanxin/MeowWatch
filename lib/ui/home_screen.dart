@@ -294,9 +294,11 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _syncStatus = s.status;
           _syncError = s.message;
-          // Adopt a server-side rename so chat ownership, the gear member list,
-          // typing attribution and self-notifications all use the name peers
-          // actually see us as (#40).
+          // Adopt the server-assigned wire identity so chat ownership, typing
+          // attribution and self-notifications all match the name peers (and the
+          // chat echo) actually use for us (#40). This is the WIRE name only — it
+          // can carry a transient dedupe suffix after a reconnect, so the gear
+          // member list shows widget.config.username (our chosen name) instead (#107).
           if (s.username != null && s.username!.isNotEmpty) {
             _username = s.username!;
           }
@@ -995,8 +997,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         ignoring: _chatDragging || _isUiIdle,
                         child: PlayerMenuButton(
                           roomCode: widget.config.room,
+                          // Wire identities for the roster + isMe match; the
+                          // "you" row shows our chosen name, not a transient
+                          // reconnect dedupe suffix the server may assign (#107).
                           members: <String>[_username, ..._peers],
                           myUsername: _username,
+                          myDisplayName: widget.config.username,
                           currentTheme: widget.currentTheme,
                           onThemeChanged: widget.onThemeChanged,
                           onLoadVideo: _browse,

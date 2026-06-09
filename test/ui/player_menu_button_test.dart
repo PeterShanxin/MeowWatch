@@ -15,6 +15,8 @@ PlayerMenuButton _button({
   VoidCallback? onLoadVideo,
   VoidCallback? onLeave,
   List<String>? members,
+  String myUsername = 'me',
+  String? myDisplayName,
   bool chatAutoDim = true,
   ValueChanged<bool>? onChatAutoDimChanged,
   bool chatWakeOnMessage = false,
@@ -30,7 +32,8 @@ PlayerMenuButton _button({
     PlayerMenuButton(
       roomCode: 'MEOW42',
       members: members ?? const ['me', 'lin'],
-      myUsername: 'me',
+      myUsername: myUsername,
+      myDisplayName: myDisplayName ?? myUsername,
       currentTheme: MeowThemeId.cozy,
       onThemeChanged: onThemeChanged ?? (_) {},
       onLoadVideo: onLoadVideo ?? () {},
@@ -107,6 +110,27 @@ void main() {
     expect(find.text('me (you)'), findsOneWidget);
     expect(find.text('lin'), findsOneWidget);
     expect(find.text('In the room (2)'), findsOneWidget);
+  });
+
+  testWidgets('me-row shows the requested name, not a reconnect suffix (#107)',
+      (tester) async {
+    // After a fast reconnect the server hands back a deduped wire name
+    // ("meowPEOW_"), and the phantom ghost of our old name is forwarded as a
+    // peer ("meowPEOW"). The member list keeps wire identities (so isMe matches
+    // the chat echo / self-filter and the phantom doesn't collide), but our own
+    // row must render the clean name we chose — never the transient suffix.
+    await tester.pumpWidget(_host(_button(
+      members: const ['meowPEOW_', 'meowPEOW'],
+      myUsername: 'meowPEOW_',
+      myDisplayName: 'meowPEOW',
+    )));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('meowPEOW (you)'), findsOneWidget); // us, clean name
+    expect(find.text('meowPEOW_ (you)'), findsNothing); // suffix never shown
+    expect(find.text('meowPEOW'), findsOneWidget); // phantom peer, untagged
+    expect(find.textContaining('(you)'), findsOneWidget); // exactly one "me"
   });
 
   testWidgets('copies the room code to the clipboard (no row reflow)',
