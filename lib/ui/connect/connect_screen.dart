@@ -437,11 +437,17 @@ class _ConnectScreenState extends State<ConnectScreen> {
           _label('Port'),
           _textField(controller: _port, hint: '${SyncplayConstants.defaultPort}'),
           const SizedBox(height: Spacing.md),
-          _label('Room password (optional)'),
+          _label('Server password — advanced / self-hosted only'),
           _textField(
               key: const Key('connect-advanced-password'),
               controller: _password,
-              hint: 'leave blank for none'),
+              hint: 'only needed for a private Syncplay server'),
+          const SizedBox(height: Spacing.xs),
+          Text(
+            'No effect on the public server. Private rooms come from the '
+            'code you share, not this field.',
+            style: context.meowText.body.copyWith(color: m.textDim),
+          ),
         ],
       ),
     );
