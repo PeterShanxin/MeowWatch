@@ -43,12 +43,13 @@ void main() {
     expect(file.existsSync(), isFalse);
   });
 
-  List<File> logsIn(Directory d) => d
-      .listSync()
-      .whereType<File>()
-      .where((f) => f.path.endsWith('.log'))
-      .toList()
-    ..sort((a, b) => a.path.compareTo(b.path));
+  List<File> logsIn(Directory d) =>
+      d
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.log'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
 
   group('isVerboseOnly', () {
     test('flags raw protocol traffic and no-op follows', () {
@@ -121,6 +122,18 @@ void main() {
       await log.close();
     });
 
+    test('flush after switching off awaits the in-flight close', () async {
+      final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.verbose)
+        ..start();
+      log('line before off');
+      log.level = LogLevel.off; // kicks off an async flush+close
+      // Export calls flush() right after — it must wait for that close so the
+      // last buffered line is on disk before the zip reads it.
+      await log.flush();
+      final text = logsIn(dir).single.readAsStringSync();
+      expect(text, contains('line before off'));
+    });
+
     test('switching off mid-session stops writing', () async {
       final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.verbose)
         ..start();
@@ -178,22 +191,26 @@ void main() {
       expect(remaining.length, 10);
       // Oldest two (sessions 0 and 1) were pruned; newest survives. Anchor on
       // the trailing newline so 'session 1' doesn't match 'session 11'.
-      final allText =
-          remaining.map((f) => f.readAsStringSync()).join('\n');
+      final allText = remaining.map((f) => f.readAsStringSync()).join('\n');
       expect(allText, isNot(contains('session 0\n')));
       expect(allText, isNot(contains('session 1\n')));
       expect(allText, contains('session 11\n'));
     });
 
     test('only prunes our own base-named logs', () async {
-      File('${dir.path}${Platform.pathSeparator}other.log')
-          .writeAsStringSync('keep me');
+      File(
+        '${dir.path}${Platform.pathSeparator}other.log',
+      ).writeAsStringSync('keep me');
       var t = DateTime(2026, 6, 11, 16, 0, 0);
       DateTime clock() => t;
       for (var i = 0; i < 12; i++) {
         t = t.add(const Duration(seconds: 1));
-        final log = DebugLog.inDir(dir, baseName: 'sync', retain: 10, clock: clock)
-          ..start();
+        final log = DebugLog.inDir(
+          dir,
+          baseName: 'sync',
+          retain: 10,
+          clock: clock,
+        )..start();
         log('session $i');
         await log.close();
       }

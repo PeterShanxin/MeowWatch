@@ -29,12 +29,12 @@ bool isVerboseOnly(String line) {
 class DebugLog {
   /// Fixed single-file logger. [start] truncates any previous contents.
   DebugLog(File file, {LogLevel level = LogLevel.verbose})
-      : _fixedFile = file,
-        _dir = null,
-        _baseName = null,
-        _retain = 0,
-        _level = level,
-        _clock = DateTime.now;
+    : _fixedFile = file,
+      _dir = null,
+      _baseName = null,
+      _retain = 0,
+      _level = level,
+      _clock = DateTime.now;
   // ignore_for_file: prefer_initializing_formals
   //
   // The named constructor params below feed private final fields. Dart forbids
@@ -50,12 +50,12 @@ class DebugLog {
     int retain = 10,
     LogLevel level = LogLevel.verbose,
     DateTime Function() clock = DateTime.now,
-  })  : _fixedFile = null,
-        _dir = dir,
-        _baseName = baseName,
-        _retain = retain,
-        _level = level,
-        _clock = clock;
+  }) : _fixedFile = null,
+       _dir = dir,
+       _baseName = baseName,
+       _retain = retain,
+       _level = level,
+       _clock = clock;
 
   final File? _fixedFile;
   final Directory? _dir;
@@ -66,6 +66,11 @@ class DebugLog {
   LogLevel _level;
   File? _file;
   IOSink? _sink;
+
+  /// The in-flight flush+close started when logging is switched off. Tracked so
+  /// [flush] / [close] can await it — otherwise an Export fired right after
+  /// "Off" would read the file before the last buffered lines land.
+  Future<void>? _closing;
 
   /// Directory holding the rotating logs (null for a fixed-file logger).
   /// Handy for the Export-logs feature.
@@ -89,8 +94,16 @@ class DebugLog {
       final sink = _sink;
       _sink = null;
       if (sink != null) {
-        // Best-effort; never block the UI thread on a debug logger.
-        sink.flush().then((_) => sink.close()).catchError((_) {});
+        // Best-effort; never block the UI thread. Tracked in [_closing] so a
+        // following [flush]/[close] can wait for the last lines to land.
+        _closing = () async {
+          try {
+            await sink.flush();
+            await sink.close();
+          } on FileSystemException {
+            // Nothing to recover; the file just stops where it was.
+          }
+        }();
       }
     } else if (wasOff && _sink == null) {
       _open();
@@ -122,6 +135,9 @@ class DebugLog {
   /// read (e.g. the Export-logs bundle) sees the latest protocol/FOLLOW lines
   /// rather than whatever happened to be flushed already.
   Future<void> flush() async {
+    // If logging was just switched off, the lines are draining through the
+    // close started in the level setter — wait for it before reading the file.
+    await _closing;
     final sink = _sink;
     if (sink == null) return;
     try {
@@ -132,6 +148,8 @@ class DebugLog {
   }
 
   Future<void> close() async {
+    await _closing;
+    _closing = null;
     final sink = _sink;
     _sink = null;
     if (sink == null) return;
@@ -178,12 +196,13 @@ class DebugLog {
   void _prune(Directory dir, String base) {
     if (_retain <= 0) return;
     try {
-      final logs = dir
-          .listSync()
-          .whereType<File>()
-          .where((f) => _isOurLog(f.path, base))
-          .toList()
-        ..sort((a, b) => a.path.compareTo(b.path));
+      final logs =
+          dir
+              .listSync()
+              .whereType<File>()
+              .where((f) => _isOurLog(f.path, base))
+              .toList()
+            ..sort((a, b) => a.path.compareTo(b.path));
       final excess = logs.length - _retain;
       for (var i = 0; i < excess; i++) {
         try {

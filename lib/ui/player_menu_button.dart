@@ -222,138 +222,165 @@ class _MenuPanel extends StatefulWidget {
 class _MenuPanelState extends State<_MenuPanel> {
   bool _settingsOpen = false;
 
+  // Own the scroll position so this popover never grabs the PrimaryScrollController
+  // (which the desktop Scrollbar asserts must back a single ScrollView).
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
     Widget label(String text) => Padding(
-          padding: const EdgeInsets.only(bottom: Spacing.sm),
-          child: Text(text, style: TextStyle(color: m.textDim, fontSize: TypeScale.label)),
-        );
+      padding: const EdgeInsets.only(bottom: Spacing.sm),
+      child: Text(
+        text,
+        style: TextStyle(color: m.textDim, fontSize: TypeScale.label),
+      ),
+    );
 
     return SizedBox(
       width: 264,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        // Stretch so rows/actions fill the card width (bigger tap targets)
-        // instead of hugging the left as half-width nubs.
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          label('Room code'),
-          _RoomCodeRow(code: widget.roomCode),
-          const SizedBox(height: Spacing.sm),
-          Divider(color: m.border, height: Spacing.lg),
-          label('In the room (${widget.members.length})'),
-          for (final name in widget.members)
-            // isMe matches the wire identity; the matched "you" row renders our
-            // chosen name so a transient reconnect dedupe suffix never shows (#107).
-            _MemberRow(
-              name: name == widget.myUsername ? widget.myDisplayName : name,
-              isMe: name == widget.myUsername,
-            ),
-          const SizedBox(height: Spacing.sm),
-          Divider(color: m.border, height: Spacing.lg),
-          _MenuAction(
-            key: const Key('player-menu-load'),
-            icon: Icons.video_library_outlined,
-            text: 'Load video…',
-            onTap: widget.onLoadVideo,
+      // Cap the popover to the window and let it scroll, so the controls near
+      // the bottom (diagnostic-log level + Export) stay reachable on short
+      // windows instead of clipping off-screen.
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height - 120,
+        ),
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          primary: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            // Stretch so rows/actions fill the card width (bigger tap targets)
+            // instead of hugging the left as half-width nubs.
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              label('Room code'),
+              _RoomCodeRow(code: widget.roomCode),
+              const SizedBox(height: Spacing.sm),
+              Divider(color: m.border, height: Spacing.lg),
+              label('In the room (${widget.members.length})'),
+              for (final name in widget.members)
+                // isMe matches the wire identity; the matched "you" row renders our
+                // chosen name so a transient reconnect dedupe suffix never shows (#107).
+                _MemberRow(
+                  name: name == widget.myUsername ? widget.myDisplayName : name,
+                  isMe: name == widget.myUsername,
+                ),
+              const SizedBox(height: Spacing.sm),
+              Divider(color: m.border, height: Spacing.lg),
+              _MenuAction(
+                key: const Key('player-menu-load'),
+                icon: Icons.video_library_outlined,
+                text: 'Load video…',
+                onTap: widget.onLoadVideo,
+              ),
+              Divider(color: m.border, height: Spacing.lg),
+              label('Theme'),
+              Center(
+                child: ThemeSwatches(
+                  current: widget.currentTheme,
+                  onChanged: widget.onThemeChanged,
+                ),
+              ),
+              const SizedBox(height: Spacing.sm),
+              Divider(color: m.border, height: Spacing.lg),
+              // Collapsible Settings — keeps the menu short until you want the
+              // chat-dim controls.
+              _SectionHeader(
+                key: const Key('player-menu-settings'),
+                text: 'Settings',
+                expanded: _settingsOpen,
+                onTap: () => setState(() => _settingsOpen = !_settingsOpen),
+              ),
+              AnimatedSize(
+                duration: Motion.base,
+                curve: Motion.symmetric,
+                alignment: Alignment.topCenter,
+                child: _settingsOpen
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _MenuSwitch(
+                            text: 'Dim chat when idle',
+                            value: widget.chatAutoDim,
+                            onChanged: widget.onChatAutoDimChanged,
+                          ),
+                          // The wake toggle + dim slider only mean something while
+                          // auto-dim is on; reveal/collapse them smoothly (#51).
+                          AnimatedSize(
+                            duration: Motion.base,
+                            curve: Motion.symmetric,
+                            alignment: Alignment.topCenter,
+                            child: widget.chatAutoDim
+                                ? Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      _MenuSwitch(
+                                        text: 'Fully wake chat on message',
+                                        value: widget.chatWakeOnMessage,
+                                        onChanged:
+                                            widget.onChatWakeOnMessageChanged,
+                                      ),
+                                      _DimSlider(
+                                        value: widget.chatIdleDim,
+                                        onChanged: widget.onChatIdleDimChanged,
+                                      ),
+                                    ],
+                                  )
+                                : const SizedBox(width: double.infinity),
+                          ),
+                          const SizedBox(height: Spacing.xs),
+                          SoundPickerRow(
+                            key: const Key('primary-sound-picker'),
+                            title: 'Notification sound',
+                            options: kPrimarySounds,
+                            currentId: widget.primarySoundId,
+                            onChanged: widget.onPrimarySoundChanged,
+                            onPreview: widget.onPreviewSound,
+                          ),
+                          SoundPickerRow(
+                            key: const Key('secondary-sound-picker'),
+                            title: 'Quiet sound (chat hidden)',
+                            options: kSecondarySounds,
+                            currentId: widget.secondarySoundId,
+                            onChanged: widget.onSecondarySoundChanged,
+                            onPreview: widget.onPreviewSound,
+                          ),
+                          Divider(color: m.border, height: Spacing.lg),
+                          LogLevelControl(
+                            value: widget.logLevel,
+                            onChanged: widget.onLogLevelChanged,
+                          ),
+                          _MenuAction(
+                            key: const Key('player-menu-export-logs'),
+                            icon: Icons.ios_share,
+                            text: 'Export logs…',
+                            onTap: widget.onExportLogs,
+                          ),
+                        ],
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
+              Divider(color: m.border, height: Spacing.lg),
+              _MenuAction(
+                key: const Key('player-menu-leave'),
+                icon: Icons.arrow_back,
+                text: 'Leave room',
+                onTap: widget.onLeave,
+              ),
+            ],
           ),
-          Divider(color: m.border, height: Spacing.lg),
-          label('Theme'),
-          Center(
-            child: ThemeSwatches(
-              current: widget.currentTheme,
-              onChanged: widget.onThemeChanged,
-            ),
-          ),
-          const SizedBox(height: Spacing.sm),
-          Divider(color: m.border, height: Spacing.lg),
-          // Collapsible Settings — keeps the menu short until you want the
-          // chat-dim controls.
-          _SectionHeader(
-            key: const Key('player-menu-settings'),
-            text: 'Settings',
-            expanded: _settingsOpen,
-            onTap: () => setState(() => _settingsOpen = !_settingsOpen),
-          ),
-          AnimatedSize(
-            duration: Motion.base,
-            curve: Motion.symmetric,
-            alignment: Alignment.topCenter,
-            child: _settingsOpen
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _MenuSwitch(
-                        text: 'Dim chat when idle',
-                        value: widget.chatAutoDim,
-                        onChanged: widget.onChatAutoDimChanged,
-                      ),
-                      // The wake toggle + dim slider only mean something while
-                      // auto-dim is on; reveal/collapse them smoothly (#51).
-                      AnimatedSize(
-                        duration: Motion.base,
-                        curve: Motion.symmetric,
-                        alignment: Alignment.topCenter,
-                        child: widget.chatAutoDim
-                            ? Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  _MenuSwitch(
-                                    text: 'Fully wake chat on message',
-                                    value: widget.chatWakeOnMessage,
-                                    onChanged: widget.onChatWakeOnMessageChanged,
-                                  ),
-                                  _DimSlider(
-                                    value: widget.chatIdleDim,
-                                    onChanged: widget.onChatIdleDimChanged,
-                                  ),
-                                ],
-                              )
-                            : const SizedBox(width: double.infinity),
-                      ),
-                      const SizedBox(height: Spacing.xs),
-                      SoundPickerRow(
-                        key: const Key('primary-sound-picker'),
-                        title: 'Notification sound',
-                        options: kPrimarySounds,
-                        currentId: widget.primarySoundId,
-                        onChanged: widget.onPrimarySoundChanged,
-                        onPreview: widget.onPreviewSound,
-                      ),
-                      SoundPickerRow(
-                        key: const Key('secondary-sound-picker'),
-                        title: 'Quiet sound (chat hidden)',
-                        options: kSecondarySounds,
-                        currentId: widget.secondarySoundId,
-                        onChanged: widget.onSecondarySoundChanged,
-                        onPreview: widget.onPreviewSound,
-                      ),
-                      Divider(color: m.border, height: Spacing.lg),
-                      LogLevelControl(
-                        value: widget.logLevel,
-                        onChanged: widget.onLogLevelChanged,
-                      ),
-                      _MenuAction(
-                        key: const Key('player-menu-export-logs'),
-                        icon: Icons.ios_share,
-                        text: 'Export logs…',
-                        onTap: widget.onExportLogs,
-                      ),
-                    ],
-                  )
-                : const SizedBox(width: double.infinity),
-          ),
-          Divider(color: m.border, height: Spacing.lg),
-          _MenuAction(
-            key: const Key('player-menu-leave'),
-            icon: Icons.arrow_back,
-            text: 'Leave room',
-            onTap: widget.onLeave,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -380,15 +407,25 @@ class _SectionHeader extends StatelessWidget {
       borderRadius: BorderRadius.circular(Radii.md),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.sm),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.sm,
+          vertical: Spacing.sm,
+        ),
         child: Row(
           children: [
-            Text(text, style: TextStyle(color: m.textDim, fontSize: TypeScale.label)),
+            Text(
+              text,
+              style: TextStyle(color: m.textDim, fontSize: TypeScale.label),
+            ),
             const Spacer(),
             AnimatedRotation(
               turns: expanded ? 0.5 : 0,
               duration: Motion.base,
-              child: Icon(Icons.expand_more, size: IconSizes.md, color: m.textDim),
+              child: Icon(
+                Icons.expand_more,
+                size: IconSizes.md,
+                color: m.textDim,
+              ),
             ),
           ],
         ),
@@ -418,8 +455,9 @@ class SoundPickerRow extends StatelessWidget {
 
   // Key prefix derived from the widget's own Key so the dropdown/preview child
   // keys are stable and match tests (e.g. 'primary-sound-picker').
-  String get _slug =>
-      (key is ValueKey<String>) ? (key! as ValueKey<String>).value : 'sound-picker';
+  String get _slug => (key is ValueKey<String>)
+      ? (key! as ValueKey<String>).value
+      : 'sound-picker';
 
   @override
   Widget build(BuildContext context) {
@@ -429,14 +467,20 @@ class SoundPickerRow extends StatelessWidget {
       orElse: () => options.first,
     );
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.sm,
+        vertical: Spacing.sm,
+      ),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(color: m.textDim, fontSize: TypeScale.body)),
+                Text(
+                  title,
+                  style: TextStyle(color: m.textDim, fontSize: TypeScale.body),
+                ),
                 DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     key: Key('$_slug-dropdown'),
@@ -445,7 +489,10 @@ class SoundPickerRow extends StatelessWidget {
                     isExpanded: true,
                     dropdownColor: m.surface,
                     iconEnabledColor: m.accent,
-                    style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
+                    style: TextStyle(
+                      color: m.textPrimary,
+                      fontSize: TypeScale.label,
+                    ),
                     items: <DropdownMenuItem<String>>[
                       for (final s in options)
                         DropdownMenuItem<String>(
@@ -465,7 +512,11 @@ class SoundPickerRow extends StatelessWidget {
             key: Key('$_slug-preview'),
             tooltip: 'Preview',
             visualDensity: VisualDensity.compact,
-            icon: Icon(Icons.play_circle_outline, size: IconSizes.md, color: m.accent),
+            icon: Icon(
+              Icons.play_circle_outline,
+              size: IconSizes.md,
+              color: m.accent,
+            ),
             onPressed: () => onPreview(current.asset),
           ),
         ],
@@ -497,12 +548,17 @@ class LogLevelControl extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.sm,
+        vertical: Spacing.sm,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Diagnostic logging',
-              style: TextStyle(color: m.textDim, fontSize: TypeScale.body)),
+          Text(
+            'Diagnostic logging',
+            style: TextStyle(color: m.textDim, fontSize: TypeScale.body),
+          ),
           const SizedBox(height: Spacing.sm),
           Row(
             children: [
@@ -549,7 +605,9 @@ class _LogLevelSegment extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: Spacing.sm),
         decoration: BoxDecoration(
-          color: selected ? m.accent.withValues(alpha: 0.22) : Colors.transparent,
+          color: selected
+              ? m.accent.withValues(alpha: 0.22)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(Radii.md),
           border: Border.all(color: selected ? m.accent : m.border),
         ),
@@ -594,7 +652,12 @@ class _DimSliderState extends State<_DimSlider> {
   Widget build(BuildContext context) {
     final m = context.meow;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(Spacing.sm, Spacing.xs, Spacing.sm, Spacing.xs),
+      padding: const EdgeInsets.fromLTRB(
+        Spacing.sm,
+        Spacing.xs,
+        Spacing.sm,
+        Spacing.xs,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -610,7 +673,10 @@ class _DimSliderState extends State<_DimSlider> {
               const SizedBox(width: Spacing.sm),
               Text(
                 '${(_v * 100).round()}%',
-                style: TextStyle(color: m.textPrimary, fontSize: TypeScale.body),
+                style: TextStyle(
+                  color: m.textPrimary,
+                  fontSize: TypeScale.body,
+                ),
               ),
               // Reset to the default opacity.
               IconButton(
@@ -619,7 +685,11 @@ class _DimSliderState extends State<_DimSlider> {
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                icon: Icon(Icons.restart_alt, size: IconSizes.sm, color: m.accent),
+                icon: Icon(
+                  Icons.restart_alt,
+                  size: IconSizes.sm,
+                  color: m.accent,
+                ),
                 onPressed: () {
                   setState(() => _v = kChatIdleGhostOpacity);
                   widget.onChanged(kChatIdleGhostOpacity);
@@ -678,13 +748,19 @@ class _MenuAction extends StatelessWidget {
         onTap();
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.md),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.sm,
+          vertical: Spacing.md,
+        ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: IconSizes.md, color: m.textPrimary),
             const SizedBox(width: Spacing.md),
-            Text(text, style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label)),
+            Text(
+              text,
+              style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
+            ),
           ],
         ),
       ),
@@ -711,11 +787,22 @@ class _MenuSwitch extends StatelessWidget {
       borderRadius: BorderRadius.circular(Radii.md),
       onTap: () => onChanged(!value),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.lg, vertical: Spacing.sm),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.lg,
+          vertical: Spacing.sm,
+        ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Flexible(child: Text(text, style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label))),
+            Flexible(
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: m.textPrimary,
+                  fontSize: TypeScale.label,
+                ),
+              ),
+            ),
             Switch(
               value: value,
               onChanged: onChanged,
@@ -740,7 +827,10 @@ class _MemberRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.sm,
+        vertical: Spacing.xs,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -790,20 +880,24 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
     final m = context.meow;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: m.surface,
-        duration: const Duration(seconds: 2),
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
-            const SizedBox(width: Spacing.md),
-            Text('Room code ${widget.code} copied',
-                style: TextStyle(color: m.textPrimary)),
-          ],
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: m.surface,
+          duration: const Duration(seconds: 2),
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
+              const SizedBox(width: Spacing.md),
+              Text(
+                'Room code ${widget.code} copied',
+                style: TextStyle(color: m.textPrimary),
+              ),
+            ],
+          ),
         ),
-      ));
+      );
     setState(() => _copied = true);
     _resetTimer?.cancel();
     _resetTimer = Timer(const Duration(milliseconds: 1500), () {
@@ -819,7 +913,10 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
       borderRadius: BorderRadius.circular(Radii.sm),
       onTap: _copy,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.md),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.sm,
+          vertical: Spacing.md,
+        ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -837,8 +934,11 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
             ),
             const SizedBox(width: Spacing.md),
             // Fixed-size slot so flipping copy→check never reflows the row.
-            Icon(_copied ? Icons.check : Icons.copy,
-                size: IconSizes.md, color: _copied ? m.online : m.accent),
+            Icon(
+              _copied ? Icons.check : Icons.copy,
+              size: IconSizes.md,
+              color: _copied ? m.online : m.accent,
+            ),
           ],
         ),
       ),

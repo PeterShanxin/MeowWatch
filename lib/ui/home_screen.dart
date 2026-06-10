@@ -78,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final MediaKitVideoCore _core;
   late final SyncplayClient _sync;
   late final PlaybackSyncBridge _bridge;
+
   /// Rotating diagnostic log. Built once the app-support dir resolves in
   /// [_initSettings] (path_provider is async), so it's null at first; [_log]
   /// forwards safely and early startup lines are simply dropped. Captures the
@@ -87,9 +88,23 @@ class _HomeScreenState extends State<HomeScreen> {
   LogLevel _logLevel = LogLevel.verbose;
   late final Player _audioPlayer;
 
+  /// Lines emitted before the async [_initSyncLog] installs [_syncLog] — the
+  /// connection handshake and any fast early failures. Held here and replayed
+  /// into the logger once it exists, so startup problems aren't silently
+  /// dropped. Capped so a stuck init can't grow it without bound.
+  final List<String> _pendingLog = <String>[];
+  static const int _maxPendingLog = 1000;
+
   /// Stable sink handed to [SyncplayClient] before [_syncLog] exists, so the
   /// client never holds a dangling closure and all traffic lands in one place.
-  void _log(String line) => _syncLog?.call(line);
+  void _log(String line) {
+    final log = _syncLog;
+    if (log != null) {
+      log(line);
+    } else if (_pendingLog.length < _maxPendingLog) {
+      _pendingLog.add(line);
+    }
+  }
 
   // Notification chime: bundled assets (portable, no dependency on a
   // system-specific sound file), throttled so a burst of messages doesn't
@@ -378,9 +393,13 @@ class _HomeScreenState extends State<HomeScreen> {
               now: DateTime.now(),
             );
             _departedAt.remove(e.username);
-            final banner = reconnected ? '🐾 ${e.username} reconnected' : '🐾 ${e.username} joined';
+            final banner = reconnected
+                ? '🐾 ${e.username} reconnected'
+                : '🐾 ${e.username} joined';
             _showTransientNotice(banner);
-            _chat.addSystem(peerJoinMessage(username: e.username, reconnected: reconnected));
+            _chat.addSystem(
+              peerJoinMessage(username: e.username, reconnected: reconnected),
+            );
           }
         } else {
           _peers.remove(e.username);
@@ -397,9 +416,13 @@ class _HomeScreenState extends State<HomeScreen> {
           } else {
             _departedAt[e.username] = DateTime.now();
           }
-          final banner = clean ? '👋 ${e.username} left' : '📵 ${e.username} lost connection';
+          final banner = clean
+              ? '👋 ${e.username} left'
+              : '📵 ${e.username} lost connection';
           _showTransientNotice(banner);
-          _chat.addSystem(peerDepartureMessage(username: e.username, clean: clean));
+          _chat.addSystem(
+            peerDepartureMessage(username: e.username, clean: clean),
+          );
         }
         _evaluateSyncHealth();
       });
@@ -496,14 +519,18 @@ class _HomeScreenState extends State<HomeScreen> {
     if (dimSetting == 'false' && mounted) {
       setState(() => _chatAutoDim = false);
     }
-    final wakeSetting = await widget.settings.get(kChatWakeOnNewMessageSettingKey);
+    final wakeSetting = await widget.settings.get(
+      kChatWakeOnNewMessageSettingKey,
+    );
     if (wakeSetting == 'true' && mounted) {
       setState(() => _chatWakeOnMessage = true);
     }
     final dimSettingRaw = await widget.settings.get(kChatIdleDimSettingKey);
     final dim = double.tryParse(dimSettingRaw ?? '');
     if (dim != null && mounted) {
-      setState(() => _chatIdleDim = dim.clamp(kChatIdleDimMin, kChatIdleDimMax));
+      setState(
+        () => _chatIdleDim = dim.clamp(kChatIdleDimMin, kChatIdleDimMax),
+      );
     }
     final primary = await widget.settings.get(kNotifyPrimarySoundKey);
     final secondary = await widget.settings.get(kNotifySecondarySoundKey);
@@ -519,7 +546,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// persisted level (default verbose). Guarded end-to-end so a missing dir or
   /// platform plugin can never block playback startup.
   Future<void> _initSyncLog() async {
-    final level = logLevelFromName(await widget.settings.get(kLogLevelSettingKey));
+    final level = logLevelFromName(
+      await widget.settings.get(kLogLevelSettingKey),
+    );
     DebugLog? log;
     try {
       final support = await getApplicationSupportDirectory();
@@ -533,6 +562,15 @@ class _HomeScreenState extends State<HomeScreen> {
       await log?.close();
       return;
     }
+    if (log != null) {
+      // Replay lines captured before the logger existed (handshake / early
+      // failures). They take the replay timestamp rather than the original,
+      // but that's within a few ms — and the alternative is losing them.
+      for (final line in _pendingLog) {
+        log(line);
+      }
+    }
+    _pendingLog.clear();
     setState(() {
       _syncLog = log;
       _logLevel = level;
@@ -574,7 +612,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final zipBytes = ZipEncoder().encode(archive);
     try {
-      final location = await getSaveLocation(suggestedName: 'meowwatch-logs.zip');
+      final location = await getSaveLocation(
+        suggestedName: 'meowwatch-logs.zip',
+      );
       if (location == null) return; // user cancelled
       await File(location.path).writeAsBytes(zipBytes);
       _showLogSnack('Saved diagnostic logs.');
@@ -588,11 +628,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final m = context.meow;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: m.surface,
-        content: Text(text, style: TextStyle(color: m.textPrimary)),
-      ));
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: m.surface,
+          content: Text(text, style: TextStyle(color: m.textPrimary)),
+        ),
+      );
   }
 
   void _onUserInteraction() {
@@ -1015,169 +1057,181 @@ class _HomeScreenState extends State<HomeScreen> {
           child: VideoDropTarget(
             onFileDropped: _handleDropped,
             child: StreamBuilder<PlaybackState>(
-            stream: _core.stateStream,
-            initialData: _core.state,
-            builder: (context, snapshot) {
-              final state = snapshot.data!;
-              final hint = _banner;
-              final chatOpacity = chatOverlayOpacity(
-                idle: _isUiIdle,
-                deepIdle: _isUiDeepIdle,
-                collapsed: _chatLayout.collapsed,
-                autoDim: _chatAutoDim,
-                hasUnread: _chatHasUnread,
-                wakeToFullyVisible: _chatWakeOnMessage,
-                ghostOpacity: _chatIdleDim,
-              );
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  DecoratedBox(
-                    decoration: m.backgroundGradient != null
-                        ? BoxDecoration(gradient: m.backgroundGradient)
-                        : BoxDecoration(color: m.background),
-                  ),
-                  if (state.fileName == null)
-                    EmptyState(onBrowse: _browse, notice: _joinPrompt)
-                  else
-                    VideoSurface(
-                      core: _core,
-                      focusNode: _videoFocus,
-                      isUiIdle: _isUiIdle,
-                      onUserInteraction: _onUserInteraction,
+              stream: _core.stateStream,
+              initialData: _core.state,
+              builder: (context, snapshot) {
+                final state = snapshot.data!;
+                final hint = _banner;
+                final chatOpacity = chatOverlayOpacity(
+                  idle: _isUiIdle,
+                  deepIdle: _isUiDeepIdle,
+                  collapsed: _chatLayout.collapsed,
+                  autoDim: _chatAutoDim,
+                  hasUnread: _chatHasUnread,
+                  wakeToFullyVisible: _chatWakeOnMessage,
+                  ghostOpacity: _chatIdleDim,
+                );
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    DecoratedBox(
+                      decoration: m.backgroundGradient != null
+                          ? BoxDecoration(gradient: m.backgroundGradient)
+                          : BoxDecoration(color: m.background),
                     ),
-                  if (state.fileName != null)
-                    Positioned.fill(
-                      child: FloatingReactionsOverlay(
-                        emojis: _reactionFeed.stream,
-                      ),
-                    ),
-                  // Banner + chat show even before a video is loaded, so the
-                  // "waiting / friend joined" notices and chat history are
-                  // visible on the load-video screen (not just while watching).
-                  if (hint != null)
-                    Align(
-                      alignment: const Alignment(0, -0.8),
-                      child: _SyncHintBanner(text: hint),
-                    ),
-                  AnimatedOpacity(
-                    opacity: chatOpacity,
-                    duration: Motion.base,
-                    child: IgnorePointer(
-                      ignoring: chatOpacity == 0.0,
-                      child: ChatOverlay(
-                        messages: _messages,
-                        collapsed: _chatLayout.collapsed,
+                    if (state.fileName == null)
+                      EmptyState(onBrowse: _browse, notice: _joinPrompt)
+                    else
+                      VideoSurface(
+                        core: _core,
+                        focusNode: _videoFocus,
                         isUiIdle: _isUiIdle,
-                        corner: _chatLayout.corner,
-                        pulsing: _peekPulsing,
-                        onSend: _chat.send,
-                        typingLabel: _typingLabel,
-                        onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
-                        onToggleCollapsed: _toggleChat,
-                        onSnap: (result) {
-                          setState(
-                            () => _chatLayout = _chatLayout.applySnap(result),
-                          );
-                          if (_chatLayout.collapsed) _restorePlayerFocus();
-                        },
-                        onDraggingChanged: (d) => setState(() => _chatDragging = d),
-                        onUnreadChanged: (has) => setState(() => _chatHasUnread = has),
-                        widthPx: _chatLayout.widthPx,
-                        heightPx: _chatLayout.heightPx,
-                        onResize: (size) {
-                          setState(
-                            () => _chatLayout = _chatLayout.applyResize(size),
-                          );
-                          widget.settings.set(
-                            kChatCardSizeSettingKey,
-                            formatCardSize(
-                              _chatLayout.widthPx!,
-                              _chatLayout.heightPx!,
-                            ),
-                          );
-                        },
-                        onResetSize: () {
-                          setState(() => _chatLayout = _chatLayout.resetSize());
-                          widget.settings.set(kChatCardSizeSettingKey, '');
-                        },
+                        onUserInteraction: _onUserInteraction,
                       ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 12,
-                    left: 12,
-                    // Fade the gear out while the chat card is being dragged so
-                    // it never covers the top-left dock hint.
-                    child: AnimatedOpacity(
-                      opacity: _chatDragging || _isUiIdle ? 0.0 : 1.0,
-                      duration: const Duration(milliseconds: 150),
+                    if (state.fileName != null)
+                      Positioned.fill(
+                        child: FloatingReactionsOverlay(
+                          emojis: _reactionFeed.stream,
+                        ),
+                      ),
+                    // Banner + chat show even before a video is loaded, so the
+                    // "waiting / friend joined" notices and chat history are
+                    // visible on the load-video screen (not just while watching).
+                    if (hint != null)
+                      Align(
+                        alignment: const Alignment(0, -0.8),
+                        child: _SyncHintBanner(text: hint),
+                      ),
+                    AnimatedOpacity(
+                      opacity: chatOpacity,
+                      duration: Motion.base,
                       child: IgnorePointer(
-                        ignoring: _chatDragging || _isUiIdle,
-                        child: PlayerMenuButton(
-                          roomCode: widget.config.room,
-                          // Wire identities for the roster + isMe match; the
-                          // "you" row shows our chosen name, not a transient
-                          // reconnect dedupe suffix the server may assign (#107).
-                          members: <String>[_username, ..._peers],
-                          myUsername: _username,
-                          myDisplayName: widget.config.username,
-                          currentTheme: widget.currentTheme,
-                          onThemeChanged: widget.onThemeChanged,
-                          onLoadVideo: _browse,
-                          onLeave: _leave,
-                          chatAutoDim: _chatAutoDim,
-                          onChatAutoDimChanged: (val) {
-                            setState(() => _chatAutoDim = val);
-                            widget.settings.set(kChatAutoDimSettingKey, val.toString());
+                        ignoring: chatOpacity == 0.0,
+                        child: ChatOverlay(
+                          messages: _messages,
+                          collapsed: _chatLayout.collapsed,
+                          isUiIdle: _isUiIdle,
+                          corner: _chatLayout.corner,
+                          pulsing: _peekPulsing,
+                          onSend: _chat.send,
+                          typingLabel: _typingLabel,
+                          onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
+                          onToggleCollapsed: _toggleChat,
+                          onSnap: (result) {
+                            setState(
+                              () => _chatLayout = _chatLayout.applySnap(result),
+                            );
+                            if (_chatLayout.collapsed) _restorePlayerFocus();
                           },
-                          chatWakeOnMessage: _chatWakeOnMessage,
-                          onChatWakeOnMessageChanged: (val) {
-                            setState(() => _chatWakeOnMessage = val);
-                            widget.settings.set(kChatWakeOnNewMessageSettingKey, val.toString());
-                          },
-                          chatIdleDim: _chatIdleDim,
-                          onChatIdleDimChanged: (val) {
-                            setState(() => _chatIdleDim = val);
+                          onDraggingChanged: (d) =>
+                              setState(() => _chatDragging = d),
+                          onUnreadChanged: (has) =>
+                              setState(() => _chatHasUnread = has),
+                          widthPx: _chatLayout.widthPx,
+                          heightPx: _chatLayout.heightPx,
+                          onResize: (size) {
+                            setState(
+                              () => _chatLayout = _chatLayout.applyResize(size),
+                            );
                             widget.settings.set(
-                                kChatIdleDimSettingKey, val.toStringAsFixed(2));
+                              kChatCardSizeSettingKey,
+                              formatCardSize(
+                                _chatLayout.widthPx!,
+                                _chatLayout.heightPx!,
+                              ),
+                            );
                           },
-                          primarySoundId: _primarySoundId,
-                          onPrimarySoundChanged: (id) {
-                            setState(() => _primarySoundId = id);
-                            widget.settings.set(kNotifyPrimarySoundKey, id);
+                          onResetSize: () {
+                            setState(
+                              () => _chatLayout = _chatLayout.resetSize(),
+                            );
+                            widget.settings.set(kChatCardSizeSettingKey, '');
                           },
-                          secondarySoundId: _secondarySoundId,
-                          onSecondarySoundChanged: (id) {
-                            setState(() => _secondarySoundId = id);
-                            widget.settings.set(kNotifySecondarySoundKey, id);
-                          },
-                          onPreviewSound: _previewSound,
-                          logLevel: _logLevel,
-                          onLogLevelChanged: _onLogLevelChanged,
-                          onExportLogs: _exportLogs,
                         ),
                       ),
                     ),
-                  ),
-                  if (state.fileName != null)
                     Positioned(
-                      right: 16,
-                      bottom: 84,
+                      top: 12,
+                      left: 12,
+                      // Fade the gear out while the chat card is being dragged so
+                      // it never covers the top-left dock hint.
                       child: AnimatedOpacity(
-                        opacity: overlayOpacity(idle: _isUiIdle),
-                        duration: Motion.base,
+                        opacity: _chatDragging || _isUiIdle ? 0.0 : 1.0,
+                        duration: const Duration(milliseconds: 150),
                         child: IgnorePointer(
-                          ignoring: _isUiIdle,
-                          child: ReactionBar(onReact: _chat.sendReaction),
+                          ignoring: _chatDragging || _isUiIdle,
+                          child: PlayerMenuButton(
+                            roomCode: widget.config.room,
+                            // Wire identities for the roster + isMe match; the
+                            // "you" row shows our chosen name, not a transient
+                            // reconnect dedupe suffix the server may assign (#107).
+                            members: <String>[_username, ..._peers],
+                            myUsername: _username,
+                            myDisplayName: widget.config.username,
+                            currentTheme: widget.currentTheme,
+                            onThemeChanged: widget.onThemeChanged,
+                            onLoadVideo: _browse,
+                            onLeave: _leave,
+                            chatAutoDim: _chatAutoDim,
+                            onChatAutoDimChanged: (val) {
+                              setState(() => _chatAutoDim = val);
+                              widget.settings.set(
+                                kChatAutoDimSettingKey,
+                                val.toString(),
+                              );
+                            },
+                            chatWakeOnMessage: _chatWakeOnMessage,
+                            onChatWakeOnMessageChanged: (val) {
+                              setState(() => _chatWakeOnMessage = val);
+                              widget.settings.set(
+                                kChatWakeOnNewMessageSettingKey,
+                                val.toString(),
+                              );
+                            },
+                            chatIdleDim: _chatIdleDim,
+                            onChatIdleDimChanged: (val) {
+                              setState(() => _chatIdleDim = val);
+                              widget.settings.set(
+                                kChatIdleDimSettingKey,
+                                val.toStringAsFixed(2),
+                              );
+                            },
+                            primarySoundId: _primarySoundId,
+                            onPrimarySoundChanged: (id) {
+                              setState(() => _primarySoundId = id);
+                              widget.settings.set(kNotifyPrimarySoundKey, id);
+                            },
+                            secondarySoundId: _secondarySoundId,
+                            onSecondarySoundChanged: (id) {
+                              setState(() => _secondarySoundId = id);
+                              widget.settings.set(kNotifySecondarySoundKey, id);
+                            },
+                            onPreviewSound: _previewSound,
+                            logLevel: _logLevel,
+                            onLogLevelChanged: _onLogLevelChanged,
+                            onExportLogs: _exportLogs,
+                          ),
                         ),
                       ),
                     ),
-                ],
-              );
-            },
+                    if (state.fileName != null)
+                      Positioned(
+                        right: 16,
+                        bottom: 84,
+                        child: AnimatedOpacity(
+                          opacity: overlayOpacity(idle: _isUiIdle),
+                          duration: Motion.base,
+                          child: IgnorePointer(
+                            ignoring: _isUiIdle,
+                            child: ReactionBar(onReact: _chat.sendReaction),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -1195,14 +1249,18 @@ class _SyncHintBanner extends StatelessWidget {
     return IgnorePointer(
       child: Container(
         padding: const EdgeInsets.symmetric(
-            horizontal: Spacing.lg, vertical: Spacing.sm),
+          horizontal: Spacing.lg,
+          vertical: Spacing.sm,
+        ),
         decoration: BoxDecoration(
           color: m.background.withValues(alpha: 0.80),
           borderRadius: BorderRadius.circular(Radii.xl),
           border: Border.all(color: m.border),
         ),
-        child: Text(text,
-            style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label)),
+        child: Text(
+          text,
+          style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
+        ),
       ),
     );
   }
