@@ -118,6 +118,19 @@ class DebugLog {
     }
   }
 
+  /// Push buffered lines to disk without closing the file, so an in-session
+  /// read (e.g. the Export-logs bundle) sees the latest protocol/FOLLOW lines
+  /// rather than whatever happened to be flushed already.
+  Future<void> flush() async {
+    final sink = _sink;
+    if (sink == null) return;
+    try {
+      await sink.flush();
+    } on FileSystemException {
+      // Best-effort; a failed flush just means the export is slightly behind.
+    }
+  }
+
   Future<void> close() async {
     final sink = _sink;
     _sink = null;

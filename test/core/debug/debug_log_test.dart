@@ -110,6 +110,17 @@ void main() {
       expect(text, contains('apply=false'));
     });
 
+    test('flush makes buffered lines readable without closing', () async {
+      final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.verbose)
+        ..start();
+      log('mid-session line');
+      await log.flush();
+      // Still open (not closed) — yet the line is on disk for an export read.
+      final text = logsIn(dir).single.readAsStringSync();
+      expect(text, contains('mid-session line'));
+      await log.close();
+    });
+
     test('switching off mid-session stops writing', () async {
       final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.verbose)
         ..start();

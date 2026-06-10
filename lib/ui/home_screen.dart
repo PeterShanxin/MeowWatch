@@ -554,6 +554,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _showLogSnack('No diagnostic logs to export yet.');
       return;
     }
+    // Push the live session's buffered lines to disk first, or the zip would
+    // omit the most recent (and most relevant) trace.
+    await _syncLog?.flush();
     final archive = Archive();
     for (final f in dir.listSync().whereType<File>()) {
       if (!f.path.endsWith('.log')) continue;
