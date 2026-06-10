@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/connect/join_code.dart';
 import '../../core/connect/room_code.dart';
 import '../../core/connect/room_config.dart';
 import '../../core/data/history_entry.dart';
@@ -86,23 +87,27 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _startNewRoom() async {
-    final room = generateRoomCode();
+    // A fresh random passphrase folds into the room name to make a private room.
+    // The room name carries the secret — it is NOT sent as a server password.
+    // The Advanced password (if any) is a genuine Syncplay server password and
+    // rides along independently in the handshake.
+    final code = buildJoinCode(generateRoomCode(), generatePassphrase());
     // Copy without blocking the join — clipboard is a convenience, and on a
     // headless test binding the platform channel never replies.
-    Clipboard.setData(ClipboardData(text: room)).ignore();
-    _showCopiedSnack(room);
+    Clipboard.setData(ClipboardData(text: code)).ignore();
+    _showCopiedSnack(code);
     await _connect(RoomConfig(
       server: _serverValue,
       port: _portValue,
-      room: room,
+      room: code,
       username: _username,
       password: _passwordValue,
     ));
   }
 
-  /// Confirm the new room code was copied. Shown on the app-level messenger so
+  /// Confirm the new join code was copied. Shown on the app-level messenger so
   /// it stays visible after we navigate into the watch screen.
-  void _showCopiedSnack(String room) {
+  void _showCopiedSnack(String code) {
     final m = context.meow;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
@@ -116,7 +121,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
             Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
             const SizedBox(width: Spacing.md),
             Expanded(
-              child: Text('Room code $room copied — share it with your friend',
+              child: Text('Room code $code copied — share it with your friend',
                   style: TextStyle(color: m.textPrimary)),
             ),
           ],
@@ -125,12 +130,16 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _joinTypedCode() async {
-    final room = _code.text.trim();
-    if (room.isEmpty) return;
+    final code = _code.text.trim();
+    if (code.isEmpty) return;
+    // The whole pasted code IS the room — whether it's a bare `happy-cat-11` or
+    // a folded `happy-cat-11-k3pn`. We join it verbatim so a friend lands in the
+    // exact same room as the host (folded secret included). The Advanced
+    // password is a separate server password and must NOT change the room name.
     await _connect(RoomConfig(
       server: _serverValue,
       port: _portValue,
-      room: room,
+      room: code,
       username: _username,
       password: _passwordValue,
     ));
@@ -307,7 +316,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
             style: TextStyle(fontWeight: TypeScale.bold)),
       ),
       const SizedBox(height: 8),
-      Text('A code is generated and copied to clipboard.',
+      Text('A private code is generated and copied to clipboard.',
           style: context.meowText.body.copyWith(color: m.textDim)),
       const SizedBox(height: Spacing.xl),
       _label('Enter code from friend'),
@@ -316,7 +325,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
           child: _textField(
               key: const Key('connect-code'),
               controller: _code,
-              hint: 'cozy-fox-42'),
+              hint: 'cozy-fox-42-k3pn'),
         ),
         const SizedBox(width: Spacing.sm),
         FilledButton(
@@ -429,7 +438,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
           _textField(controller: _port, hint: '${SyncplayConstants.defaultPort}'),
           const SizedBox(height: Spacing.md),
           _label('Room password (optional)'),
-          _textField(controller: _password, hint: 'leave blank for none'),
+          _textField(
+              key: const Key('connect-advanced-password'),
+              controller: _password,
+              hint: 'leave blank for none'),
         ],
       ),
     );

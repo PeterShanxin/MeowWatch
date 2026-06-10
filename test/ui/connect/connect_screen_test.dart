@@ -131,19 +131,28 @@ void main() {
     expect(find.text('happy-otter-99'), findsOneWidget);
   });
 
-  testWidgets('Start new room generates a code and connects', (tester) async {
+  testWidgets('Start new room generates a private code and connects',
+      (tester) async {
     await pump(tester);
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
     await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
     await tester.tap(find.byKey(const Key('connect-start-new')));
     await tester.pumpAndSettle(); // let Clipboard.setData + saveUsed resolve
     expect(connected, isNotNull);
-    expect(connected!.room, matches(RegExp(r'^[a-z]+-[a-z]+-\d{2}$')));
+    // The room now folds a random passphrase in: adj-animal-NN-<secret>.
+    expect(connected!.room, matches(RegExp(r'^[a-z]+-[a-z]+-\d{2}-[a-z0-9]{4}$')));
+    // The secret lives only in the room name; it is NOT sent as a server
+    // password (that would be a no-op on the public server and could be
+    // rejected elsewhere).
+    expect(connected!.password, isNull);
     expect(connected!.username, 'lin');
     expect(profiles.saveUsedCalls, 1);
   });
 
-  testWidgets('Enter code joins the typed room', (tester) async {
+  testWidgets('Enter code joins an old room-only code unchanged (#108)',
+      (tester) async {
+    // Backward compatibility: a friend on the old build shares "sleepy-owl-13".
+    // It must join that exact room with no password, so old + new clients meet.
     await pump(tester);
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
     await tester.enterText(
@@ -152,6 +161,41 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
     expect(connected!.room, 'sleepy-owl-13');
+    expect(connected!.password, isNull);
+  });
+
+  testWidgets('Enter code joins a folded private code verbatim', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+        find.byKey(const Key('connect-code')), 'sleepy-owl-13-k3pn');
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+    // The whole code is the room, so a friend lands in the host's exact private
+    // room. The secret is not re-sent as a server password.
+    expect(connected!.room, 'sleepy-owl-13-k3pn');
+    expect(connected!.password, isNull);
+  });
+
+  testWidgets('Advanced password is sent without mutating the typed room',
+      (tester) async {
+    // Regression for the private/self-hosted server case: typing a plain room
+    // plus an Advanced (server) password must join that exact room and send the
+    // password in the handshake — never fold the password into the room name.
+    await pump(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+        find.byKey(const Key('connect-code')), 'movienight');
+    await tester.tap(find.byKey(const Key('connect-advanced')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('connect-advanced-password')), 'secret');
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+    expect(connected!.room, 'movienight');
+    expect(connected!.password, 'secret');
   });
 
   testWidgets('delete icon removes the profile', (tester) async {
