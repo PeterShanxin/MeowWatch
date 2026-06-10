@@ -316,6 +316,12 @@ class _HomeScreenState extends State<HomeScreen> {
             // _syncHealthyNow, so this can't flash "hasn't loaded" while
             // we're disconnected.
             _peerFiles = const PeerFiles();
+            // The empty-screen join prompt is pinned imperatively from peer
+            // file/playback events, so it isn't gated on sync health like the
+            // banner is. Clear it here too, or a "<peer> loaded …" / "started
+            // playback …" nudge stays on the load screen with no peer present
+            // while we reconnect or disconnect (#116 review).
+            _joinPrompt = null;
           }
           _evaluateSyncHealth();
         });
