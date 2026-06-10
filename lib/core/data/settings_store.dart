@@ -27,6 +27,10 @@ const String kNotifyPrimarySoundKey = 'notify_primary_sound';
 /// NotifySound id from `kSecondarySounds`; absent/unknown → default).
 const String kNotifySecondarySoundKey = 'notify_secondary_sound';
 
+/// Key for the persisted diagnostic log verbosity (value = a LogLevel
+/// `storageName`: `off` / `neat` / `verbose`; absent/unknown → `verbose`).
+const String kLogLevelSettingKey = 'log_level';
+
 /// Commands-in access to persisted key/value app settings.
 abstract class SettingsStore {
   Future<String?> get(String key);

@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../core/audio/notify_sounds.dart';
@@ -13,6 +16,7 @@ import '../core/connect/room_config.dart';
 import '../core/data/settings_store.dart';
 import '../core/data/stores.dart';
 import '../core/debug/debug_log.dart';
+import '../core/debug/log_level.dart';
 import '../core/sync/auto_pause.dart';
 import '../core/sync/file_match.dart';
 import '../core/sync/join_prompt.dart';
@@ -74,8 +78,18 @@ class _HomeScreenState extends State<HomeScreen> {
   late final MediaKitVideoCore _core;
   late final SyncplayClient _sync;
   late final PlaybackSyncBridge _bridge;
-  final DebugLog _syncLog = DebugLog.temp('meowwatch_sync.log');
+  /// Rotating diagnostic log. Built once the app-support dir resolves in
+  /// [_initSettings] (path_provider is async), so it's null at first; [_log]
+  /// forwards safely and early startup lines are simply dropped. Captures the
+  /// Syncplay trace persistently so the intermittent co-watch A/V lag is on
+  /// disk the next time it strikes.
+  DebugLog? _syncLog;
+  LogLevel _logLevel = LogLevel.verbose;
   late final Player _audioPlayer;
+
+  /// Stable sink handed to [SyncplayClient] before [_syncLog] exists, so the
+  /// client never holds a dangling closure and all traffic lands in one place.
+  void _log(String line) => _syncLog?.call(line);
 
   // Notification chime: bundled assets (portable, no dependency on a
   // system-specific sound file), throttled so a burst of messages doesn't
@@ -229,9 +243,8 @@ class _HomeScreenState extends State<HomeScreen> {
       widthPx: widget.initialWidthPx,
       heightPx: widget.initialHeightPx,
     );
-    _syncLog.start();
     _core = MediaKitVideoCore();
-    _sync = SyncplayClient(onLog: _syncLog.call);
+    _sync = SyncplayClient(onLog: _log);
     _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
     _chat = ChatStore(sync: _sync);
     _audioPlayer = Player();
@@ -478,6 +491,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initSettings() async {
+    await _initSyncLog();
     final dimSetting = await widget.settings.get(kChatAutoDimSettingKey);
     if (dimSetting == 'false' && mounted) {
       setState(() => _chatAutoDim = false);
@@ -499,6 +513,83 @@ class _HomeScreenState extends State<HomeScreen> {
         _secondarySoundId = resolveSecondary(secondary).id;
       });
     }
+  }
+
+  /// Build the rotating diagnostic log in a stable app dir and start it at the
+  /// persisted level (default verbose). Guarded end-to-end so a missing dir or
+  /// platform plugin can never block playback startup.
+  Future<void> _initSyncLog() async {
+    final level = logLevelFromName(await widget.settings.get(kLogLevelSettingKey));
+    DebugLog? log;
+    try {
+      final support = await getApplicationSupportDirectory();
+      final logsDir = Directory(p.join(support.path, 'logs'));
+      log = DebugLog.inDir(logsDir, baseName: 'meowwatch_sync', level: level)
+        ..start();
+    } on Object {
+      log = null; // No log dir available — diagnostics off, app unaffected.
+    }
+    if (!mounted) {
+      await log?.close();
+      return;
+    }
+    setState(() {
+      _syncLog = log;
+      _logLevel = level;
+    });
+  }
+
+  /// Apply a new diagnostic-log level live and persist it.
+  void _onLogLevelChanged(LogLevel level) {
+    setState(() => _logLevel = level);
+    _syncLog?.level = level;
+    widget.settings.set(kLogLevelSettingKey, level.storageName);
+  }
+
+  /// Bundle the rotating logs into a single zip the user picks a location for,
+  /// so they can send us the evidence after a laggy session.
+  Future<void> _exportLogs() async {
+    final dir = _syncLog?.dir;
+    if (dir == null || !dir.existsSync()) {
+      _showLogSnack('No diagnostic logs to export yet.');
+      return;
+    }
+    final archive = Archive();
+    for (final f in dir.listSync().whereType<File>()) {
+      if (!f.path.endsWith('.log')) continue;
+      try {
+        final bytes = f.readAsBytesSync();
+        final name = p.basename(f.path);
+        archive.addFile(ArchiveFile(name, bytes.length, bytes));
+      } on FileSystemException {
+        // Skip a locked/unreadable log rather than abort the whole export.
+      }
+    }
+    if (archive.isEmpty) {
+      _showLogSnack('No diagnostic logs to export yet.');
+      return;
+    }
+    final zipBytes = ZipEncoder().encode(archive);
+    try {
+      final location = await getSaveLocation(suggestedName: 'meowwatch-logs.zip');
+      if (location == null) return; // user cancelled
+      await File(location.path).writeAsBytes(zipBytes);
+      _showLogSnack('Saved diagnostic logs.');
+    } on Object {
+      _showLogSnack('Could not save the logs.');
+    }
+  }
+
+  void _showLogSnack(String text) {
+    if (!mounted) return;
+    final m = context.meow;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: m.surface,
+        content: Text(text, style: TextStyle(color: m.textPrimary)),
+      ));
   }
 
   void _onUserInteraction() {
@@ -568,7 +659,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_sync.dispose());
     unawaited(_core.dispose());
     unawaited(_audioPlayer.dispose());
-    unawaited(_syncLog.close());
+    unawaited(_syncLog?.close() ?? Future<void>.value());
     _videoFocus.dispose();
     _rootFocus.dispose();
     super.dispose();
@@ -1059,6 +1150,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             widget.settings.set(kNotifySecondarySoundKey, id);
                           },
                           onPreviewSound: _previewSound,
+                          logLevel: _logLevel,
+                          onLogLevelChanged: _onLogLevelChanged,
+                          onExportLogs: _exportLogs,
                         ),
                       ),
                     ),

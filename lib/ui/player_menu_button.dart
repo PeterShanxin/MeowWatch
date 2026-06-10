@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/audio/notify_sounds.dart';
+import '../core/debug/log_level.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
 import '../core/theme/tokens/icon_sizes.dart';
@@ -38,6 +39,9 @@ class PlayerMenuButton extends StatelessWidget {
     required this.secondarySoundId,
     required this.onSecondarySoundChanged,
     required this.onPreviewSound,
+    required this.logLevel,
+    required this.onLogLevelChanged,
+    required this.onExportLogs,
     super.key,
   });
 
@@ -78,6 +82,12 @@ class PlayerMenuButton extends StatelessWidget {
   final String secondarySoundId;
   final ValueChanged<String> onSecondarySoundChanged;
   final ValueChanged<String> onPreviewSound;
+
+  /// Diagnostic-log verbosity and its setter, plus a one-tap export that
+  /// bundles the rotating logs to a file the user can send us.
+  final LogLevel logLevel;
+  final ValueChanged<LogLevel> onLogLevelChanged;
+  final VoidCallback onExportLogs;
 
   @override
   Widget build(BuildContext context) {
@@ -144,6 +154,9 @@ class PlayerMenuButton extends StatelessWidget {
             secondarySoundId: secondarySoundId,
             onSecondarySoundChanged: onSecondarySoundChanged,
             onPreviewSound: onPreviewSound,
+            logLevel: logLevel,
+            onLogLevelChanged: onLogLevelChanged,
+            onExportLogs: onExportLogs,
           ),
         ),
       ],
@@ -174,6 +187,9 @@ class _MenuPanel extends StatefulWidget {
     required this.secondarySoundId,
     required this.onSecondarySoundChanged,
     required this.onPreviewSound,
+    required this.logLevel,
+    required this.onLogLevelChanged,
+    required this.onExportLogs,
   });
 
   final String roomCode;
@@ -195,6 +211,9 @@ class _MenuPanel extends StatefulWidget {
   final String secondarySoundId;
   final ValueChanged<String> onSecondarySoundChanged;
   final ValueChanged<String> onPreviewSound;
+  final LogLevel logLevel;
+  final ValueChanged<LogLevel> onLogLevelChanged;
+  final VoidCallback onExportLogs;
 
   @override
   State<_MenuPanel> createState() => _MenuPanelState();
@@ -311,6 +330,17 @@ class _MenuPanelState extends State<_MenuPanel> {
                         currentId: widget.secondarySoundId,
                         onChanged: widget.onSecondarySoundChanged,
                         onPreview: widget.onPreviewSound,
+                      ),
+                      Divider(color: m.border, height: Spacing.lg),
+                      LogLevelControl(
+                        value: widget.logLevel,
+                        onChanged: widget.onLogLevelChanged,
+                      ),
+                      _MenuAction(
+                        key: const Key('player-menu-export-logs'),
+                        icon: Icons.ios_share,
+                        text: 'Export logs…',
+                        onTap: widget.onExportLogs,
                       ),
                     ],
                   )
@@ -439,6 +469,99 @@ class SoundPickerRow extends StatelessWidget {
             onPressed: () => onPreview(current.asset),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Three-way diagnostic-log verbosity picker (Off / Neat / Verbose) shown as a
+/// labelled segmented row. Picking a segment fires [onChanged]. Public so it
+/// can be unit-tested directly.
+class LogLevelControl extends StatelessWidget {
+  const LogLevelControl({
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
+
+  final LogLevel value;
+  final ValueChanged<LogLevel> onChanged;
+
+  static const Map<LogLevel, String> _labels = <LogLevel, String>{
+    LogLevel.off: 'Off',
+    LogLevel.neat: 'Neat',
+    LogLevel.verbose: 'Verbose',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Diagnostic logging',
+              style: TextStyle(color: m.textDim, fontSize: TypeScale.body)),
+          const SizedBox(height: Spacing.sm),
+          Row(
+            children: [
+              for (final level in LogLevel.values)
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: level == LogLevel.verbose ? 0 : Spacing.xs,
+                    ),
+                    child: _LogLevelSegment(
+                      key: Key('player-menu-log-${level.storageName}'),
+                      text: _labels[level]!,
+                      selected: level == value,
+                      onTap: () => onChanged(level),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LogLevelSegment extends StatelessWidget {
+  const _LogLevelSegment({
+    required this.text,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  });
+
+  final String text;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return InkWell(
+      borderRadius: BorderRadius.circular(Radii.md),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: Spacing.sm),
+        decoration: BoxDecoration(
+          color: selected ? m.accent.withValues(alpha: 0.22) : Colors.transparent,
+          borderRadius: BorderRadius.circular(Radii.md),
+          border: Border.all(color: selected ? m.accent : m.border),
+        ),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: selected ? m.accent : m.textDim,
+            fontSize: TypeScale.label,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
       ),
     );
   }

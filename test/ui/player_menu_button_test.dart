@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:meowwatch/core/debug/log_level.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/player_menu_button.dart';
@@ -28,6 +29,9 @@ PlayerMenuButton _button({
   String secondarySoundId = 'low_thud',
   ValueChanged<String>? onSecondarySoundChanged,
   ValueChanged<String>? onPreviewSound,
+  LogLevel logLevel = LogLevel.verbose,
+  ValueChanged<LogLevel>? onLogLevelChanged,
+  VoidCallback? onExportLogs,
 }) =>
     PlayerMenuButton(
       roomCode: 'MEOW42',
@@ -49,6 +53,9 @@ PlayerMenuButton _button({
       secondarySoundId: secondarySoundId,
       onSecondarySoundChanged: onSecondarySoundChanged ?? (_) {},
       onPreviewSound: onPreviewSound ?? (_) {},
+      logLevel: logLevel,
+      onLogLevelChanged: onLogLevelChanged ?? (_) {},
+      onExportLogs: onExportLogs ?? () {},
     );
 
 /// Open the gear and expand the collapsible Settings section.
@@ -213,6 +220,38 @@ void main() {
     expect(find.text('Dim chat when idle'), findsOneWidget);
     expect(find.text('Fully wake chat on message'), findsNothing);
     expect(find.text('Dimmed chat readability'), findsNothing);
+  });
+
+  testWidgets('picking a diagnostic-log level fires onLogLevelChanged',
+      (tester) async {
+    // The expanded Settings panel is taller than the default 600px test
+    // viewport, so give it room or the bottom controls hit-test off-screen.
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    LogLevel? picked;
+    await tester.pumpWidget(_host(_button(
+      logLevel: LogLevel.verbose,
+      onLogLevelChanged: (v) => picked = v,
+    )));
+    await _openSettings(tester);
+
+    expect(find.text('Diagnostic logging'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('player-menu-log-neat')));
+    expect(picked, LogLevel.neat);
+  });
+
+  testWidgets('tapping "Export logs…" fires onExportLogs', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    var exported = false;
+    await tester.pumpWidget(_host(_button(onExportLogs: () => exported = true)));
+    await _openSettings(tester);
+
+    await tester.tap(find.byKey(const Key('player-menu-export-logs')));
+    await tester.pumpAndSettle();
+    expect(exported, isTrue);
   });
 
   testWidgets('dim slider reset restores the default opacity', (tester) async {
