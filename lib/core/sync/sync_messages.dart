@@ -228,8 +228,9 @@ ServerMessage decodeServerMessage(
       username: name is String && name.isNotEmpty ? name : null,
     );
   }
-  if (message.containsKey('State'))
+  if (message.containsKey('State')) {
     return _decodeState(message['State'] as Map);
+  }
   if (message.containsKey('Set')) return _decodeSet(message['Set'] as Map);
   if (message.containsKey('List')) {
     return _decodeList(message['List'], selfRoom: selfRoom);
