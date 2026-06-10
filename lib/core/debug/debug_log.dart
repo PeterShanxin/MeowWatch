@@ -41,13 +41,6 @@ class DebugLog {
   // private named parameters, so `this._field` form is unavailable here and the
   // plain assignments are the idiomatic shape.
 
-  /// Log file living in the OS temp dir, named per the given [name].
-  factory DebugLog.temp(String name, {LogLevel level = LogLevel.verbose}) =>
-      DebugLog(
-        File('${Directory.systemTemp.path}${Platform.pathSeparator}$name'),
-        level: level,
-      );
-
   /// Rotating logger. Each [start] opens a NEW `<baseName>-<stamp>.log` under
   /// [dir] and deletes oldest logs until at most [retain] remain. [clock] is
   /// injectable for deterministic tests; production uses the wall clock.
