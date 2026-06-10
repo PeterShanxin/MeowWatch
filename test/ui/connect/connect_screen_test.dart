@@ -141,9 +141,10 @@ void main() {
     expect(connected, isNotNull);
     // The room now folds a random passphrase in: adj-animal-NN-<secret>.
     expect(connected!.room, matches(RegExp(r'^[a-z]+-[a-z]+-\d{2}-[a-z0-9]{4}$')));
-    // The secret is also surfaced as the password (kept for private servers).
-    expect(connected!.password, isNotNull);
-    expect(connected!.room, endsWith('-${connected!.password}'));
+    // The secret lives only in the room name; it is NOT sent as a server
+    // password (that would be a no-op on the public server and could be
+    // rejected elsewhere).
+    expect(connected!.password, isNull);
     expect(connected!.username, 'lin');
     expect(profiles.saveUsedCalls, 1);
   });
@@ -163,8 +164,7 @@ void main() {
     expect(connected!.password, isNull);
   });
 
-  testWidgets('Enter code splits a folded code into room + password',
-      (tester) async {
+  testWidgets('Enter code joins a folded private code verbatim', (tester) async {
     await pump(tester);
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
     await tester.enterText(
@@ -172,10 +172,30 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('connect-join')));
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
-    // The joined room is the whole folded code; the password is extracted so a
-    // private/self-hosted server still gets it in the handshake.
+    // The whole code is the room, so a friend lands in the host's exact private
+    // room. The secret is not re-sent as a server password.
     expect(connected!.room, 'sleepy-owl-13-k3pn');
-    expect(connected!.password, 'k3pn');
+    expect(connected!.password, isNull);
+  });
+
+  testWidgets('Advanced password is sent without mutating the typed room',
+      (tester) async {
+    // Regression for the private/self-hosted server case: typing a plain room
+    // plus an Advanced (server) password must join that exact room and send the
+    // password in the handshake — never fold the password into the room name.
+    await pump(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+        find.byKey(const Key('connect-code')), 'movienight');
+    await tester.tap(find.byKey(const Key('connect-advanced')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('connect-advanced-password')), 'secret');
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+    expect(connected!.room, 'movienight');
+    expect(connected!.password, 'secret');
   });
 
   testWidgets('delete icon removes the profile', (tester) async {

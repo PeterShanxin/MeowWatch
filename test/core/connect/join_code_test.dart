@@ -28,64 +28,10 @@ void main() {
     });
 
     test('returns the bare room when there is no password', () {
+      // The backward-compat guarantee: with no secret a code is just the room,
+      // so old room-only codes are produced (and join) unchanged.
       expect(buildJoinCode('happy-cat-11', null), 'happy-cat-11');
       expect(buildJoinCode('happy-cat-11', ''), 'happy-cat-11');
-    });
-  });
-
-  group('parseJoinCode', () {
-    test('splits a generated code into room + password', () {
-      final r = parseJoinCode('happy-cat-11-k3pn');
-      expect(r.room, 'happy-cat-11');
-      expect(r.password, 'k3pn');
-    });
-
-    test('treats an old room-only code as room with no password', () {
-      // The core backward-compat guarantee: an old "happy-cat-11" code still
-      // parses to the same room and no password, so it folds back to itself.
-      final r = parseJoinCode('happy-cat-11');
-      expect(r.room, 'happy-cat-11');
-      expect(r.password, isNull);
-    });
-
-    test('captures a multi-word password after the room shape', () {
-      final r = parseJoinCode('happy-cat-11-mellow-yak');
-      expect(r.room, 'happy-cat-11');
-      expect(r.password, 'mellow-yak');
-    });
-
-    test('treats a custom room that is not adj-animal-NN as a bare room', () {
-      final r = parseJoinCode('movienight');
-      expect(r.room, 'movienight');
-      expect(r.password, isNull);
-    });
-
-    test('trims surrounding whitespace', () {
-      final r = parseJoinCode('  happy-cat-11-k3pn  ');
-      expect(r.room, 'happy-cat-11');
-      expect(r.password, 'k3pn');
-    });
-  });
-
-  group('round-trip', () {
-    test('build(parse(code)) reproduces the original code', () {
-      for (final code in <String>[
-        'happy-cat-11-k3pn',
-        'happy-cat-11',
-        'movienight',
-        'sleepy-owl-13-mellow-yak',
-      ]) {
-        final p = parseJoinCode(code);
-        expect(buildJoinCode(p.room, p.password), code);
-      }
-    });
-
-    test('old codes survive a full generate-era round trip unchanged', () {
-      // A friend on the old build shares "happy-cat-11"; a friend on the new
-      // build parses then re-folds it. Both must land on the identical room.
-      const old = 'happy-cat-11';
-      final p = parseJoinCode(old);
-      expect(buildJoinCode(p.room, p.password), old);
     });
   });
 }

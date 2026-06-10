@@ -87,10 +87,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _startNewRoom() async {
-    // A fresh random passphrase folds into the room name to make a private
-    // room. If the user typed their own Advanced password, honour that instead.
-    final password = _passwordValue ?? generatePassphrase();
-    final code = buildJoinCode(generateRoomCode(), password);
+    // A fresh random passphrase folds into the room name to make a private room.
+    // The room name carries the secret — it is NOT sent as a server password.
+    // The Advanced password (if any) is a genuine Syncplay server password and
+    // rides along independently in the handshake.
+    final code = buildJoinCode(generateRoomCode(), generatePassphrase());
     // Copy without blocking the join — clipboard is a convenience, and on a
     // headless test binding the platform channel never replies.
     Clipboard.setData(ClipboardData(text: code)).ignore();
@@ -100,7 +101,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       port: _portValue,
       room: code,
       username: _username,
-      password: password,
+      password: _passwordValue,
     ));
   }
 
@@ -129,20 +130,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _joinTypedCode() async {
-    final raw = _code.text.trim();
-    if (raw.isEmpty) return;
-    // A pasted code may carry its own password; fall back to an Advanced one the
-    // user typed (e.g. a friend shared a room-only code separately). Re-folding
-    // is idempotent for an already-folded code, so the friend lands in the exact
-    // same private room as the host.
-    final parsed = parseJoinCode(raw);
-    final password = parsed.password ?? _passwordValue;
+    final code = _code.text.trim();
+    if (code.isEmpty) return;
+    // The whole pasted code IS the room — whether it's a bare `happy-cat-11` or
+    // a folded `happy-cat-11-k3pn`. We join it verbatim so a friend lands in the
+    // exact same room as the host (folded secret included). The Advanced
+    // password is a separate server password and must NOT change the room name.
     await _connect(RoomConfig(
       server: _serverValue,
       port: _portValue,
-      room: buildJoinCode(parsed.room, password),
+      room: code,
       username: _username,
-      password: password,
+      password: _passwordValue,
     ));
   }
 
@@ -439,7 +438,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
           _textField(controller: _port, hint: '${SyncplayConstants.defaultPort}'),
           const SizedBox(height: Spacing.md),
           _label('Room password (optional)'),
-          _textField(controller: _password, hint: 'leave blank for none'),
+          _textField(
+              key: const Key('connect-advanced-password'),
+              controller: _password,
+              hint: 'leave blank for none'),
         ],
       ),
     );
