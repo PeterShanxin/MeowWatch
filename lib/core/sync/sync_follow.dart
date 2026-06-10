@@ -43,6 +43,13 @@ FollowAction decideFollow({
   // our own change and start the ping-pong fight.
   if (isSelf) return const FollowAction.none();
 
+  // A global state with no [setBy] is the server's empty-room default
+  // (position 0, paused) — seen when the room momentarily empties on a
+  // reconnect blip. It is not a real user's action, so following it (even via
+  // the pause/play-flip rule below) would pause us and yank a mid-film session
+  // back to 00:00. Ignore any setter-less state; only a named peer can move us.
+  if (global.setBy == null) return const FollowAction.none();
+
   // 1. Pause/play flip — compare to local, so once we match, steady
   //    heartbeats produce no action.
   if (global.paused != localPaused) {
@@ -54,18 +61,14 @@ FollowAction decideFollow({
     return FollowAction.apply(position: global.position, paused: global.paused);
   }
 
-  // 3. Rewind only if WE are ahead of the room beyond the threshold AND a real
-  //    peer set this position. The server's empty-room default state has
-  //    position 0 and no [setBy]; without this guard, when both clients drop
-  //    and rejoin together (one PC, one network blip → the room empties and
-  //    resets to 0), each is "far ahead" of that phantom 0 and rewinds to it —
-  //    dragging a mid-film session back to 00:00. A genuine drift-rewind always
-  //    has the peer's name on it, so requiring [setBy] loses nothing real.
+  // 3. Rewind only if WE are ahead of the room beyond the threshold. The
+  //    empty-room phantom-zero case (position 0, no setter, seen when both
+  //    clients drop and rejoin together) would otherwise make each client "far
+  //    ahead" of that phantom 0 and rewind to it, dragging a mid-film session
+  //    back to 00:00 — but the setter-less early return above already filters
+  //    it out, so no extra guard is needed here.
   final aheadBy = localPosition - global.position;
-  if (!global.doSeek &&
-      !isSelf &&
-      global.setBy != null &&
-      aheadBy > rewindThreshold) {
+  if (!global.doSeek && aheadBy > rewindThreshold) {
     return FollowAction.apply(position: global.position, paused: global.paused);
   }
 

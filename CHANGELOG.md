@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.22.2-alpha] - 2026-06-10
+- Fixed a glitch where briefly reconnecting to your room could snap your video back to the very start and pause it. When the room momentarily empties during a reconnect, the server reports a blank "position 0, paused" state that belongs to nobody; the app used to follow it as if a friend had paused at the beginning. It now ignores any room state that isn't attributed to a real person, so a reconnect blip can no longer drag a mid-film session back to 00:00.
+
 ## [0.22.1-alpha] - 2026-06-10
 - When your friend loads a video but hasn't pressed play yet, you now see a heads-up on your own load screen — `<friend> loaded "<file>" — load the same video to join` — so you know they're ready and waiting and which file to pick. Before, only the friend who loaded saw anything; the side still choosing a file got nothing unless the other person actually pressed play. (#116)
 - Renamed the Advanced "Room password" field to "Server password — advanced / self-hosted only", with a note that it has no effect on the public server and that private rooms come from the code you share. The old label wrongly implied it could lock a public room; it only ever set a password for a self-hosted Syncplay server. (#117)

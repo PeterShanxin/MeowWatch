@@ -96,6 +96,25 @@ void main() {
       expect(action.shouldApply, isFalse);
     });
 
+    test('does not follow a setter-less phantom pause (reconnect reset to 0)',
+        () {
+      // On a brief reconnect the room momentarily empties and the server sends
+      // its default state: position 0, paused, with NO setBy. We are mid-film
+      // and playing. The pause/play-flip rule would otherwise apply it — pausing
+      // us and yanking position back to 0. A setter-less state is never a real
+      // user action, so it must be ignored (mirrors the rewind rule's guard).
+      final action = decideFollow(
+        global: const PeerPlayState(
+          position: Duration.zero,
+          paused: true,
+        ),
+        localPaused: false,
+        localPosition: const Duration(seconds: 2591),
+        username: 'me',
+      );
+      expect(action.shouldApply, isFalse);
+    });
+
     test('does not rewind when local player is behind the room', () {
       final action = decideFollow(
         global: const PeerPlayState(
