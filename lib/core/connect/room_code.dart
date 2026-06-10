@@ -10,6 +10,11 @@ const List<String> _animals = <String>[
   'wolf', 'seal', 'crow', 'moth', 'newt', 'toad', 'wren', 'yak',
 ];
 
+/// The shape of a generated room code: `adjective-animal-NN` (two-digit number).
+/// Shared with the join-code parser so it can tell a generated room apart from a
+/// trailing password. Not anchored — callers add `^`/`$` as needed.
+final RegExp roomCodePattern = RegExp(r'[a-z]+-[a-z]+-\d{2}');
+
 /// Generates a friendly room code like `cozy-fox-42`.
 ///
 /// Pass a seeded [Random] in tests for deterministic output.

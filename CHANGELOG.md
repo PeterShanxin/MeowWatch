@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.22.0-alpha] - 2026-06-10
+- "Start new room" now makes your room private. The code it copies has a small secret word built onto the end (like `happy-cat-11-k3pn`), so only a friend you give the full code to can land in your room — someone who merely guesses the cute part ends up somewhere else. Paste the whole code into "Enter code from friend" and it joins automatically. Your old room-only codes still work exactly as before: share `happy-cat-11` on its own and you'll meet anyone using that same name, so existing saved rooms and codes you've shared keep working. The in-player gear menu now copies the full private code too, not just the room name. (#108)
+
 ## [0.21.2-alpha] - 2026-06-09
 - After a quick reconnect to your room, the people list in the gear menu now always shows your own name the way you chose it — even when the server briefly adds a trailing underscore (like `meowPEOW_`) to avoid clashing with the ghost of your dropped session. Friends and chat still use the behind-the-scenes name so message ownership stays correct; only your own visible label is cleaned up. (#107)
 

@@ -131,19 +131,27 @@ void main() {
     expect(find.text('happy-otter-99'), findsOneWidget);
   });
 
-  testWidgets('Start new room generates a code and connects', (tester) async {
+  testWidgets('Start new room generates a private code and connects',
+      (tester) async {
     await pump(tester);
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
     await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
     await tester.tap(find.byKey(const Key('connect-start-new')));
     await tester.pumpAndSettle(); // let Clipboard.setData + saveUsed resolve
     expect(connected, isNotNull);
-    expect(connected!.room, matches(RegExp(r'^[a-z]+-[a-z]+-\d{2}$')));
+    // The room now folds a random passphrase in: adj-animal-NN-<secret>.
+    expect(connected!.room, matches(RegExp(r'^[a-z]+-[a-z]+-\d{2}-[a-z0-9]{4}$')));
+    // The secret is also surfaced as the password (kept for private servers).
+    expect(connected!.password, isNotNull);
+    expect(connected!.room, endsWith('-${connected!.password}'));
     expect(connected!.username, 'lin');
     expect(profiles.saveUsedCalls, 1);
   });
 
-  testWidgets('Enter code joins the typed room', (tester) async {
+  testWidgets('Enter code joins an old room-only code unchanged (#108)',
+      (tester) async {
+    // Backward compatibility: a friend on the old build shares "sleepy-owl-13".
+    // It must join that exact room with no password, so old + new clients meet.
     await pump(tester);
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
     await tester.enterText(
@@ -152,6 +160,22 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
     expect(connected!.room, 'sleepy-owl-13');
+    expect(connected!.password, isNull);
+  });
+
+  testWidgets('Enter code splits a folded code into room + password',
+      (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+        find.byKey(const Key('connect-code')), 'sleepy-owl-13-k3pn');
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+    // The joined room is the whole folded code; the password is extracted so a
+    // private/self-hosted server still gets it in the handshake.
+    expect(connected!.room, 'sleepy-owl-13-k3pn');
+    expect(connected!.password, 'k3pn');
   });
 
   testWidgets('delete icon removes the profile', (tester) async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/connect/join_code.dart';
 import '../../core/connect/room_code.dart';
 import '../../core/connect/room_config.dart';
 import '../../core/data/history_entry.dart';
@@ -86,23 +87,26 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _startNewRoom() async {
-    final room = generateRoomCode();
+    // A fresh random passphrase folds into the room name to make a private
+    // room. If the user typed their own Advanced password, honour that instead.
+    final password = _passwordValue ?? generatePassphrase();
+    final code = buildJoinCode(generateRoomCode(), password);
     // Copy without blocking the join — clipboard is a convenience, and on a
     // headless test binding the platform channel never replies.
-    Clipboard.setData(ClipboardData(text: room)).ignore();
-    _showCopiedSnack(room);
+    Clipboard.setData(ClipboardData(text: code)).ignore();
+    _showCopiedSnack(code);
     await _connect(RoomConfig(
       server: _serverValue,
       port: _portValue,
-      room: room,
+      room: code,
       username: _username,
-      password: _passwordValue,
+      password: password,
     ));
   }
 
-  /// Confirm the new room code was copied. Shown on the app-level messenger so
+  /// Confirm the new join code was copied. Shown on the app-level messenger so
   /// it stays visible after we navigate into the watch screen.
-  void _showCopiedSnack(String room) {
+  void _showCopiedSnack(String code) {
     final m = context.meow;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
@@ -116,7 +120,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
             Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
             const SizedBox(width: Spacing.md),
             Expanded(
-              child: Text('Room code $room copied — share it with your friend',
+              child: Text('Room code $code copied — share it with your friend',
                   style: TextStyle(color: m.textPrimary)),
             ),
           ],
@@ -125,14 +129,20 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _joinTypedCode() async {
-    final room = _code.text.trim();
-    if (room.isEmpty) return;
+    final raw = _code.text.trim();
+    if (raw.isEmpty) return;
+    // A pasted code may carry its own password; fall back to an Advanced one the
+    // user typed (e.g. a friend shared a room-only code separately). Re-folding
+    // is idempotent for an already-folded code, so the friend lands in the exact
+    // same private room as the host.
+    final parsed = parseJoinCode(raw);
+    final password = parsed.password ?? _passwordValue;
     await _connect(RoomConfig(
       server: _serverValue,
       port: _portValue,
-      room: room,
+      room: buildJoinCode(parsed.room, password),
       username: _username,
-      password: _passwordValue,
+      password: password,
     ));
   }
 
@@ -307,7 +317,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
             style: TextStyle(fontWeight: TypeScale.bold)),
       ),
       const SizedBox(height: 8),
-      Text('A code is generated and copied to clipboard.',
+      Text('A private code is generated and copied to clipboard.',
           style: context.meowText.body.copyWith(color: m.textDim)),
       const SizedBox(height: Spacing.xl),
       _label('Enter code from friend'),
@@ -316,7 +326,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
           child: _textField(
               key: const Key('connect-code'),
               controller: _code,
-              hint: 'cozy-fox-42'),
+              hint: 'cozy-fox-42-k3pn'),
         ),
         const SizedBox(width: Spacing.sm),
         FilledButton(
