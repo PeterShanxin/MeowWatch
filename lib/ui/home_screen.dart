@@ -15,6 +15,7 @@ import '../core/data/stores.dart';
 import '../core/debug/debug_log.dart';
 import '../core/sync/auto_pause.dart';
 import '../core/sync/file_match.dart';
+import '../core/sync/join_prompt.dart';
 import '../core/sync/loaded_file_message.dart';
 import '../core/sync/presence_messages.dart';
 import '../core/sync/room_greeting.dart';
@@ -315,6 +316,12 @@ class _HomeScreenState extends State<HomeScreen> {
             // _syncHealthyNow, so this can't flash "hasn't loaded" while
             // we're disconnected.
             _peerFiles = const PeerFiles();
+            // The empty-screen join prompt is pinned imperatively from peer
+            // file/playback events, so it isn't gated on sync health like the
+            // banner is. Clear it here too, or a "<peer> loaded …" / "started
+            // playback …" nudge stays on the load screen with no peer present
+            // while we reconnect or disconnect (#116 review).
+            _joinPrompt = null;
           }
           _evaluateSyncHealth();
         });
@@ -385,7 +392,22 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     });
     _peerFileSub = _sync.peerFile.listen((f) {
-      if (mounted) setState(() => _peerFiles = _peerFiles.set(f));
+      if (!mounted) return;
+      setState(() {
+        _peerFiles = _peerFiles.set(f);
+        // A peer announced a loaded file while we have nothing loaded: pin the
+        // "load the same video to join" prompt on the empty screen so the side
+        // still picking a file knows which one — the mirror of the loader's
+        // "hasn't loaded a video yet" heads-up (#116). The play-triggered prompt
+        // below takes over if/when they actually start playback.
+        final prompt = peerLoadedJoinPrompt(
+          localHasFile: _core.state.fileName != null,
+          localUsername: _username,
+          peerUsername: f.username,
+          peerFileName: f.name,
+        );
+        if (prompt != null) _joinPrompt = prompt;
+      });
     });
     // Sync activities (peer + our own) flow through the throttle so a scrub
     // burst collapses to one line/banner (#26); the throttled output drives the
@@ -405,9 +427,12 @@ class _HomeScreenState extends State<HomeScreen> {
         // A peer drove playback while we have no video loaded: the transient
         // banner is easy to miss on the empty screen, so also pin a persistent
         // "load a video to join" prompt there (#60).
-        if (_core.state.fileName == null && a.username != _username) {
-          _joinPrompt = '${a.username} started playback — load a video to join';
-        }
+        final prompt = peerStartedPlaybackJoinPrompt(
+          localHasFile: _core.state.fileName != null,
+          localUsername: _username,
+          peerUsername: a.username,
+        );
+        if (prompt != null) _joinPrompt = prompt;
       });
       _chat.addSystem(t.chatLine);
     });

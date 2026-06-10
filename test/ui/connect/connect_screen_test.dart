@@ -198,6 +198,19 @@ void main() {
     expect(connected!.password, 'secret');
   });
 
+  testWidgets('Advanced password is labelled as a server password (#117)',
+      (tester) async {
+    // The field wires to the Syncplay handshake as the server password, not a
+    // per-room password — the label must say so, and not the old misleading
+    // "Room password" that implied it locked a public room.
+    await pump(tester);
+    await tester.tap(find.byKey(const Key('connect-advanced')));
+    await tester.pumpAndSettle();
+    expect(find.text('Server password — advanced / self-hosted only'),
+        findsOneWidget);
+    expect(find.textContaining('Room password'), findsNothing);
+  });
+
   testWidgets('delete icon removes the profile', (tester) async {
     profiles.profiles.add(SavedProfile(
       id: 7,
