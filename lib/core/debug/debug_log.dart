@@ -9,9 +9,14 @@ import 'log_level.dart';
 /// [LogLevel.neat]. Pure so it can be unit-tested without any I/O.
 bool isVerboseOnly(String line) {
   final trimmed = line.trimLeft();
-  return trimmed.startsWith('<<') ||
-      trimmed.startsWith('>>') ||
-      trimmed.contains('apply=false');
+  final isRawTraffic = trimmed.startsWith('<<') || trimmed.startsWith('>>');
+  if (isRawTraffic) {
+    // A server `Error` (bad password, room full, kicked) only ever appears as a
+    // raw `<<` line, and it's exactly the rejection detail Neat is meant to
+    // keep — so don't treat an Error-bearing raw line as verbose-only spam.
+    return !trimmed.contains('"Error"');
+  }
+  return trimmed.contains('apply=false');
 }
 
 /// A tiny append-only text logger that captures the Syncplay protocol trace

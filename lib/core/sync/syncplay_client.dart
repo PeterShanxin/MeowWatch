@@ -133,8 +133,11 @@ class SyncplayClient extends SyncCore {
     final generation = ++_generation;
 
     try {
-      final plain = await Socket.connect(_server, _port,
-          timeout: const Duration(seconds: 10));
+      final plain = await Socket.connect(
+        _server,
+        _port,
+        timeout: const Duration(seconds: 10),
+      );
       // A late dial that resolves after we already moved on: drop it.
       if (generation != _generation || _manualDisconnect) {
         plain.destroy();
@@ -163,8 +166,10 @@ class SyncplayClient extends SyncCore {
   /// close) and arm a backed-off reconnect — unless the user asked to leave.
   void _onConnectionLost() {
     if (_manualDisconnect) return;
-    onLog?.call('connection lost (no server traffic within '
-        '${livenessTimeout.inSeconds}s) — reconnecting');
+    onLog?.call(
+      'connection lost (no server traffic within '
+      '${livenessTimeout.inSeconds}s) — reconnecting',
+    );
     _scheduleReconnect();
   }
 
@@ -191,10 +196,12 @@ class SyncplayClient extends SyncCore {
     old?.destroy();
     _loggedIn = false;
     // Surface the gap to the UI so playback auto-pauses while we recover.
-    emitConnectionState(SyncConnectionState(
-      status: SyncConnectionStatus.reconnecting,
-      message: message,
-    ));
+    emitConnectionState(
+      SyncConnectionState(
+        status: SyncConnectionStatus.reconnecting,
+        message: message,
+      ),
+    );
     _reconnectTimer?.cancel();
     final delay = reconnectBackoff(attempt: _reconnectAttempt);
     _reconnectAttempt++;
@@ -211,54 +218,62 @@ class SyncplayClient extends SyncCore {
   /// [SecureSocket.secure] via `subscription:`, so any bytes already buffered
   /// for that subscription are carried into the TLS handshake. Cancelling
   /// instead would drop them and break the handshake.
-  void _attachPlainForTlsNegotiation(Socket plain, String server, int generation) {
+  void _attachPlainForTlsNegotiation(
+    Socket plain,
+    String server,
+    int generation,
+  ) {
     // True once this attempt is superseded (reconnect/manual leave) or done —
     // every completion path must bail rather than bind a zombie socket.
     bool stale() => generation != _generation || _manualDisconnect;
     var upgraded = false;
     late StreamSubscription<Uint8List> sub;
-    sub = plain.listen((chunk) async {
-      if (upgraded) return;
-      for (final line in _framer.addChunk(chunk)) {
-        if (line.isEmpty) continue;
-        final decoded =
-            decodeServerMessage(json.decode(line) as Map<dynamic, dynamic>);
-        if (decoded is TlsMessage && decoded.startTls) {
-          upgraded = true;
-          if (stale()) return;
-          // Pause (don't cancel) so SecureSocket.secure can detach this
-          // subscription and carry any buffered bytes into the handshake.
-          sub.pause();
-          final secure = await SecureSocket.secure(
-            plain,
-            host: server,
-            onBadCertificate: (_) => false,
+    sub = plain.listen(
+      (chunk) async {
+        if (upgraded) return;
+        for (final line in _framer.addChunk(chunk)) {
+          if (line.isEmpty) continue;
+          final decoded = decodeServerMessage(
+            json.decode(line) as Map<dynamic, dynamic>,
           );
-          // The await above can outlive a teardown — drop the upgraded socket
-          // rather than binding it over a newer attempt.
-          if (stale()) {
-            secure.destroy();
+          if (decoded is TlsMessage && decoded.startTls) {
+            upgraded = true;
+            if (stale()) return;
+            // Pause (don't cancel) so SecureSocket.secure can detach this
+            // subscription and carry any buffered bytes into the handshake.
+            sub.pause();
+            final secure = await SecureSocket.secure(
+              plain,
+              host: server,
+              onBadCertificate: (_) => false,
+            );
+            // The await above can outlive a teardown — drop the upgraded socket
+            // rather than binding it over a newer attempt.
+            if (stale()) {
+              secure.destroy();
+              return;
+            }
+            _bindSocket(secure, generation);
+            _sendHello();
+            return;
+          } else if (decoded is ErrorMessage) {
+            // Server doesn't support TLS — fall back to the plain socket.
+            upgraded = true;
+            if (stale()) return;
+            await sub.cancel();
+            if (stale()) return;
+            _bindSocket(plain, generation);
+            _sendHello();
             return;
           }
-          _bindSocket(secure, generation);
-          _sendHello();
-          return;
-        } else if (decoded is ErrorMessage) {
-          // Server doesn't support TLS — fall back to the plain socket.
-          upgraded = true;
-          if (stale()) return;
-          await sub.cancel();
-          if (stale()) return;
-          _bindSocket(plain, generation);
-          _sendHello();
-          return;
         }
-      }
-    }, onError: (Object e) {
-      if (stale()) return;
-      onLog?.call('tls negotiation error: $e');
-      _onConnectionLost();
-    });
+      },
+      onError: (Object e) {
+        if (stale()) return;
+        onLog?.call('tls negotiation error: $e');
+        _onConnectionLost();
+      },
+    );
   }
 
   void _bindSocket(Socket socket, int generation) {
@@ -305,11 +320,13 @@ class SyncplayClient extends SyncCore {
     // Always request the ORIGINAL name, never the server-assigned one — see
     // [_requestedUsername]. This is what stops the "_" suffix compounding on
     // each reconnect.
-    _send(encodeHello(
-      username: _requestedUsername,
-      room: _room,
-      password: _password,
-    ));
+    _send(
+      encodeHello(
+        username: _requestedUsername,
+        room: _room,
+        password: _password,
+      ),
+    );
   }
 
   void _handleMessage(ServerMessage msg) {
@@ -352,10 +369,13 @@ class SyncplayClient extends SyncCore {
       case RosterMessage(:final usernames, :final files):
         for (final name in usernames) {
           if (!_isSelf(name)) {
-            emitPresence(PresenceEvent(
+            emitPresence(
+              PresenceEvent(
                 username: name,
                 kind: PresenceKind.joined,
-                fromRoster: true));
+                fromRoster: true,
+              ),
+            );
           }
         }
         for (final f in files) {
@@ -378,10 +398,12 @@ class SyncplayClient extends SyncCore {
         _socket = null;
         old?.destroy();
         _loggedIn = false;
-        emitConnectionState(SyncConnectionState(
-          status: SyncConnectionStatus.error,
-          message: message,
-        ));
+        emitConnectionState(
+          SyncConnectionState(
+            status: SyncConnectionStatus.error,
+            message: message,
+          ),
+        );
       case StateMessage():
         _handleState(msg);
       case TlsMessage():
@@ -424,7 +446,8 @@ class SyncplayClient extends SyncCore {
       final global = msg.peer!.paused
           ? msg.peer!
           : PeerPlayState(
-              position: msg.peer!.position +
+              position:
+                  msg.peer!.position +
                   Duration(milliseconds: (_ping.forwardDelay * 1000).round()),
               paused: msg.peer!.paused,
               doSeek: msg.peer!.doSeek,
@@ -437,10 +460,11 @@ class SyncplayClient extends SyncCore {
         username: _username,
       );
       onLog?.call(
-          'FOLLOW global(pos=${global.positionSeconds}s paused=${global.paused} '
-          'doSeek=${global.doSeek} setBy=${global.setBy}) '
-          'local(pos=${_localPosition.inMilliseconds / 1000}s paused=$_localPaused) '
-          '=> apply=${action.shouldApply}');
+        'FOLLOW global(pos=${global.positionSeconds}s paused=${global.paused} '
+        'doSeek=${global.doSeek} setBy=${global.setBy}) '
+        'local(pos=${_localPosition.inMilliseconds / 1000}s paused=$_localPaused) '
+        '=> apply=${action.shouldApply}',
+      );
       if (action.shouldApply) {
         // Surface this as a notification BEFORE we overwrite our local snapshot
         // below — the classifier compares the peer's target to where we were.
@@ -458,12 +482,14 @@ class SyncplayClient extends SyncCore {
         // ping-pong fight.
         _localPosition = action.position;
         _localPaused = action.paused;
-        emitPeerState(PeerPlayState(
-          position: action.position,
-          paused: action.paused,
-          doSeek: global.doSeek,
-          setBy: global.setBy,
-        ));
+        emitPeerState(
+          PeerPlayState(
+            position: action.position,
+            paused: action.paused,
+            doSeek: global.doSeek,
+            setBy: global.setBy,
+          ),
+        );
       }
     }
 
@@ -477,16 +503,18 @@ class SyncplayClient extends SyncCore {
       _clientIgnore += 1;
     }
 
-    _send(encodeState(
-      position: _localPosition,
-      paused: _localPaused,
-      doSeek: _pendingDoSeek,
-      latencyCalculation: _serverLatencyCalculation,
-      clientLatencyCalculation: _ping.newTimestamp(),
-      clientRtt: _ping.rtt,
-      clientIgnore: _clientIgnore,
-      serverIgnore: _serverIgnore,
-    ));
+    _send(
+      encodeState(
+        position: _localPosition,
+        paused: _localPaused,
+        doSeek: _pendingDoSeek,
+        latencyCalculation: _serverLatencyCalculation,
+        clientLatencyCalculation: _ping.newTimestamp(),
+        clientRtt: _ping.rtt,
+        clientIgnore: _clientIgnore,
+        serverIgnore: _serverIgnore,
+      ),
+    );
 
     // Reset one-shot flags; serverIgnore is cleared once echoed.
     _pendingStateChange = false;
@@ -499,7 +527,9 @@ class SyncplayClient extends SyncCore {
     final socket = _socket;
     if (socket == null) return;
     final line = json.encode(message);
-    onLog?.call('>> $line');
+    // Log a redacted copy — the Hello carries the room password, which must not
+    // land in the now-persistent / exportable diagnostic log.
+    onLog?.call('>> ${redactSecretsForLog(message)}');
     socket.add(utf8.encode('$line\r\n'));
   }
 

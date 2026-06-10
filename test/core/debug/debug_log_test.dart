@@ -70,6 +70,16 @@ void main() {
       expect(isVerboseOnly('reconnect: room emptied, ignoring'), isFalse);
       expect(isVerboseOnly('ERROR socket closed'), isFalse);
     });
+
+    test(
+      'keeps a raw server Error line (bad password / room full / kicked)',
+      () {
+        expect(
+          isVerboseOnly('<< {"Error": {"message": "Bad password"}}'),
+          isFalse,
+        );
+      },
+    );
   });
 
   group('level filtering', () {
@@ -97,6 +107,18 @@ void main() {
       expect(text, isNot(contains('apply=false')));
       expect(text, contains('apply=true seek'));
       expect(text, contains('reconnect: room emptied'));
+    });
+
+    test('neat keeps a raw server Error line', () async {
+      final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.neat)
+        ..start();
+      log('<< {"State": {"ping": {}}}'); // spam → dropped
+      log('<< {"Error": {"message": "Room is full"}}'); // rejection → kept
+      await log.close();
+
+      final text = logsIn(dir).single.readAsStringSync();
+      expect(text, isNot(contains('"State"')));
+      expect(text, contains('Room is full'));
     });
 
     test('verbose keeps everything', () async {
