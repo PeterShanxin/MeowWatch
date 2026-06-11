@@ -139,9 +139,13 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-start-new')));
     await tester.pumpAndSettle(); // let Clipboard.setData + saveUsed resolve
     expect(connected, isNotNull);
-    // The room now folds a random passphrase in: adj-animal-NN-<secret>.
-    expect(connected!.room, matches(RegExp(r'^[a-z]+-[a-z]+-\d{2}-[a-z0-9]{4}$')));
-    // The secret lives only in the room name; it is NOT sent as a server
+    // The room is a "magic sentence" whose entropy lives in the words:
+    // the-<adj>-<animal>-<verb>-and-the-<adj>-<animal>-<verb>.
+    expect(
+        connected!.room,
+        matches(RegExp(
+            r'^the-[a-z]+-[a-z]+-[a-z]+-and-the-[a-z]+-[a-z]+-[a-z]+$')));
+    // The unguessable code is the room name itself; nothing is sent as a server
     // password (that would be a no-op on the public server and could be
     // rejected elsewhere).
     expect(connected!.password, isNull);

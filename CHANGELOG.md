@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.23.0-alpha] - 2026-06-11
+- "Start new room" now copies a cute **magic sentence** instead of a code with a random tail — something like `the-sleepy-otter-naps-and-the-brave-fox-dreams`. It's pleasant to read and say aloud, and its privacy now comes entirely from friendly words rather than a gibberish suffix like `…-k3pn`. There are ~39 billion possible sentences, so a friend still can't stumble into your room by guessing. Paste the whole sentence into "Enter code from friend" to join. Your old room codes — bare `happy-cat-11` names and earlier `happy-cat-11-k3pn` private codes alike — keep working exactly as before, so saved rooms and any codes you've already shared still meet up. (#109)
+
 ## [0.22.2-alpha] - 2026-06-10
 - Fixed a glitch where briefly reconnecting to your room could snap your video back to the very start and pause it. When the room momentarily empties during a reconnect, the server reports a blank "position 0, paused" state that belongs to nobody; the app used to follow it as if a friend had paused at the beginning. It now ignores any room state that isn't attributed to a real person, so a reconnect blip can no longer drag a mid-film session back to 00:00.
 

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/connect/join_code.dart';
 import '../../core/connect/room_code.dart';
 import '../../core/connect/room_config.dart';
 import '../../core/data/history_entry.dart';
@@ -87,11 +86,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _startNewRoom() async {
-    // A fresh random passphrase folds into the room name to make a private room.
-    // The room name carries the secret — it is NOT sent as a server password.
-    // The Advanced password (if any) is a genuine Syncplay server password and
-    // rides along independently in the handshake.
-    final code = buildJoinCode(generateRoomCode(), generatePassphrase());
+    // The generated "magic sentence" IS the private room name — its entropy
+    // lives in the words themselves, so there is no separate secret to fold in.
+    // It is NOT sent as a server password. The Advanced password (if any) is a
+    // genuine Syncplay server password and rides along independently.
+    final code = generateRoomCode();
     // Copy without blocking the join — clipboard is a convenience, and on a
     // headless test binding the platform channel never replies.
     Clipboard.setData(ClipboardData(text: code)).ignore();
@@ -132,10 +131,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
   Future<void> _joinTypedCode() async {
     final code = _code.text.trim();
     if (code.isEmpty) return;
-    // The whole pasted code IS the room — whether it's a bare `happy-cat-11` or
-    // a folded `happy-cat-11-k3pn`. We join it verbatim so a friend lands in the
-    // exact same room as the host (folded secret included). The Advanced
-    // password is a separate server password and must NOT change the room name.
+    // The whole pasted code IS the room — a magic sentence, a bare
+    // `happy-cat-11`, or an older folded `happy-cat-11-k3pn` all join verbatim
+    // so a friend lands in the host's exact room. The Advanced password is a
+    // separate server password and must NOT change the room name.
     await _connect(RoomConfig(
       server: _serverValue,
       port: _portValue,
@@ -325,7 +324,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
           child: _textField(
               key: const Key('connect-code'),
               controller: _code,
-              hint: 'cozy-fox-42-k3pn'),
+              hint: 'the-sleepy-otter-naps-and-the-brave-fox-dreams'),
         ),
         const SizedBox(width: Spacing.sm),
         FilledButton(

@@ -17,17 +17,18 @@ class RoomConfig {
   final String server;
   final int port;
 
-  /// The room to join on the server. This is the *effective* room — for a
-  /// private room it already has the passphrase folded in (e.g.
-  /// `happy-cat-11-k3pn`), which is what shareable join codes carry. An old
-  /// room-only code (`happy-cat-11`) is just the bare name. See
-  /// `core/connect/join_code.dart`.
+  /// The room to join on the server. This is the *effective* room — and the
+  /// whole shareable code. For a freshly started private room it's a "magic
+  /// sentence" (`the-sleepy-otter-naps-and-the-brave-fox-dreams`) whose entropy
+  /// makes it unguessable; an old room-only code (`happy-cat-11`) or folded
+  /// `happy-cat-11-k3pn` code is just the bare string. See
+  /// `core/connect/room_code.dart`.
   final String room;
   final String username;
 
-  /// The room passphrase / server password, kept alongside the folded [room]
-  /// so it can still be sent in the handshake (it matters on a private server;
-  /// a public server ignores it — there privacy comes from the folded [room]).
+  /// The Syncplay *server* password, sent in the handshake. It matters only on a
+  /// private / self-hosted server; a public server ignores it. Room privacy does
+  /// not come from this field — it comes from the unguessable [room] code.
   final String? password;
 
   /// If set, the watch screen loads this file and seeks to [resumePositionMs].
