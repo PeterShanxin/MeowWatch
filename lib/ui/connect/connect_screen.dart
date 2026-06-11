@@ -324,7 +324,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
           child: _textField(
               key: const Key('connect-code'),
               controller: _code,
-              hint: 'the-sleepy-otter-naps-and-the-brave-fox-dreams'),
+              hint: 'sleepy-otter-counts-cozy-stars'),
         ),
         const SizedBox(width: Spacing.sm),
         FilledButton(

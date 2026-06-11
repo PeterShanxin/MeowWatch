@@ -18,9 +18,9 @@ class RoomConfig {
   final int port;
 
   /// The room to join on the server. This is the *effective* room — and the
-  /// whole shareable code. For a freshly started private room it's a "magic
-  /// sentence" (`the-sleepy-otter-naps-and-the-brave-fox-dreams`) whose entropy
-  /// makes it unguessable; an old room-only code (`happy-cat-11`) or folded
+  /// whole shareable code. For a freshly started private room it's a short
+  /// "magic sentence" (`sleepy-otter-counts-cozy-stars`) whose entropy makes it
+  /// unguessable; an old room-only code (`happy-cat-11`) or folded
   /// `happy-cat-11-k3pn` code is just the bare string. See
   /// `core/connect/room_code.dart`.
   final String room;
