@@ -33,6 +33,7 @@ import '../core/theme/tokens/type_scale.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/playback_state.dart';
 import '../core/video/seek_when_ready.dart';
+import '../core/video/video_url.dart';
 import 'app_close_hook.dart';
 import 'chat/chat_overlay.dart';
 import 'chat/chat_overlay_layout.dart';
@@ -40,10 +41,12 @@ import 'drop_target.dart';
 import 'empty_state.dart';
 import 'idle_visibility.dart';
 import 'notify_decision.dart';
+import 'paste_link_dialog.dart';
 import 'player_menu_button.dart';
 import 'reactions/floating_reactions.dart';
 import 'reactions/reaction_bar.dart';
 import 'sync_activity_text.dart';
+import 'video_error_state.dart';
 import 'video_surface.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -820,12 +823,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _recordOpen(String path) async {
     final state = _core.state;
-    var size = 0;
-    try {
-      size = await File(path).length();
-    } on FileSystemException {
-      size = 0;
-    }
+    // A stream URL has no byte size — don't stat it as a file (the URL isn't a
+    // valid path, and on Windows the ':' would throw a different error).
+    final size = isHttpUrl(path) ? 0 : await _fileSize(path);
     if (mounted) setState(() => _localFileSizeBytes = size);
     await widget.history.recordOpen(
       filePath: path,
@@ -859,17 +859,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final state = _core.state;
     final path = state.filePath;
     if (path == null) return;
-    var size = 0;
-    try {
-      size = await File(path).length();
-    } on FileSystemException {
-      size = 0;
-    }
+    // For a URL, size is unknown (streams have no byte length) and the URL
+    // itself is the name we share — matching official Syncplay.
+    final size = isHttpUrl(path) ? 0 : await _fileSize(path);
     _sync.announceFile(
       name: state.fileName ?? path,
       size: size,
       duration: state.duration,
     );
+  }
+
+  /// Byte size of a local file, or 0 if it can't be read.
+  Future<int> _fileSize(String path) async {
+    try {
+      return await File(path).length();
+    } on FileSystemException {
+      return 0;
+    }
   }
 
   Future<void> _browse() async {
@@ -881,6 +887,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (file != null) {
       await _load(file.path);
     }
+  }
+
+  /// Prompt for a direct video link and load it through the same path as a
+  /// local file. The URL is validated inside the dialog before it resolves.
+  Future<void> _promptPasteLink() async {
+    final url = await showPasteLinkDialog(context);
+    if (url != null) await _load(url);
   }
 
   void _handleDropped(String path) {
@@ -925,6 +938,10 @@ class _HomeScreenState extends State<HomeScreen> {
             initialData: _core.state,
             builder: (context, snapshot) {
               final state = snapshot.data!;
+              // True only while a video surface is actually on screen — not on
+              // the empty/load screen, and not on the load-error screen.
+              final videoVisible = state.fileName != null &&
+                  state.status != PlaybackStatus.error;
               final hint = _banner;
               final chatOpacity = chatOverlayOpacity(
                 idle: _isUiIdle,
@@ -944,7 +961,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         : BoxDecoration(color: m.background),
                   ),
                   if (state.fileName == null)
-                    EmptyState(onBrowse: _browse, notice: _joinPrompt)
+                    EmptyState(
+                      onBrowse: _browse,
+                      onLoadUrl: (url) => unawaited(_load(url)),
+                      notice: _joinPrompt,
+                    )
+                  else if (state.status == PlaybackStatus.error)
+                    VideoErrorState(
+                      message: friendlyPlaybackError(
+                        isUrl: isHttpUrl(state.filePath ?? ''),
+                      ),
+                      detail: state.errorMessage,
+                      onBrowse: _browse,
+                      onPasteLink: () => unawaited(_promptPasteLink()),
+                    )
                   else
                     VideoSurface(
                       core: _core,
@@ -952,7 +982,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       isUiIdle: _isUiIdle,
                       onUserInteraction: _onUserInteraction,
                     ),
-                  if (state.fileName != null)
+                  if (videoVisible)
                     Positioned.fill(
                       child: FloatingReactionsOverlay(
                         emojis: _reactionFeed.stream,
@@ -1031,6 +1061,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           currentTheme: widget.currentTheme,
                           onThemeChanged: widget.onThemeChanged,
                           onLoadVideo: _browse,
+                          onPasteLink: () => unawaited(_promptPasteLink()),
                           onLeave: _leave,
                           chatAutoDim: _chatAutoDim,
                           onChatAutoDimChanged: (val) {
@@ -1063,7 +1094,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
-                  if (state.fileName != null)
+                  if (videoVisible)
                     Positioned(
                       right: 16,
                       bottom: 84,

@@ -3,11 +3,11 @@ import 'dart:io';
 
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:path/path.dart' as p;
 
 import 'playback_state.dart';
 import 'video_core.dart';
 import 'video_decode_config.dart';
+import 'video_url.dart';
 
 class MediaKitVideoCore extends VideoCore {
   MediaKitVideoCore() : _player = Player() {
@@ -89,17 +89,21 @@ class MediaKitVideoCore extends VideoCore {
     ];
   }
 
+  /// Load a local file path *or* a direct `http(s)` stream URL — mpv accepts
+  /// both in the same `Media(...)` slot, so a URL needs no special engine path.
+  /// [mediaSourceName] keeps the display/announce name a base filename for a
+  /// file and the full link for a URL (the Syncplay convention).
   @override
-  Future<void> load(String filePath) async {
+  Future<void> load(String source) async {
     emit(state.copyWith(
       status: PlaybackStatus.loading,
-      fileName: p.basename(filePath),
-      filePath: filePath,
+      fileName: mediaSourceName(source),
+      filePath: source,
       position: Duration.zero,
       duration: Duration.zero,
       errorMessage: null,
     ));
-    await _player.open(Media(filePath), play: false);
+    await _player.open(Media(source), play: false);
   }
 
   @override

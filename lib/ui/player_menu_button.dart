@@ -26,6 +26,7 @@ class PlayerMenuButton extends StatelessWidget {
     required this.currentTheme,
     required this.onThemeChanged,
     required this.onLoadVideo,
+    required this.onPasteLink,
     required this.onLeave,
     required this.chatAutoDim,
     required this.onChatAutoDimChanged,
@@ -60,6 +61,7 @@ class PlayerMenuButton extends StatelessWidget {
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
   final VoidCallback onLoadVideo;
+  final VoidCallback onPasteLink;
   final VoidCallback onLeave;
   final bool chatAutoDim;
   final ValueChanged<bool> onChatAutoDimChanged;
@@ -132,6 +134,7 @@ class PlayerMenuButton extends StatelessWidget {
             currentTheme: currentTheme,
             onThemeChanged: onThemeChanged,
             onLoadVideo: onLoadVideo,
+            onPasteLink: onPasteLink,
             onLeave: onLeave,
             chatAutoDim: chatAutoDim,
             onChatAutoDimChanged: onChatAutoDimChanged,
@@ -162,6 +165,7 @@ class _MenuPanel extends StatefulWidget {
     required this.currentTheme,
     required this.onThemeChanged,
     required this.onLoadVideo,
+    required this.onPasteLink,
     required this.onLeave,
     required this.chatAutoDim,
     required this.onChatAutoDimChanged,
@@ -183,6 +187,7 @@ class _MenuPanel extends StatefulWidget {
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
   final VoidCallback onLoadVideo;
+  final VoidCallback onPasteLink;
   final VoidCallback onLeave;
   final bool chatAutoDim;
   final ValueChanged<bool> onChatAutoDimChanged;
@@ -238,6 +243,12 @@ class _MenuPanelState extends State<_MenuPanel> {
             icon: Icons.video_library_outlined,
             text: 'Load video…',
             onTap: widget.onLoadVideo,
+          ),
+          _MenuAction(
+            key: const Key('player-menu-paste-link'),
+            icon: Icons.link,
+            text: 'Paste link…',
+            onTap: widget.onPasteLink,
           ),
           Divider(color: m.border, height: Spacing.lg),
           label('Theme'),

@@ -13,6 +13,7 @@ Widget _host(Widget child) => MaterialApp(
 PlayerMenuButton _button({
   ValueChanged<MeowThemeId>? onThemeChanged,
   VoidCallback? onLoadVideo,
+  VoidCallback? onPasteLink,
   VoidCallback? onLeave,
   List<String>? members,
   String myUsername = 'me',
@@ -37,6 +38,7 @@ PlayerMenuButton _button({
       currentTheme: MeowThemeId.cozy,
       onThemeChanged: onThemeChanged ?? (_) {},
       onLoadVideo: onLoadVideo ?? () {},
+      onPasteLink: onPasteLink ?? () {},
       onLeave: onLeave ?? () {},
       chatAutoDim: chatAutoDim,
       onChatAutoDimChanged: onChatAutoDimChanged ?? (_) {},
@@ -100,6 +102,18 @@ void main() {
     await tester.tap(find.byKey(const Key('player-menu-load')));
     await tester.pumpAndSettle();
     expect(loaded, isTrue);
+    expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
+  });
+
+  testWidgets('tapping Paste link fires onPasteLink and closes the menu',
+      (tester) async {
+    var pasted = false;
+    await tester.pumpWidget(_host(_button(onPasteLink: () => pasted = true)));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('player-menu-paste-link')));
+    await tester.pumpAndSettle();
+    expect(pasted, isTrue);
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 

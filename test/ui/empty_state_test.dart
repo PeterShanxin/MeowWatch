@@ -22,6 +22,33 @@ void main() {
     expect(browseCalled, isTrue);
   });
 
+  testWidgets('paste-a-link field loads a valid URL', (tester) async {
+    String? loaded;
+    await tester.pumpWidget(MaterialApp(
+      theme: themeDataFor(MeowThemeId.cozy),
+      home: Scaffold(
+        body: EmptyState(onBrowse: () {}, onLoadUrl: (u) => loaded = u),
+      ),
+    ));
+
+    expect(find.byKey(const Key('url-input-field')), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const Key('url-input-field')), 'https://x.test/a.mp4');
+    await tester.tap(find.byKey(const Key('url-load-button')));
+    await tester.pump();
+    expect(loaded, 'https://x.test/a.mp4');
+  });
+
+  testWidgets('hides the paste-a-link field when onLoadUrl is null',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: themeDataFor(MeowThemeId.cozy),
+      home: Scaffold(body: EmptyState(onBrowse: () {})),
+    ));
+    expect(find.byKey(const Key('url-input-field')), findsNothing);
+    expect(find.text('Browse…'), findsOneWidget);
+  });
+
   testWidgets('shows a join notice above the prompt when provided (#60)',
       (tester) async {
     await tester.pumpWidget(MaterialApp(
