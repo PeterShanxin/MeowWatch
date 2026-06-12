@@ -27,6 +27,19 @@ abstract class VideoCore {
   }
 
   Future<void> load(String filePath);
+
+  /// Force the in-flight load into the error state with [message]. Used when a
+  /// load hangs past a caller's timeout with no backend error, so the UI can
+  /// show its recovery screen instead of a frozen loading surface. No-op unless
+  /// still `loading`, so it can't clobber a real opened/errored state.
+  void failLoad(String message) {
+    if (_state.status != PlaybackStatus.loading) return;
+    emit(_state.copyWith(
+      status: PlaybackStatus.error,
+      errorMessage: message,
+    ));
+  }
+
   Future<void> play();
   Future<void> pause();
   Future<void> seek(Duration position);

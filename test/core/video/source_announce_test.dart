@@ -5,49 +5,82 @@ import 'package:meowwatch/core/video/source_announce.dart';
 void main() {
   group('canAnnounceOnConnect', () {
     const url = 'https://cdn.example.com/video.mp4';
-    const file = r'C:\videos\demo.mkv';
-    const dur = Duration(minutes: 30);
 
-    PlaybackState st(String? path, PlaybackStatus status, {Duration d = dur}) =>
-        PlaybackState(filePath: path, status: status, duration: d);
-
-    test('nothing loaded → no announce', () {
-      expect(canAnnounceOnConnect(st(null, PlaybackStatus.idle)), isFalse);
-    });
-
-    test('a confirmed open announces — local or URL', () {
-      for (final path in [file, url]) {
-        expect(canAnnounceOnConnect(st(path, PlaybackStatus.playing)), isTrue);
-        expect(canAnnounceOnConnect(st(path, PlaybackStatus.paused)), isTrue);
-        expect(canAnnounceOnConnect(st(path, PlaybackStatus.ended)), isTrue);
-      }
-    });
-
-    test('the transient paused tick (no duration) is NOT announced', () {
-      // media_kit emits paused before a failing source errors; with no duration
-      // yet, that is not a confirmed open.
+    test('nothing loaded / nothing accepted → no announce', () {
       expect(
         canAnnounceOnConnect(
-            st(url, PlaybackStatus.paused, d: Duration.zero)),
-        isFalse,
-      );
-      expect(
-        canAnnounceOnConnect(
-            st(file, PlaybackStatus.paused, d: Duration.zero)),
+          currentPath: null,
+          acceptedPath: null,
+          status: PlaybackStatus.idle,
+        ),
         isFalse,
       );
     });
 
-    test('loading / idle / error are never announced — local or URL', () {
-      for (final path in [file, url]) {
-        for (final s in [
-          PlaybackStatus.loading,
-          PlaybackStatus.idle,
-          PlaybackStatus.error,
-        ]) {
-          expect(canAnnounceOnConnect(st(path, s)), isFalse, reason: '$path/$s');
-        }
-      }
+    test('the accepted, current source announces', () {
+      expect(
+        canAnnounceOnConnect(
+          currentPath: url,
+          acceptedPath: url,
+          status: PlaybackStatus.paused,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a valid live stream (paused, no duration) still announces once '
+        'accepted', () {
+      // The whole point of tracking the accepted path: bare state can't tell
+      // this apart from the pre-error paused tick, but the accepted marker can.
+      expect(
+        canAnnounceOnConnect(
+          currentPath: url,
+          acceptedPath: url,
+          status: PlaybackStatus.paused,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a not-yet-accepted source is withheld (paused tick / loading)', () {
+      expect(
+        canAnnounceOnConnect(
+          currentPath: url,
+          acceptedPath: null,
+          status: PlaybackStatus.paused,
+        ),
+        isFalse,
+      );
+      expect(
+        canAnnounceOnConnect(
+          currentPath: url,
+          acceptedPath: null,
+          status: PlaybackStatus.loading,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a newer source supersedes the accepted one', () {
+      expect(
+        canAnnounceOnConnect(
+          currentPath: 'https://cdn.example.com/new.mp4',
+          acceptedPath: url,
+          status: PlaybackStatus.paused,
+        ),
+        isFalse,
+      );
+    });
+
+    test('an accepted source that later errored is not announced', () {
+      expect(
+        canAnnounceOnConnect(
+          currentPath: url,
+          acceptedPath: url,
+          status: PlaybackStatus.error,
+        ),
+        isFalse,
+      );
     });
   });
 }

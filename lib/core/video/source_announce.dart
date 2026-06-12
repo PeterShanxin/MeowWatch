@@ -1,12 +1,21 @@
 import 'playback_state.dart';
 
-/// Whether the current core [state] is safe to (re)announce to the room on a
+/// Whether the room should be (re)announced the current source on a
 /// connect/reconnect.
 ///
-/// Only a confirmed open ([isPlaybackOpen]) may be announced — never a source
-/// still `loading`, the transient `paused` tick before an async error, or an
-/// `error`. The load path announces a source's real outcome itself once it
-/// settles, so a connect/reconnect blip must not pre-announce a not-yet-playable
-/// or failed source as if it had loaded. Holds for local files and URLs alike.
-bool canAnnounceOnConnect(PlaybackState state) =>
-    state.filePath != null && isPlaybackOpen(state);
+/// Gated on the source the load path actually *accepted* ([acceptedPath]), not
+/// on the live playback state — because the two ambiguous-looking states can't
+/// be told apart from [status] alone: a valid live stream stays `paused` with no
+/// duration (accepted), and the transient tick before an async error also looks
+/// `paused` with no duration (not accepted). Tracking the accepted path settles
+/// it: announce only when the current source *is* the accepted one and it hasn't
+/// since errored.
+bool canAnnounceOnConnect({
+  required String? currentPath,
+  required String? acceptedPath,
+  required PlaybackStatus status,
+}) {
+  if (currentPath == null || acceptedPath == null) return false;
+  if (status == PlaybackStatus.error) return false;
+  return currentPath == acceptedPath;
+}

@@ -187,6 +187,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// friend's machine.
   String? _joinPrompt;
 
+  /// The source path that the *most recent* load actually confirmed open. The
+  /// connect/reconnect re-announce gates on this so a still-loading, superseded,
+  /// or failed source is never re-sent to the room — and so a valid live stream
+  /// (which stays `paused` with no duration) still reannounces, where the bare
+  /// state alone couldn't tell it apart from the pre-error paused tick. Set on a
+  /// confirmed open in [_load], invalidated when a new load starts.
+  String? _loadedSource;
+
   /// Debounce before auto-pausing: a brief blip (e.g. a heartbeat timeout that
   /// recovers a second later, common when two instances share one PC) should
   /// NOT pause — only a sustained loss of sync.
@@ -920,9 +928,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Load (but do not auto-play). In a room, hitting play yourself starts both
   /// of you in sync; auto-playing on load made the two clients fight at 0.
-  Future<void> _load(String path) async {
+  ///
+  /// Returns `true` only if *this* load opened and is still the current source —
+  /// callers (e.g. resume) can then act on it; a `false` means it failed, timed
+  /// out, or was superseded by a newer load.
+  Future<bool> _load(String path) async {
     // We now have a video, so the "load a video to join" prompt is moot (#60).
     if (_joinPrompt != null && mounted) setState(() => _joinPrompt = null);
+    // Invalidate the accepted-source marker until this load is confirmed, so a
+    // reconnect mid-load can't re-announce the previous source.
+    _loadedSource = null;
     await _core.load(path);
     // A source can fail asynchronously — mpv reports an unreachable / non-video
     // / expired URL, *and* a moved or unreadable local file, on its error stream
@@ -930,14 +945,24 @@ class _HomeScreenState extends State<HomeScreen> {
     // or post a "Loaded …" chat line until it actually opens, or a failed source
     // would surface to peers and history as loaded while we show the error
     // screen. Applies to local files too, not just URLs.
-    if (!await awaitOpenResult(_core)) return;
+    if (!await awaitOpenResult(_core)) {
+      // A hang (timed out still `loading`, no mpv error) must be surfaced as an
+      // error, or the user is stuck on a frozen loading surface with no recovery
+      // buttons (those only show on PlaybackStatus.error).
+      if (_core.state.status == PlaybackStatus.loading) {
+        _core.failLoad('Timed out waiting for the video to open.');
+      }
+      return false;
+    }
     // Browse / Paste / drop stay reachable, so a newer load may have superseded
     // this one while we awaited — the core now describes that other source. Bail
     // rather than record/announce this stale path against it.
-    if (!mounted || _core.state.filePath != path) return;
+    if (!mounted || _core.state.filePath != path) return false;
+    _loadedSource = path;
     await _recordOpen(path);
     await _announceCurrentFile();
     _addLoadedFileMessage();
+    return true;
   }
 
   /// Append a "Loaded …" system line to chat. Shows "in sync!" when the peer's
@@ -959,8 +984,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _resume(String path, int positionMs) async {
-    await _load(path);
-    await seekWhenReady(_core, Duration(milliseconds: positionMs));
+    // Only seek if this resume load actually opened and is still current —
+    // otherwise a superseded/failed load would apply the old position to
+    // whatever the user picked instead.
+    if (await _load(path)) {
+      await seekWhenReady(_core, Duration(milliseconds: positionMs));
+    }
   }
 
   Future<void> _recordOpen(String path) async {
@@ -1004,7 +1033,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Whether the just-(re)connected room should be told about the current
   /// source — see [canAnnounceOnConnect] for the rule.
-  bool _shouldReannounceOnConnect() => canAnnounceOnConnect(_core.state);
+  bool _shouldReannounceOnConnect() => canAnnounceOnConnect(
+        currentPath: _core.state.filePath,
+        acceptedPath: _loadedSource,
+        status: _core.state.status,
+      );
 
   Future<void> _announceCurrentFile() async {
     final state = _core.state;
