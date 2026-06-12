@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../core/audio/notify_sounds.dart';
+import '../core/debug/log_level.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
 import '../core/theme/tokens/icon_sizes.dart';
@@ -12,6 +12,7 @@ import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 import 'idle_visibility.dart';
+import 'settings/settings_panel.dart';
 import 'theme/theme_swatches.dart';
 
 /// Top-left in-player control: a gear button that opens a small anchored
@@ -39,6 +40,9 @@ class PlayerMenuButton extends StatelessWidget {
     required this.secondarySoundId,
     required this.onSecondarySoundChanged,
     required this.onPreviewSound,
+    required this.logLevel,
+    required this.onLogLevelChanged,
+    required this.onExportLogs,
     super.key,
   });
 
@@ -80,6 +84,12 @@ class PlayerMenuButton extends StatelessWidget {
   final String secondarySoundId;
   final ValueChanged<String> onSecondarySoundChanged;
   final ValueChanged<String> onPreviewSound;
+
+  /// Diagnostic-log verbosity and its setter, plus a one-tap export that
+  /// bundles the rotating logs to a file the user can send us.
+  final LogLevel logLevel;
+  final ValueChanged<LogLevel> onLogLevelChanged;
+  final VoidCallback onExportLogs;
 
   @override
   Widget build(BuildContext context) {
@@ -147,6 +157,9 @@ class PlayerMenuButton extends StatelessWidget {
             secondarySoundId: secondarySoundId,
             onSecondarySoundChanged: onSecondarySoundChanged,
             onPreviewSound: onPreviewSound,
+            logLevel: logLevel,
+            onLogLevelChanged: onLogLevelChanged,
+            onExportLogs: onExportLogs,
           ),
         ),
       ],
@@ -178,6 +191,9 @@ class _MenuPanel extends StatefulWidget {
     required this.secondarySoundId,
     required this.onSecondarySoundChanged,
     required this.onPreviewSound,
+    required this.logLevel,
+    required this.onLogLevelChanged,
+    required this.onExportLogs,
   });
 
   final String roomCode;
@@ -200,6 +216,9 @@ class _MenuPanel extends StatefulWidget {
   final String secondarySoundId;
   final ValueChanged<String> onSecondarySoundChanged;
   final ValueChanged<String> onPreviewSound;
+  final LogLevel logLevel;
+  final ValueChanged<LogLevel> onLogLevelChanged;
+  final VoidCallback onExportLogs;
 
   @override
   State<_MenuPanel> createState() => _MenuPanelState();
@@ -208,133 +227,155 @@ class _MenuPanel extends StatefulWidget {
 class _MenuPanelState extends State<_MenuPanel> {
   bool _settingsOpen = false;
 
+  // Own the scroll position so this popover never grabs the PrimaryScrollController
+  // (which the desktop Scrollbar asserts must back a single ScrollView).
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
     Widget label(String text) => Padding(
-          padding: const EdgeInsets.only(bottom: Spacing.sm),
-          child: Text(text, style: TextStyle(color: m.textDim, fontSize: TypeScale.label)),
-        );
+      padding: const EdgeInsets.only(bottom: Spacing.sm),
+      child: Text(
+        text,
+        style: TextStyle(color: m.textDim, fontSize: TypeScale.label),
+      ),
+    );
 
     return SizedBox(
       width: 264,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        // Stretch so rows/actions fill the card width (bigger tap targets)
-        // instead of hugging the left as half-width nubs.
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          label('Room code'),
-          _RoomCodeRow(code: widget.roomCode),
-          const SizedBox(height: Spacing.sm),
-          Divider(color: m.border, height: Spacing.lg),
-          label('In the room (${widget.members.length})'),
-          for (final name in widget.members)
-            // isMe matches the wire identity; the matched "you" row renders our
-            // chosen name so a transient reconnect dedupe suffix never shows (#107).
-            _MemberRow(
-              name: name == widget.myUsername ? widget.myDisplayName : name,
-              isMe: name == widget.myUsername,
-            ),
-          const SizedBox(height: Spacing.sm),
-          Divider(color: m.border, height: Spacing.lg),
-          _MenuAction(
-            key: const Key('player-menu-load'),
-            icon: Icons.video_library_outlined,
-            text: 'Load video…',
-            onTap: widget.onLoadVideo,
+      // Cap the popover to the window and let it scroll, so the controls near
+      // the bottom (diagnostic-log level + Export) stay reachable on short
+      // windows instead of clipping off-screen.
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height - 120,
+        ),
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          primary: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            // Stretch so rows/actions fill the card width (bigger tap targets)
+            // instead of hugging the left as half-width nubs.
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              label('Room code'),
+              _RoomCodeRow(code: widget.roomCode),
+              const SizedBox(height: Spacing.sm),
+              Divider(color: m.border, height: Spacing.lg),
+              label('In the room (${widget.members.length})'),
+              for (final name in widget.members)
+                // isMe matches the wire identity; the matched "you" row renders our
+                // chosen name so a transient reconnect dedupe suffix never shows (#107).
+                _MemberRow(
+                  name: name == widget.myUsername ? widget.myDisplayName : name,
+                  isMe: name == widget.myUsername,
+                ),
+              const SizedBox(height: Spacing.sm),
+              Divider(color: m.border, height: Spacing.lg),
+              _MenuAction(
+                key: const Key('player-menu-load'),
+                icon: Icons.video_library_outlined,
+                text: 'Load video…',
+                onTap: widget.onLoadVideo,
+              ),
+              _MenuAction(
+                key: const Key('player-menu-paste-link'),
+                icon: Icons.link,
+                text: 'Paste link…',
+                onTap: widget.onPasteLink,
+              ),
+              Divider(color: m.border, height: Spacing.lg),
+              label('Theme'),
+              Center(
+                child: ThemeSwatches(
+                  current: widget.currentTheme,
+                  onChanged: widget.onThemeChanged,
+                ),
+              ),
+              const SizedBox(height: Spacing.sm),
+              Divider(color: m.border, height: Spacing.lg),
+              // Collapsible Settings — keeps the menu short until you want the
+              // chat-dim controls.
+              _SectionHeader(
+                key: const Key('player-menu-settings'),
+                text: 'Settings',
+                expanded: _settingsOpen,
+                onTap: () => setState(() => _settingsOpen = !_settingsOpen),
+              ),
+              AnimatedSize(
+                duration: Motion.base,
+                curve: Motion.symmetric,
+                alignment: Alignment.topCenter,
+                child: _settingsOpen
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _MenuSwitch(
+                            text: 'Dim chat when idle',
+                            value: widget.chatAutoDim,
+                            onChanged: widget.onChatAutoDimChanged,
+                          ),
+                          // The wake toggle + dim slider only mean something while
+                          // auto-dim is on; reveal/collapse them smoothly (#51).
+                          AnimatedSize(
+                            duration: Motion.base,
+                            curve: Motion.symmetric,
+                            alignment: Alignment.topCenter,
+                            child: widget.chatAutoDim
+                                ? Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      _MenuSwitch(
+                                        text: 'Fully wake chat on message',
+                                        value: widget.chatWakeOnMessage,
+                                        onChanged:
+                                            widget.onChatWakeOnMessageChanged,
+                                      ),
+                                      _DimSlider(
+                                        value: widget.chatIdleDim,
+                                        onChanged: widget.onChatIdleDimChanged,
+                                      ),
+                                    ],
+                                  )
+                                : const SizedBox(width: double.infinity),
+                          ),
+                          const SizedBox(height: Spacing.xs),
+                          SettingsPanel(
+                            primarySoundId: widget.primarySoundId,
+                            onPrimarySoundChanged: widget.onPrimarySoundChanged,
+                            secondarySoundId: widget.secondarySoundId,
+                            onSecondarySoundChanged:
+                                widget.onSecondarySoundChanged,
+                            onPreviewSound: widget.onPreviewSound,
+                            logLevel: widget.logLevel,
+                            onLogLevelChanged: widget.onLogLevelChanged,
+                            onExportLogs: widget.onExportLogs,
+                          ),
+                        ],
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
+              Divider(color: m.border, height: Spacing.lg),
+              _MenuAction(
+                key: const Key('player-menu-leave'),
+                icon: Icons.arrow_back,
+                text: 'Leave room',
+                onTap: widget.onLeave,
+              ),
+            ],
           ),
-          _MenuAction(
-            key: const Key('player-menu-paste-link'),
-            icon: Icons.link,
-            text: 'Paste link…',
-            onTap: widget.onPasteLink,
-          ),
-          Divider(color: m.border, height: Spacing.lg),
-          label('Theme'),
-          Center(
-            child: ThemeSwatches(
-              current: widget.currentTheme,
-              onChanged: widget.onThemeChanged,
-            ),
-          ),
-          const SizedBox(height: Spacing.sm),
-          Divider(color: m.border, height: Spacing.lg),
-          // Collapsible Settings — keeps the menu short until you want the
-          // chat-dim controls.
-          _SectionHeader(
-            key: const Key('player-menu-settings'),
-            text: 'Settings',
-            expanded: _settingsOpen,
-            onTap: () => setState(() => _settingsOpen = !_settingsOpen),
-          ),
-          AnimatedSize(
-            duration: Motion.base,
-            curve: Motion.symmetric,
-            alignment: Alignment.topCenter,
-            child: _settingsOpen
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _MenuSwitch(
-                        text: 'Dim chat when idle',
-                        value: widget.chatAutoDim,
-                        onChanged: widget.onChatAutoDimChanged,
-                      ),
-                      // The wake toggle + dim slider only mean something while
-                      // auto-dim is on; reveal/collapse them smoothly (#51).
-                      AnimatedSize(
-                        duration: Motion.base,
-                        curve: Motion.symmetric,
-                        alignment: Alignment.topCenter,
-                        child: widget.chatAutoDim
-                            ? Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  _MenuSwitch(
-                                    text: 'Fully wake chat on message',
-                                    value: widget.chatWakeOnMessage,
-                                    onChanged: widget.onChatWakeOnMessageChanged,
-                                  ),
-                                  _DimSlider(
-                                    value: widget.chatIdleDim,
-                                    onChanged: widget.onChatIdleDimChanged,
-                                  ),
-                                ],
-                              )
-                            : const SizedBox(width: double.infinity),
-                      ),
-                      const SizedBox(height: Spacing.xs),
-                      SoundPickerRow(
-                        key: const Key('primary-sound-picker'),
-                        title: 'Notification sound',
-                        options: kPrimarySounds,
-                        currentId: widget.primarySoundId,
-                        onChanged: widget.onPrimarySoundChanged,
-                        onPreview: widget.onPreviewSound,
-                      ),
-                      SoundPickerRow(
-                        key: const Key('secondary-sound-picker'),
-                        title: 'Quiet sound (chat hidden)',
-                        options: kSecondarySounds,
-                        currentId: widget.secondarySoundId,
-                        onChanged: widget.onSecondarySoundChanged,
-                        onPreview: widget.onPreviewSound,
-                      ),
-                    ],
-                  )
-                : const SizedBox(width: double.infinity),
-          ),
-          Divider(color: m.border, height: Spacing.lg),
-          _MenuAction(
-            key: const Key('player-menu-leave'),
-            icon: Icons.arrow_back,
-            text: 'Leave room',
-            onTap: widget.onLeave,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -361,95 +402,28 @@ class _SectionHeader extends StatelessWidget {
       borderRadius: BorderRadius.circular(Radii.md),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.sm),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.sm,
+          vertical: Spacing.sm,
+        ),
         child: Row(
           children: [
-            Text(text, style: TextStyle(color: m.textDim, fontSize: TypeScale.label)),
+            Text(
+              text,
+              style: TextStyle(color: m.textDim, fontSize: TypeScale.label),
+            ),
             const Spacer(),
             AnimatedRotation(
               turns: expanded ? 0.5 : 0,
               duration: Motion.base,
-              child: Icon(Icons.expand_more, size: IconSizes.md, color: m.textDim),
+              child: Icon(
+                Icons.expand_more,
+                size: IconSizes.md,
+                color: m.textDim,
+              ),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// A labelled dropdown of notify-sound presets with a ▶ preview button.
-/// Picking fires [onChanged] with the preset id; preview fires [onPreview] with
-/// the selected preset's asset URI. Public so it can be unit-tested directly.
-class SoundPickerRow extends StatelessWidget {
-  const SoundPickerRow({
-    required this.title,
-    required this.options,
-    required this.currentId,
-    required this.onChanged,
-    required this.onPreview,
-    super.key,
-  });
-
-  final String title;
-  final List<NotifySound> options;
-  final String currentId;
-  final ValueChanged<String> onChanged;
-  final ValueChanged<String> onPreview;
-
-  // Key prefix derived from the widget's own Key so the dropdown/preview child
-  // keys are stable and match tests (e.g. 'primary-sound-picker').
-  String get _slug =>
-      (key is ValueKey<String>) ? (key! as ValueKey<String>).value : 'sound-picker';
-
-  @override
-  Widget build(BuildContext context) {
-    final m = context.meow;
-    final current = options.firstWhere(
-      (s) => s.id == currentId,
-      orElse: () => options.first,
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.sm),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: TextStyle(color: m.textDim, fontSize: TypeScale.body)),
-                DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    key: Key('$_slug-dropdown'),
-                    value: current.id,
-                    isDense: true,
-                    isExpanded: true,
-                    dropdownColor: m.surface,
-                    iconEnabledColor: m.accent,
-                    style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
-                    items: <DropdownMenuItem<String>>[
-                      for (final s in options)
-                        DropdownMenuItem<String>(
-                          value: s.id,
-                          child: Text(s.label),
-                        ),
-                    ],
-                    onChanged: (id) {
-                      if (id != null) onChanged(id);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            key: Key('$_slug-preview'),
-            tooltip: 'Preview',
-            visualDensity: VisualDensity.compact,
-            icon: Icon(Icons.play_circle_outline, size: IconSizes.md, color: m.accent),
-            onPressed: () => onPreview(current.asset),
-          ),
-        ],
       ),
     );
   }
@@ -482,7 +456,12 @@ class _DimSliderState extends State<_DimSlider> {
   Widget build(BuildContext context) {
     final m = context.meow;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(Spacing.sm, Spacing.xs, Spacing.sm, Spacing.xs),
+      padding: const EdgeInsets.fromLTRB(
+        Spacing.sm,
+        Spacing.xs,
+        Spacing.sm,
+        Spacing.xs,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -498,7 +477,10 @@ class _DimSliderState extends State<_DimSlider> {
               const SizedBox(width: Spacing.sm),
               Text(
                 '${(_v * 100).round()}%',
-                style: TextStyle(color: m.textPrimary, fontSize: TypeScale.body),
+                style: TextStyle(
+                  color: m.textPrimary,
+                  fontSize: TypeScale.body,
+                ),
               ),
               // Reset to the default opacity.
               IconButton(
@@ -507,7 +489,11 @@ class _DimSliderState extends State<_DimSlider> {
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                icon: Icon(Icons.restart_alt, size: IconSizes.sm, color: m.accent),
+                icon: Icon(
+                  Icons.restart_alt,
+                  size: IconSizes.sm,
+                  color: m.accent,
+                ),
                 onPressed: () {
                   setState(() => _v = kChatIdleGhostOpacity);
                   widget.onChanged(kChatIdleGhostOpacity);
@@ -566,13 +552,19 @@ class _MenuAction extends StatelessWidget {
         onTap();
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.md),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.sm,
+          vertical: Spacing.md,
+        ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: IconSizes.md, color: m.textPrimary),
             const SizedBox(width: Spacing.md),
-            Text(text, style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label)),
+            Text(
+              text,
+              style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
+            ),
           ],
         ),
       ),
@@ -599,11 +591,22 @@ class _MenuSwitch extends StatelessWidget {
       borderRadius: BorderRadius.circular(Radii.md),
       onTap: () => onChanged(!value),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.lg, vertical: Spacing.sm),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.lg,
+          vertical: Spacing.sm,
+        ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Flexible(child: Text(text, style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label))),
+            Flexible(
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: m.textPrimary,
+                  fontSize: TypeScale.label,
+                ),
+              ),
+            ),
             Switch(
               value: value,
               onChanged: onChanged,
@@ -628,7 +631,10 @@ class _MemberRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.sm,
+        vertical: Spacing.xs,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -678,20 +684,24 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
     final m = context.meow;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: m.surface,
-        duration: const Duration(seconds: 2),
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
-            const SizedBox(width: Spacing.md),
-            Text('Room code ${widget.code} copied',
-                style: TextStyle(color: m.textPrimary)),
-          ],
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: m.surface,
+          duration: const Duration(seconds: 2),
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
+              const SizedBox(width: Spacing.md),
+              Text(
+                'Room code ${widget.code} copied',
+                style: TextStyle(color: m.textPrimary),
+              ),
+            ],
+          ),
         ),
-      ));
+      );
     setState(() => _copied = true);
     _resetTimer?.cancel();
     _resetTimer = Timer(const Duration(milliseconds: 1500), () {
@@ -707,7 +717,10 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
       borderRadius: BorderRadius.circular(Radii.sm),
       onTap: _copy,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: Spacing.md),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.sm,
+          vertical: Spacing.md,
+        ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -725,8 +738,11 @@ class _RoomCodeRowState extends State<_RoomCodeRow> {
             ),
             const SizedBox(width: Spacing.md),
             // Fixed-size slot so flipping copy→check never reflows the row.
-            Icon(_copied ? Icons.check : Icons.copy,
-                size: IconSizes.md, color: _copied ? m.online : m.accent),
+            Icon(
+              _copied ? Icons.check : Icons.copy,
+              size: IconSizes.md,
+              color: _copied ? m.online : m.accent,
+            ),
           ],
         ),
       ),
