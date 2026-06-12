@@ -70,6 +70,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
   // case of never previewing) don't spin up a media player needlessly.
   Player? _preview;
 
+  // Serializes lobby-settings writes so [_connect] can await all pending ones
+  // before navigating into the room — otherwise a level/sound the user just
+  // picked could still be mid-write when HomeScreen reads it (PR #131 review).
+  // Errors are swallowed so a failed persist can't wedge the queue or block a
+  // join.
+  Future<void> _settingsWrites = Future<void>.value();
+
   @override
   void initState() {
     super.initState();
@@ -104,17 +111,26 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   void _setPrimarySound(String id) {
     setState(() => _primarySoundId = id);
-    widget.settings.set(kNotifyPrimarySoundKey, id);
+    _persistSetting(kNotifyPrimarySoundKey, id);
   }
 
   void _setSecondarySound(String id) {
     setState(() => _secondarySoundId = id);
-    widget.settings.set(kNotifySecondarySoundKey, id);
+    _persistSetting(kNotifySecondarySoundKey, id);
   }
 
   void _setLogLevel(LogLevel level) {
     setState(() => _logLevel = level);
-    widget.settings.set(kLogLevelSettingKey, level.storageName);
+    _persistSetting(kLogLevelSettingKey, level.storageName);
+  }
+
+  /// Queue a settings write, chaining it onto [_settingsWrites] so [_connect]
+  /// can await every pending write before entering the room. A failed write is
+  /// swallowed — persistence must never block joining.
+  void _persistSetting(String key, String value) {
+    _settingsWrites = _settingsWrites
+        .then((_) => widget.settings.set(key, value))
+        .catchError((Object _) {});
   }
 
   /// Play a preset on demand for the Settings preview. Reuses one lazily-built
@@ -185,6 +201,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
       username: config.username,
       password: config.password,
     );
+    if (!mounted) return;
+    // Flush any pending lobby-settings writes first, so the room reads the
+    // values the user just picked rather than the previous ones — a Drift set()
+    // can still be in flight when HomeScreen reads them (PR #131 review).
+    await _settingsWrites;
     if (!mounted) return;
     // onConnect pushes the room route and completes when it pops, so control
     // returns here on leaving. Re-read settings then: the in-room gear may have
