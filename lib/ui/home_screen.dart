@@ -1,13 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:archive/archive.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../core/audio/notify_sounds.dart';
@@ -16,6 +13,7 @@ import '../core/connect/room_config.dart';
 import '../core/data/settings_store.dart';
 import '../core/data/stores.dart';
 import '../core/debug/debug_log.dart';
+import '../core/debug/log_archive.dart';
 import '../core/debug/log_level.dart';
 import '../core/sync/auto_pause.dart';
 import '../core/sync/file_match.dart';
@@ -551,8 +549,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     DebugLog? log;
     try {
-      final support = await getApplicationSupportDirectory();
-      final logsDir = Directory(p.join(support.path, 'logs'));
+      final logsDir = await resolveAppLogsDir();
       log = DebugLog.inDir(logsDir, baseName: 'meowwatch_sync', level: level)
         ..start();
     } on Object {
@@ -588,29 +585,18 @@ class _HomeScreenState extends State<HomeScreen> {
   /// so they can send us the evidence after a laggy session.
   Future<void> _exportLogs() async {
     final dir = _syncLog?.dir;
-    if (dir == null || !dir.existsSync()) {
+    if (dir == null) {
       _showLogSnack('No diagnostic logs to export yet.');
       return;
     }
     // Push the live session's buffered lines to disk first, or the zip would
     // omit the most recent (and most relevant) trace.
     await _syncLog?.flush();
-    final archive = Archive();
-    for (final f in dir.listSync().whereType<File>()) {
-      if (!f.path.endsWith('.log')) continue;
-      try {
-        final bytes = f.readAsBytesSync();
-        final name = p.basename(f.path);
-        archive.addFile(ArchiveFile(name, bytes.length, bytes));
-      } on FileSystemException {
-        // Skip a locked/unreadable log rather than abort the whole export.
-      }
-    }
-    if (archive.isEmpty) {
+    final zipBytes = zipLogFiles(dir);
+    if (zipBytes == null) {
       _showLogSnack('No diagnostic logs to export yet.');
       return;
     }
-    final zipBytes = ZipEncoder().encode(archive);
     try {
       final location = await getSaveLocation(
         suggestedName: 'meowwatch-logs.zip',

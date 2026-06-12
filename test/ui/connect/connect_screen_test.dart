@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/connect/room_config.dart';
 import 'package:meowwatch/core/data/history_entry.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
+import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
@@ -43,6 +44,16 @@ class _FakeProfileStore implements ProfileStore {
     profiles.removeWhere((p) => p.id == id);
     emit();
   }
+}
+
+class _FakeSettingsStore implements SettingsStore {
+  final Map<String, String> _map = {};
+
+  @override
+  Future<String?> get(String key) async => _map[key];
+
+  @override
+  Future<void> set(String key, String value) async => _map[key] = value;
 }
 
 class _FakeHistoryStore implements HistoryStore {
@@ -99,6 +110,7 @@ void main() {
       home: ConnectScreen(
         profiles: profiles,
         history: history,
+        settings: _FakeSettingsStore(),
         currentTheme: MeowThemeId.cozy,
         onThemeChanged: (_) {},
         onConnect: (config) async => connected = config,
@@ -209,6 +221,22 @@ void main() {
     expect(find.text('Server password — advanced / self-hosted only'),
         findsOneWidget);
     expect(find.textContaining('Room password'), findsNothing);
+  });
+
+  testWidgets('settings gear opens the lobby settings popover', (tester) async {
+    await pump(tester);
+    // Theme is no longer inline on the form — it moved into the gear.
+    expect(find.text('Theme'), findsNothing);
+    expect(find.byKey(const Key('lobby-settings-gear')), findsOneWidget);
+    expect(find.text('Diagnostic logging'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+
+    // The settings-only popover: theme + sounds + logging, no room rows.
+    expect(find.text('Theme'), findsOneWidget);
+    expect(find.text('Diagnostic logging'), findsOneWidget);
+    expect(find.byKey(const Key('player-menu-leave')), findsNothing);
   });
 
   testWidgets('delete icon removes the profile', (tester) async {
