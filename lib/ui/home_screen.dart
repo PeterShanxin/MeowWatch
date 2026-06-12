@@ -36,6 +36,7 @@ import '../core/video/media_kit_video_core.dart';
 import '../core/video/await_open_result.dart';
 import '../core/video/playback_state.dart';
 import '../core/video/seek_when_ready.dart';
+import '../core/video/source_announce.dart';
 import '../core/video/video_url.dart';
 import 'app_close_hook.dart';
 import 'chat/chat_overlay.dart';
@@ -375,7 +376,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _wasReconnecting = false;
       }
       _prevSyncStatus = s.status;
-      if (s.status == SyncConnectionStatus.connected) {
+      if (s.status == SyncConnectionStatus.connected &&
+          _shouldReannounceOnConnect()) {
         unawaited(_announceCurrentFile());
       }
     });
@@ -926,7 +928,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // we show the error screen. Local files open synchronously enough to keep
     // the original optimistic path (and rarely fail this way).
     if (isHttpUrl(path) && !await awaitOpenResult(_core)) return;
-    if (!mounted) return;
+    // Browse / Paste / drop stay reachable, so a newer load may have superseded
+    // this one while we awaited a slow URL — the core now describes that other
+    // source. Bail rather than record/announce this stale path against it.
+    if (!mounted || _core.state.filePath != path) return;
     await _recordOpen(path);
     await _announceCurrentFile();
     _addLoadedFileMessage();
@@ -988,6 +993,13 @@ class _HomeScreenState extends State<HomeScreen> {
     await _sync.disconnect();
     if (mounted) Navigator.of(context).pop();
   }
+
+  /// Whether the just-(re)connected room should be told about the current
+  /// source — see [canAnnounceOnConnect] for the rule.
+  bool _shouldReannounceOnConnect() => canAnnounceOnConnect(
+        filePath: _core.state.filePath,
+        status: _core.state.status,
+      );
 
   Future<void> _announceCurrentFile() async {
     final state = _core.state;
