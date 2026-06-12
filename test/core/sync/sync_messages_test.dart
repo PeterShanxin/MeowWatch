@@ -5,6 +5,30 @@ import 'package:meowwatch/core/sync/peer_state.dart';
 import 'package:meowwatch/core/sync/sync_messages.dart';
 
 void main() {
+  group('redactSecretsForLog', () {
+    test('masks the Hello password but keeps the rest', () {
+      final hello = encodeHello(
+        username: 'me',
+        room: 'cats',
+        password: 'hunter2',
+      );
+      final redacted = redactSecretsForLog(hello);
+      expect(redacted, isNot(contains('hunter2')));
+      expect(redacted, contains('"password":"***"'));
+      expect(redacted, contains('"username":"me"'));
+      expect(redacted, contains('cats'));
+      // The original map is untouched, so the real wire bytes still send the
+      // genuine password.
+      expect(json.encode(hello), contains('hunter2'));
+    });
+
+    test('is a no-op when there is no password', () {
+      final state = encodeHello(username: 'me', room: 'cats');
+      expect(redactSecretsForLog(state), isNot(contains('password')));
+      expect(redactSecretsForLog(state), contains('"username":"me"'));
+    });
+  });
+
   group('LineFramer', () {
     test('splits a single complete line', () {
       final framer = LineFramer();
@@ -49,11 +73,7 @@ void main() {
     });
 
     test('encodeHello includes password when given', () {
-      final hello = encodeHello(
-        username: 'lin',
-        room: 'r',
-        password: 'secret',
-      );
+      final hello = encodeHello(username: 'lin', room: 'r', password: 'secret');
       final inner = (hello['Hello']! as Map)['password'];
       expect(inner, 'secret');
     });
@@ -123,32 +143,47 @@ void main() {
 
   group('decodeServerMessage', () {
     test('classifies a Hello', () {
-      final m = decodeServerMessage({'Hello': {'username': 'lin'}});
+      final m = decodeServerMessage({
+        'Hello': {'username': 'lin'},
+      });
       expect(m, isA<HelloMessage>());
     });
 
     test('Hello carries the server-assigned username', () {
       // The server can rename us to dodge a collision ("meow" -> "meow_");
       // the assigned name comes back in the Hello reply (#40).
-      final m = decodeServerMessage({'Hello': {'username': 'meow_'}})
-          as HelloMessage;
+      final m =
+          decodeServerMessage({
+                'Hello': {'username': 'meow_'},
+              })
+              as HelloMessage;
       expect(m.username, 'meow_');
     });
 
     test('Hello without a username decodes to a null username', () {
-      final m = decodeServerMessage({
-        'Hello': {'room': {'name': 'r'}},
-      }) as HelloMessage;
+      final m =
+          decodeServerMessage({
+                'Hello': {
+                  'room': {'name': 'r'},
+                },
+              })
+              as HelloMessage;
       expect(m.username, isNull);
     });
 
     test('classifies a State with playstate and ping', () {
-      final m = decodeServerMessage({
-        'State': {
-          'playstate': {'position': 12.5, 'paused': true, 'setBy': 'lin'},
-          'ping': {'latencyCalculation': 99.0},
-        },
-      }) as StateMessage;
+      final m =
+          decodeServerMessage({
+                'State': {
+                  'playstate': {
+                    'position': 12.5,
+                    'paused': true,
+                    'setBy': 'lin',
+                  },
+                  'ping': {'latencyCalculation': 99.0},
+                },
+              })
+              as StateMessage;
       expect(m.peer!.position, const Duration(milliseconds: 12500));
       expect(m.peer!.paused, isTrue);
       expect(m.peer!.setBy, 'lin');
@@ -156,99 +191,126 @@ void main() {
     });
 
     test('extracts the echoed clientLatencyCalculation from a State ping', () {
-      final m = decodeServerMessage({
-        'State': {
-          'ping': {'latencyCalculation': 99.0, 'clientLatencyCalculation': 222.5},
-        },
-      }) as StateMessage;
+      final m =
+          decodeServerMessage({
+                'State': {
+                  'ping': {
+                    'latencyCalculation': 99.0,
+                    'clientLatencyCalculation': 222.5,
+                  },
+                },
+              })
+              as StateMessage;
       expect(m.clientLatencyCalculation, 222.5);
     });
 
     test('classifies a State carrying ignoringOnTheFly', () {
-      final m = decodeServerMessage({
-        'State': {
-          'ignoringOnTheFly': {'server': 3},
-          'ping': {'latencyCalculation': 1.0},
-        },
-      }) as StateMessage;
+      final m =
+          decodeServerMessage({
+                'State': {
+                  'ignoringOnTheFly': {'server': 3},
+                  'ping': {'latencyCalculation': 1.0},
+                },
+              })
+              as StateMessage;
       expect(m.serverIgnore, 3);
       expect(m.peer, isNull);
     });
 
     test('classifies Set user joined as presence', () {
-      final m = decodeServerMessage({
-        'Set': {
-          'user': {
-            'lin': {
-              'room': {'name': 'r'},
-              'event': {'joined': true},
-            },
-          },
-        },
-      }) as PresenceMessage;
+      final m =
+          decodeServerMessage({
+                'Set': {
+                  'user': {
+                    'lin': {
+                      'room': {'name': 'r'},
+                      'event': {'joined': true},
+                    },
+                  },
+                },
+              })
+              as PresenceMessage;
       expect(m.events.single.username, 'lin');
       expect(m.events.single.kind, PresenceKind.joined);
     });
 
     test('classifies Chat', () {
-      final m = decodeServerMessage({
-        'Chat': {'username': 'lin', 'message': 'hi'},
-      }) as ChatServerMessage;
+      final m =
+          decodeServerMessage({
+                'Chat': {'username': 'lin', 'message': 'hi'},
+              })
+              as ChatServerMessage;
       expect(m.message.username, 'lin');
       expect(m.message.text, 'hi');
     });
 
     test('classifies TLS', () {
-      final m = decodeServerMessage({'TLS': {'startTLS': 'true'}})
-          as TlsMessage;
+      final m =
+          decodeServerMessage({
+                'TLS': {'startTLS': 'true'},
+              })
+              as TlsMessage;
       expect(m.startTls, isTrue);
     });
 
     test('classifies Error', () {
-      final m = decodeServerMessage({'Error': {'message': 'bad'}})
-          as ErrorMessage;
+      final m =
+          decodeServerMessage({
+                'Error': {'message': 'bad'},
+              })
+              as ErrorMessage;
       expect(m.message, 'bad');
     });
 
     test('classifies List into a roster of usernames', () {
-      final m = decodeServerMessage({
-        'List': {
-          'room': {
-            'A': {'position': 0},
-            'B': {'position': 0},
-          },
-        },
-      }) as RosterMessage;
+      final m =
+          decodeServerMessage({
+                'List': {
+                  'room': {
+                    'A': {'position': 0},
+                    'B': {'position': 0},
+                  },
+                },
+              })
+              as RosterMessage;
       expect(m.usernames, containsAll(<String>['A', 'B']));
     });
 
     test('roster keeps only the given room when selfRoom is set', () {
-      final m = decodeServerMessage({
-        'List': {
-          'ours': {
-            'A': {'position': 0},
-            'B': {'position': 0},
-          },
-          'someone-elses-room': {
-            'stranger': {'position': 0},
-          },
-        },
-      }, selfRoom: 'ours') as RosterMessage;
+      final m =
+          decodeServerMessage({
+                'List': {
+                  'ours': {
+                    'A': {'position': 0},
+                    'B': {'position': 0},
+                  },
+                  'someone-elses-room': {
+                    'stranger': {'position': 0},
+                  },
+                },
+              }, selfRoom: 'ours')
+              as RosterMessage;
       expect(m.usernames, containsAll(<String>['A', 'B']));
       expect(m.usernames, isNot(contains('stranger')));
     });
 
     test('roster carries peer files', () {
-      final m = decodeServerMessage({
-        'List': {
-          'room': {
-            'A': {
-              'file': {'name': 'movie.mkv', 'size': 1000, 'duration': 60.0},
-            },
-            'B': {'position': 0},
-          },
-        },
-      }) as RosterMessage;
+      final m =
+          decodeServerMessage({
+                'List': {
+                  'room': {
+                    'A': {
+                      'file': {
+                        'name': 'movie.mkv',
+                        'size': 1000,
+                        'duration': 60.0,
+                      },
+                    },
+                    'B': {'position': 0},
+                  },
+                },
+              })
+              as RosterMessage;
       final fileA = m.files.singleWhere((f) => f.username == 'A');
       expect(fileA.name, 'movie.mkv');
       expect(fileA.sizeBytes, 1000);
@@ -257,15 +319,21 @@ void main() {
     });
 
     test('classifies a standalone Set file as PeerFileMessage', () {
-      final m = decodeServerMessage({
-        'Set': {
-          'user': {
-            'lin': {
-              'file': {'name': 'show.mp4', 'size': 2048, 'duration': 12.5},
-            },
-          },
-        },
-      }) as PeerFileMessage;
+      final m =
+          decodeServerMessage({
+                'Set': {
+                  'user': {
+                    'lin': {
+                      'file': {
+                        'name': 'show.mp4',
+                        'size': 2048,
+                        'duration': 12.5,
+                      },
+                    },
+                  },
+                },
+              })
+              as PeerFileMessage;
       expect(m.files.single.username, 'lin');
       expect(m.files.single.name, 'show.mp4');
       expect(m.files.single.sizeBytes, 2048);

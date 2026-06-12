@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.23.0-alpha] - 2026-06-11
+- MeowWatch now keeps a rolling diagnostic log of each co-watch session on your PC, so when the occasional video-lag or broken-sound hiccup happens, the details are already saved instead of lost. It keeps the last 10 sessions and tidies up older ones automatically. A new "Diagnostic logging" control in the gear menu's Settings lets you pick how much detail to keep — Off, Neat, or Verbose (the default) — and an "Export logs…" button bundles them into a single file you can send over for a closer look.
+
 ## [0.22.2-alpha] - 2026-06-10
 - Fixed a glitch where briefly reconnecting to your room could snap your video back to the very start and pause it. When the room momentarily empties during a reconnect, the server reports a blank "position 0, paused" state that belongs to nobody; the app used to follow it as if a friend had paused at the beginning. It now ignores any room state that isn't attributed to a real person, so a reconnect blip can no longer drag a mid-film session back to 00:00.
 
