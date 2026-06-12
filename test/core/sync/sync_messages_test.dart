@@ -27,6 +27,46 @@ void main() {
       expect(redactSecretsForLog(state), isNot(contains('password')));
       expect(redactSecretsForLog(state), contains('"username":"me"'));
     });
+
+    test('strips a signed token from a stream URL file name', () {
+      final msg = <String, Object?>{
+        'Set': {
+          'file': {
+            'name': 'https://cdn.example.com/path/video.mp4?token=SECRET&e=123',
+            'size': 0,
+            'duration': 0,
+          },
+        },
+      };
+      final redacted = redactSecretsForLog(msg);
+      expect(redacted, isNot(contains('SECRET')));
+      expect(redacted, contains('?<redacted>'));
+      // The identifiable scheme/host/path stays for diagnostics.
+      expect(redacted, contains('cdn.example.com/path/video.mp4'));
+      // The original map is untouched — the wire still sends the real link.
+      expect(json.encode(msg), contains('SECRET'));
+    });
+
+    test('leaves a token-free URL and plain filenames alone', () {
+      expect(redactUrlSecrets('https://example.com/a/video.mp4'),
+          'https://example.com/a/video.mp4');
+      expect(redactUrlSecrets('movie.mkv'), 'movie.mkv');
+      expect(redactUrlSecrets(r'C:\videos\demo.mp4'), r'C:\videos\demo.mp4');
+    });
+  });
+
+  group('redactSecretsForLogText', () {
+    test('redacts a token inside an inbound JSON line', () {
+      const line =
+          '{"Set":{"file":{"name":"https://c.example.com/v.mp4?sig=ABC"}}}';
+      final out = redactSecretsForLogText(line);
+      expect(out, isNot(contains('ABC')));
+      expect(out, contains('?<redacted>'));
+    });
+
+    test('returns a non-JSON line unchanged', () {
+      expect(redactSecretsForLogText('not json'), 'not json');
+    });
   });
 
   group('LineFramer', () {

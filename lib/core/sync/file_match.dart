@@ -55,16 +55,20 @@ FileMatch compareFiles({
   return FileMatch.unknown;
 }
 
-/// The trimmed, lower-cased `http(s)` URL form of [name], or `null` if it isn't
-/// a URL. Lets [compareFiles] compare stream links whole instead of by basename.
+/// The normalized `http(s)` URL form of [name], or `null` if it isn't a URL.
+/// Lets [compareFiles] compare stream links whole instead of by basename.
+///
+/// `Uri` already lower-cases the case-insensitive parts (scheme + host) while
+/// leaving the path and query — which carry case-sensitive segments and signed
+/// CDN tokens — untouched, so two links that differ only in a token still read
+/// as different media.
 String? _asUrl(String? name) {
   if (name == null) return null;
-  final trimmed = name.trim();
-  final uri = Uri.tryParse(trimmed);
+  final uri = Uri.tryParse(name.trim());
   if (uri == null) return null;
   final isUrl =
       (uri.scheme == 'http' || uri.scheme == 'https') && uri.host.isNotEmpty;
-  return isUrl ? trimmed.toLowerCase() : null;
+  return isUrl ? uri.toString() : null;
 }
 
 /// Lower-cased base filename — strips any directory part so a full path on one

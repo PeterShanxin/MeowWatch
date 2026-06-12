@@ -89,18 +89,28 @@ void main() {
       );
     });
 
-    test('URL is case-insensitive but query strings count', () {
+    test('host is case-insensitive; path and token case are significant', () {
+      // Scheme + host differ only in case → same media.
       expect(
         compareFiles(
-          localName: 'https://Example.com/V.mp4',
+          localName: 'https://Example.COM/v.mp4',
           peerName: 'https://example.com/v.mp4',
         ),
         FileMatch.match,
       );
+      // Path case differs → different media (paths are case-sensitive).
       expect(
         compareFiles(
-          localName: 'https://example.com/v.mp4?token=a',
-          peerName: 'https://example.com/v.mp4?token=b',
+          localName: 'https://example.com/Video.mp4',
+          peerName: 'https://example.com/video.mp4',
+        ),
+        FileMatch.mismatch,
+      );
+      // Signed-token case differs → different media.
+      expect(
+        compareFiles(
+          localName: 'https://example.com/v.mp4?token=AbC',
+          peerName: 'https://example.com/v.mp4?token=abc',
         ),
         FileMatch.mismatch,
       );
