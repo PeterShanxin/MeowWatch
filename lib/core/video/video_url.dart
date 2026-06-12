@@ -37,6 +37,22 @@ String? videoUrlError(String input) {
 String mediaSourceName(String source) =>
     isHttpUrl(source) ? source.trim() : p.basename(source);
 
+/// A short, human-friendly label for [source], for places that *show* the name
+/// to a user (chat "Loaded …" line, recents list). Identity/announce/matching
+/// still use the full [mediaSourceName]; this only trims what's rendered.
+///
+/// A local file is already short (its basename). A URL is collapsed to
+/// `host/…/file.ext`, dropping the query string (and any signed token in it) so
+/// a long link can't overflow a chat bubble or a recents tile.
+String mediaDisplayName(String source) {
+  if (!isHttpUrl(source)) return mediaSourceName(source);
+  final uri = Uri.parse(source.trim());
+  final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+  final file = segments.isNotEmpty ? segments.last : '';
+  if (file.isEmpty) return uri.host;
+  return segments.length > 1 ? '${uri.host}/…/$file' : '${uri.host}/$file';
+}
+
 /// Turn a raw mpv/playback error (or its absence) into a friendly explanation
 /// for a failed load. mpv's own messages are terse and inconsistent, so we lead
 /// with the most common real causes for a pasted link and keep the wording the

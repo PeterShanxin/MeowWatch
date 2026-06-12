@@ -57,7 +57,7 @@ class EmptyState extends StatelessWidget {
               const IdleMascot(size: 104),
               const SizedBox(height: Spacing.xl),
               Text(
-                'Drop a video file, or paste a link',
+                'Drop a video file to start',
                 style: TextStyle(color: m.textPrimary, fontSize: TypeScale.title),
               ),
               const SizedBox(height: Spacing.xxl),

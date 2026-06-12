@@ -17,6 +17,7 @@ class MeowColors extends ThemeExtension<MeowColors> {
     required this.peerBubble,
     required this.scrim,
     required this.online,
+    required this.error,
     this.backgroundGradient,
     this.glassBlur = 0,
     this.titleFontFamily,
@@ -36,6 +37,10 @@ class MeowColors extends ThemeExtension<MeowColors> {
 
   /// "Most recent / online" status dot.
   final Color online;
+
+  /// Error / failure accent — the load-error icon, inline validation text, and
+  /// any other "something went wrong" affordance. Per-theme so it never clashes.
+  final Color error;
 
   /// Non-null = paint the window background as this gradient instead of [background].
   final Gradient? backgroundGradient;
@@ -57,6 +62,7 @@ class MeowColors extends ThemeExtension<MeowColors> {
     peerBubble: Color(0x55241B14),
     scrim: Color(0xFF000000),
     online: Color(0xFF7BC47F),
+    error: Color(0xFFE08A7D),
   );
 
   static const noir = MeowColors(
@@ -70,6 +76,7 @@ class MeowColors extends ThemeExtension<MeowColors> {
     peerBubble: Color(0x0FFFFFFF),
     scrim: Color(0xFF000000),
     online: Color(0xFF7BC47F),
+    error: Color(0xFFD96E6E),
     titleFontFamily: 'serif',
   );
 
@@ -84,6 +91,7 @@ class MeowColors extends ThemeExtension<MeowColors> {
     peerBubble: Color(0x1AFFFFFF),
     scrim: Color(0xFF000000),
     online: Color(0xFF7DF9C2),
+    error: Color(0xFFFF8FA3),
     backgroundGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
@@ -104,6 +112,7 @@ class MeowColors extends ThemeExtension<MeowColors> {
     Color? peerBubble,
     Color? scrim,
     Color? online,
+    Color? error,
     Gradient? backgroundGradient,
     double? glassBlur,
     String? titleFontFamily,
@@ -119,6 +128,7 @@ class MeowColors extends ThemeExtension<MeowColors> {
       peerBubble: peerBubble ?? this.peerBubble,
       scrim: scrim ?? this.scrim,
       online: online ?? this.online,
+      error: error ?? this.error,
       backgroundGradient: backgroundGradient ?? this.backgroundGradient,
       glassBlur: glassBlur ?? this.glassBlur,
       titleFontFamily: titleFontFamily ?? this.titleFontFamily,
@@ -139,6 +149,7 @@ class MeowColors extends ThemeExtension<MeowColors> {
       peerBubble: Color.lerp(peerBubble, other.peerBubble, t)!,
       scrim: Color.lerp(scrim, other.scrim, t)!,
       online: Color.lerp(online, other.online, t)!,
+      error: Color.lerp(error, other.error, t)!,
       backgroundGradient:
           Gradient.lerp(backgroundGradient, other.backgroundGradient, t),
       glassBlur: lerpDouble(glassBlur, other.glassBlur, t) ?? glassBlur,
@@ -159,6 +170,7 @@ class MeowColors extends ThemeExtension<MeowColors> {
       other.peerBubble == peerBubble &&
       other.scrim == scrim &&
       other.online == online &&
+      other.error == error &&
       other.backgroundGradient == backgroundGradient &&
       other.glassBlur == glassBlur &&
       other.titleFontFamily == titleFontFamily;
@@ -175,6 +187,7 @@ class MeowColors extends ThemeExtension<MeowColors> {
         peerBubble,
         scrim,
         online,
+        error,
         backgroundGradient,
         glassBlur,
         titleFontFamily,

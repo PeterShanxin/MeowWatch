@@ -13,6 +13,7 @@ class VideoErrorState extends StatelessWidget {
     required this.message,
     required this.onBrowse,
     required this.onPasteLink,
+    this.onRetry,
     this.detail,
     super.key,
   });
@@ -26,6 +27,11 @@ class VideoErrorState extends StatelessWidget {
   final VoidCallback onBrowse;
   final VoidCallback onPasteLink;
 
+  /// Re-attempt the same source. Shown as a "Try again" button when non-null —
+  /// most load failures (a network blip, a slow CDN) clear on a plain retry, so
+  /// the user shouldn't have to re-pick or re-paste the link by hand.
+  final VoidCallback? onRetry;
+
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
@@ -38,7 +44,7 @@ class VideoErrorState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.error_outline,
-                size: 56, color: Colors.redAccent.withValues(alpha: 0.9)),
+                size: 56, color: m.error.withValues(alpha: 0.9)),
             const SizedBox(height: Spacing.lg),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 460),
@@ -70,6 +76,17 @@ class VideoErrorState extends StatelessWidget {
               runSpacing: Spacing.md,
               alignment: WrapAlignment.center,
               children: [
+                if (onRetry != null)
+                  OutlinedButton.icon(
+                    key: const Key('video-error-retry'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: m.accent,
+                      side: BorderSide(color: m.accent),
+                    ),
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh, size: IconSizes.md),
+                    label: const Text('Try again'),
+                  ),
                 OutlinedButton.icon(
                   key: const Key('video-error-browse'),
                   style: OutlinedButton.styleFrom(

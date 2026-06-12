@@ -23,6 +23,7 @@ import '../../core/theme/tokens/icon_sizes.dart';
 import '../../core/theme/tokens/radii.dart';
 import '../../core/theme/tokens/spacing.dart';
 import '../../core/theme/tokens/type_scale.dart';
+import '../../core/video/video_url.dart';
 import '../settings/lobby_settings_button.dart';
 import '../version_badge.dart';
 import 'history_format.dart';
@@ -679,7 +680,7 @@ class _HistoryCard extends StatelessWidget {
             key: Key('continue-${entry.id}'),
             onTap: onResume,
             leading: Icon(Icons.play_circle, color: m.accent),
-            title: Text(entry.fileName,
+            title: Text(mediaDisplayName(entry.fileName),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: m.textPrimary)),

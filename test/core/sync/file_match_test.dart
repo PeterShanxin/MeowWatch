@@ -62,5 +62,58 @@ void main() {
         FileMatch.match,
       );
     });
+
+    test('same stream URL matches (size 0 on both sides)', () {
+      expect(
+        compareFiles(
+          localName: 'https://cdn.example.com/a/master.m3u8',
+          localSize: 0,
+          peerName: 'https://cdn.example.com/a/master.m3u8',
+          peerSize: 0,
+        ),
+        FileMatch.match,
+      );
+    });
+
+    test('different stream URLs sharing a generic basename do NOT match', () {
+      // The whole URL is the identity — comparing only `master.m3u8` would
+      // have falsely matched these two different streams.
+      expect(
+        compareFiles(
+          localName: 'https://cdn-a.example.com/master.m3u8',
+          localSize: 0,
+          peerName: 'https://cdn-b.example.com/master.m3u8',
+          peerSize: 0,
+        ),
+        FileMatch.mismatch,
+      );
+    });
+
+    test('URL is case-insensitive but query strings count', () {
+      expect(
+        compareFiles(
+          localName: 'https://Example.com/V.mp4',
+          peerName: 'https://example.com/v.mp4',
+        ),
+        FileMatch.match,
+      );
+      expect(
+        compareFiles(
+          localName: 'https://example.com/v.mp4?token=a',
+          peerName: 'https://example.com/v.mp4?token=b',
+        ),
+        FileMatch.mismatch,
+      );
+    });
+
+    test('a URL never matches a bare local filename', () {
+      expect(
+        compareFiles(
+          localName: 'https://example.com/movie.mp4',
+          peerName: 'movie.mp4',
+        ),
+        FileMatch.mismatch,
+      );
+    });
   });
 }

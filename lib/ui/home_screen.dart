@@ -935,7 +935,10 @@ class _HomeScreenState extends State<HomeScreen> {
       peerName: _peerFile?.name,
       peerSize: _peerFile?.sizeBytes,
     );
-    _chat.addSystem(loadedFileMessage(fileName: fileName, match: match));
+    // Match on the full name (URL identity); show the short label in chat.
+    _chat.addSystem(
+      loadedFileMessage(fileName: mediaDisplayName(fileName), match: match),
+    );
   }
 
   Future<void> _resume(String path, int positionMs) async {
@@ -1096,6 +1099,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         detail: state.errorMessage,
                         onBrowse: _browse,
                         onPasteLink: () => unawaited(_promptPasteLink()),
+                        onRetry: state.filePath != null
+                            ? () => unawaited(_load(state.filePath!))
+                            : null,
                       )
                     else
                       VideoSurface(

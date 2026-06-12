@@ -39,4 +39,28 @@ void main() {
     )));
     expect(find.textContaining('mpv'), findsNothing);
   });
+
+  testWidgets('Try again is hidden when no onRetry is given', (tester) async {
+    await tester.pumpWidget(_host(VideoErrorState(
+      message: "Couldn't play that video.",
+      onBrowse: () {},
+      onPasteLink: () {},
+    )));
+    expect(find.byKey(const Key('video-error-retry')), findsNothing);
+  });
+
+  testWidgets('Try again shows and fires onRetry when provided',
+      (tester) async {
+    var retried = false;
+    await tester.pumpWidget(_host(VideoErrorState(
+      message: "Couldn't play that link.",
+      onBrowse: () {},
+      onPasteLink: () {},
+      onRetry: () => retried = true,
+    )));
+
+    expect(find.byKey(const Key('video-error-retry')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('video-error-retry')));
+    expect(retried, isTrue);
+  });
 }

@@ -64,6 +64,10 @@ class MediaKitVideoCore extends VideoCore {
   void _wireListeners() {
     _subs = [
       _player.stream.playing.listen((playing) {
+        // mpv keeps emitting playing/position churn around a failed open; never
+        // let those downgrade a sticky error back to paused/playing and unmask
+        // the error screen. Only load() clears the error (it resets the state).
+        if (state.status == PlaybackStatus.error) return;
         emit(state.copyWith(
           status: playing ? PlaybackStatus.playing : PlaybackStatus.paused,
         ));
@@ -78,7 +82,9 @@ class MediaKitVideoCore extends VideoCore {
         emit(state.copyWith(volume: vol / 100.0));
       }),
       _player.stream.completed.listen((done) {
-        if (done) emit(state.copyWith(status: PlaybackStatus.ended));
+        if (done && state.status != PlaybackStatus.error) {
+          emit(state.copyWith(status: PlaybackStatus.ended));
+        }
       }),
       _player.stream.error.listen((err) {
         emit(state.copyWith(

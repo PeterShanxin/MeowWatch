@@ -55,6 +55,32 @@ void main() {
     });
   });
 
+  group('mediaDisplayName', () {
+    test('shortens a URL to host/…/file, dropping the query string', () {
+      expect(
+        mediaDisplayName('https://cdn.example.com/a/b/video.mp4?token=secret'),
+        'cdn.example.com/…/video.mp4',
+      );
+    });
+
+    test('a single-segment URL keeps host/file', () {
+      expect(
+        mediaDisplayName('https://example.com/video.mp4'),
+        'example.com/video.mp4',
+      );
+    });
+
+    test('a path-less URL falls back to the host', () {
+      expect(mediaDisplayName('https://example.com'), 'example.com');
+      expect(mediaDisplayName('https://example.com/'), 'example.com');
+    });
+
+    test('a local path is left as its basename', () {
+      expect(mediaDisplayName(r'C:\videos\demo.mkv'), 'demo.mkv');
+      expect(mediaDisplayName('/home/user/clips/demo.mp4'), 'demo.mp4');
+    });
+  });
+
   group('friendlyPlaybackError', () {
     test('wording differs for a URL vs a local file', () {
       final url = friendlyPlaybackError(isUrl: true);

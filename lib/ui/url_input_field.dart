@@ -103,8 +103,7 @@ class _UrlInputFieldState extends State<UrlInputField> {
           Text(
             _error!,
             key: const Key('url-input-error'),
-            style: const TextStyle(
-                color: Colors.redAccent, fontSize: TypeScale.body),
+            style: TextStyle(color: m.error, fontSize: TypeScale.body),
           ),
         ],
       ],
