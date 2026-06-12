@@ -12,6 +12,7 @@ Widget _host(Widget child) => MaterialApp(
 );
 
 PlayerMenuButton _button({
+  String? nowPlaying = 'Bocchi the Rock - 01.mkv',
   ValueChanged<MeowThemeId>? onThemeChanged,
   VoidCallback? onLoadVideo,
   VoidCallback? onLeave,
@@ -34,6 +35,7 @@ PlayerMenuButton _button({
   VoidCallback? onExportLogs,
 }) => PlayerMenuButton(
   roomCode: 'MEOW42',
+  nowPlaying: nowPlaying,
   members: members ?? const ['me', 'lin'],
   myUsername: myUsername,
   myDisplayName: myDisplayName ?? myUsername,
@@ -106,11 +108,12 @@ void main() {
     tester,
   ) async {
     var left = false;
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(_host(_button(onLeave: () => left = true)));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('player-menu-leave')));
-    await tester.pumpAndSettle();
+    await _tap(tester, find.byKey(const Key('player-menu-leave')));
     expect(left, isTrue);
     // Menu dismissed — otherwise its FocusScope keeps trapping keyboard focus.
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
@@ -191,6 +194,43 @@ void main() {
     expect(find.textContaining('copied'), findsOneWidget);
   });
 
+  testWidgets('shows the currently playing media name (#133)', (tester) async {
+    await tester.pumpWidget(
+      _host(_button(nowPlaying: 'Frieren - 12.mkv')),
+    );
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Now playing'), findsOneWidget);
+    expect(find.text('Frieren - 12.mkv'), findsOneWidget);
+  });
+
+  testWidgets('shows an empty-state line when no media is loaded (#133)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_host(_button(nowPlaying: null)));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Now playing'), findsOneWidget);
+    expect(find.text('Nothing loaded yet'), findsOneWidget);
+  });
+
+  testWidgets('long media names ellipsize without overflowing (#133)', (
+    tester,
+  ) async {
+    const longName =
+        'A.Very.Long.Episode.Title.That.Should.Not.Break.The.Menu.'
+        'Layout.S01E01.1080p.WEB-DL.x265.mkv';
+    await tester.pumpWidget(_host(_button(nowPlaying: longName)));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    // The row renders (clipped via ellipsis) rather than throwing an overflow.
+    expect(find.byKey(const Key('player-menu-now-playing')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Settings is collapsed until its header is tapped', (
     tester,
   ) async {
@@ -220,7 +260,7 @@ void main() {
 
     expect(find.text('Dim chat when idle'), findsOneWidget);
     // Tapping the row flips the current (true) value to false.
-    await tester.tap(find.text('Dim chat when idle'));
+    await _tap(tester, find.text('Dim chat when idle'));
     expect(changed, isFalse);
   });
 

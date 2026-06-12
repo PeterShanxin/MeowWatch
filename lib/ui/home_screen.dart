@@ -1148,6 +1148,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ignoring: _chatDragging || _isUiIdle,
                           child: PlayerMenuButton(
                             roomCode: widget.config.room,
+                            nowPlaying: state.fileName,
                             // Wire identities for the roster + isMe match; the
                             // "you" row shows our chosen name, not a transient
                             // reconnect dedupe suffix the server may assign (#107).
