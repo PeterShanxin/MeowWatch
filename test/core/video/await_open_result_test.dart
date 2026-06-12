@@ -4,7 +4,7 @@ import 'package:meowwatch/core/video/playback_state.dart';
 import 'package:meowwatch/core/video/video_core.dart';
 
 /// A core whose [load] only enters `loading`; the test drives the outcome by
-/// emitting a later state, mimicking mpv's async open success/failure.
+/// emitting later states, mimicking mpv's async open success/failure.
 class _ManualVideoCore extends VideoCore {
   @override
   Future<void> load(String filePath) async {
@@ -12,11 +12,21 @@ class _ManualVideoCore extends VideoCore {
       status: PlaybackStatus.loading,
       fileName: filePath,
       filePath: filePath,
+      duration: Duration.zero,
     ));
   }
 
-  void settlePaused() => emit(state.copyWith(status: PlaybackStatus.paused));
-  void settleError() => emit(state.copyWith(
+  /// The immediate post-open tick: paused but no duration yet. NOT a confirmed
+  /// open — a failing source emits this too, then errors.
+  void emitPausedTick() => emit(state.copyWith(status: PlaybackStatus.paused));
+
+  /// A genuine open: paused with a known duration.
+  void emitOpened() => emit(state.copyWith(
+        status: PlaybackStatus.paused,
+        duration: const Duration(minutes: 30),
+      ));
+
+  void emitError() => emit(state.copyWith(
         status: PlaybackStatus.error,
         errorMessage: 'boom',
       ));
@@ -39,29 +49,38 @@ void main() {
   setUp(() => core = _ManualVideoCore());
   tearDown(() => core.dispose());
 
-  test('returns true when the source opens (settles to paused)', () async {
+  test('true once the source actually opens (paused + duration)', () async {
     await core.load('https://x.test/a.mp4');
     final result = awaitOpenResult(core);
-    core.settlePaused();
+    core.emitOpened();
     expect(await result, isTrue);
   });
 
-  test('returns false when the source errors', () async {
+  test('false when the source errors', () async {
     await core.load('https://x.test/dead.mp4');
     final result = awaitOpenResult(core);
-    core.settleError();
+    core.emitError();
     expect(await result, isFalse);
   });
 
-  test('returns immediately when already settled before the call', () async {
+  test('the immediate paused tick is NOT mistaken for an open; a later '
+      'error still wins', () async {
+    await core.load('https://x.test/dead.mp4');
+    final result = awaitOpenResult(core);
+    core.emitPausedTick(); // paused, no duration — must not settle as opened
+    core.emitError(); // the real outcome
+    expect(await result, isFalse);
+  });
+
+  test('returns immediately when already opened before the call', () async {
     await core.load('https://x.test/a.mp4');
-    core.settlePaused();
+    core.emitOpened();
     expect(await awaitOpenResult(core), isTrue);
   });
 
-  test('a stuck load resolves to true after the timeout (optimistic)',
-      () async {
+  test('a stuck/paused-only load resolves to true after the timeout', () async {
     await core.load('https://x.test/slow-live.m3u8');
+    core.emitPausedTick(); // live stream: paused, never a duration, never errors
     expect(
       await awaitOpenResult(core, timeout: const Duration(milliseconds: 50)),
       isTrue,

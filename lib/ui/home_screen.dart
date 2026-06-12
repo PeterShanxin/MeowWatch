@@ -444,7 +444,9 @@ class _HomeScreenState extends State<HomeScreen> {
           localHasFile: _core.state.fileName != null,
           localUsername: _username,
           peerUsername: f.username,
-          peerFileName: f.name,
+          // Show the short/redacted label — a peer's raw URL (with any signed
+          // token) must never render verbatim in our join prompt.
+          peerFileName: mediaDisplayName(f.name),
         );
         if (prompt != null) _joinPrompt = prompt;
       });
@@ -887,7 +889,8 @@ class _HomeScreenState extends State<HomeScreen> {
       peerSize: peer.sizeBytes,
     );
     if (result != FileMatch.mismatch) return null;
-    return '⚠ Different file — ${peer.username} has "${peer.name}"';
+    // Match on the raw name above; show the short/redacted label in the banner.
+    return '⚠ Different file — ${peer.username} has "${mediaDisplayName(peer.name)}"';
   }
 
   /// Advisory hint shown over the video, or null when everything is ready.
@@ -921,16 +924,16 @@ class _HomeScreenState extends State<HomeScreen> {
     // We now have a video, so the "load a video to join" prompt is moot (#60).
     if (_joinPrompt != null && mounted) setState(() => _joinPrompt = null);
     await _core.load(path);
-    // A pasted URL fails asynchronously (unreachable / not a video / expired) —
-    // mpv reports it on the error stream after load() returns. Don't record it
-    // to history, announce it to the room, or post a "Loaded …" chat line until
-    // it actually opens, or a dead link would surface to peers as loaded while
-    // we show the error screen. Local files open synchronously enough to keep
-    // the original optimistic path (and rarely fail this way).
-    if (isHttpUrl(path) && !await awaitOpenResult(_core)) return;
+    // A source can fail asynchronously — mpv reports an unreachable / non-video
+    // / expired URL, *and* a moved or unreadable local file, on its error stream
+    // after load() returns. Don't record it to history, announce it to the room,
+    // or post a "Loaded …" chat line until it actually opens, or a failed source
+    // would surface to peers and history as loaded while we show the error
+    // screen. Applies to local files too, not just URLs.
+    if (!await awaitOpenResult(_core)) return;
     // Browse / Paste / drop stay reachable, so a newer load may have superseded
-    // this one while we awaited a slow URL — the core now describes that other
-    // source. Bail rather than record/announce this stale path against it.
+    // this one while we awaited — the core now describes that other source. Bail
+    // rather than record/announce this stale path against it.
     if (!mounted || _core.state.filePath != path) return;
     await _recordOpen(path);
     await _announceCurrentFile();
