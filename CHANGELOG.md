@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.25.0-alpha] - 2026-06-13
+- "Start new room" now copies a cute **magic sentence** instead of a code with a random tail — something like `sleepy-otter-counts-cozy-stars`. It's pleasant to read and say aloud, and its privacy now comes entirely from friendly words rather than a gibberish suffix like `…-k3pn`. There are ~700 million possible sentences (kept short so the room name fits the Syncplay server's length limit), so a friend can't stumble into your room by guessing. Paste the whole sentence into "Enter code from friend" to join. Your old room codes — bare `happy-cat-11` names and earlier `happy-cat-11-k3pn` private codes alike — keep working exactly as before, so saved rooms and any codes you've already shared still meet up. (#109)
+
 ## [0.24.0-alpha] - 2026-06-12
 - The gear/settings menu is now reachable from the start screen, before you join a room — not just while watching. A new gear in the top-right of the connect screen opens the same settings you already know: theme, notification sounds, and diagnostic logging with its "Export logs…" button. So you can switch theme, pick your sounds, or grab the diagnostic logs without having to join a room first. (The in-room chat-dimming controls stay in the in-room gear, since there's no chat on the start screen.)
 

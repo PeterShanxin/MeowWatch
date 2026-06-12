@@ -169,9 +169,12 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-start-new')));
     await tester.pumpAndSettle(); // let Clipboard.setData + saveUsed resolve
     expect(connected, isNotNull);
-    // The room now folds a random passphrase in: adj-animal-NN-<secret>.
-    expect(connected!.room, matches(RegExp(r'^[a-z]+-[a-z]+-\d{2}-[a-z0-9]{4}$')));
-    // The secret lives only in the room name; it is NOT sent as a server
+    // The room is a short "magic sentence" whose entropy lives in the words:
+    // <adj>-<animal>-<verb>-<adj>-<noun>, always within Syncplay's 35-char cap.
+    expect(connected!.room,
+        matches(RegExp(r'^[a-z]+-[a-z]+-[a-z]+-[a-z]+-[a-z]+$')));
+    expect(connected!.room.length, lessThanOrEqualTo(35));
+    // The unguessable code is the room name itself; nothing is sent as a server
     // password (that would be a no-op on the public server and could be
     // rejected elsewhere).
     expect(connected!.password, isNull);
