@@ -26,6 +26,12 @@ class MediaKitVideoCore extends VideoCore {
   late final VideoController videoController;
   late final List<StreamSubscription<Object?>> _subs;
 
+  /// `false` from a [load] until playback is actually started or deliberately
+  /// positioned ([play]/[seek]). While `false`, a freshly loaded file sits at
+  /// 0:00 (we open with `play: false`), so non-zero positions in this window
+  /// are stale ticks from the previous file and must be dropped (#132).
+  bool _playbackStarted = false;
+
   Player get player => _player;
 
   /// Configure libmpv decode and sync properties. Reads [Platform.environment]
@@ -74,7 +80,11 @@ class MediaKitVideoCore extends VideoCore {
         // libmpv can deliver mid-load — otherwise a freshly loaded episode
         // shows the old one's end instead of 0:00, and a room would broadcast
         // the wrong position (#132). See [acceptPlayerPosition].
-        if (!acceptPlayerPosition(incoming: pos, duration: state.duration)) {
+        if (!acceptPlayerPosition(
+          incoming: pos,
+          duration: state.duration,
+          started: _playbackStarted,
+        )) {
           return;
         }
         emit(state.copyWith(position: pos));
@@ -99,6 +109,10 @@ class MediaKitVideoCore extends VideoCore {
 
   @override
   Future<void> load(String filePath) async {
+    // Arm the stale-position guard: until the user plays or seeks, the new file
+    // legitimately sits at 0:00 and any non-zero tick is the previous file's
+    // lingering end position (#132).
+    _playbackStarted = false;
     emit(state.copyWith(
       status: PlaybackStatus.loading,
       fileName: p.basename(filePath),
@@ -111,13 +125,19 @@ class MediaKitVideoCore extends VideoCore {
   }
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() {
+    _playbackStarted = true;
+    return _player.play();
+  }
 
   @override
   Future<void> pause() => _player.pause();
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) {
+    _playbackStarted = true;
+    return _player.seek(position);
+  }
 
   @override
   Future<void> setVolume(double volume) =>
