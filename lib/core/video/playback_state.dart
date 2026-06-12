@@ -72,3 +72,22 @@ class PlaybackState {
         errorMessage,
       );
 }
+
+/// Positive evidence that the source actually opened — not the transient
+/// `paused` tick media_kit emits the instant `open()` returns (which a failing
+/// source also emits, just before it errors). A genuine open is `playing` /
+/// `ended`, or `paused` *with* a known (non-zero) duration. Used to gate
+/// announce / record / resume on a confirmed open rather than a hopeful one.
+bool isPlaybackOpen(PlaybackState state) {
+  switch (state.status) {
+    case PlaybackStatus.playing:
+    case PlaybackStatus.ended:
+      return true;
+    case PlaybackStatus.paused:
+      return state.duration > Duration.zero;
+    case PlaybackStatus.idle:
+    case PlaybackStatus.loading:
+    case PlaybackStatus.error:
+      return false;
+  }
+}

@@ -983,6 +983,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final state = _core.state;
     final path = state.filePath;
     if (path == null) return;
+    // Only persist a resume point for a source that actually opened. A failed or
+    // still-loading load leaves filePath set at position 0 (e.g. an expired URL
+    // or a moved local file retried from history), and saving that would erase
+    // the real saved position for that history row.
+    if (!isPlaybackOpen(state)) return;
     await widget.history.updatePosition(
       filePath: path,
       positionMs: state.position.inMilliseconds,
@@ -999,10 +1004,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Whether the just-(re)connected room should be told about the current
   /// source — see [canAnnounceOnConnect] for the rule.
-  bool _shouldReannounceOnConnect() => canAnnounceOnConnect(
-        filePath: _core.state.filePath,
-        status: _core.state.status,
-      );
+  bool _shouldReannounceOnConnect() => canAnnounceOnConnect(_core.state);
 
   Future<void> _announceCurrentFile() async {
     final state = _core.state;

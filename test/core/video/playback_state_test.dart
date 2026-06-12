@@ -65,4 +65,41 @@ void main() {
       expect(updated.errorMessage, 'boom');
     });
   });
+
+  group('isPlaybackOpen', () {
+    test('playing and ended are open', () {
+      expect(
+        isPlaybackOpen(const PlaybackState(status: PlaybackStatus.playing)),
+        isTrue,
+      );
+      expect(
+        isPlaybackOpen(const PlaybackState(status: PlaybackStatus.ended)),
+        isTrue,
+      );
+    });
+
+    test('paused is open only with a non-zero duration', () {
+      expect(
+        isPlaybackOpen(const PlaybackState(status: PlaybackStatus.paused)),
+        isFalse, // transient post-open tick, no duration yet
+      );
+      expect(
+        isPlaybackOpen(const PlaybackState(
+          status: PlaybackStatus.paused,
+          duration: Duration(minutes: 5),
+        )),
+        isTrue,
+      );
+    });
+
+    test('idle, loading and error are not open', () {
+      for (final s in [
+        PlaybackStatus.idle,
+        PlaybackStatus.loading,
+        PlaybackStatus.error,
+      ]) {
+        expect(isPlaybackOpen(PlaybackState(status: s)), isFalse, reason: '$s');
+      }
+    });
+  });
 }

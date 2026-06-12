@@ -78,12 +78,22 @@ void main() {
     expect(await awaitOpenResult(core), isTrue);
   });
 
-  test('a stuck/paused-only load resolves to true after the timeout', () async {
+  test('a paused-only (live) load resolves to true after the timeout', () async {
     await core.load('https://x.test/slow-live.m3u8');
     core.emitPausedTick(); // live stream: paused, never a duration, never errors
     expect(
       await awaitOpenResult(core, timeout: const Duration(milliseconds: 50)),
       isTrue,
+    );
+  });
+
+  test('a still-loading hang resolves to false after the timeout', () async {
+    await core.load('https://x.test/never-responds.mp4');
+    // No tick at all — open() never returned a playable state. A timeout here
+    // must NOT be treated as a successful load.
+    expect(
+      await awaitOpenResult(core, timeout: const Duration(milliseconds: 50)),
+      isFalse,
     );
   });
 }
