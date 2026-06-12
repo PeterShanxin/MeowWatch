@@ -1,25 +1,21 @@
 import 'playback_state.dart';
-import 'video_url.dart';
 
 /// Whether the current core source ([filePath] at playback [status]) is safe to
-/// announce to the room on a (re)connect.
+/// (re)announce to the room on a connect/reconnect.
 ///
-/// A local file is always announceable (it's a real, valid source). A URL must
-/// have actually opened — a still-`loading` or `error` link keeps `filePath`
-/// set, but the load path announces a URL's real outcome itself, so a
-/// connect/reconnect blip must not pre-announce a not-yet-playable or failed
-/// link as if it had loaded.
+/// Only a source that has actually opened may be announced — `playing`,
+/// `paused`, or `ended`. A still-`loading` or `error` source keeps `filePath`
+/// set, but the load path announces a source's real outcome itself once it
+/// settles, so a connect/reconnect blip must not pre-announce a not-yet-playable
+/// or failed source as if it had loaded. This holds for local files and URLs
+/// alike — a moved/unreadable file fails asynchronously the same way a bad link
+/// does.
 bool canAnnounceOnConnect({
   required String? filePath,
   required PlaybackStatus status,
 }) {
   if (filePath == null) return false;
-  if (status == PlaybackStatus.error) return false;
-  if (isHttpUrl(filePath) &&
-      status != PlaybackStatus.playing &&
-      status != PlaybackStatus.paused &&
-      status != PlaybackStatus.ended) {
-    return false;
-  }
-  return true;
+  return status == PlaybackStatus.playing ||
+      status == PlaybackStatus.paused ||
+      status == PlaybackStatus.ended;
 }

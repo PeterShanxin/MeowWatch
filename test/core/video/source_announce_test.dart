@@ -14,15 +14,33 @@ void main() {
       );
     });
 
-    test('a local file announces in any non-error state', () {
-      for (final s in [
-        PlaybackStatus.loading,
-        PlaybackStatus.paused,
-        PlaybackStatus.playing,
-        PlaybackStatus.ended,
-      ]) {
-        expect(canAnnounceOnConnect(filePath: file, status: s), isTrue,
-            reason: '$s');
+    test('a settled (opened) source announces — local or URL', () {
+      for (final path in [file, url]) {
+        for (final s in [
+          PlaybackStatus.paused,
+          PlaybackStatus.playing,
+          PlaybackStatus.ended,
+        ]) {
+          expect(canAnnounceOnConnect(filePath: path, status: s), isTrue,
+              reason: '$path / $s');
+        }
+      }
+    });
+
+    test('a not-yet-settled source is NOT announced — local or URL', () {
+      // A moved/unreadable local file fails asynchronously the same way a bad
+      // link does, so `loading` must be withheld for both.
+      for (final path in [file, url]) {
+        expect(
+          canAnnounceOnConnect(filePath: path, status: PlaybackStatus.loading),
+          isFalse,
+          reason: '$path loading',
+        );
+        expect(
+          canAnnounceOnConnect(filePath: path, status: PlaybackStatus.idle),
+          isFalse,
+          reason: '$path idle',
+        );
       }
     });
 
@@ -34,21 +52,6 @@ void main() {
       expect(
         canAnnounceOnConnect(filePath: file, status: PlaybackStatus.error),
         isFalse,
-      );
-    });
-
-    test('a URL announces only once it has actually opened', () {
-      expect(
-        canAnnounceOnConnect(filePath: url, status: PlaybackStatus.loading),
-        isFalse,
-      );
-      expect(
-        canAnnounceOnConnect(filePath: url, status: PlaybackStatus.paused),
-        isTrue,
-      );
-      expect(
-        canAnnounceOnConnect(filePath: url, status: PlaybackStatus.playing),
-        isTrue,
       );
     });
   });
