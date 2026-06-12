@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.24.0-alpha] - 2026-06-12
+- The gear/settings menu is now reachable from the start screen, before you join a room — not just while watching. A new gear in the top-right of the connect screen opens the same settings you already know: theme, notification sounds, and diagnostic logging with its "Export logs…" button. So you can switch theme, pick your sounds, or grab the diagnostic logs without having to join a room first. (The in-room chat-dimming controls stay in the in-room gear, since there's no chat on the start screen.)
+
 ## [0.23.0-alpha] - 2026-06-11
 - MeowWatch now keeps a rolling diagnostic log of each co-watch session on your PC, so when the occasional video-lag or broken-sound hiccup happens, the details are already saved instead of lost. It keeps the last 10 sessions and tidies up older ones automatically. A new "Diagnostic logging" control in the gear menu's Settings lets you pick how much detail to keep — Off, Neat, or Verbose (the default) — and an "Export logs…" button bundles them into a single file you can send over for a closer look.
 
