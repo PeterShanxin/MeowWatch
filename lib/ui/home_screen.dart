@@ -33,6 +33,7 @@ import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 import '../core/video/media_kit_video_core.dart';
+import '../core/video/await_open_result.dart';
 import '../core/video/playback_state.dart';
 import '../core/video/seek_when_ready.dart';
 import '../core/video/video_url.dart';
@@ -918,6 +919,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // We now have a video, so the "load a video to join" prompt is moot (#60).
     if (_joinPrompt != null && mounted) setState(() => _joinPrompt = null);
     await _core.load(path);
+    // A pasted URL fails asynchronously (unreachable / not a video / expired) —
+    // mpv reports it on the error stream after load() returns. Don't record it
+    // to history, announce it to the room, or post a "Loaded …" chat line until
+    // it actually opens, or a dead link would surface to peers as loaded while
+    // we show the error screen. Local files open synchronously enough to keep
+    // the original optimistic path (and rarely fail this way).
+    if (isHttpUrl(path) && !await awaitOpenResult(_core)) return;
+    if (!mounted) return;
     await _recordOpen(path);
     await _announceCurrentFile();
     _addLoadedFileMessage();
