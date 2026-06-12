@@ -5,8 +5,14 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
-## [0.23.0-alpha] - 2026-06-11
+## [0.25.0-alpha] - 2026-06-13
 - "Start new room" now copies a cute **magic sentence** instead of a code with a random tail — something like `sleepy-otter-counts-cozy-stars`. It's pleasant to read and say aloud, and its privacy now comes entirely from friendly words rather than a gibberish suffix like `…-k3pn`. There are ~700 million possible sentences (kept short so the room name fits the Syncplay server's length limit), so a friend can't stumble into your room by guessing. Paste the whole sentence into "Enter code from friend" to join. Your old room codes — bare `happy-cat-11` names and earlier `happy-cat-11-k3pn` private codes alike — keep working exactly as before, so saved rooms and any codes you've already shared still meet up. (#109)
+
+## [0.24.0-alpha] - 2026-06-12
+- The gear/settings menu is now reachable from the start screen, before you join a room — not just while watching. A new gear in the top-right of the connect screen opens the same settings you already know: theme, notification sounds, and diagnostic logging with its "Export logs…" button. So you can switch theme, pick your sounds, or grab the diagnostic logs without having to join a room first. (The in-room chat-dimming controls stay in the in-room gear, since there's no chat on the start screen.)
+
+## [0.23.0-alpha] - 2026-06-11
+- MeowWatch now keeps a rolling diagnostic log of each co-watch session on your PC, so when the occasional video-lag or broken-sound hiccup happens, the details are already saved instead of lost. It keeps the last 10 sessions and tidies up older ones automatically. A new "Diagnostic logging" control in the gear menu's Settings lets you pick how much detail to keep — Off, Neat, or Verbose (the default) — and an "Export logs…" button bundles them into a single file you can send over for a closer look.
 
 ## [0.22.2-alpha] - 2026-06-10
 - Fixed a glitch where briefly reconnecting to your room could snap your video back to the very start and pause it. When the room momentarily empties during a reconnect, the server reports a blank "position 0, paused" state that belongs to nobody; the app used to follow it as if a friend had paused at the beginning. It now ignores any room state that isn't attributed to a real person, so a reconnect blip can no longer drag a mid-film session back to 00:00.

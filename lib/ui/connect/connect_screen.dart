@@ -1,11 +1,20 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
 
+import '../../core/audio/notify_sounds.dart';
 import '../../core/connect/room_code.dart';
 import '../../core/connect/room_config.dart';
 import '../../core/data/history_entry.dart';
 import '../../core/data/saved_profile.dart';
+import '../../core/data/settings_store.dart';
 import '../../core/data/stores.dart';
+import '../../core/debug/log_archive.dart';
+import '../../core/debug/log_level.dart';
 import '../../core/sync/syncplay_constants.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
@@ -14,7 +23,7 @@ import '../../core/theme/tokens/icon_sizes.dart';
 import '../../core/theme/tokens/radii.dart';
 import '../../core/theme/tokens/spacing.dart';
 import '../../core/theme/tokens/type_scale.dart';
-import '../theme/theme_swatches.dart';
+import '../settings/lobby_settings_button.dart';
 import '../version_badge.dart';
 import 'history_format.dart';
 
@@ -22,6 +31,7 @@ class ConnectScreen extends StatefulWidget {
   const ConnectScreen({
     required this.profiles,
     required this.history,
+    required this.settings,
     required this.currentTheme,
     required this.onThemeChanged,
     required this.onConnect,
@@ -30,6 +40,7 @@ class ConnectScreen extends StatefulWidget {
 
   final ProfileStore profiles;
   final HistoryStore history;
+  final SettingsStore settings;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
   final Future<void> Function(RoomConfig config) onConnect;
@@ -47,6 +58,30 @@ class _ConnectScreenState extends State<ConnectScreen> {
   final _scroll = ScrollController();
   bool _advancedOpen = false;
 
+  // Lobby-gear settings. These mirror the same SettingsStore keys the in-room
+  // gear uses, so a change made here (before joining) and one made in a room are
+  // the same setting. Seeded with defaults, then overwritten by [_loadSettings].
+  String _primarySoundId = kDefaultPrimarySoundId;
+  String _secondarySoundId = kDefaultSecondarySoundId;
+  LogLevel _logLevel = LogLevel.verbose;
+
+  // Created lazily on the first sound preview so headless tests (and the common
+  // case of never previewing) don't spin up a media player needlessly.
+  Player? _preview;
+
+  // Serializes lobby-settings writes so [_connect] can await all pending ones
+  // before navigating into the room — otherwise a level/sound the user just
+  // picked could still be mid-write when HomeScreen reads it (PR #131 review).
+  // Errors are swallowed so a failed persist can't wedge the queue or block a
+  // join.
+  Future<void> _settingsWrites = Future<void>.value();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
   @override
   void dispose() {
     _name.dispose();
@@ -55,7 +90,91 @@ class _ConnectScreenState extends State<ConnectScreen> {
     _port.dispose();
     _password.dispose();
     _scroll.dispose();
+    unawaited(_preview?.dispose() ?? Future<void>.value());
     super.dispose();
+  }
+
+  Future<void> _loadSettings() async {
+    final primary = await widget.settings.get(kNotifyPrimarySoundKey);
+    final secondary = await widget.settings.get(kNotifySecondarySoundKey);
+    final level = logLevelFromName(
+      await widget.settings.get(kLogLevelSettingKey),
+    );
+    if (!mounted) return;
+    setState(() {
+      _primarySoundId = resolvePrimary(primary).id;
+      _secondarySoundId = resolveSecondary(secondary).id;
+      _logLevel = level;
+    });
+  }
+
+  void _setPrimarySound(String id) {
+    setState(() => _primarySoundId = id);
+    _persistSetting(kNotifyPrimarySoundKey, id);
+  }
+
+  void _setSecondarySound(String id) {
+    setState(() => _secondarySoundId = id);
+    _persistSetting(kNotifySecondarySoundKey, id);
+  }
+
+  void _setLogLevel(LogLevel level) {
+    setState(() => _logLevel = level);
+    _persistSetting(kLogLevelSettingKey, level.storageName);
+  }
+
+  /// Queue a settings write, chaining it onto [_settingsWrites] so [_connect]
+  /// can await every pending write before entering the room. A failed write is
+  /// swallowed — persistence must never block joining.
+  void _persistSetting(String key, String value) {
+    _settingsWrites = _settingsWrites
+        .then((_) => widget.settings.set(key, value))
+        .catchError((Object _) {});
+  }
+
+  /// Play a preset on demand for the Settings preview. Reuses one lazily-built
+  /// player so repeated previews don't stack instances.
+  Future<void> _previewSound(String asset) async {
+    final player = _preview ??= Player();
+    try {
+      await player.open(Media(asset), play: true);
+    } catch (e) {
+      debugPrint('Failed to preview sound: $e');
+    }
+  }
+
+  /// Bundle the rotating diagnostic logs from disk into a zip the user picks a
+  /// location for. There is no live session log in the lobby, so this just zips
+  /// whatever past sessions are already on disk.
+  Future<void> _exportLogs() async {
+    final dir = await resolveAppLogsDir();
+    final zipBytes = zipLogFiles(dir);
+    if (zipBytes == null) {
+      _showSnack('No diagnostic logs to export yet.');
+      return;
+    }
+    try {
+      final location = await getSaveLocation(
+        suggestedName: 'meowwatch-logs.zip',
+      );
+      if (location == null) return; // user cancelled
+      await File(location.path).writeAsBytes(zipBytes);
+      _showSnack('Saved diagnostic logs.');
+    } on Object {
+      _showSnack('Could not save the logs.');
+    }
+  }
+
+  void _showSnack(String text) {
+    if (!mounted) return;
+    final m = context.meow;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: m.surface,
+        content: Text(text, style: TextStyle(color: m.textPrimary)),
+      ));
   }
 
   String get _username {
@@ -82,7 +201,17 @@ class _ConnectScreenState extends State<ConnectScreen> {
       password: config.password,
     );
     if (!mounted) return;
+    // Flush any pending lobby-settings writes first, so the room reads the
+    // values the user just picked rather than the previous ones — a Drift set()
+    // can still be in flight when HomeScreen reads them (PR #131 review).
+    await _settingsWrites;
+    if (!mounted) return;
+    // onConnect pushes the room route and completes when it pops, so control
+    // returns here on leaving. Re-read settings then: the in-room gear may have
+    // changed the level/sounds, and the lobby gear should reflect that, not the
+    // value captured at app start.
     await widget.onConnect(config);
+    if (mounted) await _loadSettings();
   }
 
   Future<void> _startNewRoom() async {
@@ -270,6 +399,24 @@ class _ConnectScreenState extends State<ConnectScreen> {
               );
             },
           ),
+          // Settings gear — top-right, so theme / sounds / diagnostic logging
+          // are reachable before joining a room (mirrors the in-player gear).
+          Positioned(
+            top: Spacing.md,
+            right: Spacing.md,
+            child: LobbySettingsButton(
+              currentTheme: widget.currentTheme,
+              onThemeChanged: widget.onThemeChanged,
+              primarySoundId: _primarySoundId,
+              onPrimarySoundChanged: _setPrimarySound,
+              secondarySoundId: _secondarySoundId,
+              onSecondarySoundChanged: _setSecondarySound,
+              onPreviewSound: _previewSound,
+              logLevel: _logLevel,
+              onLogLevelChanged: _setLogLevel,
+              onExportLogs: _exportLogs,
+            ),
+          ),
           // Version badge — bottom-right, always visible on connect screen.
           const Positioned(
             right: Spacing.md,
@@ -293,12 +440,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
       Text('Watch together, in sync.',
           style: context.meowText.body.copyWith(color: m.textDim)),
       const SizedBox(height: Spacing.lg),
-      _label('Theme'),
-      ThemeSwatches(
-        current: widget.currentTheme,
-        onChanged: widget.onThemeChanged,
-      ),
-      const SizedBox(height: Spacing.xxl),
       _label('Your name'),
       _textField(
           key: const Key('connect-name'), controller: _name, hint: 'e.g. lin'),

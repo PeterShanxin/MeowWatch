@@ -70,9 +70,9 @@ const List<String> roomAnimals = <String>[
 /// the object so each code reads as a little sentence.
 const List<String> roomVerbs = <String>[
   'chases', 'counts', 'guards', 'paints', 'finds', 'greets', 'hugs', 'sniffs',
-  'nudges', 'stacks', 'chomps', 'spots', 'stalks', 'hunts', 'seeks', 'minds',
-  'keeps', 'pets', 'licks', 'rolls', 'spins', 'tends', 'hoards', 'trails',
-  'herds', 'rides', 'picks', 'packs', 'sorts', 'tastes', 'grooms', 'prods',
+  'nudges', 'stacks', 'bakes', 'spots', 'shares', 'saves', 'seeks', 'minds',
+  'keeps', 'pets', 'draws', 'rolls', 'spins', 'tends', 'hoards', 'trails',
+  'herds', 'rides', 'picks', 'packs', 'sorts', 'tastes', 'grooms', 'wears',
   'pokes', 'waves', 'names', 'calls', 'meets', 'leads', 'feeds', 'holds',
   'lifts', 'tosses', 'throws', 'paws', 'boops', 'nabs', 'bops', 'sways',
 ];
@@ -117,9 +117,12 @@ int get maxGeneratedRoomCodeLength {
 /// adjective (`sleepy-otter-counts-sleepy-stars`); that still reads fine and a
 /// redraw would only muddy the deterministic seeding below.
 ///
-/// Pass a seeded [Random] in tests for deterministic output.
+/// Pass a seeded [Random] in tests for deterministic output. In production no
+/// argument is passed, so a cryptographically secure [Random.secure] backs the
+/// draw — privacy now rests entirely on the code being unguessable, so the
+/// generator must not lean on a predictable PRNG.
 String generateRoomCode([Random? random]) {
-  final r = random ?? Random();
+  final r = random ?? Random.secure();
   String pick(List<String> words) => words[r.nextInt(words.length)];
   final subjectAdjective = pick(roomAdjectives);
   final animal = pick(roomAnimals);

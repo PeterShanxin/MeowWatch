@@ -56,6 +56,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
         builder: (context) => ConnectScreen(
           profiles: widget.profiles,
           history: widget.history,
+          settings: widget.settings,
           currentTheme: _theme,
           onThemeChanged: _setTheme,
           onConnect: (RoomConfig config) => Navigator.of(context).push(

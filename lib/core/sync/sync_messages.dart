@@ -37,6 +37,24 @@ class LineFramer {
 // Encoders — each returns the Map to be json.encode()'d and written as a line.
 // ---------------------------------------------------------------------------
 
+/// JSON for an outbound [message] with any `password` value masked, so the room
+/// password in the Hello never reaches the persistent / exportable diagnostic
+/// log. The real wire bytes are encoded separately and keep the secret.
+String redactSecretsForLog(Map<String, Object?> message) {
+  Object? scrub(Object? value) {
+    if (value is Map) {
+      return <Object?, Object?>{
+        for (final entry in value.entries)
+          entry.key: entry.key == 'password' ? '***' : scrub(entry.value),
+      };
+    }
+    if (value is List) return value.map(scrub).toList();
+    return value;
+  }
+
+  return json.encode(scrub(message));
+}
+
 Map<String, Object?> encodeHello({
   required String username,
   required String room,
@@ -72,8 +90,8 @@ Map<String, Object?> encodeFile({
 }
 
 Map<String, Object?> encodeTlsRequest() => {
-      'TLS': {'startTLS': 'send'},
-    };
+  'TLS': {'startTLS': 'send'},
+};
 
 Map<String, Object?> encodeChat(String text) => {'Chat': text};
 
@@ -103,10 +121,7 @@ Map<String, Object?> encodeState({
     ping['latencyCalculation'] = latencyCalculation;
   }
 
-  final state = <String, Object?>{
-    'playstate': playstate,
-    'ping': ping,
-  };
+  final state = <String, Object?>{'playstate': playstate, 'ping': ping};
 
   if (clientIgnore != 0 || serverIgnore != 0) {
     final ignore = <String, Object?>{};
@@ -209,19 +224,25 @@ ServerMessage decodeServerMessage(
   if (message.containsKey('Hello')) {
     final hello = message['Hello'];
     final name = hello is Map ? hello['username'] : null;
-    return HelloMessage(username: name is String && name.isNotEmpty ? name : null);
+    return HelloMessage(
+      username: name is String && name.isNotEmpty ? name : null,
+    );
   }
-  if (message.containsKey('State')) return _decodeState(message['State'] as Map);
+  if (message.containsKey('State')) {
+    return _decodeState(message['State'] as Map);
+  }
   if (message.containsKey('Set')) return _decodeSet(message['Set'] as Map);
   if (message.containsKey('List')) {
     return _decodeList(message['List'], selfRoom: selfRoom);
   }
   if (message.containsKey('Chat')) {
     final chat = message['Chat'] as Map;
-    return ChatServerMessage(ChatMessage(
-      username: chat['username'] as String? ?? '',
-      text: chat['message'] as String? ?? '',
-    ));
+    return ChatServerMessage(
+      ChatMessage(
+        username: chat['username'] as String? ?? '',
+        text: chat['message'] as String? ?? '',
+      ),
+    );
   }
   if (message.containsKey('TLS')) {
     final tls = message['TLS'] as Map;
@@ -322,25 +343,30 @@ ServerMessage _decodeSet(Map<dynamic, dynamic> set) {
     final files = <PeerFile>[];
     (set['user'] as Map).forEach((name, value) {
       if (value is! Map || name is! String) return;
-      final room =
-          value['room'] is Map ? (value['room'] as Map)['name'] as String? : null;
+      final room = value['room'] is Map
+          ? (value['room'] as Map)['name'] as String?
+          : null;
       final file = _parsePeerFile(name, value['file']);
       if (file != null) files.add(file);
       final event = value['event'];
       if (event is Map && event['left'] != null) {
-        events.add(PresenceEvent(
-          username: name,
-          kind: PresenceKind.left,
-          room: room,
-          fileName: file?.name,
-        ));
+        events.add(
+          PresenceEvent(
+            username: name,
+            kind: PresenceKind.left,
+            room: room,
+            fileName: file?.name,
+          ),
+        );
       } else if (event is Map && event['joined'] != null) {
-        events.add(PresenceEvent(
-          username: name,
-          kind: PresenceKind.joined,
-          room: room,
-          fileName: file?.name,
-        ));
+        events.add(
+          PresenceEvent(
+            username: name,
+            kind: PresenceKind.joined,
+            room: room,
+            fileName: file?.name,
+          ),
+        );
       }
     });
     if (events.isNotEmpty) return PresenceMessage(events, files: files);

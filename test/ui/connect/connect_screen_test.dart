@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/connect/room_config.dart';
 import 'package:meowwatch/core/data/history_entry.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
+import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
@@ -42,6 +43,34 @@ class _FakeProfileStore implements ProfileStore {
     deleted.add(id);
     profiles.removeWhere((p) => p.id == id);
     emit();
+  }
+}
+
+class _FakeSettingsStore implements SettingsStore {
+  final Map<String, String> _map = {};
+
+  @override
+  Future<String?> get(String key) async => _map[key];
+
+  @override
+  Future<void> set(String key, String value) async => _map[key] = value;
+}
+
+/// Settings store whose writes block on a caller-controlled gate, to test that
+/// the connect screen flushes pending lobby-settings writes before navigating.
+class _GatedSettingsStore implements SettingsStore {
+  _GatedSettingsStore(this._gate);
+
+  final Future<void> _gate;
+  final Map<String, String> map = {};
+
+  @override
+  Future<String?> get(String key) async => map[key];
+
+  @override
+  Future<void> set(String key, String value) async {
+    await _gate;
+    map[key] = value;
   }
 }
 
@@ -92,13 +121,14 @@ void main() {
   late _FakeHistoryStore history;
   RoomConfig? connected;
 
-  Future<void> pump(WidgetTester tester) async {
+  Future<void> pump(WidgetTester tester, {SettingsStore? settings}) async {
     connected = null;
     await tester.pumpWidget(MaterialApp(
       theme: themeDataFor(MeowThemeId.cozy),
       home: ConnectScreen(
         profiles: profiles,
         history: history,
+        settings: settings ?? _FakeSettingsStore(),
         currentTheme: MeowThemeId.cozy,
         onThemeChanged: (_) {},
         onConnect: (config) async => connected = config,
@@ -212,6 +242,59 @@ void main() {
     expect(find.text('Server password — advanced / self-hosted only'),
         findsOneWidget);
     expect(find.textContaining('Room password'), findsNothing);
+  });
+
+  testWidgets('settings gear opens the lobby settings popover', (tester) async {
+    await pump(tester);
+    // Theme is no longer inline on the form — it moved into the gear.
+    expect(find.text('Theme'), findsNothing);
+    expect(find.byKey(const Key('lobby-settings-gear')), findsOneWidget);
+    expect(find.text('Diagnostic logging'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+
+    // The settings-only popover: theme + sounds + logging, no room rows.
+    expect(find.text('Theme'), findsOneWidget);
+    expect(find.text('Diagnostic logging'), findsOneWidget);
+    expect(find.byKey(const Key('player-menu-leave')), findsNothing);
+  });
+
+  testWidgets('Start waits for a pending lobby-settings write before connecting',
+      (tester) async {
+    // A level the user just picked in the lobby gear must reach the room. Hold
+    // the settings write open, change the level, hit Start — the room must not
+    // be entered until the write lands, or HomeScreen would read the old value
+    // (PR #131 review).
+    final gate = Completer<void>();
+    final settings = _GatedSettingsStore(gate.future);
+    await pump(tester, settings: settings);
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('player-menu-log-neat')));
+    await tester.tap(find.byKey(const Key('player-menu-log-neat')));
+    await tester.pumpAndSettle();
+    // Close the gear so the Start button underneath is tappable.
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+    await tester.tap(find.byKey(const Key('connect-start-new')));
+    await tester.pump();
+
+    // The write is still gated, so connect must not have fired yet.
+    expect(connected, isNull);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    // Now the room is entered, and the freshly-picked level was persisted first.
+    expect(connected, isNotNull);
+    expect(settings.map[kLogLevelSettingKey], 'neat');
   });
 
   testWidgets('delete icon removes the profile', (tester) async {
