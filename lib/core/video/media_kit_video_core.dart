@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 
 import 'playback_state.dart';
+import 'position_guard.dart';
 import 'video_core.dart';
 import 'video_decode_config.dart';
 
@@ -69,6 +70,13 @@ class MediaKitVideoCore extends VideoCore {
         ));
       }),
       _player.stream.position.listen((pos) {
+        // Reject a stale end-of-file position from the previous file that
+        // libmpv can deliver mid-load — otherwise a freshly loaded episode
+        // shows the old one's end instead of 0:00, and a room would broadcast
+        // the wrong position (#132). See [acceptPlayerPosition].
+        if (!acceptPlayerPosition(incoming: pos, duration: state.duration)) {
+          return;
+        }
         emit(state.copyWith(position: pos));
       }),
       _player.stream.duration.listen((dur) {
