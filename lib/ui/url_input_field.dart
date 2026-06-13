@@ -14,12 +14,18 @@ class UrlInputField extends StatefulWidget {
   const UrlInputField({
     required this.onSubmit,
     this.autofocus = false,
+    this.fillColor,
     super.key,
   });
 
   /// Called only with a validated, trimmed URL.
   final void Function(String url) onSubmit;
   final bool autofocus;
+
+  /// Fill color for the text field. Defaults to the theme surface; pass a
+  /// contrasting color (e.g. the page background) when the field sits on a
+  /// surface-colored card so it doesn't blend in.
+  final Color? fillColor;
 
   @override
   State<UrlInputField> createState() => _UrlInputFieldState();
@@ -73,7 +79,7 @@ class _UrlInputFieldState extends State<UrlInputField> {
                   hintText: 'https://…/video.mp4',
                   hintStyle: TextStyle(color: m.textDim),
                   filled: true,
-                  fillColor: m.surface,
+                  fillColor: widget.fillColor ?? m.surface,
                   isDense: true,
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(Radii.md),
