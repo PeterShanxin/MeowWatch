@@ -67,4 +67,42 @@ void main() {
     );
     expect(video.seekedTo, const Duration(minutes: 3));
   });
+
+  test('a closed stream mid-wait does not throw and does not seek', () async {
+    final future = seekWhenReady(video, const Duration(minutes: 3));
+    await Future<void>.delayed(Duration.zero);
+    await video.dispose(); // closes the stream before a duration arrives
+    await future; // must complete without a StateError
+    expect(video.seekedTo, isNull);
+  });
+
+  test('a superseded source (filePath changed) skips the seek', () async {
+    video.push(const PlaybackState(filePath: 'a.mp4'));
+    final future = seekWhenReady(
+      video,
+      const Duration(minutes: 3),
+      source: 'a.mp4',
+    );
+    await Future<void>.delayed(Duration.zero);
+    // A newer load swaps the source before a duration for 'a.mp4' arrives.
+    video.push(const PlaybackState(filePath: 'b.mp4'));
+    await future;
+    expect(video.seekedTo, isNull);
+  });
+
+  test('seeks the resumed source once its duration arrives (scoped)', () async {
+    video.push(const PlaybackState(filePath: 'a.mp4'));
+    final future = seekWhenReady(
+      video,
+      const Duration(minutes: 3),
+      source: 'a.mp4',
+    );
+    await Future<void>.delayed(Duration.zero);
+    video.push(const PlaybackState(
+      filePath: 'a.mp4',
+      duration: Duration(minutes: 10),
+    ));
+    await future;
+    expect(video.seekedTo, const Duration(minutes: 3));
+  });
 }

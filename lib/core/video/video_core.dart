@@ -17,6 +17,11 @@ abstract class VideoCore {
   PlaybackState get state => _state;
   Stream<PlaybackState> get stateStream => _controller.stream;
 
+  /// True once [dispose] has run (the state stream is closed). Lets callers that
+  /// await the stream avoid acting on a torn-down core (e.g. seeking after the
+  /// user left the room mid-load).
+  bool get isDisposed => _disposed;
+
   /// Emit a new state. Implementations call this from their backend listeners.
   /// No-op after [dispose] to avoid late callbacks racing teardown.
   @protected

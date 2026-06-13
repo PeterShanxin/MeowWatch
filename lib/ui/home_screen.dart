@@ -1029,9 +1029,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _resume(String path, int positionMs) async {
     // Only seek if this resume load actually opened and is still current —
     // otherwise a superseded/failed load would apply the old position to
-    // whatever the user picked instead.
+    // whatever the user picked instead. seekWhenReady is also scoped to [path]
+    // so a load that supersedes it during the duration-wait can't inherit this
+    // resume position.
     if (await _load(path)) {
-      await seekWhenReady(_core, Duration(milliseconds: positionMs));
+      await seekWhenReady(
+        _core,
+        Duration(milliseconds: positionMs),
+        source: path,
+      );
     }
   }
 
