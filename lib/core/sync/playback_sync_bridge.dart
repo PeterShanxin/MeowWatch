@@ -50,6 +50,16 @@ class PlaybackSyncBridge {
   /// suffices to mark the tick as a load event rather than a user seek.
   String? _lastFilePath;
 
+  /// Whether the current source has been confirmed open for the heartbeat. A
+  /// live/direct stream may *never* report a duration, so gating each tick on
+  /// [isPlaybackOpen] alone would mute it forever even after [VideoCore.load]
+  /// accepted it. Instead we latch "open" per source on the first positive
+  /// evidence — a real duration / `ended`, or playback that has advanced past
+  /// zero (frames are flowing) — and from then on publish its ticks. Cleared
+  /// when the source changes or reloads so a new/failing load can't ride the
+  /// previous source's latch.
+  bool _sourceOpen = false;
+
   void start() {
     _videoSub = video.stateStream.listen(_onLocalState);
     _peerSub = sync.peerState.listen(_onPeerState);
@@ -58,15 +68,29 @@ class PlaybackSyncBridge {
   void _onLocalState(PlaybackState s) {
     final paused = s.status != PlaybackStatus.playing;
 
-    // Only a *confirmed open* feeds the outgoing heartbeat. `loading`/`error`
-    // and the zero-duration pre-error tick that a bad or slow source emits the
-    // instant `open()` returns all sit at position 0 — pushing any of them to the
-    // room would make a watching peer pause/rewind for a load that may never
-    // land (e.g. an unreachable URL). `isPlaybackOpen` is the same gate `_load`
-    // waits on (a real duration, or `ended`), so the heartbeat and the announce
-    // agree on what "opened" means. Keep the seek-detection bookkeeping so the
-    // next real tick isn't read as a seek, but don't publish until then.
-    if (!isPlaybackOpen(s)) {
+    // A new source (filePath change) or a reload (`loading`) must re-prove that
+    // it opened before its ticks rejoin the heartbeat — clear the open latch.
+    if (s.filePath != _lastFilePath || s.status == PlaybackStatus.loading) {
+      _sourceOpen = false;
+    }
+    // Latch the current source open on positive evidence: a real duration /
+    // `ended` ([isPlaybackOpen]), or playback advanced past zero — a live/direct
+    // stream with no duration still delivers frames. Once latched, its later
+    // paused/playing ticks keep driving the heartbeat (mirrors the live-stream
+    // acceptance in `awaitOpenResult`).
+    if (isPlaybackOpen(s) ||
+        (s.status == PlaybackStatus.playing && s.position > Duration.zero)) {
+      _sourceOpen = true;
+    }
+
+    // Until the source is confirmed open — and never for an `error` — keep it out
+    // of the outgoing heartbeat: a new/failing/loading source sits at position 0,
+    // and the zero-duration pre-error tick a bad source emits the instant
+    // `open()` returns sits there too. Publishing any of them would make a
+    // watching peer pause/rewind for a load that may never land (e.g. an
+    // unreachable URL). Keep the seek-detection bookkeeping so the next real tick
+    // isn't read as a seek, but don't publish until then.
+    if (!_sourceOpen || s.status == PlaybackStatus.error) {
       _lastFilePath = s.filePath;
       _lastPaused = paused;
       _lastPosition = s.position;

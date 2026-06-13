@@ -345,4 +345,32 @@ void main() {
     expect(sync.localUpdates.last.position, const Duration(seconds: 3));
     expect(sync.localUpdates.last.paused, isTrue);
   });
+
+  test('an accepted live stream (no duration) still drives the heartbeat once '
+      'playback advances', () async {
+    // A live/direct stream never reports a duration. It is accepted once frames
+    // flow (position advances past zero), and from then on its play/pause must
+    // reach the room — not be dropped for lacking a duration.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.playing,
+      position: Duration(seconds: 2),
+      filePath: 'https://x.test/live.m3u8',
+      fileName: 'live.m3u8',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    expect(sync.localUpdates, isNotEmpty,
+        reason: 'an accepted live stream must heartbeat even with no duration');
+    sync.changes.clear();
+
+    // A later pause on the same live source is a non-seek local change.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration(seconds: 3),
+      filePath: 'https://x.test/live.m3u8',
+      fileName: 'live.m3u8',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    expect(sync.changes, contains(false),
+        reason: 'pause on an accepted live stream is a non-seek local change');
+  });
 }
