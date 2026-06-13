@@ -997,6 +997,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // Invalidate the accepted-source marker until this load is confirmed, so a
     // reconnect mid-load can't re-announce the previous source.
     _loadedSource = null;
+    // Drop the previous file's byte size now, before the new load opens. Until
+    // _recordOpen commits the new size, a stale positive size would let
+    // _fileMismatchBanner / compareFiles judge match-by-size against a source
+    // that never opened (compareFiles trusts equal sizes ahead of URL identity),
+    // so the load/error screen could wrongly show a peer as matching.
+    if (_localFileSizeBytes != null && mounted) {
+      setState(() => _localFileSizeBytes = null);
+    }
     await _core.load(path);
     // A source can fail asynchronously — mpv reports an unreachable / non-video
     // / expired URL, *and* a moved or unreadable local file, on its error stream
@@ -1009,12 +1017,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // here (no failLoad, no announce) — the newer load reports its own outcome.
     if (gen != _loadGeneration) return false;
     if (!opened) {
-      // A hang (timed out still `loading`, no mpv error) must be surfaced as an
-      // error, or the user is stuck on a frozen loading surface with no recovery
-      // buttons (those only show on PlaybackStatus.error). Guard on the path too
-      // so we never force the error onto a different source.
-      if (_core.state.status == PlaybackStatus.loading &&
-          _core.state.filePath == path) {
+      // A load that never confirmed open must be surfaced as an error, or the
+      // user is stuck on a frozen surface with no recovery buttons (those only
+      // show on PlaybackStatus.error). This covers both a plain `loading` hang
+      // and a source forced to `playing`/`paused` over a never-opened URL (e.g. a
+      // peer heartbeat applying play() while we were still loading). Guard on the
+      // path so we never force the error onto a different source, and `failLoad`
+      // itself no-ops if the source did genuinely open.
+      if (_core.state.filePath == path) {
         _core.failLoad('Timed out waiting for the video to open.');
       }
       return false;

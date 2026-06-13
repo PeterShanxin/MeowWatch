@@ -53,6 +53,14 @@ void main() {
       expect(redactUrlSecrets('movie.mkv'), 'movie.mkv');
       expect(redactUrlSecrets(r'C:\videos\demo.mp4'), r'C:\videos\demo.mp4');
     });
+
+    test('redacts a credential carried in the URL fragment', () {
+      final redacted = redactUrlSecrets(
+          'https://cdn.example.com/video.mp4#token=SECRET');
+      expect(redacted, isNot(contains('SECRET')));
+      expect(redacted, contains('#<redacted>'));
+      expect(redacted, contains('cdn.example.com/video.mp4'));
+    });
   });
 
   group('redactSecretsForLogText', () {

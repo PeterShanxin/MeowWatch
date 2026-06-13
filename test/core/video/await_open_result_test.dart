@@ -97,29 +97,45 @@ void main() {
     );
   });
 
-  test('a source still playing at the timeout (no error) resolves to true — a '
-      'durationless live stream the user started early', () async {
+  test('a stream that opened (paused) then was played resolves to true at the '
+      'timeout — a durationless live stream the user started early', () async {
     await core.load('https://x.test/live.m3u8');
-    // The user pressed Space during the open; a live/direct stream stays
-    // `playing` at position 0 with no duration. No error arrived within the
-    // window, so it is a good source — a bad one would have errored by now.
+    final result = awaitOpenResult(
+      core,
+      source: 'https://x.test/live.m3u8',
+      timeout: const Duration(milliseconds: 50),
+    );
+    // open() returns (the `paused` tick = open evidence), then the user presses
+    // Space, so a live/direct stream sits `playing` at position 0 with no
+    // duration. No error arrives within the window → a good source.
+    core.emitPausedTick();
+    core.emitPrematurePlay();
+    expect(await result, isTrue);
+  });
+
+  test('a source forced to `playing` without ever opening resolves to false at '
+      'the timeout', () async {
+    await core.load('https://x.test/hung.m3u8');
+    // No `paused` tick (open() never returned) — a peer heartbeat applied play()
+    // over the still-loading source, so it reads `playing` with no open evidence.
     core.emitPrematurePlay();
     expect(
       await awaitOpenResult(
         core,
-        source: 'https://x.test/live.m3u8',
+        source: 'https://x.test/hung.m3u8',
         timeout: const Duration(milliseconds: 50),
       ),
-      isTrue,
+      isFalse,
     );
   });
 
-  test('a source that plays then errors resolves to false (the error wins)',
+  test('a source that opened then errors resolves to false (the error wins)',
       () async {
     await core.load('https://x.test/dead.mp4');
     final result = awaitOpenResult(core, source: 'https://x.test/dead.mp4');
-    core.emitPrematurePlay(); // user pressed play over a still-opening source
-    core.emitError(); // …which then turns out to be bad
+    core.emitPausedTick(); // open() returned…
+    core.emitPrematurePlay(); // …user played…
+    core.emitError(); // …but the source then turns out to be bad
     expect(await result, isFalse);
   });
 

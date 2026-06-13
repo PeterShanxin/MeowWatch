@@ -73,19 +73,24 @@ Object? _scrubForLog(Object? value) {
   return value;
 }
 
-/// Strip the query string and userinfo from an `http(s)` URL so a signed token
-/// can't land in the diagnostic log; leaves non-URL strings untouched. The
-/// scheme/host/path stay so the stream is still identifiable in logs.
+/// Strip the query string, userinfo, and fragment from an `http(s)` URL so a
+/// signed token can't land in the diagnostic log; leaves non-URL strings
+/// untouched. The scheme/host/path stay so the stream is still identifiable in
+/// logs. A credential can ride in any of the three — e.g. `?token=…`,
+/// `user:pass@host`, or `#token=…` — so all three are dropped.
 String redactUrlSecrets(String value) {
   final uri = Uri.tryParse(value.trim());
   if (uri == null) return value;
   if (uri.scheme != 'http' && uri.scheme != 'https') return value;
   if (uri.host.isEmpty) return value;
-  if (uri.query.isEmpty && uri.userInfo.isEmpty) return value;
+  if (uri.query.isEmpty && uri.userInfo.isEmpty && uri.fragment.isEmpty) {
+    return value;
+  }
   final buffer = StringBuffer('${uri.scheme}://${uri.host}');
   if (uri.hasPort) buffer.write(':${uri.port}');
   buffer.write(uri.path);
   if (uri.query.isNotEmpty) buffer.write('?<redacted>');
+  if (uri.fragment.isNotEmpty) buffer.write('#<redacted>');
   return buffer.toString();
 }
 

@@ -1,28 +1,30 @@
+import 'dart:async';
+
 import 'playback_state.dart';
 import 'video_core.dart';
 
 /// Wait for a just-issued [VideoCore.load] of [source] to either open or fail,
-/// returning `true` on success and `false` on error/supersede.
+/// returning `true` on success and `false` on error/supersede/hang.
 ///
 /// mpv reports a bad source (an unreachable / non-video / expired link, or a
 /// moved / unreadable local file) on its error stream *after* `load()` has
 /// returned, and media_kit emits a `paused` tick the instant `open()` returns —
-/// before that error. So we wait for positive evidence ([isPlaybackOpen]) or an
-/// error, never settling on the bare paused tick.
+/// before that error. So we never settle on the bare paused tick: we wait for a
+/// confirmed open ([isPlaybackOpen]), an error, or the timeout.
 ///
 /// The wait is scoped to [source]: once `filePath` no longer matches (a newer
 /// load superseded this one), we stop and return `false` — the newer load owns
 /// the core state and reports its own outcome. This keeps a stale/slow load from
 /// consuming a state, error, or open that now belongs to a different source.
 ///
-/// On [timeout] we resolve optimistically if the source has reached a playable
-/// state (`paused` or `playing`), even with no duration: a live/direct stream
-/// stays that way indefinitely (no duration; position pinned at 0 by the player),
-/// and we'd rather announce a slow-but-good stream than hang. A bad source does
-/// not linger here — it raises an mpv error within the window, which the error
-/// check above resolves to `false` well before this generous timeout. A source
-/// still `loading` (or `idle`) at the timeout never reached a playable state — a
-/// hang — so it resolves to `false`.
+/// On [timeout] we accept only if `open()` actually returned for this source at
+/// some point — i.e. it reached `paused`/`ended` or an [isPlaybackOpen] state.
+/// That is the only thing that distinguishes a valid live/direct stream (which
+/// sits `paused` with no duration, position pinned at 0) from a source that
+/// never opened. A bare zero-duration `playing` is NOT open evidence: a peer
+/// heartbeat (or the user) can force `play()` onto a still-`loading` source whose
+/// `open()` never returned (a hung URL), so a source that jumped straight from
+/// `loading` to `playing` without a `paused` tick is treated as a hang → `false`.
 Future<bool> awaitOpenResult(
   VideoCore core, {
   required String source,
@@ -30,33 +32,54 @@ Future<bool> awaitOpenResult(
 }) async {
   bool superseded(PlaybackState s) => s.filePath != source;
   bool isError(PlaybackState s) => s.status == PlaybackStatus.error;
+  // Evidence that `open()` returned for this source: media_kit emits a `paused`
+  // tick the instant it does (a bad source emits it too, then errors). `ended`
+  // and any `isPlaybackOpen` state count as well. A bare `playing` does not —
+  // that can be a forced play over a never-opened source.
+  bool isOpenEvidence(PlaybackState s) =>
+      !superseded(s) &&
+      (s.status == PlaybackStatus.paused ||
+          s.status == PlaybackStatus.ended ||
+          isPlaybackOpen(s));
 
-  // Already settled (the event arrived before we looked).
+  // Already settled before we looked (the event arrived before we subscribed).
   if (superseded(core.state) || isError(core.state)) return false;
   if (isPlaybackOpen(core.state)) return true;
 
-  // `orElse` handles the stream closing first — e.g. the user leaves/closes the
-  // room (HomeScreen.dispose disposes the core) while a slow source is still
-  // opening. Without it `firstWhere` throws a StateError, and since most loads
-  // are launched unawaited that surfaces as an uncaught async error. Treat a
-  // closed stream as a cancelled load (`false`).
-  final settled = await core.stateStream
-      .firstWhere(
-        (s) => superseded(s) || isError(s) || isPlaybackOpen(s),
-        orElse: () => core.state,
-      )
-      .timeout(timeout, onTimeout: () => core.state);
+  var sawOpen = isOpenEvidence(core.state);
+  final completer = Completer<bool>();
+  StreamSubscription<PlaybackState>? sub;
+  Timer? timer;
 
-  if (superseded(settled) || isError(settled)) return false;
-  if (isPlaybackOpen(settled)) return true;
-  // Timed out having reached a playable state (`paused` or `playing`) but with no
-  // duration. Trust it: a live/direct stream legitimately reports no duration and
-  // its position is pinned at 0 by the player (`position_guard.dart`), so neither
-  // a duration nor an advancing position is observable for it. A *bad* source
-  // does not sit here — it surfaces an mpv error on its stream within the window,
-  // which the `isError` branch above already resolves to `false` long before this
-  // generous timeout. A source still `loading`/`idle` at the timeout never
-  // reached a playable state, so it remains `false`.
-  return settled.status == PlaybackStatus.paused ||
-      settled.status == PlaybackStatus.playing;
+  void finish(bool result) {
+    if (completer.isCompleted) return;
+    timer?.cancel();
+    unawaited(sub?.cancel());
+    completer.complete(result);
+  }
+
+  sub = core.stateStream.listen(
+    (s) {
+      if (superseded(s) || isError(s)) {
+        finish(false);
+      } else if (isPlaybackOpen(s)) {
+        finish(true);
+      } else if (isOpenEvidence(s)) {
+        // Reached `paused`/`ended` with no duration (a live/direct stream).
+        // Keep waiting in case an error follows, but remember it opened.
+        sawOpen = true;
+      }
+    },
+    // Stream closed — the core was disposed (e.g. the user left/closed the room
+    // mid-load). Treat it as a cancelled load. Without this the underlying
+    // future would never complete.
+    onDone: () => finish(false),
+  );
+
+  // On timeout, trust the source only if `open()` actually returned for it (a
+  // slow-but-good live stream). A hang — still `loading`, or force-played to
+  // `playing` without ever opening — never produced that evidence → `false`.
+  timer = Timer(timeout, () => finish(sawOpen));
+
+  return completer.future;
 }

@@ -35,10 +35,17 @@ abstract class VideoCore {
 
   /// Force the in-flight load into the error state with [message]. Used when a
   /// load hangs past a caller's timeout with no backend error, so the UI can
-  /// show its recovery screen instead of a frozen loading surface. No-op unless
-  /// still `loading`, so it can't clobber a real opened/errored state.
+  /// show its recovery screen instead of a frozen loading surface. No-op once the
+  /// source is genuinely open (a real duration / `ended`) or already errored, so
+  /// it can't clobber a real state.
   void failLoad(String message) {
-    if (_state.status != PlaybackStatus.loading) return;
+    // Never clobber a confirmed open (a real duration / `ended`) or an existing
+    // error. Otherwise force the in-flight load into error: the usual `loading`
+    // hang, but also a `playing`/`paused` state forced onto a source whose
+    // `open()` never returned (e.g. a peer heartbeat applying play() over a hung
+    // URL), which still carries no duration. Without this the user would be stuck
+    // on a frozen surface with no recovery buttons.
+    if (isPlaybackOpen(_state) || _state.status == PlaybackStatus.error) return;
     emit(_state.copyWith(
       status: PlaybackStatus.error,
       errorMessage: message,

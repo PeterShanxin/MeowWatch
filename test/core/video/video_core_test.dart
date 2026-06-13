@@ -49,6 +49,11 @@ class LoadingVideoCore extends VideoCore {
     ));
   }
 
+  /// Force a zero-duration `playing` state on the still-loading source, mimicking
+  /// a peer heartbeat (or the user) applying play() before open() returned.
+  void forcePlayWhileLoading() =>
+      emit(state.copyWith(status: PlaybackStatus.playing));
+
   @override
   Future<void> play() async {}
   @override
@@ -112,11 +117,25 @@ void main() {
       await c.dispose();
     });
 
-    test('is a no-op when not loading (never clobbers a real state)', () async {
-      await core.load('demo.mkv'); // FakeVideoCore opens straight to paused
+    test('is a no-op once genuinely open (never clobbers a real state)',
+        () async {
+      // FakeVideoCore opens straight to paused *with* a duration (open).
+      await core.load('demo.mkv');
       core.failLoad('nope');
       expect(core.state.status, PlaybackStatus.paused);
       expect(core.state.errorMessage, isNull);
+    });
+
+    test('fails a source forced to `playing` over a never-opened load', () async {
+      final c = LoadingVideoCore();
+      await c.load('https://x.test/hung.m3u8');
+      c.forcePlayWhileLoading(); // peer/user play() before open() returned
+      expect(c.state.status, PlaybackStatus.playing);
+      expect(c.state.duration, Duration.zero);
+      c.failLoad('timed out');
+      expect(c.state.status, PlaybackStatus.error);
+      expect(c.state.errorMessage, 'timed out');
+      await c.dispose();
     });
   });
 }
