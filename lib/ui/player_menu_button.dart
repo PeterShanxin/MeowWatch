@@ -21,6 +21,7 @@ import 'theme/theme_swatches.dart';
 class PlayerMenuButton extends StatelessWidget {
   const PlayerMenuButton({
     required this.roomCode,
+    required this.nowPlaying,
     required this.members,
     required this.myUsername,
     required this.myDisplayName,
@@ -47,6 +48,11 @@ class PlayerMenuButton extends StatelessWidget {
   });
 
   final String roomCode;
+
+  /// Display name of the currently loaded media, or null when nothing is
+  /// loaded. Shown as a "Now playing" line so anyone in the room can confirm
+  /// which episode/video is active (#133).
+  final String? nowPlaying;
 
   /// Everyone in the room (including you), keyed by their server-assigned wire
   /// identity — what self-filtering, chat-echo ownership, and peer roster all
@@ -138,6 +144,7 @@ class PlayerMenuButton extends StatelessWidget {
           ),
           child: _MenuPanel(
             roomCode: roomCode,
+            nowPlaying: nowPlaying,
             members: members,
             myUsername: myUsername,
             myDisplayName: myDisplayName,
@@ -172,6 +179,7 @@ class PlayerMenuButton extends StatelessWidget {
 class _MenuPanel extends StatefulWidget {
   const _MenuPanel({
     required this.roomCode,
+    required this.nowPlaying,
     required this.members,
     required this.myUsername,
     required this.myDisplayName,
@@ -197,6 +205,7 @@ class _MenuPanel extends StatefulWidget {
   });
 
   final String roomCode;
+  final String? nowPlaying;
   final List<String> members;
   final String myUsername;
   final String myDisplayName;
@@ -268,6 +277,10 @@ class _MenuPanelState extends State<_MenuPanel> {
             children: [
               label('Room code'),
               _RoomCodeRow(code: widget.roomCode),
+              const SizedBox(height: Spacing.sm),
+              Divider(color: m.border, height: Spacing.lg),
+              label('Now playing'),
+              _NowPlayingRow(fileName: widget.nowPlaying),
               const SizedBox(height: Spacing.sm),
               Divider(color: m.border, height: Spacing.lg),
               label('In the room (${widget.members.length})'),
@@ -649,6 +662,52 @@ class _MemberRow extends StatelessWidget {
               isMe ? '$name (you)' : name,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The currently loaded media's name beside a film icon, or a dim "Nothing
+/// loaded yet" when no file is open. The name wraps to two lines and ellipsizes
+/// so a long filename never overflows or stretches the menu (#133).
+class _NowPlayingRow extends StatelessWidget {
+  const _NowPlayingRow({required this.fileName});
+
+  final String? fileName;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    final name = fileName;
+    final hasFile = name != null && name.isNotEmpty;
+    return Padding(
+      key: const Key('player-menu-now-playing'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.sm,
+        vertical: Spacing.xs,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            hasFile ? Icons.movie_outlined : Icons.movie_filter_outlined,
+            size: IconSizes.md,
+            color: hasFile ? m.accent : m.textDim,
+          ),
+          const SizedBox(width: Spacing.md),
+          Expanded(
+            child: Text(
+              hasFile ? name : 'Nothing loaded yet',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: hasFile ? m.textPrimary : m.textDim,
+                fontSize: TypeScale.label,
+                fontStyle: hasFile ? FontStyle.normal : FontStyle.italic,
+              ),
             ),
           ),
         ],

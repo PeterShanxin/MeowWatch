@@ -12,6 +12,7 @@ Widget _host(Widget child) => MaterialApp(
 );
 
 PlayerMenuButton _button({
+  String? nowPlaying = 'Bocchi the Rock - 01.mkv',
   ValueChanged<MeowThemeId>? onThemeChanged,
   VoidCallback? onLoadVideo,
   VoidCallback? onPasteLink,
@@ -35,6 +36,7 @@ PlayerMenuButton _button({
   VoidCallback? onExportLogs,
 }) => PlayerMenuButton(
   roomCode: 'MEOW42',
+  nowPlaying: nowPlaying,
   members: members ?? const ['me', 'lin'],
   myUsername: myUsername,
   myDisplayName: myDisplayName ?? myUsername,
@@ -66,12 +68,13 @@ PlayerMenuButton _button({
 /// these tests assert taps land directly, so size the window to a realistic
 /// desktop height first so the whole menu fits without scrolling.
 Future<void> _openSettings(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(800, 1200));
+  await tester.binding.setSurfaceSize(const Size(800, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.tap(find.byKey(const Key('player-menu-gear')));
   await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const Key('player-menu-settings')));
-  await tester.pumpAndSettle();
+  // The popover scrolls; scroll the Settings header into view before tapping so
+  // the hit-test lands on it rather than the clipped viewport edge.
+  await _tap(tester, find.byKey(const Key('player-menu-settings')));
 }
 
 /// Scroll [finder] into the (now scrollable) popover before tapping it, so the
@@ -108,11 +111,12 @@ void main() {
     tester,
   ) async {
     var left = false;
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(_host(_button(onLeave: () => left = true)));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('player-menu-leave')));
-    await tester.pumpAndSettle();
+    await _tap(tester, find.byKey(const Key('player-menu-leave')));
     expect(left, isTrue);
     // Menu dismissed — otherwise its FocusScope keeps trapping keyboard focus.
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
@@ -205,6 +209,43 @@ void main() {
     expect(find.textContaining('copied'), findsOneWidget);
   });
 
+  testWidgets('shows the currently playing media name (#133)', (tester) async {
+    await tester.pumpWidget(
+      _host(_button(nowPlaying: 'Frieren - 12.mkv')),
+    );
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Now playing'), findsOneWidget);
+    expect(find.text('Frieren - 12.mkv'), findsOneWidget);
+  });
+
+  testWidgets('shows an empty-state line when no media is loaded (#133)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_host(_button(nowPlaying: null)));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Now playing'), findsOneWidget);
+    expect(find.text('Nothing loaded yet'), findsOneWidget);
+  });
+
+  testWidgets('long media names ellipsize without overflowing (#133)', (
+    tester,
+  ) async {
+    const longName =
+        'A.Very.Long.Episode.Title.That.Should.Not.Break.The.Menu.'
+        'Layout.S01E01.1080p.WEB-DL.x265.mkv';
+    await tester.pumpWidget(_host(_button(nowPlaying: longName)));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    // The row renders (clipped via ellipsis) rather than throwing an overflow.
+    expect(find.byKey(const Key('player-menu-now-playing')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Settings is collapsed until its header is tapped', (
     tester,
   ) async {
@@ -216,8 +257,8 @@ void main() {
     expect(find.byKey(const Key('player-menu-settings')), findsOneWidget);
     expect(find.text('Dim chat when idle'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('player-menu-settings')));
-    await tester.pumpAndSettle();
+    // The popover scrolls; bring the header into view before tapping it.
+    await _tap(tester, find.byKey(const Key('player-menu-settings')));
     expect(find.text('Dim chat when idle'), findsOneWidget);
   });
 
@@ -234,7 +275,7 @@ void main() {
 
     expect(find.text('Dim chat when idle'), findsOneWidget);
     // Tapping the row flips the current (true) value to false.
-    await tester.tap(find.text('Dim chat when idle'));
+    await _tap(tester, find.text('Dim chat when idle'));
     expect(changed, isFalse);
   });
 

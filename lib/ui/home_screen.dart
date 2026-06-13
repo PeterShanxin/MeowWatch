@@ -1243,6 +1243,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           ignoring: _chatDragging || _isUiIdle,
                           child: PlayerMenuButton(
                             roomCode: widget.config.room,
+                            // Short/redacted label for a URL so a signed token
+                            // isn't shown (and a long link doesn't bloat the menu).
+                            nowPlaying: state.fileName == null
+                                ? null
+                                : mediaDisplayName(state.fileName!),
                             // Wire identities for the roster + isMe match; the
                             // "you" row shows our chosen name, not a transient
                             // reconnect dedupe suffix the server may assign (#107).
