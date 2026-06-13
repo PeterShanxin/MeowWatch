@@ -381,4 +381,30 @@ void main() {
     expect(sync.changes, contains(false),
         reason: 'play on a confirmed live stream is a non-seek local change');
   });
+
+  test('confirming a source the user already started playing re-asserts the play',
+      () async {
+    const live = 'https://x.test/live.m3u8';
+    // The user pressed play while the source was still unconfirmed: the playing
+    // tick is suppressed — not published, no change emitted.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.playing,
+      position: Duration.zero,
+      filePath: live,
+      fileName: 'live.m3u8',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    expect(sync.localUpdates, isEmpty);
+    expect(sync.changes, isEmpty);
+
+    // Confirmation must re-assert that pending play as an intentional local
+    // change, or a peer's stale paused heartbeat could win convergence and
+    // pause us back / the friend never gets the play we already requested.
+    bridge.markSourceOpen(live);
+    await Future<void>.delayed(Duration.zero);
+    expect(sync.localUpdates, isNotEmpty,
+        reason: 'a confirmed source heartbeats');
+    expect(sync.changes, contains(false),
+        reason: 'the already-started play is re-asserted as a local change');
+  });
 }

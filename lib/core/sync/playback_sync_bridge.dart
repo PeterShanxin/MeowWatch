@@ -74,6 +74,16 @@ class PlaybackSyncBridge {
   void markSourceOpen(String source) {
     _confirmedOpenSource = source;
     _onLocalState(video.state);
+    // If the user pressed play while this source was still unconfirmed, that
+    // play tick was suppressed (not published, no change emitted) and the replay
+    // above sees it as a file-load event rather than a pause→play flip. Re-assert
+    // the play as an intentional local change so the room follows our play
+    // instead of a peer's stale paused heartbeat winning convergence and pausing
+    // us back. A source confirmed while `paused` (the normal load) needs nothing.
+    if (video.state.filePath == source &&
+        video.state.status == PlaybackStatus.playing) {
+      sync.notifyLocalChange(doSeek: false);
+    }
   }
 
   void _onLocalState(PlaybackState s) {

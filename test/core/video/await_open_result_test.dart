@@ -26,17 +26,10 @@ class _ManualVideoCore extends VideoCore {
         duration: const Duration(minutes: 30),
       ));
 
-  /// A premature user play over a not-yet-open source: `playing`, no duration,
-  /// position still at zero. NOT evidence the source is good.
+  /// The user pressing play over a still-opening source: `playing`, no duration,
+  /// position still at zero (the player pins a durationless stream's position).
   void emitPrematurePlay() =>
       emit(state.copyWith(status: PlaybackStatus.playing));
-
-  /// A live stream genuinely delivering frames: `playing` with an advancing
-  /// position but (as a live stream) no duration.
-  void emitPlayingLive() => emit(state.copyWith(
-        status: PlaybackStatus.playing,
-        position: const Duration(seconds: 2),
-      ));
 
   void emitError() => emit(state.copyWith(
         status: PlaybackStatus.error,
@@ -104,28 +97,13 @@ void main() {
     );
   });
 
-  test('a premature play (playing, no duration, position 0) resolves to false '
-      'after the timeout', () async {
-    await core.load('https://x.test/slow.mp4');
-    // The user pressed Space while the source was still opening: media_kit
-    // reports `playing` with no duration before the open succeeds or errors.
-    core.emitPrematurePlay();
-    expect(
-      await awaitOpenResult(
-        core,
-        source: 'https://x.test/slow.mp4',
-        timeout: const Duration(milliseconds: 50),
-      ),
-      isFalse,
-    );
-  });
-
-  test('a playing live stream whose position advanced resolves to true after '
-      'the timeout', () async {
+  test('a source still playing at the timeout (no error) resolves to true — a '
+      'durationless live stream the user started early', () async {
     await core.load('https://x.test/live.m3u8');
-    // Frames are flowing (position advancing) even though a live stream reports
-    // no duration — positive evidence the source is good.
-    core.emitPlayingLive();
+    // The user pressed Space during the open; a live/direct stream stays
+    // `playing` at position 0 with no duration. No error arrived within the
+    // window, so it is a good source — a bad one would have errored by now.
+    core.emitPrematurePlay();
     expect(
       await awaitOpenResult(
         core,
@@ -134,6 +112,15 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  test('a source that plays then errors resolves to false (the error wins)',
+      () async {
+    await core.load('https://x.test/dead.mp4');
+    final result = awaitOpenResult(core, source: 'https://x.test/dead.mp4');
+    core.emitPrematurePlay(); // user pressed play over a still-opening source
+    core.emitError(); // …which then turns out to be bad
+    expect(await result, isFalse);
   });
 
   test('a still-loading hang resolves to false after the timeout', () async {

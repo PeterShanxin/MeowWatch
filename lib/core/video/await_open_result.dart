@@ -15,13 +15,14 @@ import 'video_core.dart';
 /// the core state and reports its own outcome. This keeps a stale/slow load from
 /// consuming a state, error, or open that now belongs to a different source.
 ///
-/// On [timeout] we resolve optimistically only on positive-enough evidence: a
-/// `paused` source (a valid live stream may stay `paused` with no duration
-/// indefinitely, and we'd rather announce a slow-but-good stream than hang), or a
-/// `playing` source whose position has advanced past zero (frames are flowing). A
-/// `playing` source still at position zero is a premature user play over a
-/// not-yet-open source and is rejected. A source still `loading` (or `idle`) at
-/// the timeout never opened — a hang or a late error — so it resolves to `false`.
+/// On [timeout] we resolve optimistically if the source has reached a playable
+/// state (`paused` or `playing`), even with no duration: a live/direct stream
+/// stays that way indefinitely (no duration; position pinned at 0 by the player),
+/// and we'd rather announce a slow-but-good stream than hang. A bad source does
+/// not linger here — it raises an mpv error within the window, which the error
+/// check above resolves to `false` well before this generous timeout. A source
+/// still `loading` (or `idle`) at the timeout never reached a playable state — a
+/// hang — so it resolves to `false`.
 Future<bool> awaitOpenResult(
   VideoCore core, {
   required String source,
@@ -48,15 +49,14 @@ Future<bool> awaitOpenResult(
 
   if (superseded(settled) || isError(settled)) return false;
   if (isPlaybackOpen(settled)) return true;
-  // Timed out without a confirmed open. Trust a `paused` source — a valid live
-  // stream sits `paused` with no duration until the user plays it. Trust a
-  // `playing` source only if its position has advanced past zero: that is real
-  // evidence frames are flowing. A `playing` source still at position zero is the
-  // premature-play case — the user pressed Space while a slow/bad source was
-  // still opening, and media_kit reported `playing` with no duration before the
-  // open succeeded or errored, so it is NOT evidence the source is good. Anything
-  // still `loading`/`idle` never opened either.
+  // Timed out having reached a playable state (`paused` or `playing`) but with no
+  // duration. Trust it: a live/direct stream legitimately reports no duration and
+  // its position is pinned at 0 by the player (`position_guard.dart`), so neither
+  // a duration nor an advancing position is observable for it. A *bad* source
+  // does not sit here — it surfaces an mpv error on its stream within the window,
+  // which the `isError` branch above already resolves to `false` long before this
+  // generous timeout. A source still `loading`/`idle` at the timeout never
+  // reached a playable state, so it remains `false`.
   return settled.status == PlaybackStatus.paused ||
-      (settled.status == PlaybackStatus.playing &&
-          settled.position > Duration.zero);
+      settled.status == PlaybackStatus.playing;
 }
