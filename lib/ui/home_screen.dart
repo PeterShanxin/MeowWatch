@@ -958,8 +958,13 @@ class _HomeScreenState extends State<HomeScreen> {
     // this one while we awaited — the core now describes that other source. Bail
     // rather than record/announce this stale path against it.
     if (!mounted || _core.state.filePath != path) return false;
-    _loadedSource = path;
     await _recordOpen(path);
+    // _recordOpen awaits file-size/DB work; a newer load could have started and
+    // swapped the core state (and _localFileSizeBytes) meanwhile. Re-check before
+    // announcing/chatting so we never announce the newer source with this load's
+    // name and size.
+    if (!mounted || _core.state.filePath != path) return false;
+    _loadedSource = path;
     await _announceCurrentFile();
     _addLoadedFileMessage();
     return true;
