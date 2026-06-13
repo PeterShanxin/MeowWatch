@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.26.0-alpha] - 2026-06-13
+- The gear menu now shows a **"Now playing"** line with the name of the video you've got loaded, so anyone in the room can glance at the menu and confirm you're both on the same episode — no more guessing from the seek bar. Long filenames stay tidy (they wrap to two lines and trim with "…" rather than stretching the menu), and when nothing is loaded it simply says "Nothing loaded yet". (#133)
+- Fixed a glitch where loading a **new episode right after the last one finished** could leave the player parked at the previous episode's end instead of jumping back to `0:00`. The old ending position could linger for a moment during the switch — and in a room that risked nudging your friend to the wrong spot — so the app now ignores any stale end-of-video position while the next file loads. (#132)
+
 ## [0.25.0-alpha] - 2026-06-13
 - "Start new room" now copies a cute **magic sentence** instead of a code with a random tail — something like `sleepy-otter-counts-cozy-stars`. It's pleasant to read and say aloud, and its privacy now comes entirely from friendly words rather than a gibberish suffix like `…-k3pn`. There are ~700 million possible sentences (kept short so the room name fits the Syncplay server's length limit), so a friend can't stumble into your room by guessing. Paste the whole sentence into "Enter code from friend" to join. Your old room codes — bare `happy-cat-11` names and earlier `happy-cat-11-k3pn` private codes alike — keep working exactly as before, so saved rooms and any codes you've already shared still meet up. (#109)
 

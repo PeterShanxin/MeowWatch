@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 
 import 'playback_state.dart';
+import 'position_guard.dart';
 import 'video_core.dart';
 import 'video_decode_config.dart';
 
@@ -24,6 +25,12 @@ class MediaKitVideoCore extends VideoCore {
   final Player _player;
   late final VideoController videoController;
   late final List<StreamSubscription<Object?>> _subs;
+
+  /// `false` from a [load] until playback is actually started or deliberately
+  /// positioned ([play]/[seek]). While `false`, a freshly loaded file sits at
+  /// 0:00 (we open with `play: false`), so non-zero positions in this window
+  /// are stale ticks from the previous file and must be dropped (#132).
+  bool _playbackStarted = false;
 
   Player get player => _player;
 
@@ -69,6 +76,17 @@ class MediaKitVideoCore extends VideoCore {
         ));
       }),
       _player.stream.position.listen((pos) {
+        // Reject a stale end-of-file position from the previous file that
+        // libmpv can deliver mid-load — otherwise a freshly loaded episode
+        // shows the old one's end instead of 0:00, and a room would broadcast
+        // the wrong position (#132). See [acceptPlayerPosition].
+        if (!acceptPlayerPosition(
+          incoming: pos,
+          duration: state.duration,
+          started: _playbackStarted,
+        )) {
+          return;
+        }
         emit(state.copyWith(position: pos));
       }),
       _player.stream.duration.listen((dur) {
@@ -91,6 +109,10 @@ class MediaKitVideoCore extends VideoCore {
 
   @override
   Future<void> load(String filePath) async {
+    // Arm the stale-position guard: until the user plays or seeks, the new file
+    // legitimately sits at 0:00 and any non-zero tick is the previous file's
+    // lingering end position (#132).
+    _playbackStarted = false;
     emit(state.copyWith(
       status: PlaybackStatus.loading,
       fileName: p.basename(filePath),
@@ -103,13 +125,19 @@ class MediaKitVideoCore extends VideoCore {
   }
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() {
+    _playbackStarted = true;
+    return _player.play();
+  }
 
   @override
   Future<void> pause() => _player.pause();
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) {
+    _playbackStarted = true;
+    return _player.seek(position);
+  }
 
   @override
   Future<void> setVolume(double volume) =>
