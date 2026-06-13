@@ -58,15 +58,28 @@ class PlaybackSyncBridge {
   void _onLocalState(PlaybackState s) {
     final paused = s.status != PlaybackStatus.playing;
 
-    // Always feed the latest position to the sync layer for its heartbeat.
+    // A not-yet-playable (`loading`) or failed (`error`) state must NOT feed the
+    // outgoing heartbeat: a new or failing load sits at position 0 paused, and
+    // pushing that to the room would make a watching peer pause/rewind for a load
+    // that may never complete (e.g. an unreachable URL). Keep the seek-detection
+    // bookkeeping so the next real tick isn't read as a seek, but don't publish.
+    if (s.status == PlaybackStatus.loading ||
+        s.status == PlaybackStatus.error) {
+      _lastFilePath = s.filePath;
+      _lastPaused = paused;
+      _lastPosition = s.position;
+      _lastTick = DateTime.now();
+      return;
+    }
+
+    // Feed the latest playable position to the sync layer for its heartbeat.
     sync.updateLocalState(position: s.position, paused: paused);
 
-    // Suppress seek detection on a file-load event. Two conditions cover all
-    // cases: a different filePath means a new (or different) file was opened;
-    // PlaybackStatus.loading fires on every load including a same-file reload,
-    // catching the position-reset-to-0 that would otherwise look like a seek.
-    final isLoadEvent =
-        s.filePath != _lastFilePath || s.status == PlaybackStatus.loading;
+    // Suppress seek detection on a file-load event: a different filePath means a
+    // new (or different) file was opened — catching the position-reset-to-0 that
+    // would otherwise look like a seek. (The `loading` tick is already handled
+    // above.)
+    final isLoadEvent = s.filePath != _lastFilePath;
     if (isLoadEvent) {
       _lastFilePath = s.filePath;
       _lastPaused = paused;

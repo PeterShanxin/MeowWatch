@@ -281,4 +281,41 @@ void main() {
 
     expect(sync.changes, isEmpty);
   });
+
+  test('loading and error states are NOT published to the heartbeat', () async {
+    // A new/failing load sits at position 0 paused; pushing that to the room
+    // would make a watching peer pause/rewind for a load that may never land.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.loading,
+      position: Duration.zero,
+      filePath: '/videos/new.mkv',
+      fileName: 'new.mkv',
+    ));
+    video.push(const PlaybackState(
+      status: PlaybackStatus.error,
+      position: Duration.zero,
+      filePath: '/videos/new.mkv',
+      fileName: 'new.mkv',
+      errorMessage: 'boom',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.localUpdates, isEmpty,
+        reason: 'unconfirmed/failed loads must not drive the room heartbeat');
+  });
+
+  test('a playable state IS published to the heartbeat', () async {
+    video.push(const PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration(seconds: 3),
+      duration: Duration(minutes: 10),
+      filePath: '/videos/a.mkv',
+      fileName: 'a.mkv',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.localUpdates, isNotEmpty);
+    expect(sync.localUpdates.last.position, const Duration(seconds: 3));
+    expect(sync.localUpdates.last.paused, isTrue);
+  });
 }

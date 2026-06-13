@@ -46,7 +46,9 @@ Future<bool> awaitOpenResult(
 
   if (superseded(settled) || isError(settled)) return false;
   if (isPlaybackOpen(settled)) return true;
-  // Timed out without a confirmed open: trust a live stream that has reached
-  // `paused` for this source; reject anything still `loading`/`idle`.
-  return settled.status == PlaybackStatus.paused;
+  // Timed out without a confirmed open: trust a live stream that has reached a
+  // playable state for this source (paused, or playing if the user pressed play)
+  // but never reported a duration; reject anything still `loading`/`idle`.
+  return settled.status == PlaybackStatus.paused ||
+      settled.status == PlaybackStatus.playing;
 }

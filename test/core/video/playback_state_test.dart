@@ -67,29 +67,31 @@ void main() {
   });
 
   group('isPlaybackOpen', () {
-    test('playing and ended are open', () {
-      expect(
-        isPlaybackOpen(const PlaybackState(status: PlaybackStatus.playing)),
-        isTrue,
-      );
+    test('ended is open on its own', () {
       expect(
         isPlaybackOpen(const PlaybackState(status: PlaybackStatus.ended)),
         isTrue,
       );
     });
 
-    test('paused is open only with a non-zero duration', () {
-      expect(
-        isPlaybackOpen(const PlaybackState(status: PlaybackStatus.paused)),
-        isFalse, // transient post-open tick, no duration yet
-      );
-      expect(
-        isPlaybackOpen(const PlaybackState(
-          status: PlaybackStatus.paused,
-          duration: Duration(minutes: 5),
-        )),
-        isTrue,
-      );
+    test('playing and paused are open only with a non-zero duration', () {
+      // A premature user play / the transient post-open tick has no duration
+      // yet and must not count as a confirmed open.
+      for (final s in [PlaybackStatus.playing, PlaybackStatus.paused]) {
+        expect(
+          isPlaybackOpen(PlaybackState(status: s)),
+          isFalse,
+          reason: '$s without duration',
+        );
+        expect(
+          isPlaybackOpen(PlaybackState(
+            status: s,
+            duration: const Duration(minutes: 5),
+          )),
+          isTrue,
+          reason: '$s with duration',
+        );
+      }
     });
 
     test('idle, loading and error are not open', () {
