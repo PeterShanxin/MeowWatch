@@ -195,6 +195,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// confirmed open in [_load], invalidated when a new load starts.
   String? _loadedSource;
 
+  /// Bumped at the start of every [_load]. Browse/Paste/drop stay reachable
+  /// while a load is in flight, so a newer load can supersede an older one that's
+  /// still awaiting its async open result. Each [_load] captures its generation
+  /// and abandons quietly at every `await` boundary once it's no longer current,
+  /// so a stale load can't fail, record, announce, or chat against the source a
+  /// newer load now owns.
+  int _loadGeneration = 0;
+
   /// Debounce before auto-pausing: a brief blip (e.g. a heartbeat timeout that
   /// recovers a second later, common when two instances share one PC) should
   /// NOT pause — only a sustained loss of sync.
@@ -935,6 +943,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<bool> _load(String path) async {
     // We now have a video, so the "load a video to join" prompt is moot (#60).
     if (_joinPrompt != null && mounted) setState(() => _joinPrompt = null);
+    // This load's generation. A newer load bumps it; we abandon at every await
+    // boundary below once we're no longer current, so a stale/slow load can't act
+    // on a core state that now belongs to a different source.
+    final gen = ++_loadGeneration;
     // Invalidate the accepted-source marker until this load is confirmed, so a
     // reconnect mid-load can't re-announce the previous source.
     _loadedSource = null;
@@ -945,27 +957,29 @@ class _HomeScreenState extends State<HomeScreen> {
     // or post a "Loaded …" chat line until it actually opens, or a failed source
     // would surface to peers and history as loaded while we show the error
     // screen. Applies to local files too, not just URLs.
-    if (!await awaitOpenResult(_core)) {
+    final opened = await awaitOpenResult(_core, source: path);
+    // Superseded while we awaited: a newer load owns the core now, so do nothing
+    // here (no failLoad, no announce) — the newer load reports its own outcome.
+    if (gen != _loadGeneration) return false;
+    if (!opened) {
       // A hang (timed out still `loading`, no mpv error) must be surfaced as an
       // error, or the user is stuck on a frozen loading surface with no recovery
-      // buttons (those only show on PlaybackStatus.error).
-      if (_core.state.status == PlaybackStatus.loading) {
+      // buttons (those only show on PlaybackStatus.error). Guard on the path too
+      // so we never force the error onto a different source.
+      if (_core.state.status == PlaybackStatus.loading &&
+          _core.state.filePath == path) {
         _core.failLoad('Timed out waiting for the video to open.');
       }
       return false;
     }
-    // Browse / Paste / drop stay reachable, so a newer load may have superseded
-    // this one while we awaited — the core now describes that other source. Bail
-    // rather than record/announce this stale path against it.
     if (!mounted || _core.state.filePath != path) return false;
     await _recordOpen(path);
     // _recordOpen awaits file-size/DB work; a newer load could have started and
-    // swapped the core state (and _localFileSizeBytes) meanwhile. Re-check before
-    // announcing/chatting so we never announce the newer source with this load's
-    // name and size.
-    if (!mounted || _core.state.filePath != path) return false;
+    // swapped the core state (and _localFileSizeBytes) meanwhile.
+    if (gen != _loadGeneration || !mounted) return false;
     _loadedSource = path;
     await _announceCurrentFile();
+    if (gen != _loadGeneration) return false;
     _addLoadedFileMessage();
     return true;
   }
@@ -1051,6 +1065,9 @@ class _HomeScreenState extends State<HomeScreen> {
     // For a URL, size is unknown (streams have no byte length) and the URL
     // itself is the name we share — matching official Syncplay.
     final size = isHttpUrl(path) ? 0 : await _fileSize(path);
+    // Statting a local file awaits; a newer load may have swapped the source in
+    // the meantime. Don't announce this (now-stale) file against the new source.
+    if (_core.state.filePath != path) return;
     _sync.announceFile(
       name: state.fileName ?? path,
       size: size,

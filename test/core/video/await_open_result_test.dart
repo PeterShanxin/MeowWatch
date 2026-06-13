@@ -45,20 +45,21 @@ class _ManualVideoCore extends VideoCore {
 
 void main() {
   late _ManualVideoCore core;
+  const src = 'https://x.test/a.mp4';
 
   setUp(() => core = _ManualVideoCore());
   tearDown(() => core.dispose());
 
   test('true once the source actually opens (paused + duration)', () async {
-    await core.load('https://x.test/a.mp4');
-    final result = awaitOpenResult(core);
+    await core.load(src);
+    final result = awaitOpenResult(core, source: src);
     core.emitOpened();
     expect(await result, isTrue);
   });
 
   test('false when the source errors', () async {
     await core.load('https://x.test/dead.mp4');
-    final result = awaitOpenResult(core);
+    final result = awaitOpenResult(core, source: 'https://x.test/dead.mp4');
     core.emitError();
     expect(await result, isFalse);
   });
@@ -66,23 +67,27 @@ void main() {
   test('the immediate paused tick is NOT mistaken for an open; a later '
       'error still wins', () async {
     await core.load('https://x.test/dead.mp4');
-    final result = awaitOpenResult(core);
+    final result = awaitOpenResult(core, source: 'https://x.test/dead.mp4');
     core.emitPausedTick(); // paused, no duration — must not settle as opened
     core.emitError(); // the real outcome
     expect(await result, isFalse);
   });
 
   test('returns immediately when already opened before the call', () async {
-    await core.load('https://x.test/a.mp4');
+    await core.load(src);
     core.emitOpened();
-    expect(await awaitOpenResult(core), isTrue);
+    expect(await awaitOpenResult(core, source: src), isTrue);
   });
 
   test('a paused-only (live) load resolves to true after the timeout', () async {
     await core.load('https://x.test/slow-live.m3u8');
     core.emitPausedTick(); // live stream: paused, never a duration, never errors
     expect(
-      await awaitOpenResult(core, timeout: const Duration(milliseconds: 50)),
+      await awaitOpenResult(
+        core,
+        source: 'https://x.test/slow-live.m3u8',
+        timeout: const Duration(milliseconds: 50),
+      ),
       isTrue,
     );
   });
@@ -92,8 +97,30 @@ void main() {
     // No tick at all — open() never returned a playable state. A timeout here
     // must NOT be treated as a successful load.
     expect(
-      await awaitOpenResult(core, timeout: const Duration(milliseconds: 50)),
+      await awaitOpenResult(
+        core,
+        source: 'https://x.test/never-responds.mp4',
+        timeout: const Duration(milliseconds: 50),
+      ),
       isFalse,
     );
+  });
+
+  test('a superseding load (filePath changes) resolves the old wait to false',
+      () async {
+    await core.load(src);
+    final result = awaitOpenResult(core, source: src);
+    // A newer load takes over the shared core: filePath no longer matches src.
+    await core.load('https://x.test/b.mp4');
+    expect(await result, isFalse);
+  });
+
+  test("a superseded source's later open does not count for the old wait",
+      () async {
+    await core.load(src);
+    final result = awaitOpenResult(core, source: src);
+    await core.load('https://x.test/b.mp4'); // supersede
+    core.emitOpened(); // this open belongs to b, not src
+    expect(await result, isFalse);
   });
 }
