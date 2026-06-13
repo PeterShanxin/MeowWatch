@@ -233,6 +233,9 @@ class _HomeScreenState extends State<HomeScreen> {
   late String _username;
   bool _peekPulsing = false;
   Timer? _peekTimer;
+  /// Non-null while the load-screen "Press Tab" hint toast is on screen; its
+  /// value re-keys [_FadingToast] so each show replays the fade animation.
+  int? _chatHintToken;
   Timer? _historyTimer;
   StreamSubscription<List<ChatMessage>>? _chatSub;
   StreamSubscription<ReactionEvent>? _reactionSub;
@@ -543,39 +546,33 @@ class _HomeScreenState extends State<HomeScreen> {
     // Skipped if we're resuming straight into a video.
     if (resume == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _core.state.fileName == null) _showChatTabHint();
+        if (!mounted || _core.state.fileName != null) return;
+        // Give the invisible root holder focus so the FIRST Tab bubbles to the
+        // chat toggle instead of being swallowed by default focus traversal —
+        // otherwise the load screen needs two Tab presses to open chat.
+        _rootFocus.requestFocus();
+        _showChatTabHint();
       });
     }
   }
 
-  /// A brief, fading bottom toast teaching the Tab shortcut, plus a one-shot
-  /// pulse of the collapsed chat tab — shown each time the user lands on the
-  /// load screen so chat (which starts collapsed) stays discoverable.
+  /// Show the load-screen hint as a self-fading bottom toast (see [_FadingToast]:
+  /// fades + slides in, holds, then fades + slides out — never a hard cut), plus
+  /// a one-shot pulse of the collapsed chat tab. Shown each time the user lands
+  /// on the load screen so chat (which starts collapsed) stays discoverable. The
+  /// bumped [_chatHintSeq] re-keys the toast so a repeat show replays the
+  /// animation even if one is still on screen.
   void _showChatTabHint() {
     if (!mounted) return;
-    final m = context.meow;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: m.surface,
-          duration: const Duration(seconds: 4),
-          content: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.chat_bubble_outline,
-                  size: IconSizes.md, color: m.accent),
-              const SizedBox(width: Spacing.md),
-              Text(
-                'Press Tab to show or hide chat',
-                style: TextStyle(color: m.textPrimary),
-              ),
-            ],
-          ),
-        ),
-      );
+    // Bump the token: a fresh value re-keys (and so replays) the toast even if a
+    // previous one is still fading on screen.
+    setState(() => _chatHintToken = (_chatHintToken ?? 0) + 1);
     if (_chatLayout.collapsed) _pulsePeek();
+  }
+
+  /// Tear down the hint toast once its exit animation has finished.
+  void _dismissChatTabHint() {
+    if (mounted) setState(() => _chatHintToken = null);
   }
 
   Future<void> _initSettings() async {
@@ -803,17 +800,24 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_chatLayout.collapsed) _restorePlayerFocus();
   }
 
-  /// Hand keyboard focus back to a focused descendant after the chat collapses
-  /// (which removes its auto-focused text field). The video surface when one is
-  /// loaded, else the invisible root holder — either way the top-level Tab
-  /// handler always has a focused node to bubble from, so Tab toggles on a
-  /// single press. Called from BOTH the chevron toggle and the drag-to-hide
-  /// snap — the drag path used to skip this, which is why hiding-by-drag then
-  /// needed two Tab presses.
+  /// True only while a real [VideoSurface] is on screen — not on the empty/load
+  /// screen and not on the load-error screen (which shows [VideoErrorState], so
+  /// `_videoFocus` is attached to nothing). Mirrors the `videoVisible` gate in
+  /// [build] so focus is always requested on a node that actually exists.
+  bool get _videoSurfaceMounted =>
+      _core.state.fileName != null &&
+      _core.state.status != PlaybackStatus.error;
+
+  /// Put keyboard focus on whichever node is live for the current screen so the
+  /// top-level Tab handler always has a focused descendant to bubble from and
+  /// Tab toggles chat on a *single* press. The video surface when one is
+  /// mounted, else the invisible root holder. Called on load-screen entry and
+  /// whenever the chat collapses (chevron toggle AND drag-to-hide snap — the
+  /// drag path used to skip this, which is why hiding-by-drag needed two Taps).
   void _restorePlayerFocus() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_core.state.fileName != null) {
+      if (_videoSurfaceMounted) {
         _videoFocus.requestFocus();
       } else {
         _rootFocus.requestFocus();
@@ -1395,6 +1399,17 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ),
+                    // Load-screen "Press Tab" hint — a self-fading bottom toast.
+                    if (_chatHintToken != null)
+                      Align(
+                        alignment: const Alignment(0, 0.92),
+                        child: _FadingToast(
+                          key: ValueKey<int>(_chatHintToken!),
+                          icon: Icons.chat_bubble_outline,
+                          text: 'Press Tab to show or hide chat',
+                          onDismissed: _dismissChatTabHint,
+                        ),
+                      ),
                   ],
                 );
               },
@@ -1428,6 +1443,107 @@ class _SyncHintBanner extends StatelessWidget {
         child: Text(
           text,
           style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
+        ),
+      ),
+    );
+  }
+}
+
+/// A bottom toast that fades + slides itself in, holds, then fades + slides out
+/// — so a transient hint is never removed with a hard cut. Calls [onDismissed]
+/// once the exit animation finishes so the parent can drop it from the tree.
+/// Enter and exit both use the shared [Motion] tokens (`base` duration,
+/// `standard` curve); see the Motion section of the design-system spec.
+class _FadingToast extends StatefulWidget {
+  const _FadingToast({
+    super.key,
+    required this.icon,
+    required this.text,
+    required this.onDismissed,
+  });
+
+  final IconData icon;
+  final String text;
+  final VoidCallback onDismissed;
+
+  /// How long the toast stays fully visible between its fade-in and fade-out.
+  static const Duration hold = Duration(seconds: 3);
+
+  @override
+  State<_FadingToast> createState() => _FadingToastState();
+}
+
+class _FadingToastState extends State<_FadingToast>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: Motion.base, // fade/slide in
+    reverseDuration: Motion.base, // fade/slide out
+  );
+  late final Animation<double> _curve = CurvedAnimation(
+    parent: _controller,
+    curve: Motion.standard,
+    reverseCurve: Motion.standard,
+  );
+  Timer? _holdTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.forward();
+    _holdTimer = Timer(_FadingToast.hold, _fadeOut);
+  }
+
+  void _fadeOut() {
+    if (!mounted) return;
+    _controller.reverse().whenComplete(() {
+      if (mounted) widget.onDismissed();
+    });
+  }
+
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return IgnorePointer(
+      child: FadeTransition(
+        opacity: _curve,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.35),
+            end: Offset.zero,
+          ).animate(_curve),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Spacing.lg,
+              vertical: Spacing.md,
+            ),
+            decoration: BoxDecoration(
+              color: m.surface,
+              borderRadius: BorderRadius.circular(Radii.lg),
+              border: Border.all(color: m.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(widget.icon, size: IconSizes.md, color: m.accent),
+                const SizedBox(width: Spacing.md),
+                Text(
+                  widget.text,
+                  style: TextStyle(
+                    color: m.textPrimary,
+                    fontSize: TypeScale.label,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

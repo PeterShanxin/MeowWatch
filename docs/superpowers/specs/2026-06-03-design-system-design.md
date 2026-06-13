@@ -93,6 +93,8 @@ The ~104 hand-typed insets/gaps snap to the nearest step; oddballs (e.g. 18, 28)
 
 Today's curves (`easeOut`, `easeOutCubic`, `easeIn`, `easeInOut`) consolidate to these two. Durations snap to the nearest named speed.
 
+**Transient toasts / hints** (e.g. the load-screen "Press Tab to show or hide chat" nudge) must animate **both ways** — never a hard cut. The pattern: fade + slide **in** (slide up a short distance) over `base` with `standard`, hold briefly (~3s), then fade + slide **out** over `base` with `standard`, and only then leave the tree. The exit animation is required, not optional — a hint that vanishes instantly reads as a glitch. Implemented by `_FadingToast` in `lib/ui/home_screen.dart`.
+
 ### Icon / glyph sizes
 
 - Icons: `sm 16 · md 20 · lg 24 · xl 32`
