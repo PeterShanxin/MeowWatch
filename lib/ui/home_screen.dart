@@ -1022,7 +1022,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (gen != _loadGeneration || !mounted) return false;
     _loadedSource = path;
     await _announceCurrentFile();
-    if (gen != _loadGeneration) return false;
+    // `dispose()` doesn't bump the generation, so guard on `mounted` too — a
+    // leave/close during the announce await must not post a chat line into an
+    // already-disposed ChatStore (closed controller → uncaught async error).
+    if (gen != _loadGeneration || !mounted) return false;
     _addLoadedFileMessage();
     return true;
   }
@@ -1065,7 +1068,13 @@ class _HomeScreenState extends State<HomeScreen> {
     // A stream URL has no byte size — don't stat it as a file (the URL isn't a
     // valid path, and on Windows the ':' would throw a different error).
     final size = isHttpUrl(path) ? 0 : await _fileSize(path);
-    if (mounted) setState(() => _localFileSizeBytes = size);
+    // `_localFileSizeBytes` is the *current* file's size, used for the
+    // file-match comparison. Only commit it while this load is still current —
+    // a slow stat for a superseded file would otherwise overwrite the new
+    // file's size and trigger a false mismatch against a peer on the same file.
+    if (mounted && _core.state.filePath == path) {
+      setState(() => _localFileSizeBytes = size);
+    }
     await widget.history.recordOpen(
       filePath: path,
       fileName: state.fileName ?? path,
