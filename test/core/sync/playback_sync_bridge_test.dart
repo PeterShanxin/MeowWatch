@@ -88,11 +88,17 @@ void main() {
   });
 
   test('local pause toggle notifies a non-seek change', () async {
-    video.push(
-        const PlaybackState(status: PlaybackStatus.playing, fileName: 'a'));
+    // Confirmed-open states carry a duration; only those drive the heartbeat
+    // and seek/pause detection.
+    video.push(const PlaybackState(
+        status: PlaybackStatus.playing,
+        duration: Duration(minutes: 10),
+        fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
-    video.push(
-        const PlaybackState(status: PlaybackStatus.paused, fileName: 'a'));
+    video.push(const PlaybackState(
+        status: PlaybackStatus.paused,
+        duration: Duration(minutes: 10),
+        fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
     expect(sync.changes, contains(false));
   });
@@ -101,11 +107,13 @@ void main() {
     video.push(const PlaybackState(
         status: PlaybackStatus.playing,
         position: Duration(seconds: 1),
+        duration: Duration(minutes: 10),
         fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
     video.push(const PlaybackState(
         status: PlaybackStatus.playing,
         position: Duration(seconds: 30),
+        duration: Duration(minutes: 10),
         fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
     expect(sync.changes, contains(true));
@@ -250,6 +258,7 @@ void main() {
     video.push(const PlaybackState(
       status: PlaybackStatus.playing,
       position: Duration(seconds: 5),
+      duration: Duration(minutes: 10),
       filePath: '/videos/a.mkv',
       fileName: 'a.mkv',
     ));
@@ -260,6 +269,7 @@ void main() {
     video.push(const PlaybackState(
       status: PlaybackStatus.playing,
       position: Duration(seconds: 90),
+      duration: Duration(minutes: 10),
       filePath: '/videos/a.mkv',
       fileName: 'a.mkv',
     ));
@@ -302,6 +312,23 @@ void main() {
 
     expect(sync.localUpdates, isEmpty,
         reason: 'unconfirmed/failed loads must not drive the room heartbeat');
+  });
+
+  test('a zero-duration pre-error tick is NOT published to the heartbeat',
+      () async {
+    // The instant open() returns, a bad/slow source emits `paused` at position 0
+    // with no duration yet — *before* its error. It is no longer `loading`, but
+    // it is not a confirmed open either; publishing it would pause/rewind a peer.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration.zero,
+      filePath: '/videos/bad.mp4',
+      fileName: 'bad.mp4',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.localUpdates, isEmpty,
+        reason: 'a zero-duration (unconfirmed) open must not drive the heartbeat');
   });
 
   test('a playable state IS published to the heartbeat', () async {

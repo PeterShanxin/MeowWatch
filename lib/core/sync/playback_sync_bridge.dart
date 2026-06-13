@@ -58,13 +58,15 @@ class PlaybackSyncBridge {
   void _onLocalState(PlaybackState s) {
     final paused = s.status != PlaybackStatus.playing;
 
-    // A not-yet-playable (`loading`) or failed (`error`) state must NOT feed the
-    // outgoing heartbeat: a new or failing load sits at position 0 paused, and
-    // pushing that to the room would make a watching peer pause/rewind for a load
-    // that may never complete (e.g. an unreachable URL). Keep the seek-detection
-    // bookkeeping so the next real tick isn't read as a seek, but don't publish.
-    if (s.status == PlaybackStatus.loading ||
-        s.status == PlaybackStatus.error) {
+    // Only a *confirmed open* feeds the outgoing heartbeat. `loading`/`error`
+    // and the zero-duration pre-error tick that a bad or slow source emits the
+    // instant `open()` returns all sit at position 0 — pushing any of them to the
+    // room would make a watching peer pause/rewind for a load that may never
+    // land (e.g. an unreachable URL). `isPlaybackOpen` is the same gate `_load`
+    // waits on (a real duration, or `ended`), so the heartbeat and the announce
+    // agree on what "opened" means. Keep the seek-detection bookkeeping so the
+    // next real tick isn't read as a seek, but don't publish until then.
+    if (!isPlaybackOpen(s)) {
       _lastFilePath = s.filePath;
       _lastPaused = paused;
       _lastPosition = s.position;
