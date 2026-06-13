@@ -346,31 +346,39 @@ void main() {
     expect(sync.localUpdates.last.paused, isTrue);
   });
 
-  test('an accepted live stream (no duration) still drives the heartbeat once '
-      'playback advances', () async {
-    // A live/direct stream never reports a duration. It is accepted once frames
-    // flow (position advances past zero), and from then on its play/pause must
-    // reach the room — not be dropped for lacking a duration.
+  test('an accepted live stream (no duration) drives the heartbeat after '
+      'markSourceOpen', () async {
+    const live = 'https://x.test/live.m3u8';
+    // A live/direct stream sits at position 0 with no duration — the player pins
+    // its position at 0 (position_guard) so the bridge cannot infer "open" from
+    // the stream alone. Until the coordinator confirms it, it must not heartbeat.
     video.push(const PlaybackState(
-      status: PlaybackStatus.playing,
-      position: Duration(seconds: 2),
-      filePath: 'https://x.test/live.m3u8',
+      status: PlaybackStatus.paused,
+      position: Duration.zero,
+      filePath: live,
       fileName: 'live.m3u8',
     ));
     await Future<void>.delayed(Duration.zero);
+    expect(sync.localUpdates, isEmpty,
+        reason: 'an unconfirmed durationless stream must not heartbeat');
+
+    // The load coordinator accepts it: now it heartbeats even with no duration,
+    // and markSourceOpen replays the current state immediately.
+    bridge.markSourceOpen(live);
+    await Future<void>.delayed(Duration.zero);
     expect(sync.localUpdates, isNotEmpty,
-        reason: 'an accepted live stream must heartbeat even with no duration');
+        reason: 'a confirmed live stream heartbeats even without a duration');
     sync.changes.clear();
 
-    // A later pause on the same live source is a non-seek local change.
+    // A later play on the same live source is a non-seek local change.
     video.push(const PlaybackState(
-      status: PlaybackStatus.paused,
-      position: Duration(seconds: 3),
-      filePath: 'https://x.test/live.m3u8',
+      status: PlaybackStatus.playing,
+      position: Duration.zero,
+      filePath: live,
       fileName: 'live.m3u8',
     ));
     await Future<void>.delayed(Duration.zero);
     expect(sync.changes, contains(false),
-        reason: 'pause on an accepted live stream is a non-seek local change');
+        reason: 'play on a confirmed live stream is a non-seek local change');
   });
 }

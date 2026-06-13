@@ -50,47 +50,55 @@ class PlaybackSyncBridge {
   /// suffices to mark the tick as a load event rather than a user seek.
   String? _lastFilePath;
 
-  /// Whether the current source has been confirmed open for the heartbeat. A
-  /// live/direct stream may *never* report a duration, so gating each tick on
-  /// [isPlaybackOpen] alone would mute it forever even after [VideoCore.load]
-  /// accepted it. Instead we latch "open" per source on the first positive
-  /// evidence — a real duration / `ended`, or playback that has advanced past
-  /// zero (frames are flowing) — and from then on publish its ticks. Cleared
-  /// when the source changes or reloads so a new/failing load can't ride the
-  /// previous source's latch.
-  bool _sourceOpen = false;
+  /// The `filePath` the load coordinator (`HomeScreen._load` / [awaitOpenResult])
+  /// has *confirmed open*, set via [markSourceOpen]. This is the authoritative
+  /// "source accepted" signal: a live/direct stream may never report a duration,
+  /// and the player pins its position at 0 while the duration is unknown
+  /// (`position_guard.dart`), so the bridge cannot infer "open" from the state
+  /// stream alone. With this marker, an accepted durationless stream's later
+  /// play/pause still drives the heartbeat. Re-validated against the live
+  /// `filePath` on every tick, so a stale marker can't open a different source.
+  String? _confirmedOpenSource;
 
   void start() {
     _videoSub = video.stateStream.listen(_onLocalState);
     _peerSub = sync.peerState.listen(_onPeerState);
   }
 
+  /// Called by the load coordinator once [awaitOpenResult] has accepted [source]
+  /// (including a paused live/direct stream that will never report a duration).
+  /// From now on that source's ticks drive the heartbeat. We immediately re-run
+  /// the current state through the gate: an accepted durationless stream may not
+  /// emit another tick until the user plays, so without this the heartbeat would
+  /// keep broadcasting the *previous* file's cached state until then.
+  void markSourceOpen(String source) {
+    _confirmedOpenSource = source;
+    _onLocalState(video.state);
+  }
+
   void _onLocalState(PlaybackState s) {
     final paused = s.status != PlaybackStatus.playing;
 
-    // A new source (filePath change) or a reload (`loading`) must re-prove that
-    // it opened before its ticks rejoin the heartbeat — clear the open latch.
-    if (s.filePath != _lastFilePath || s.status == PlaybackStatus.loading) {
-      _sourceOpen = false;
-    }
-    // Latch the current source open on positive evidence: a real duration /
-    // `ended` ([isPlaybackOpen]), or playback advanced past zero — a live/direct
-    // stream with no duration still delivers frames. Once latched, its later
-    // paused/playing ticks keep driving the heartbeat (mirrors the live-stream
-    // acceptance in `awaitOpenResult`).
-    if (isPlaybackOpen(s) ||
-        (s.status == PlaybackStatus.playing && s.position > Duration.zero)) {
-      _sourceOpen = true;
-    }
+    // A reload re-enters `loading`; require the coordinator to re-confirm before
+    // the source's ticks rejoin the heartbeat.
+    if (s.status == PlaybackStatus.loading) _confirmedOpenSource = null;
 
-    // Until the source is confirmed open — and never for an `error` — keep it out
-    // of the outgoing heartbeat: a new/failing/loading source sits at position 0,
-    // and the zero-duration pre-error tick a bad source emits the instant
-    // `open()` returns sits there too. Publishing any of them would make a
-    // watching peer pause/rewind for a load that may never land (e.g. an
-    // unreachable URL). Keep the seek-detection bookkeeping so the next real tick
-    // isn't read as a seek, but don't publish until then.
-    if (!_sourceOpen || s.status == PlaybackStatus.error) {
+    // A source feeds the heartbeat only once it is confirmed open: it reported a
+    // real duration / `ended` ([isPlaybackOpen]), OR the load coordinator
+    // accepted it ([markSourceOpen]). The marker is what carries a live/direct
+    // stream that never reports a duration — `isPlaybackOpen` alone can never
+    // open it (and its position is pinned at 0 by the position guard). `error`
+    // and `loading` are never published: a new/failing/loading source sits at
+    // position 0, and broadcasting that would make a watching peer pause/rewind
+    // for a load that may never land (e.g. an unreachable URL). Keep the
+    // seek-detection bookkeeping so the next real tick isn't read as a seek, but
+    // don't publish until confirmed.
+    final source = s.filePath;
+    final confirmed =
+        isPlaybackOpen(s) || (source != null && source == _confirmedOpenSource);
+    if (!confirmed ||
+        s.status == PlaybackStatus.loading ||
+        s.status == PlaybackStatus.error) {
       _lastFilePath = s.filePath;
       _lastPaused = paused;
       _lastPosition = s.position;

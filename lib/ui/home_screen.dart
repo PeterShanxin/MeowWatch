@@ -1025,6 +1025,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // swapped the core state (and _localFileSizeBytes) meanwhile.
     if (gen != _loadGeneration || !mounted) return false;
     _loadedSource = path;
+    // Tell the sync bridge this source is confirmed open so its heartbeat
+    // accepts the source's ticks — essential for a live/direct stream that never
+    // reports a duration (the bridge can't infer "open" from such a stream).
+    _bridge.markSourceOpen(path);
     await _announceCurrentFile();
     // `dispose()` doesn't bump the generation, so guard on `mounted` too — a
     // leave/close during the announce await must not post a chat line into an
