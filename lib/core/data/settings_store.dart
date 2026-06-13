@@ -31,11 +31,6 @@ const String kNotifySecondarySoundKey = 'notify_secondary_sound';
 /// `storageName`: `off` / `neat` / `verbose`; absent/unknown → `verbose`).
 const String kLogLevelSettingKey = 'log_level';
 
-/// Key for the one-time "press Tab to show/hide chat" load-screen hint
-/// (value = "true" once shown; absent → not yet shown). Keeps the guide a
-/// one-time nudge instead of nagging on every load screen.
-const String kChatTabHintSeenKey = 'chat_tab_hint_seen';
-
 /// Commands-in access to persisted key/value app settings.
 abstract class SettingsStore {
   Future<String?> get(String key);

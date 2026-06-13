@@ -28,6 +28,7 @@ import '../core/sync/sync_activity_throttle.dart';
 import '../core/sync/syncplay_client.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
+import '../core/theme/tokens/icon_sizes.dart';
 import '../core/theme/tokens/motion.dart';
 import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
@@ -231,12 +232,6 @@ class _HomeScreenState extends State<HomeScreen> {
   List<ChatMessage> _messages = const <ChatMessage>[];
   late String _username;
   bool _peekPulsing = false;
-
-  /// One-time load-screen guide: show the "press Tab to show/hide chat" hint and
-  /// pulse the collapsed chat tab once, the first time ever. Loaded from
-  /// settings in [_initSettings] (false once seen), and cleared as soon as the
-  /// user works the toggle.
-  bool _showChatHint = false;
   Timer? _peekTimer;
   Timer? _historyTimer;
   StreamSubscription<List<ChatMessage>>? _chatSub;
@@ -543,6 +538,44 @@ class _HomeScreenState extends State<HomeScreen> {
     if (resume != null) {
       unawaited(_resume(resume, widget.config.resumePositionMs));
     }
+    // Landing on the load screen (no video yet): nudge the user that chat lives
+    // behind Tab — a quick fading toast plus a pulse of the collapsed chat tab.
+    // Skipped if we're resuming straight into a video.
+    if (resume == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _core.state.fileName == null) _showChatTabHint();
+      });
+    }
+  }
+
+  /// A brief, fading bottom toast teaching the Tab shortcut, plus a one-shot
+  /// pulse of the collapsed chat tab — shown each time the user lands on the
+  /// load screen so chat (which starts collapsed) stays discoverable.
+  void _showChatTabHint() {
+    if (!mounted) return;
+    final m = context.meow;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: m.surface,
+          duration: const Duration(seconds: 4),
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.chat_bubble_outline,
+                  size: IconSizes.md, color: m.accent),
+              const SizedBox(width: Spacing.md),
+              Text(
+                'Press Tab to show or hide chat',
+                style: TextStyle(color: m.textPrimary),
+              ),
+            ],
+          ),
+        ),
+      );
+    if (_chatLayout.collapsed) _pulsePeek();
   }
 
   Future<void> _initSettings() async {
@@ -570,17 +603,6 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _primarySoundId = resolvePrimary(primary).id;
         _secondarySoundId = resolveSecondary(secondary).id;
-      });
-    }
-    // One-time load-screen guide: the very first time the app runs, show the
-    // "press Tab to show/hide chat" hint and pulse the collapsed chat tab once,
-    // then remember we've shown it so it never nags again.
-    final hintSeen = await widget.settings.get(kChatTabHintSeenKey);
-    if (hintSeen != 'true' && mounted) {
-      setState(() => _showChatHint = true);
-      unawaited(widget.settings.set(kChatTabHintSeenKey, 'true'));
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _chatLayout.collapsed) _pulsePeek();
       });
     }
   }
@@ -777,9 +799,6 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Toggle the chat card. When it collapses we restore focus to the player so
   /// the keyboard shortcut (Tab) and space/arrows keep working on one press.
   void _toggleChat() {
-    // The one-time load-screen hint has served its purpose once the user works
-    // the toggle — clear it so it doesn't linger this session.
-    if (_showChatHint) setState(() => _showChatHint = false);
     setState(() => _chatLayout = _chatLayout.toggle());
     if (_chatLayout.collapsed) _restorePlayerFocus();
   }
@@ -1202,7 +1221,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         onBrowse: _browse,
                         onLoadUrl: (url) => unawaited(_load(url)),
                         notice: _joinPrompt,
-                        showChatHint: _showChatHint,
                       )
                     else if (state.status == PlaybackStatus.error)
                       VideoErrorState(
