@@ -32,8 +32,16 @@ Future<bool> awaitOpenResult(
   if (superseded(core.state) || isError(core.state)) return false;
   if (isPlaybackOpen(core.state)) return true;
 
+  // `orElse` handles the stream closing first — e.g. the user leaves/closes the
+  // room (HomeScreen.dispose disposes the core) while a slow source is still
+  // opening. Without it `firstWhere` throws a StateError, and since most loads
+  // are launched unawaited that surfaces as an uncaught async error. Treat a
+  // closed stream as a cancelled load (`false`).
   final settled = await core.stateStream
-      .firstWhere((s) => superseded(s) || isError(s) || isPlaybackOpen(s))
+      .firstWhere(
+        (s) => superseded(s) || isError(s) || isPlaybackOpen(s),
+        orElse: () => core.state,
+      )
       .timeout(timeout, onTimeout: () => core.state);
 
   if (superseded(settled) || isError(settled)) return false;

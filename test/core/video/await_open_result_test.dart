@@ -123,4 +123,13 @@ void main() {
     core.emitOpened(); // this open belongs to b, not src
     expect(await result, isFalse);
   });
+
+  test('a closed stream (leave/dispose mid-load) resolves to false, not throw',
+      () async {
+    final c = _ManualVideoCore();
+    await c.load(src);
+    final result = awaitOpenResult(c, source: src);
+    await c.dispose(); // closes the state stream while still loading
+    expect(await result, isFalse);
+  });
 }

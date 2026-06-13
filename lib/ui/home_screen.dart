@@ -231,6 +231,12 @@ class _HomeScreenState extends State<HomeScreen> {
   List<ChatMessage> _messages = const <ChatMessage>[];
   late String _username;
   bool _peekPulsing = false;
+
+  /// One-time load-screen guide: show the "press Tab to show/hide chat" hint and
+  /// pulse the collapsed chat tab once, the first time ever. Loaded from
+  /// settings in [_initSettings] (false once seen), and cleared as soon as the
+  /// user works the toggle.
+  bool _showChatHint = false;
   Timer? _peekTimer;
   Timer? _historyTimer;
   StreamSubscription<List<ChatMessage>>? _chatSub;
@@ -274,6 +280,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _initSettings();
     _onUserInteraction();
     _chatLayout = ChatOverlayLayout(
+      // Start collapsed so the load screen stays clean (just a small chat tab in
+      // the corner) instead of a big empty card crowding the load controls. Tab
+      // — hinted on the load screen — expands it.
+      collapsed: true,
       widthPx: widget.initialWidthPx,
       heightPx: widget.initialHeightPx,
     );
@@ -562,6 +572,17 @@ class _HomeScreenState extends State<HomeScreen> {
         _secondarySoundId = resolveSecondary(secondary).id;
       });
     }
+    // One-time load-screen guide: the very first time the app runs, show the
+    // "press Tab to show/hide chat" hint and pulse the collapsed chat tab once,
+    // then remember we've shown it so it never nags again.
+    final hintSeen = await widget.settings.get(kChatTabHintSeenKey);
+    if (hintSeen != 'true' && mounted) {
+      setState(() => _showChatHint = true);
+      unawaited(widget.settings.set(kChatTabHintSeenKey, 'true'));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _chatLayout.collapsed) _pulsePeek();
+      });
+    }
   }
 
   /// Build the rotating diagnostic log in a stable app dir and start it at the
@@ -756,6 +777,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Toggle the chat card. When it collapses we restore focus to the player so
   /// the keyboard shortcut (Tab) and space/arrows keep working on one press.
   void _toggleChat() {
+    // The one-time load-screen hint has served its purpose once the user works
+    // the toggle — clear it so it doesn't linger this session.
+    if (_showChatHint) setState(() => _showChatHint = false);
     setState(() => _chatLayout = _chatLayout.toggle());
     if (_chatLayout.collapsed) _restorePlayerFocus();
   }
@@ -1053,10 +1077,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Whether the just-(re)connected room should be told about the current
   /// source — see [canAnnounceOnConnect] for the rule.
   bool _shouldReannounceOnConnect() => canAnnounceOnConnect(
-        currentPath: _core.state.filePath,
-        acceptedPath: _loadedSource,
-        status: _core.state.status,
-      );
+    currentPath: _core.state.filePath,
+    acceptedPath: _loadedSource,
+    status: _core.state.status,
+  );
 
   Future<void> _announceCurrentFile() async {
     final state = _core.state;
@@ -1146,7 +1170,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 final state = snapshot.data!;
                 // True only while a video surface is actually on screen — not on
                 // the empty/load screen, and not on the load-error screen.
-                final videoVisible = state.fileName != null &&
+                final videoVisible =
+                    state.fileName != null &&
                     state.status != PlaybackStatus.error;
                 final hint = _banner;
                 final chatOpacity = chatOverlayOpacity(
@@ -1171,6 +1196,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         onBrowse: _browse,
                         onLoadUrl: (url) => unawaited(_load(url)),
                         notice: _joinPrompt,
+                        showChatHint: _showChatHint,
                       )
                     else if (state.status == PlaybackStatus.error)
                       VideoErrorState(
