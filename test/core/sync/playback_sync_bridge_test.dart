@@ -407,4 +407,28 @@ void main() {
     expect(sync.changes, contains(false),
         reason: 'the already-started play is re-asserted as a local change');
   });
+
+  test('confirming a source a PEER started playing does not re-assert it as ours',
+      () async {
+    const live = 'https://x.test/live.m3u8';
+    // Source is still loading/unconfirmed.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.loading,
+      filePath: live,
+      fileName: 'live.m3u8',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    // A peer plays us while unconfirmed → _onPeerState applies play() locally.
+    sync.pushPeer(
+        const PeerPlayState(position: Duration.zero, paused: false));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    sync.changes.clear();
+
+    // On confirmation, the peer-driven play must NOT be re-asserted as our local
+    // change — the peer is already authoritative; doing so would steal authorship.
+    bridge.markSourceOpen(live);
+    await Future<void>.delayed(Duration.zero);
+    expect(sync.changes, isEmpty,
+        reason: 'a peer-forced pre-open play is not re-asserted as local');
+  });
 }

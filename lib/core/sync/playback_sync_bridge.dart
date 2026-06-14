@@ -60,6 +60,13 @@ class PlaybackSyncBridge {
   /// `filePath` on every tick, so a stale marker can't open a different source.
   String? _confirmedOpenSource;
 
+  /// Whether the most recent *pre-open* `playing` tick (one suppressed because
+  /// the source wasn't confirmed yet) came from a remote apply — a peer heartbeat
+  /// playing us via [_onPeerState] — rather than local input. [markSourceOpen]
+  /// re-asserts a pending play only when it was local; re-asserting a peer-driven
+  /// one would stamp the peer's play as ours and could rewind/steal authorship.
+  bool _preOpenPlayRemote = false;
+
   void start() {
     _videoSub = video.stateStream.listen(_onLocalState);
     _peerSub = sync.peerState.listen(_onPeerState);
@@ -79,9 +86,13 @@ class PlaybackSyncBridge {
     // above sees it as a file-load event rather than a pause→play flip. Re-assert
     // the play as an intentional local change so the room follows our play
     // instead of a peer's stale paused heartbeat winning convergence and pausing
-    // us back. A source confirmed while `paused` (the normal load) needs nothing.
+    // us back. Only for a *local* play: a peer-forced pre-open play
+    // ([_preOpenPlayRemote]) belongs to the peer, who is already authoritative —
+    // re-asserting it as ours would rewind or steal authorship. A source
+    // confirmed while `paused` (the normal load) needs nothing.
     if (video.state.filePath == source &&
-        video.state.status == PlaybackStatus.playing) {
+        video.state.status == PlaybackStatus.playing &&
+        !_preOpenPlayRemote) {
       sync.notifyLocalChange(doSeek: false);
     }
   }
@@ -109,6 +120,11 @@ class PlaybackSyncBridge {
     if (!confirmed ||
         s.status == PlaybackStatus.loading ||
         s.status == PlaybackStatus.error) {
+      // Record whether a pre-open *play* was remote-applied (peer heartbeat,
+      // inside the remote-apply window) vs local, so markSourceOpen re-asserts
+      // only a genuinely local play. Non-play ticks clear it — nothing to assert.
+      _preOpenPlayRemote = s.status == PlaybackStatus.playing &&
+          (_applyingRemote || DateTime.now().isBefore(_remoteApplyUntil));
       _lastFilePath = s.filePath;
       _lastPaused = paused;
       _lastPosition = s.position;
