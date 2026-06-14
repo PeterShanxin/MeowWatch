@@ -28,13 +28,17 @@ import '../core/sync/sync_activity_throttle.dart';
 import '../core/sync/syncplay_client.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
+import '../core/theme/tokens/icon_sizes.dart';
 import '../core/theme/tokens/motion.dart';
 import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 import '../core/video/media_kit_video_core.dart';
+import '../core/video/await_open_result.dart';
 import '../core/video/playback_state.dart';
 import '../core/video/seek_when_ready.dart';
+import '../core/video/source_announce.dart';
+import '../core/video/video_url.dart';
 import 'app_close_hook.dart';
 import 'chat/chat_overlay.dart';
 import 'chat/chat_overlay_layout.dart';
@@ -42,10 +46,12 @@ import 'drop_target.dart';
 import 'empty_state.dart';
 import 'idle_visibility.dart';
 import 'notify_decision.dart';
+import 'paste_link_dialog.dart';
 import 'player_menu_button.dart';
 import 'reactions/floating_reactions.dart';
 import 'reactions/reaction_bar.dart';
 import 'sync_activity_text.dart';
+import 'video_error_state.dart';
 import 'video_surface.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -182,6 +188,22 @@ class _HomeScreenState extends State<HomeScreen> {
   /// friend's machine.
   String? _joinPrompt;
 
+  /// The source path that the *most recent* load actually confirmed open. The
+  /// connect/reconnect re-announce gates on this so a still-loading, superseded,
+  /// or failed source is never re-sent to the room — and so a valid live stream
+  /// (which stays `paused` with no duration) still reannounces, where the bare
+  /// state alone couldn't tell it apart from the pre-error paused tick. Set on a
+  /// confirmed open in [_load], invalidated when a new load starts.
+  String? _loadedSource;
+
+  /// Bumped at the start of every [_load]. Browse/Paste/drop stay reachable
+  /// while a load is in flight, so a newer load can supersede an older one that's
+  /// still awaiting its async open result. Each [_load] captures its generation
+  /// and abandons quietly at every `await` boundary once it's no longer current,
+  /// so a stale load can't fail, record, announce, or chat against the source a
+  /// newer load now owns.
+  int _loadGeneration = 0;
+
   /// Debounce before auto-pausing: a brief blip (e.g. a heartbeat timeout that
   /// recovers a second later, common when two instances share one PC) should
   /// NOT pause — only a sustained loss of sync.
@@ -211,6 +233,9 @@ class _HomeScreenState extends State<HomeScreen> {
   late String _username;
   bool _peekPulsing = false;
   Timer? _peekTimer;
+  /// Non-null while the load-screen "Press Tab" hint toast is on screen; its
+  /// value re-keys [_FadingToast] so each show replays the fade animation.
+  int? _chatHintToken;
   Timer? _historyTimer;
   StreamSubscription<List<ChatMessage>>? _chatSub;
   StreamSubscription<ReactionEvent>? _reactionSub;
@@ -253,6 +278,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _initSettings();
     _onUserInteraction();
     _chatLayout = ChatOverlayLayout(
+      // Start collapsed so the load screen stays clean (just a small chat tab in
+      // the corner) instead of a big empty card crowding the load controls. Tab
+      // — hinted on the load screen — expands it.
+      collapsed: true,
       widthPx: widget.initialWidthPx,
       heightPx: widget.initialHeightPx,
     );
@@ -371,7 +400,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _wasReconnecting = false;
       }
       _prevSyncStatus = s.status;
-      if (s.status == SyncConnectionStatus.connected) {
+      if (s.status == SyncConnectionStatus.connected &&
+          _shouldReannounceOnConnect()) {
         unawaited(_announceCurrentFile());
       }
     });
@@ -438,7 +468,9 @@ class _HomeScreenState extends State<HomeScreen> {
           localHasFile: _core.state.fileName != null,
           localUsername: _username,
           peerUsername: f.username,
-          peerFileName: f.name,
+          // Show the short/redacted label — a peer's raw URL (with any signed
+          // token) must never render verbatim in our join prompt.
+          peerFileName: mediaDisplayName(f.name),
         );
         if (prompt != null) _joinPrompt = prompt;
       });
@@ -509,6 +541,38 @@ class _HomeScreenState extends State<HomeScreen> {
     if (resume != null) {
       unawaited(_resume(resume, widget.config.resumePositionMs));
     }
+    // Landing on the load screen (no video yet): nudge the user that chat lives
+    // behind Tab — a quick fading toast plus a pulse of the collapsed chat tab.
+    // Skipped if we're resuming straight into a video.
+    if (resume == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _core.state.fileName != null) return;
+        // Give the invisible root holder focus so the FIRST Tab bubbles to the
+        // chat toggle instead of being swallowed by default focus traversal —
+        // otherwise the load screen needs two Tab presses to open chat.
+        _rootFocus.requestFocus();
+        _showChatTabHint();
+      });
+    }
+  }
+
+  /// Show the load-screen hint as a self-fading bottom toast (see [_FadingToast]:
+  /// fades + slides in, holds, then fades + slides out — never a hard cut), plus
+  /// a one-shot pulse of the collapsed chat tab. Shown each time the user lands
+  /// on the load screen so chat (which starts collapsed) stays discoverable. The
+  /// bumped [_chatHintSeq] re-keys the toast so a repeat show replays the
+  /// animation even if one is still on screen.
+  void _showChatTabHint() {
+    if (!mounted) return;
+    // Bump the token: a fresh value re-keys (and so replays) the toast even if a
+    // previous one is still fading on screen.
+    setState(() => _chatHintToken = (_chatHintToken ?? 0) + 1);
+    if (_chatLayout.collapsed) _pulsePeek();
+  }
+
+  /// Tear down the hint toast once its exit animation has finished.
+  void _dismissChatTabHint() {
+    if (mounted) setState(() => _chatHintToken = null);
   }
 
   Future<void> _initSettings() async {
@@ -736,17 +800,24 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_chatLayout.collapsed) _restorePlayerFocus();
   }
 
-  /// Hand keyboard focus back to a focused descendant after the chat collapses
-  /// (which removes its auto-focused text field). The video surface when one is
-  /// loaded, else the invisible root holder — either way the top-level Tab
-  /// handler always has a focused node to bubble from, so Tab toggles on a
-  /// single press. Called from BOTH the chevron toggle and the drag-to-hide
-  /// snap — the drag path used to skip this, which is why hiding-by-drag then
-  /// needed two Tab presses.
+  /// True only while a real [VideoSurface] is on screen — not on the empty/load
+  /// screen and not on the load-error screen (which shows [VideoErrorState], so
+  /// `_videoFocus` is attached to nothing). Mirrors the `videoVisible` gate in
+  /// [build] so focus is always requested on a node that actually exists.
+  bool get _videoSurfaceMounted =>
+      _core.state.fileName != null &&
+      _core.state.status != PlaybackStatus.error;
+
+  /// Put keyboard focus on whichever node is live for the current screen so the
+  /// top-level Tab handler always has a focused descendant to bubble from and
+  /// Tab toggles chat on a *single* press. The video surface when one is
+  /// mounted, else the invisible root holder. Called on load-screen entry and
+  /// whenever the chat collapses (chevron toggle AND drag-to-hide snap — the
+  /// drag path used to skip this, which is why hiding-by-drag needed two Taps).
   void _restorePlayerFocus() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_core.state.fileName != null) {
+      if (_videoSurfaceMounted) {
         _videoFocus.requestFocus();
       } else {
         _rootFocus.requestFocus();
@@ -881,7 +952,8 @@ class _HomeScreenState extends State<HomeScreen> {
       peerSize: peer.sizeBytes,
     );
     if (result != FileMatch.mismatch) return null;
-    return '⚠ Different file — ${peer.username} has "${peer.name}"';
+    // Match on the raw name above; show the short/redacted label in the banner.
+    return '⚠ Different file — ${peer.username} has "${mediaDisplayName(peer.name)}"';
   }
 
   /// Advisory hint shown over the video, or null when everything is ready.
@@ -911,13 +983,69 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Load (but do not auto-play). In a room, hitting play yourself starts both
   /// of you in sync; auto-playing on load made the two clients fight at 0.
-  Future<void> _load(String path) async {
+  ///
+  /// Returns `true` only if *this* load opened and is still the current source —
+  /// callers (e.g. resume) can then act on it; a `false` means it failed, timed
+  /// out, or was superseded by a newer load.
+  Future<bool> _load(String path) async {
     // We now have a video, so the "load a video to join" prompt is moot (#60).
     if (_joinPrompt != null && mounted) setState(() => _joinPrompt = null);
+    // This load's generation. A newer load bumps it; we abandon at every await
+    // boundary below once we're no longer current, so a stale/slow load can't act
+    // on a core state that now belongs to a different source.
+    final gen = ++_loadGeneration;
+    // Invalidate the accepted-source marker until this load is confirmed, so a
+    // reconnect mid-load can't re-announce the previous source.
+    _loadedSource = null;
+    // Drop the previous file's byte size now, before the new load opens. Until
+    // _recordOpen commits the new size, a stale positive size would let
+    // _fileMismatchBanner / compareFiles judge match-by-size against a source
+    // that never opened (compareFiles trusts equal sizes ahead of URL identity),
+    // so the load/error screen could wrongly show a peer as matching.
+    if (_localFileSizeBytes != null && mounted) {
+      setState(() => _localFileSizeBytes = null);
+    }
     await _core.load(path);
+    // A source can fail asynchronously — mpv reports an unreachable / non-video
+    // / expired URL, *and* a moved or unreadable local file, on its error stream
+    // after load() returns. Don't record it to history, announce it to the room,
+    // or post a "Loaded …" chat line until it actually opens, or a failed source
+    // would surface to peers and history as loaded while we show the error
+    // screen. Applies to local files too, not just URLs.
+    final opened = await awaitOpenResult(_core, source: path);
+    // Superseded while we awaited: a newer load owns the core now, so do nothing
+    // here (no failLoad, no announce) — the newer load reports its own outcome.
+    if (gen != _loadGeneration) return false;
+    if (!opened) {
+      // A load that never confirmed open must be surfaced as an error, or the
+      // user is stuck on a frozen surface with no recovery buttons (those only
+      // show on PlaybackStatus.error). This covers both a plain `loading` hang
+      // and a source forced to `playing`/`paused` over a never-opened URL (e.g. a
+      // peer heartbeat applying play() while we were still loading). Guard on the
+      // path so we never force the error onto a different source, and `failLoad`
+      // itself no-ops if the source did genuinely open.
+      if (_core.state.filePath == path) {
+        _core.failLoad('Timed out waiting for the video to open.');
+      }
+      return false;
+    }
+    if (!mounted || _core.state.filePath != path) return false;
     await _recordOpen(path);
+    // _recordOpen awaits file-size/DB work; a newer load could have started and
+    // swapped the core state (and _localFileSizeBytes) meanwhile.
+    if (gen != _loadGeneration || !mounted) return false;
+    _loadedSource = path;
+    // Tell the sync bridge this source is confirmed open so its heartbeat
+    // accepts the source's ticks — essential for a live/direct stream that never
+    // reports a duration (the bridge can't infer "open" from such a stream).
+    _bridge.markSourceOpen(path);
     await _announceCurrentFile();
+    // `dispose()` doesn't bump the generation, so guard on `mounted` too — a
+    // leave/close during the announce await must not post a chat line into an
+    // already-disposed ChatStore (closed controller → uncaught async error).
+    if (gen != _loadGeneration || !mounted) return false;
     _addLoadedFileMessage();
+    return true;
   }
 
   /// Append a "Loaded …" system line to chat. Shows "in sync!" when the peer's
@@ -932,23 +1060,39 @@ class _HomeScreenState extends State<HomeScreen> {
       peerName: _peerFile?.name,
       peerSize: _peerFile?.sizeBytes,
     );
-    _chat.addSystem(loadedFileMessage(fileName: fileName, match: match));
+    // Match on the full name (URL identity); show the short label in chat.
+    _chat.addSystem(
+      loadedFileMessage(fileName: mediaDisplayName(fileName), match: match),
+    );
   }
 
   Future<void> _resume(String path, int positionMs) async {
-    await _load(path);
-    await seekWhenReady(_core, Duration(milliseconds: positionMs));
+    // Only seek if this resume load actually opened and is still current —
+    // otherwise a superseded/failed load would apply the old position to
+    // whatever the user picked instead. seekWhenReady is also scoped to [path]
+    // so a load that supersedes it during the duration-wait can't inherit this
+    // resume position.
+    if (await _load(path)) {
+      await seekWhenReady(
+        _core,
+        Duration(milliseconds: positionMs),
+        source: path,
+      );
+    }
   }
 
   Future<void> _recordOpen(String path) async {
     final state = _core.state;
-    var size = 0;
-    try {
-      size = await File(path).length();
-    } on FileSystemException {
-      size = 0;
+    // A stream URL has no byte size — don't stat it as a file (the URL isn't a
+    // valid path, and on Windows the ':' would throw a different error).
+    final size = isHttpUrl(path) ? 0 : await _fileSize(path);
+    // `_localFileSizeBytes` is the *current* file's size, used for the
+    // file-match comparison. Only commit it while this load is still current —
+    // a slow stat for a superseded file would otherwise overwrite the new
+    // file's size and trigger a false mismatch against a peer on the same file.
+    if (mounted && _core.state.filePath == path) {
+      setState(() => _localFileSizeBytes = size);
     }
-    if (mounted) setState(() => _localFileSizeBytes = size);
     await widget.history.recordOpen(
       filePath: path,
       fileName: state.fileName ?? path,
@@ -963,6 +1107,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final state = _core.state;
     final path = state.filePath;
     if (path == null) return;
+    // Only persist a resume point for a source that actually opened. A failed or
+    // still-loading load leaves filePath set at position 0 (e.g. an expired URL
+    // or a moved local file retried from history), and saving that would erase
+    // the real saved position for that history row.
+    if (!isPlaybackOpen(state)) return;
     await widget.history.updatePosition(
       filePath: path,
       positionMs: state.position.inMilliseconds,
@@ -977,21 +1126,38 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
+  /// Whether the just-(re)connected room should be told about the current
+  /// source — see [canAnnounceOnConnect] for the rule.
+  bool _shouldReannounceOnConnect() => canAnnounceOnConnect(
+    currentPath: _core.state.filePath,
+    acceptedPath: _loadedSource,
+    status: _core.state.status,
+  );
+
   Future<void> _announceCurrentFile() async {
     final state = _core.state;
     final path = state.filePath;
     if (path == null) return;
-    var size = 0;
-    try {
-      size = await File(path).length();
-    } on FileSystemException {
-      size = 0;
-    }
+    // For a URL, size is unknown (streams have no byte length) and the URL
+    // itself is the name we share — matching official Syncplay.
+    final size = isHttpUrl(path) ? 0 : await _fileSize(path);
+    // Statting a local file awaits; a newer load may have swapped the source in
+    // the meantime. Don't announce this (now-stale) file against the new source.
+    if (_core.state.filePath != path) return;
     _sync.announceFile(
       name: state.fileName ?? path,
       size: size,
       duration: state.duration,
     );
+  }
+
+  /// Byte size of a local file, or 0 if it can't be read.
+  Future<int> _fileSize(String path) async {
+    try {
+      return await File(path).length();
+    } on FileSystemException {
+      return 0;
+    }
   }
 
   Future<void> _browse() async {
@@ -1003,6 +1169,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (file != null) {
       await _load(file.path);
     }
+  }
+
+  /// Prompt for a direct video link and load it through the same path as a
+  /// local file. The URL is validated inside the dialog before it resolves.
+  Future<void> _promptPasteLink() async {
+    final url = await showPasteLinkDialog(context);
+    if (url != null) await _load(url);
   }
 
   void _handleDropped(String path) {
@@ -1047,6 +1220,11 @@ class _HomeScreenState extends State<HomeScreen> {
               initialData: _core.state,
               builder: (context, snapshot) {
                 final state = snapshot.data!;
+                // True only while a video surface is actually on screen — not on
+                // the empty/load screen, and not on the load-error screen.
+                final videoVisible =
+                    state.fileName != null &&
+                    state.status != PlaybackStatus.error;
                 final hint = _banner;
                 final chatOpacity = chatOverlayOpacity(
                   idle: _isUiIdle,
@@ -1066,7 +1244,23 @@ class _HomeScreenState extends State<HomeScreen> {
                           : BoxDecoration(color: m.background),
                     ),
                     if (state.fileName == null)
-                      EmptyState(onBrowse: _browse, notice: _joinPrompt)
+                      EmptyState(
+                        onBrowse: _browse,
+                        onLoadUrl: (url) => unawaited(_load(url)),
+                        notice: _joinPrompt,
+                      )
+                    else if (state.status == PlaybackStatus.error)
+                      VideoErrorState(
+                        message: friendlyPlaybackError(
+                          isUrl: isHttpUrl(state.filePath ?? ''),
+                        ),
+                        detail: state.errorMessage,
+                        onBrowse: _browse,
+                        onPasteLink: () => unawaited(_promptPasteLink()),
+                        onRetry: state.filePath != null
+                            ? () => unawaited(_load(state.filePath!))
+                            : null,
+                      )
                     else
                       VideoSurface(
                         core: _core,
@@ -1074,7 +1268,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         isUiIdle: _isUiIdle,
                         onUserInteraction: _onUserInteraction,
                       ),
-                    if (state.fileName != null)
+                    if (videoVisible)
                       Positioned.fill(
                         child: FloatingReactionsOverlay(
                           emojis: _reactionFeed.stream,
@@ -1148,7 +1342,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           ignoring: _chatDragging || _isUiIdle,
                           child: PlayerMenuButton(
                             roomCode: widget.config.room,
-                            nowPlaying: state.fileName,
+                            // Short/redacted label for a URL so a signed token
+                            // isn't shown (and a long link doesn't bloat the menu).
+                            nowPlaying: state.fileName == null
+                                ? null
+                                : mediaDisplayName(state.fileName!),
                             // Wire identities for the roster + isMe match; the
                             // "you" row shows our chosen name, not a transient
                             // reconnect dedupe suffix the server may assign (#107).
@@ -1158,6 +1356,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             currentTheme: widget.currentTheme,
                             onThemeChanged: widget.onThemeChanged,
                             onLoadVideo: _browse,
+                            onPasteLink: () => unawaited(_promptPasteLink()),
                             onLeave: _leave,
                             chatAutoDim: _chatAutoDim,
                             onChatAutoDimChanged: (val) {
@@ -1201,7 +1400,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                    if (state.fileName != null)
+                    if (videoVisible)
                       Positioned(
                         right: 16,
                         bottom: 84,
@@ -1212,6 +1411,17 @@ class _HomeScreenState extends State<HomeScreen> {
                             ignoring: _isUiIdle,
                             child: ReactionBar(onReact: _chat.sendReaction),
                           ),
+                        ),
+                      ),
+                    // Load-screen "Press Tab" hint — a self-fading bottom toast.
+                    if (_chatHintToken != null)
+                      Align(
+                        alignment: const Alignment(0, 0.92),
+                        child: _FadingToast(
+                          key: ValueKey<int>(_chatHintToken!),
+                          icon: Icons.chat_bubble_outline,
+                          text: 'Press Tab to show or hide chat',
+                          onDismissed: _dismissChatTabHint,
                         ),
                       ),
                   ],
@@ -1247,6 +1457,107 @@ class _SyncHintBanner extends StatelessWidget {
         child: Text(
           text,
           style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
+        ),
+      ),
+    );
+  }
+}
+
+/// A bottom toast that fades + slides itself in, holds, then fades + slides out
+/// — so a transient hint is never removed with a hard cut. Calls [onDismissed]
+/// once the exit animation finishes so the parent can drop it from the tree.
+/// Enter and exit both use the shared [Motion] tokens (`base` duration,
+/// `standard` curve); see the Motion section of the design-system spec.
+class _FadingToast extends StatefulWidget {
+  const _FadingToast({
+    super.key,
+    required this.icon,
+    required this.text,
+    required this.onDismissed,
+  });
+
+  final IconData icon;
+  final String text;
+  final VoidCallback onDismissed;
+
+  /// How long the toast stays fully visible between its fade-in and fade-out.
+  static const Duration hold = Duration(seconds: 3);
+
+  @override
+  State<_FadingToast> createState() => _FadingToastState();
+}
+
+class _FadingToastState extends State<_FadingToast>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: Motion.base, // fade/slide in
+    reverseDuration: Motion.base, // fade/slide out
+  );
+  late final Animation<double> _curve = CurvedAnimation(
+    parent: _controller,
+    curve: Motion.standard,
+    reverseCurve: Motion.standard,
+  );
+  Timer? _holdTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.forward();
+    _holdTimer = Timer(_FadingToast.hold, _fadeOut);
+  }
+
+  void _fadeOut() {
+    if (!mounted) return;
+    _controller.reverse().whenComplete(() {
+      if (mounted) widget.onDismissed();
+    });
+  }
+
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return IgnorePointer(
+      child: FadeTransition(
+        opacity: _curve,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.35),
+            end: Offset.zero,
+          ).animate(_curve),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: Spacing.lg,
+              vertical: Spacing.md,
+            ),
+            decoration: BoxDecoration(
+              color: m.surface,
+              borderRadius: BorderRadius.circular(Radii.lg),
+              border: Border.all(color: m.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(widget.icon, size: IconSizes.md, color: m.accent),
+                const SizedBox(width: Spacing.md),
+                Text(
+                  widget.text,
+                  style: TextStyle(
+                    color: m.textPrimary,
+                    fontSize: TypeScale.label,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

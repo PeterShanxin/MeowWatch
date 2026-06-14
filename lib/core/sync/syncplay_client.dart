@@ -302,7 +302,9 @@ class SyncplayClient extends SyncCore {
     _watchdog.bump();
     for (final line in _framer.addChunk(chunk)) {
       if (line.isEmpty) continue;
-      onLog?.call('<< $line');
+      // Redact before logging — an inbound File message carries a peer's stream
+      // URL, whose query string may hold a signed CDN token.
+      onLog?.call('<< ${redactSecretsForLogText(line)}');
       late ServerMessage msg;
       try {
         msg = decodeServerMessage(

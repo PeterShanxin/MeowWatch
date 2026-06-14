@@ -34,6 +34,17 @@ FileMatch compareFiles({
     return localSize == peerSize ? FileMatch.match : FileMatch.mismatch;
   }
 
+  // A stream is identified by its URL (size is always 0), so when either side
+  // is a URL compare the *whole* link — never the basename. Otherwise two
+  // different streams that happen to end in a generic name (`master.m3u8`,
+  // `index.m3u8`, `video.mp4`) would falsely read as the same media.
+  final localUrl = _asUrl(localName);
+  final peerUrl = _asUrl(peerName);
+  if (localUrl != null || peerUrl != null) {
+    if (localUrl == null || peerUrl == null) return FileMatch.mismatch;
+    return localUrl == peerUrl ? FileMatch.match : FileMatch.mismatch;
+  }
+
   // Fallback: normalized filename.
   final ln = _normalize(localName);
   final pn = _normalize(peerName);
@@ -42,6 +53,22 @@ FileMatch compareFiles({
   }
 
   return FileMatch.unknown;
+}
+
+/// The normalized `http(s)` URL form of [name], or `null` if it isn't a URL.
+/// Lets [compareFiles] compare stream links whole instead of by basename.
+///
+/// `Uri` already lower-cases the case-insensitive parts (scheme + host) while
+/// leaving the path and query — which carry case-sensitive segments and signed
+/// CDN tokens — untouched, so two links that differ only in a token still read
+/// as different media.
+String? _asUrl(String? name) {
+  if (name == null) return null;
+  final uri = Uri.tryParse(name.trim());
+  if (uri == null) return null;
+  final isUrl =
+      (uri.scheme == 'http' || uri.scheme == 'https') && uri.host.isNotEmpty;
+  return isUrl ? uri.toString() : null;
 }
 
 /// Lower-cased base filename — strips any directory part so a full path on one

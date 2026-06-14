@@ -65,4 +65,67 @@ void main() {
       expect(updated.errorMessage, 'boom');
     });
   });
+
+  group('isPlaybackOpen', () {
+    test('ended is open on its own', () {
+      expect(
+        isPlaybackOpen(const PlaybackState(status: PlaybackStatus.ended)),
+        isTrue,
+      );
+    });
+
+    test('playing and paused are open only with a non-zero duration', () {
+      // A premature user play / the transient post-open tick / a forced pause
+      // has no duration yet and must not count as a confirmed open.
+      for (final s in [PlaybackStatus.playing, PlaybackStatus.paused]) {
+        expect(
+          isPlaybackOpen(PlaybackState(status: s)),
+          isFalse,
+          reason: '$s without duration',
+        );
+        expect(
+          isPlaybackOpen(PlaybackState(
+            status: s,
+            duration: const Duration(minutes: 5),
+          )),
+          isTrue,
+          reason: '$s with duration',
+        );
+      }
+    });
+
+    test('the backend `opened` flag confirms an open with no duration', () {
+      // A durationless live/direct stream never reports a duration; the backend's
+      // opened flag (real demuxer params) is its only open evidence.
+      for (final s in [PlaybackStatus.playing, PlaybackStatus.paused]) {
+        expect(
+          isPlaybackOpen(PlaybackState(status: s, opened: true)),
+          isTrue,
+          reason: '$s opened with no duration',
+        );
+      }
+      // The flag never overrides a non-playable status (loading/error/idle).
+      for (final s in [
+        PlaybackStatus.idle,
+        PlaybackStatus.loading,
+        PlaybackStatus.error,
+      ]) {
+        expect(
+          isPlaybackOpen(PlaybackState(status: s, opened: true)),
+          isFalse,
+          reason: '$s is never open even if flagged',
+        );
+      }
+    });
+
+    test('idle, loading and error are not open', () {
+      for (final s in [
+        PlaybackStatus.idle,
+        PlaybackStatus.loading,
+        PlaybackStatus.error,
+      ]) {
+        expect(isPlaybackOpen(PlaybackState(status: s)), isFalse, reason: '$s');
+      }
+    });
+  });
 }

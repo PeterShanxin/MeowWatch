@@ -3,12 +3,12 @@ import 'dart:io';
 
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:path/path.dart' as p;
 
 import 'playback_state.dart';
 import 'position_guard.dart';
 import 'video_core.dart';
 import 'video_decode_config.dart';
+import 'video_url.dart';
 
 class MediaKitVideoCore extends VideoCore {
   MediaKitVideoCore() : _player = Player() {
@@ -71,6 +71,10 @@ class MediaKitVideoCore extends VideoCore {
   void _wireListeners() {
     _subs = [
       _player.stream.playing.listen((playing) {
+        // mpv keeps emitting playing/position churn around a failed open; never
+        // let those downgrade a sticky error back to paused/playing and unmask
+        // the error screen. Only load() clears the error (it resets the state).
+        if (state.status == PlaybackStatus.error) return;
         emit(state.copyWith(
           status: playing ? PlaybackStatus.playing : PlaybackStatus.paused,
         ));
@@ -96,7 +100,22 @@ class MediaKitVideoCore extends VideoCore {
         emit(state.copyWith(volume: vol / 100.0));
       }),
       _player.stream.completed.listen((done) {
-        if (done) emit(state.copyWith(status: PlaybackStatus.ended));
+        if (done && state.status != PlaybackStatus.error) {
+          emit(state.copyWith(status: PlaybackStatus.ended));
+        }
+      }),
+      // The demuxer reporting real audio/video params is the authoritative "this
+      // source genuinely opened" signal — it fires only once data is actually
+      // read, so (unlike a forced play/pause tick) a hung URL never produces it,
+      // and (unlike a duration) a durationless live stream still does. mpv resets
+      // these to empty on the next START_FILE, so an empty params payload is the
+      // reset, not an open — ignore it. Never let a late open unmask a sticky
+      // error (mirrors the `playing`/`completed` guards above).
+      _player.stream.videoParams.listen((p) {
+        if (p.w != null && p.h != null) _markOpened();
+      }),
+      _player.stream.audioParams.listen((p) {
+        if (p.sampleRate != null) _markOpened();
       }),
       _player.stream.error.listen((err) {
         emit(state.copyWith(
@@ -107,21 +126,35 @@ class MediaKitVideoCore extends VideoCore {
     ];
   }
 
+  /// Latch the current source as genuinely open (see the params listeners). No-op
+  /// if already marked, or if the load already failed — a late params event must
+  /// not revive a sticky error screen.
+  void _markOpened() {
+    if (state.opened || state.status == PlaybackStatus.error) return;
+    emit(state.copyWith(opened: true));
+  }
+
+  /// Load a local file path *or* a direct `http(s)` stream URL — mpv accepts
+  /// both in the same `Media(...)` slot, so a URL needs no special engine path.
+  /// [mediaSourceName] keeps the display/announce name a base filename for a
+  /// file and the full link for a URL (the Syncplay convention).
   @override
-  Future<void> load(String filePath) async {
+  Future<void> load(String source) async {
     // Arm the stale-position guard: until the user plays or seeks, the new file
     // legitimately sits at 0:00 and any non-zero tick is the previous file's
     // lingering end position (#132).
     _playbackStarted = false;
     emit(state.copyWith(
       status: PlaybackStatus.loading,
-      fileName: p.basename(filePath),
-      filePath: filePath,
+      fileName: mediaSourceName(source),
+      filePath: source,
       position: Duration.zero,
       duration: Duration.zero,
       errorMessage: null,
+      // Clear the confirmed-open latch: this new source must re-prove it opens.
+      opened: false,
     ));
-    await _player.open(Media(filePath), play: false);
+    await _player.open(Media(source), play: false);
   }
 
   @override

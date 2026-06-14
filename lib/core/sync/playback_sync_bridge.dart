@@ -50,23 +50,96 @@ class PlaybackSyncBridge {
   /// suffices to mark the tick as a load event rather than a user seek.
   String? _lastFilePath;
 
+  /// The `filePath` the load coordinator (`HomeScreen._load` / [awaitOpenResult])
+  /// has *confirmed open*, set via [markSourceOpen]. This is the authoritative
+  /// "source accepted" signal: a live/direct stream may never report a duration,
+  /// and the player pins its position at 0 while the duration is unknown
+  /// (`position_guard.dart`), so the bridge cannot infer "open" from the state
+  /// stream alone. With this marker, an accepted durationless stream's later
+  /// play/pause still drives the heartbeat. Re-validated against the live
+  /// `filePath` on every tick, so a stale marker can't open a different source.
+  String? _confirmedOpenSource;
+
+  /// Whether the most recent *pre-open* `playing` tick (one suppressed because
+  /// the source wasn't confirmed yet) came from a remote apply — a peer heartbeat
+  /// playing us via [_onPeerState] — rather than local input. [markSourceOpen]
+  /// re-asserts a pending play only when it was local; re-asserting a peer-driven
+  /// one would stamp the peer's play as ours and could rewind/steal authorship.
+  bool _preOpenPlayRemote = false;
+
   void start() {
     _videoSub = video.stateStream.listen(_onLocalState);
     _peerSub = sync.peerState.listen(_onPeerState);
   }
 
+  /// Called by the load coordinator once [awaitOpenResult] has accepted [source]
+  /// (including a paused live/direct stream that will never report a duration).
+  /// From now on that source's ticks drive the heartbeat. We immediately re-run
+  /// the current state through the gate: an accepted durationless stream may not
+  /// emit another tick until the user plays, so without this the heartbeat would
+  /// keep broadcasting the *previous* file's cached state until then.
+  void markSourceOpen(String source) {
+    _confirmedOpenSource = source;
+    _onLocalState(video.state);
+    // If the user pressed play while this source was still unconfirmed, that
+    // play tick was suppressed (not published, no change emitted) and the replay
+    // above sees it as a file-load event rather than a pause→play flip. Re-assert
+    // the play as an intentional local change so the room follows our play
+    // instead of a peer's stale paused heartbeat winning convergence and pausing
+    // us back. Only for a *local* play: a peer-forced pre-open play
+    // ([_preOpenPlayRemote]) belongs to the peer, who is already authoritative —
+    // re-asserting it as ours would rewind or steal authorship. A source
+    // confirmed while `paused` (the normal load) needs nothing.
+    if (video.state.filePath == source &&
+        video.state.status == PlaybackStatus.playing &&
+        !_preOpenPlayRemote) {
+      sync.notifyLocalChange(doSeek: false);
+    }
+  }
+
   void _onLocalState(PlaybackState s) {
     final paused = s.status != PlaybackStatus.playing;
 
-    // Always feed the latest position to the sync layer for its heartbeat.
+    // A reload re-enters `loading`; require the coordinator to re-confirm before
+    // the source's ticks rejoin the heartbeat.
+    if (s.status == PlaybackStatus.loading) _confirmedOpenSource = null;
+
+    // A source feeds the heartbeat only once it is confirmed open: it reported a
+    // real duration / `ended` ([isPlaybackOpen]), OR the load coordinator
+    // accepted it ([markSourceOpen]). The marker is what carries a live/direct
+    // stream that never reports a duration — `isPlaybackOpen` alone can never
+    // open it (and its position is pinned at 0 by the position guard). `error`
+    // and `loading` are never published: a new/failing/loading source sits at
+    // position 0, and broadcasting that would make a watching peer pause/rewind
+    // for a load that may never land (e.g. an unreachable URL). Keep the
+    // seek-detection bookkeeping so the next real tick isn't read as a seek, but
+    // don't publish until confirmed.
+    final source = s.filePath;
+    final confirmed =
+        isPlaybackOpen(s) || (source != null && source == _confirmedOpenSource);
+    if (!confirmed ||
+        s.status == PlaybackStatus.loading ||
+        s.status == PlaybackStatus.error) {
+      // Record whether a pre-open *play* was remote-applied (peer heartbeat,
+      // inside the remote-apply window) vs local, so markSourceOpen re-asserts
+      // only a genuinely local play. Non-play ticks clear it — nothing to assert.
+      _preOpenPlayRemote = s.status == PlaybackStatus.playing &&
+          (_applyingRemote || DateTime.now().isBefore(_remoteApplyUntil));
+      _lastFilePath = s.filePath;
+      _lastPaused = paused;
+      _lastPosition = s.position;
+      _lastTick = DateTime.now();
+      return;
+    }
+
+    // Feed the latest playable position to the sync layer for its heartbeat.
     sync.updateLocalState(position: s.position, paused: paused);
 
-    // Suppress seek detection on a file-load event. Two conditions cover all
-    // cases: a different filePath means a new (or different) file was opened;
-    // PlaybackStatus.loading fires on every load including a same-file reload,
-    // catching the position-reset-to-0 that would otherwise look like a seek.
-    final isLoadEvent =
-        s.filePath != _lastFilePath || s.status == PlaybackStatus.loading;
+    // Suppress seek detection on a file-load event: a different filePath means a
+    // new (or different) file was opened — catching the position-reset-to-0 that
+    // would otherwise look like a seek. (The `loading` tick is already handled
+    // above.)
+    final isLoadEvent = s.filePath != _lastFilePath;
     if (isLoadEvent) {
       _lastFilePath = s.filePath;
       _lastPaused = paused;

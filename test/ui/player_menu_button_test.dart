@@ -15,6 +15,7 @@ PlayerMenuButton _button({
   String? nowPlaying = 'Bocchi the Rock - 01.mkv',
   ValueChanged<MeowThemeId>? onThemeChanged,
   VoidCallback? onLoadVideo,
+  VoidCallback? onPasteLink,
   VoidCallback? onLeave,
   List<String>? members,
   String myUsername = 'me',
@@ -42,6 +43,7 @@ PlayerMenuButton _button({
   currentTheme: MeowThemeId.cozy,
   onThemeChanged: onThemeChanged ?? (_) {},
   onLoadVideo: onLoadVideo ?? () {},
+  onPasteLink: onPasteLink ?? () {},
   onLeave: onLeave ?? () {},
   chatAutoDim: chatAutoDim,
   onChatAutoDimChanged: onChatAutoDimChanged ?? (_) {},
@@ -66,12 +68,13 @@ PlayerMenuButton _button({
 /// these tests assert taps land directly, so size the window to a realistic
 /// desktop height first so the whole menu fits without scrolling.
 Future<void> _openSettings(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(800, 1200));
+  await tester.binding.setSurfaceSize(const Size(800, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.tap(find.byKey(const Key('player-menu-gear')));
   await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const Key('player-menu-settings')));
-  await tester.pumpAndSettle();
+  // The popover scrolls; scroll the Settings header into view before tapping so
+  // the hit-test lands on it rather than the clipped viewport edge.
+  await _tap(tester, find.byKey(const Key('player-menu-settings')));
 }
 
 /// Scroll [finder] into the (now scrollable) popover before tapping it, so the
@@ -129,6 +132,18 @@ void main() {
     await tester.tap(find.byKey(const Key('player-menu-load')));
     await tester.pumpAndSettle();
     expect(loaded, isTrue);
+    expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
+  });
+
+  testWidgets('tapping Paste link fires onPasteLink and closes the menu',
+      (tester) async {
+    var pasted = false;
+    await tester.pumpWidget(_host(_button(onPasteLink: () => pasted = true)));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('player-menu-paste-link')));
+    await tester.pumpAndSettle();
+    expect(pasted, isTrue);
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 
@@ -242,8 +257,8 @@ void main() {
     expect(find.byKey(const Key('player-menu-settings')), findsOneWidget);
     expect(find.text('Dim chat when idle'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('player-menu-settings')));
-    await tester.pumpAndSettle();
+    // The popover scrolls; bring the header into view before tapping it.
+    await _tap(tester, find.byKey(const Key('player-menu-settings')));
     expect(find.text('Dim chat when idle'), findsOneWidget);
   });
 

@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.27.0-alpha] - 2026-06-13
+- You can now paste a direct video link and watch it together, instead of only loading a local file. The load screen has a new "or paste a direct video link" box (and there's a "Paste link…" item in the in-player gear menu), so you and a friend can both drop in the same `https://…/video.mp4` or `.m3u8` stream URL and stay in sync exactly like a shared file. If a link is unreachable, isn't actually a video, or has expired, you now get a clear "couldn't play that link" screen with Browse / Paste link / Try again buttons to recover — no more silent black screen. For room sync, a stream is shared by its URL (streams have no file size), following standard Syncplay behaviour. (#120)
+
 ## [0.26.0-alpha] - 2026-06-13
 - The gear menu now shows a **"Now playing"** line with the name of the video you've got loaded, so anyone in the room can glance at the menu and confirm you're both on the same episode — no more guessing from the seek bar. Long filenames stay tidy (they wrap to two lines and trim with "…" rather than stretching the menu), and when nothing is loaded it simply says "Nothing loaded yet". (#133)
 - Fixed a glitch where loading a **new episode right after the last one finished** could leave the player parked at the previous episode's end instead of jumping back to `0:00`. The old ending position could linger for a moment during the switch — and in a room that risked nudging your friend to the wrong spot — so the app now ignores any stale end-of-video position while the next file loads. (#132)

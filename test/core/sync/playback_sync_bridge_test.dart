@@ -88,11 +88,17 @@ void main() {
   });
 
   test('local pause toggle notifies a non-seek change', () async {
-    video.push(
-        const PlaybackState(status: PlaybackStatus.playing, fileName: 'a'));
+    // Confirmed-open states carry a duration; only those drive the heartbeat
+    // and seek/pause detection.
+    video.push(const PlaybackState(
+        status: PlaybackStatus.playing,
+        duration: Duration(minutes: 10),
+        fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
-    video.push(
-        const PlaybackState(status: PlaybackStatus.paused, fileName: 'a'));
+    video.push(const PlaybackState(
+        status: PlaybackStatus.paused,
+        duration: Duration(minutes: 10),
+        fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
     expect(sync.changes, contains(false));
   });
@@ -101,11 +107,13 @@ void main() {
     video.push(const PlaybackState(
         status: PlaybackStatus.playing,
         position: Duration(seconds: 1),
+        duration: Duration(minutes: 10),
         fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
     video.push(const PlaybackState(
         status: PlaybackStatus.playing,
         position: Duration(seconds: 30),
+        duration: Duration(minutes: 10),
         fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
     expect(sync.changes, contains(true));
@@ -250,6 +258,7 @@ void main() {
     video.push(const PlaybackState(
       status: PlaybackStatus.playing,
       position: Duration(seconds: 5),
+      duration: Duration(minutes: 10),
       filePath: '/videos/a.mkv',
       fileName: 'a.mkv',
     ));
@@ -260,6 +269,7 @@ void main() {
     video.push(const PlaybackState(
       status: PlaybackStatus.playing,
       position: Duration(seconds: 90),
+      duration: Duration(minutes: 10),
       filePath: '/videos/a.mkv',
       fileName: 'a.mkv',
     ));
@@ -280,5 +290,145 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     expect(sync.changes, isEmpty);
+  });
+
+  test('loading and error states are NOT published to the heartbeat', () async {
+    // A new/failing load sits at position 0 paused; pushing that to the room
+    // would make a watching peer pause/rewind for a load that may never land.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.loading,
+      position: Duration.zero,
+      filePath: '/videos/new.mkv',
+      fileName: 'new.mkv',
+    ));
+    video.push(const PlaybackState(
+      status: PlaybackStatus.error,
+      position: Duration.zero,
+      filePath: '/videos/new.mkv',
+      fileName: 'new.mkv',
+      errorMessage: 'boom',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.localUpdates, isEmpty,
+        reason: 'unconfirmed/failed loads must not drive the room heartbeat');
+  });
+
+  test('a zero-duration pre-error tick is NOT published to the heartbeat',
+      () async {
+    // The instant open() returns, a bad/slow source emits `paused` at position 0
+    // with no duration yet — *before* its error. It is no longer `loading`, but
+    // it is not a confirmed open either; publishing it would pause/rewind a peer.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration.zero,
+      filePath: '/videos/bad.mp4',
+      fileName: 'bad.mp4',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.localUpdates, isEmpty,
+        reason: 'a zero-duration (unconfirmed) open must not drive the heartbeat');
+  });
+
+  test('a playable state IS published to the heartbeat', () async {
+    video.push(const PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration(seconds: 3),
+      duration: Duration(minutes: 10),
+      filePath: '/videos/a.mkv',
+      fileName: 'a.mkv',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.localUpdates, isNotEmpty);
+    expect(sync.localUpdates.last.position, const Duration(seconds: 3));
+    expect(sync.localUpdates.last.paused, isTrue);
+  });
+
+  test('an accepted live stream (no duration) drives the heartbeat after '
+      'markSourceOpen', () async {
+    const live = 'https://x.test/live.m3u8';
+    // A live/direct stream sits at position 0 with no duration — the player pins
+    // its position at 0 (position_guard) so the bridge cannot infer "open" from
+    // the stream alone. Until the coordinator confirms it, it must not heartbeat.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration.zero,
+      filePath: live,
+      fileName: 'live.m3u8',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    expect(sync.localUpdates, isEmpty,
+        reason: 'an unconfirmed durationless stream must not heartbeat');
+
+    // The load coordinator accepts it: now it heartbeats even with no duration,
+    // and markSourceOpen replays the current state immediately.
+    bridge.markSourceOpen(live);
+    await Future<void>.delayed(Duration.zero);
+    expect(sync.localUpdates, isNotEmpty,
+        reason: 'a confirmed live stream heartbeats even without a duration');
+    sync.changes.clear();
+
+    // A later play on the same live source is a non-seek local change.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.playing,
+      position: Duration.zero,
+      filePath: live,
+      fileName: 'live.m3u8',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    expect(sync.changes, contains(false),
+        reason: 'play on a confirmed live stream is a non-seek local change');
+  });
+
+  test('confirming a source the user already started playing re-asserts the play',
+      () async {
+    const live = 'https://x.test/live.m3u8';
+    // The user pressed play while the source was still unconfirmed: the playing
+    // tick is suppressed — not published, no change emitted.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.playing,
+      position: Duration.zero,
+      filePath: live,
+      fileName: 'live.m3u8',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    expect(sync.localUpdates, isEmpty);
+    expect(sync.changes, isEmpty);
+
+    // Confirmation must re-assert that pending play as an intentional local
+    // change, or a peer's stale paused heartbeat could win convergence and
+    // pause us back / the friend never gets the play we already requested.
+    bridge.markSourceOpen(live);
+    await Future<void>.delayed(Duration.zero);
+    expect(sync.localUpdates, isNotEmpty,
+        reason: 'a confirmed source heartbeats');
+    expect(sync.changes, contains(false),
+        reason: 'the already-started play is re-asserted as a local change');
+  });
+
+  test('confirming a source a PEER started playing does not re-assert it as ours',
+      () async {
+    const live = 'https://x.test/live.m3u8';
+    // Source is still loading/unconfirmed.
+    video.push(const PlaybackState(
+      status: PlaybackStatus.loading,
+      filePath: live,
+      fileName: 'live.m3u8',
+    ));
+    await Future<void>.delayed(Duration.zero);
+    // A peer plays us while unconfirmed → _onPeerState applies play() locally.
+    sync.pushPeer(
+        const PeerPlayState(position: Duration.zero, paused: false));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    sync.changes.clear();
+
+    // On confirmation, the peer-driven play must NOT be re-asserted as our local
+    // change — the peer is already authoritative; doing so would steal authorship.
+    bridge.markSourceOpen(live);
+    await Future<void>.delayed(Duration.zero);
+    expect(sync.changes, isEmpty,
+        reason: 'a peer-forced pre-open play is not re-asserted as local');
   });
 }

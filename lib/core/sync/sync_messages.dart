@@ -37,22 +37,61 @@ class LineFramer {
 // Encoders — each returns the Map to be json.encode()'d and written as a line.
 // ---------------------------------------------------------------------------
 
-/// JSON for an outbound [message] with any `password` value masked, so the room
-/// password in the Hello never reaches the persistent / exportable diagnostic
-/// log. The real wire bytes are encoded separately and keep the secret.
-String redactSecretsForLog(Map<String, Object?> message) {
-  Object? scrub(Object? value) {
-    if (value is Map) {
-      return <Object?, Object?>{
-        for (final entry in value.entries)
-          entry.key: entry.key == 'password' ? '***' : scrub(entry.value),
-      };
-    }
-    if (value is List) return value.map(scrub).toList();
+/// JSON for an outbound [message] with secrets masked, so they never reach the
+/// persistent / exportable diagnostic log. The real wire bytes are encoded
+/// separately and keep the secrets. Masks two things:
+/// - any `password` value (the room password in the Hello), and
+/// - the query string / userinfo of any `http(s)` URL string (a pasted stream
+///   link's signed CDN token), since a URL becomes the shared file name and is
+///   logged on every announce.
+String redactSecretsForLog(Map<String, Object?> message) =>
+    json.encode(_scrubForLog(message));
+
+/// As [redactSecretsForLog] but for an already-encoded JSON [line] (e.g. an
+/// inbound message we log verbatim). Falls back to the raw line if it isn't a
+/// JSON object, so logging never throws on a malformed frame.
+String redactSecretsForLogText(String line) {
+  Object? decoded;
+  try {
+    decoded = json.decode(line);
+  } on FormatException {
+    return line;
+  }
+  if (decoded is Map) return json.encode(_scrubForLog(decoded));
+  return line;
+}
+
+Object? _scrubForLog(Object? value) {
+  if (value is Map) {
+    return <Object?, Object?>{
+      for (final entry in value.entries)
+        entry.key: entry.key == 'password' ? '***' : _scrubForLog(entry.value),
+    };
+  }
+  if (value is List) return value.map(_scrubForLog).toList();
+  if (value is String) return redactUrlSecrets(value);
+  return value;
+}
+
+/// Strip the query string, userinfo, and fragment from an `http(s)` URL so a
+/// signed token can't land in the diagnostic log; leaves non-URL strings
+/// untouched. The scheme/host/path stay so the stream is still identifiable in
+/// logs. A credential can ride in any of the three — e.g. `?token=…`,
+/// `user:pass@host`, or `#token=…` — so all three are dropped.
+String redactUrlSecrets(String value) {
+  final uri = Uri.tryParse(value.trim());
+  if (uri == null) return value;
+  if (uri.scheme != 'http' && uri.scheme != 'https') return value;
+  if (uri.host.isEmpty) return value;
+  if (uri.query.isEmpty && uri.userInfo.isEmpty && uri.fragment.isEmpty) {
     return value;
   }
-
-  return json.encode(scrub(message));
+  final buffer = StringBuffer('${uri.scheme}://${uri.host}');
+  if (uri.hasPort) buffer.write(':${uri.port}');
+  buffer.write(uri.path);
+  if (uri.query.isNotEmpty) buffer.write('?<redacted>');
+  if (uri.fragment.isNotEmpty) buffer.write('#<redacted>');
+  return buffer.toString();
 }
 
 Map<String, Object?> encodeHello({
