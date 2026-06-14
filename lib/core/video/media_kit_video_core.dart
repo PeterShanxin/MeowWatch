@@ -104,6 +104,19 @@ class MediaKitVideoCore extends VideoCore {
           emit(state.copyWith(status: PlaybackStatus.ended));
         }
       }),
+      // The demuxer reporting real audio/video params is the authoritative "this
+      // source genuinely opened" signal — it fires only once data is actually
+      // read, so (unlike a forced play/pause tick) a hung URL never produces it,
+      // and (unlike a duration) a durationless live stream still does. mpv resets
+      // these to empty on the next START_FILE, so an empty params payload is the
+      // reset, not an open — ignore it. Never let a late open unmask a sticky
+      // error (mirrors the `playing`/`completed` guards above).
+      _player.stream.videoParams.listen((p) {
+        if (p.w != null && p.h != null) _markOpened();
+      }),
+      _player.stream.audioParams.listen((p) {
+        if (p.sampleRate != null) _markOpened();
+      }),
       _player.stream.error.listen((err) {
         emit(state.copyWith(
           status: PlaybackStatus.error,
@@ -111,6 +124,14 @@ class MediaKitVideoCore extends VideoCore {
         ));
       }),
     ];
+  }
+
+  /// Latch the current source as genuinely open (see the params listeners). No-op
+  /// if already marked, or if the load already failed — a late params event must
+  /// not revive a sticky error screen.
+  void _markOpened() {
+    if (state.opened || state.status == PlaybackStatus.error) return;
+    emit(state.copyWith(opened: true));
   }
 
   /// Load a local file path *or* a direct `http(s)` stream URL — mpv accepts
@@ -130,6 +151,8 @@ class MediaKitVideoCore extends VideoCore {
       position: Duration.zero,
       duration: Duration.zero,
       errorMessage: null,
+      // Clear the confirmed-open latch: this new source must re-prove it opens.
+      opened: false,
     ));
     await _player.open(Media(source), play: false);
   }

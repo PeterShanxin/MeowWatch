@@ -20,14 +20,21 @@ class _ManualVideoCore extends VideoCore {
   /// open — a failing source emits this too, then errors.
   void emitPausedTick() => emit(state.copyWith(status: PlaybackStatus.paused));
 
-  /// A genuine open: paused with a known duration.
+  /// A genuine VOD open: paused with a known duration.
   void emitOpened() => emit(state.copyWith(
         status: PlaybackStatus.paused,
         duration: const Duration(minutes: 30),
       ));
 
+  /// A genuine durationless open (a live/direct stream): the backend confirmed
+  /// the source opened via the `opened` flag, but there is no duration.
+  void emitOpenedLive() => emit(state.copyWith(
+        status: PlaybackStatus.paused,
+        opened: true,
+      ));
+
   /// The user pressing play over a still-opening source: `playing`, no duration,
-  /// position still at zero (the player pins a durationless stream's position).
+  /// no `opened` flag (the source never demuxed). Not open evidence.
   void emitPrematurePlay() =>
       emit(state.copyWith(status: PlaybackStatus.playing));
 
@@ -84,40 +91,31 @@ void main() {
     expect(await awaitOpenResult(core, source: src), isTrue);
   });
 
-  test('a paused-only (live) load resolves to true after the timeout', () async {
-    await core.load('https://x.test/slow-live.m3u8');
-    core.emitPausedTick(); // live stream: paused, never a duration, never errors
-    expect(
-      await awaitOpenResult(
-        core,
-        source: 'https://x.test/slow-live.m3u8',
-        timeout: const Duration(milliseconds: 50),
-      ),
-      isTrue,
-    );
-  });
-
-  test('a stream that opened (paused) then was played resolves to true at the '
-      'timeout — a durationless live stream the user started early', () async {
+  test('a durationless live stream resolves to true once the backend confirms '
+      'the open (no duration needed)', () async {
     await core.load('https://x.test/live.m3u8');
     final result = awaitOpenResult(
       core,
       source: 'https://x.test/live.m3u8',
       timeout: const Duration(milliseconds: 50),
     );
-    // open() returns (the `paused` tick = open evidence), then the user presses
-    // Space, so a live/direct stream sits `playing` at position 0 with no
-    // duration. No error arrives within the window → a good source.
-    core.emitPausedTick();
-    core.emitPrematurePlay();
+    core.emitOpenedLive(); // demuxer params arrived → opened flag set
+    expect(await result, isTrue);
+  });
+
+  test('a confirmed-open live stream the user then plays stays true', () async {
+    await core.load('https://x.test/live.m3u8');
+    final result = awaitOpenResult(core, source: 'https://x.test/live.m3u8');
+    core.emitOpenedLive(); // opens (params) …
+    core.emitPrematurePlay(); // … then the user presses Space
     expect(await result, isTrue);
   });
 
   test('a source forced to `playing` without ever opening resolves to false at '
       'the timeout', () async {
     await core.load('https://x.test/hung.m3u8');
-    // No `paused` tick (open() never returned) — a peer heartbeat applied play()
-    // over the still-loading source, so it reads `playing` with no open evidence.
+    // A peer heartbeat applied play() over the still-loading source: `playing`
+    // with no duration and no `opened` flag — not open evidence.
     core.emitPrematurePlay();
     expect(
       await awaitOpenResult(
@@ -129,13 +127,31 @@ void main() {
     );
   });
 
-  test('a source that opened then errors resolves to false (the error wins)',
+  test('a source forced to `paused` without ever opening resolves to false at '
+      'the timeout', () async {
+    await core.load('https://x.test/hung.m3u8');
+    // The user pressed Space twice (play then pause), forging a zero-duration
+    // `paused` tick over a source whose open() never returned — not open
+    // evidence, so it must not be accepted.
+    core.emitPrematurePlay();
+    core.emitPausedTick();
+    expect(
+      await awaitOpenResult(
+        core,
+        source: 'https://x.test/hung.m3u8',
+        timeout: const Duration(milliseconds: 50),
+      ),
+      isFalse,
+    );
+  });
+
+  test('a played-but-never-opened source that then errors resolves to false',
       () async {
     await core.load('https://x.test/dead.mp4');
     final result = awaitOpenResult(core, source: 'https://x.test/dead.mp4');
-    core.emitPausedTick(); // open() returned…
-    core.emitPrematurePlay(); // …user played…
-    core.emitError(); // …but the source then turns out to be bad
+    core.emitPausedTick(); // the pre-error paused tick…
+    core.emitPrematurePlay(); // …user played over it…
+    core.emitError(); // …but it never truly opened and then errors
     expect(await result, isFalse);
   });
 
