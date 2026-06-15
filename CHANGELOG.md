@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.28.0-alpha] - 2026-06-15
+- Shared room codes are now **self-contained when you're on a non-default server**. If a host changes the server or port in Advanced settings, the code they copy now carries that address (e.g. `sleepy-otter-counts-cozy-stars@cozy.example.net:9000`), so a friend joins from a single paste instead of being told the server separately. Codes on the regular public server stay the exact same short magic sentence as before, and old codes like `happy-cat-11` still join unchanged. A self-hosted server *password* is deliberately never put in the code (it can't be truly hidden in a copy-pasteable code), so the joiner enters that once in Advanced — and a garbled code now shows a clear "copy it again" message instead of dropping you into the wrong room. (#110)
+
 ## [0.27.1-alpha] - 2026-06-15
 - Tightened up video loading so quickly switching between videos can't briefly tug your friend's playback to the one you just left, and a hung or broken link can no longer be mistaken for a video that actually opened (which previously could happen if the previous video's data arrived a moment late). Both were narrow timing glitches around starting one video right as another finishes loading; everyday "load a video and watch together" is unchanged. (follow-up to #120)
 

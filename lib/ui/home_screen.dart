@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 import '../core/audio/notify_sounds.dart';
 import '../core/chat/chat_store.dart';
 import '../core/connect/room_config.dart';
+import '../core/connect/room_share.dart';
 import '../core/data/settings_store.dart';
 import '../core/data/stores.dart';
 import '../core/debug/debug_log.dart';
@@ -1341,7 +1342,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: IgnorePointer(
                           ignoring: _chatDragging || _isUiIdle,
                           child: PlayerMenuButton(
-                            roomCode: widget.config.room,
+                            // Self-contained share code: bare sentence on the
+                            // default server, `room@host[:port]` when the host
+                            // is non-default, so copying from the in-room gear
+                            // hands a friend everything they need (#110).
+                            roomCode: encodeShareCode(
+                              room: widget.config.room,
+                              server: widget.config.server,
+                              port: widget.config.port,
+                            ),
                             // Short/redacted label for a URL so a signed token
                             // isn't shown (and a long link doesn't bloat the menu).
                             nowPlaying: state.fileName == null

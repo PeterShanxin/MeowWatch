@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart';
 import '../../core/audio/notify_sounds.dart';
 import '../../core/connect/room_code.dart';
 import '../../core/connect/room_config.dart';
+import '../../core/connect/room_share.dart';
 import '../../core/data/history_entry.dart';
 import '../../core/data/saved_profile.dart';
 import '../../core/data/settings_store.dart';
@@ -221,10 +222,15 @@ class _ConnectScreenState extends State<ConnectScreen> {
     // It is NOT sent as a server password. The Advanced password (if any) is a
     // genuine Syncplay server password and rides along independently.
     final code = generateRoomCode();
+    // The *shared* code is self-contained: on the default public server it's the
+    // bare sentence, but a non-default server/port is appended so a friend joins
+    // from one paste (#110). The room we actually join is still the bare [code].
+    final share =
+        encodeShareCode(room: code, server: _serverValue, port: _portValue);
     // Copy without blocking the join — clipboard is a convenience, and on a
     // headless test binding the platform channel never replies.
-    Clipboard.setData(ClipboardData(text: code)).ignore();
-    _showCopiedSnack(code);
+    Clipboard.setData(ClipboardData(text: share)).ignore();
+    _showCopiedSnack(share);
     await _connect(RoomConfig(
       server: _serverValue,
       port: _portValue,
@@ -259,16 +265,25 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _joinTypedCode() async {
-    final code = _code.text.trim();
-    if (code.isEmpty) return;
-    // The whole pasted code IS the room — a magic sentence, a bare
-    // `happy-cat-11`, or an older folded `happy-cat-11-k3pn` all join verbatim
-    // so a friend lands in the host's exact room. The Advanced password is a
-    // separate server password and must NOT change the room name.
+    final raw = _code.text.trim();
+    if (raw.isEmpty) return;
+    // Parse the pasted code: a plain string (magic sentence, bare `happy-cat-11`,
+    // or folded `happy-cat-11-k3pn`) is the room verbatim; a `room@host[:port]`
+    // share code carries the host's server so a non-default join works from one
+    // paste (#110). A structured-but-broken code gets clear feedback instead of
+    // a confusing failed join. The Advanced password is a separate server
+    // password and is never part of the code.
+    final parsed = parseShareCode(raw);
+    if (!parsed.isValid) {
+      _showSnack(parsed.error!);
+      return;
+    }
+    // A server/port the code carried wins over the Advanced fields (it's the
+    // friend's explicit destination); otherwise fall back to what's typed there.
     await _connect(RoomConfig(
-      server: _serverValue,
-      port: _portValue,
-      room: code,
+      server: parsed.server ?? _serverValue,
+      port: parsed.port ?? _portValue,
+      room: parsed.room,
       username: _username,
       password: _passwordValue,
     ));
