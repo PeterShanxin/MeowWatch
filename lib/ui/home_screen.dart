@@ -1182,6 +1182,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // (#144 review).
     if (_browsing) return;
     _browsing = true;
+    String? path;
     try {
       final typeGroup = XTypeGroup(
         label: 'Video',
@@ -1200,10 +1201,18 @@ class _HomeScreenState extends State<HomeScreen> {
         initialDirectory: initialDirectory,
       );
       if (file == null || !mounted) return;
-      await _load(file.path);
+      path = file.path;
     } finally {
+      // Release the guard once the picker closes — only the preflight+picker
+      // window can queue a duplicate. Holding it through _load would block the
+      // user from picking a replacement while a slow/stuck open runs, breaking
+      // the load-generation supersede flow (#144 review r3).
       _browsing = false;
     }
+    // Outside the guard: a newer browse may now supersede this load. `path` is
+    // promoted non-null here — every no-file/unmounted branch above returns
+    // inside the try (after the finally clears the guard).
+    await _load(path);
   }
 
   /// Best-effort folder to open the file picker in (#139): the last-watched
