@@ -105,6 +105,13 @@ class MediaKitVideoCore extends VideoCore {
         emit(state.copyWith(position: pos));
       }),
       _player.stream.duration.listen((dur) {
+        // Boundary guard (mirrors the params/_markOpened guard): until this
+        // load's START_FILE reset is seen, a non-zero duration belongs to the
+        // source we just left. This matters because the engine is now reused
+        // across rooms (#137) — a late duration from the previous room would
+        // otherwise mark the new source "open" (isPlaybackOpen treats
+        // duration>0 as opened) before it has really opened.
+        if (!_paramsResetSeen) return;
         emit(state.copyWith(duration: dur));
       }),
       _player.stream.volume.listen((vol) {
@@ -137,6 +144,11 @@ class MediaKitVideoCore extends VideoCore {
         if (p.sampleRate != null) _markOpened();
       }),
       _player.stream.error.listen((err) {
+        // Same boundary guard as duration: with the engine reused across rooms
+        // (#137), a late error from the source we left must not error out the
+        // next room. A real error for this source arrives after its START_FILE
+        // reset; a hung/failed load is still caught by the load() open-timeout.
+        if (!_paramsResetSeen) return;
         emit(state.copyWith(
           status: PlaybackStatus.error,
           errorMessage: err.toString(),
@@ -221,6 +233,12 @@ class MediaKitVideoCore extends VideoCore {
     // a blank slate even if it mounts immediately. stop()'s trailing events
     // (playing:false, position/duration 0) are harmless on the load screen.
     emit(const PlaybackState());
+    // The engine is reused, so native player properties persist across rooms.
+    // Restore volume to what a freshly-created Player would have (100%) so it
+    // matches the blank PlaybackState above — otherwise a room left muted/quiet
+    // would leave the next room's slider reading 100% while audio stays silent,
+    // and a mute toggle would set 0 again instead of restoring sound (#143).
+    await _player.setVolume(100.0);
     await _player.stop();
   }
 
