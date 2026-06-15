@@ -27,20 +27,27 @@ import 'video_url.dart';
 /// backend's `SetFolder` silently no-ops on a missing path, so guessing a
 /// non-existent folder would gain nothing.)
 ///
-/// [directoryExists] is injected so the policy stays unit-testable without a
-/// real filesystem; the app passes `Directory(path).existsSync`.
-String? resolvePickerInitialDirectory({
+/// **[directoryExists] must not block the UI thread (#144 review).** A history
+/// path can point at a disconnected mapped drive or a stalled cloud folder,
+/// where a *synchronous* `existsSync` would hang the UI isolate — reintroducing
+/// the very freeze this fixes. The app passes an async, timeout-guarded
+/// `Directory(path).exists()` (dart:io async I/O runs off the UI isolate), so a
+/// slow stat costs at most the timeout, never a freeze. It is also injected so
+/// the policy stays unit-testable without a real filesystem.
+Future<String?> resolvePickerInitialDirectory({
   String? lastLoadedFilePath,
   String? recentFilePath,
   required Map<String, String> environment,
-  required bool Function(String path) directoryExists,
-}) {
+  required Future<bool> Function(String path) directoryExists,
+}) async {
   for (final candidate in _candidateDirectories(
     lastLoadedFilePath,
     recentFilePath,
     environment,
   )) {
-    if (candidate.isNotEmpty && directoryExists(candidate)) return candidate;
+    if (candidate.isNotEmpty && await directoryExists(candidate)) {
+      return candidate;
+    }
   }
   return null;
 }

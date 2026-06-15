@@ -1179,18 +1179,27 @@ class _HomeScreenState extends State<HomeScreen> {
     // view whose recent/cloud scan can hang the (UI-thread-blocking) dialog and
     // freeze the whole app (#139).
     final initialDirectory = await _pickerInitialDirectory();
+    // The preflight awaits (DB read + folder probes); if the screen went away
+    // meanwhile, a stale click must not open a dialog or load into reset
+    // state (#144 review).
+    if (!mounted) return;
     final file = await openFile(
       acceptedTypeGroups: [typeGroup],
       initialDirectory: initialDirectory,
     );
-    if (file != null) {
-      await _load(file.path);
-    }
+    if (file == null || !mounted) return;
+    await _load(file.path);
   }
 
-  /// Best-effort folder to open the file picker in (#139). Reads the most recent
-  /// watch-history entry for a starting folder; any failure (slow/absent DB)
-  /// just yields `null` and the picker keeps its own default.
+  /// Best-effort folder to open the file picker in (#139): the last-watched
+  /// video's folder, else the most recent history entry's folder, else Videos /
+  /// home.
+  ///
+  /// The existence probe is **async and timeout-guarded** — a history path on a
+  /// disconnected mapped drive or stalled cloud folder must never block the UI
+  /// thread (a sync `existsSync` there would reintroduce the freeze this fixes,
+  /// #144 review). `Directory.exists()` runs off the UI isolate, and the timeout
+  /// caps a slow stat so we move on to the next (local) candidate.
   Future<String?> _pickerInitialDirectory() async {
     String? recentFilePath;
     try {
@@ -1206,7 +1215,9 @@ class _HomeScreenState extends State<HomeScreen> {
       lastLoadedFilePath: _loadedSource,
       recentFilePath: recentFilePath,
       environment: Platform.environment,
-      directoryExists: (path) => Directory(path).existsSync(),
+      directoryExists: (path) => Directory(path)
+          .exists()
+          .timeout(const Duration(milliseconds: 800), onTimeout: () => false),
     );
   }
 
