@@ -211,6 +211,81 @@ void main() {
     expect(connected!.password, isNull);
   });
 
+  testWidgets('Enter code with @host:port joins that server in one paste (#110)',
+      (tester) async {
+    // A self-contained share code carries the host's non-default server/port, so
+    // the friend joins without touching Advanced.
+    await pump(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(find.byKey(const Key('connect-code')),
+        'sleepy-otter-counts-cozy-stars@cozy.example.net:9000');
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+    expect(connected!.room, 'sleepy-otter-counts-cozy-stars');
+    expect(connected!.server, 'cozy.example.net');
+    expect(connected!.port, 9000);
+  });
+
+  testWidgets('Enter code rejects a malformed share code with feedback (#110)',
+      (tester) async {
+    // A structured-but-broken code must warn, not silently join a garbage room.
+    await pump(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(find.byKey(const Key('connect-code')),
+        'sleepy-otter-counts-cozy-stars@cozy.example.net:notaport');
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+    expect(connected, isNull);
+    expect(find.textContaining('looks off'), findsOneWidget);
+  });
+
+  testWidgets(
+      'share code with a server but no port uses the host default, not '
+      'Advanced Port (#110)', (tester) async {
+    // A server-bearing code that omits the port (here a bracketed IPv6 host)
+    // must dial the Syncplay default 8999 — never the joiner's Advanced Port.
+    await pump(tester);
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.tap(find.byKey(const Key('connect-advanced')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('connect-advanced-port')), '1234');
+    await tester.enterText(find.byKey(const Key('connect-code')),
+        'sleepy-otter-counts-cozy-stars@[2001:db8::1]');
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+    expect(connected!.server, '2001:db8::1');
+    expect(connected!.port, 8999);
+  });
+
+  testWidgets('a bare room code still honors the Advanced server/port (#110)',
+      (tester) async {
+    // No server in the code → fall back to whatever the joiner typed in Advanced.
+    await pump(tester);
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.tap(find.byKey(const Key('connect-advanced')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('connect-advanced-server')), 'my.lan');
+    await tester.enterText(
+        find.byKey(const Key('connect-advanced-port')), '1234');
+    await tester.enterText(
+        find.byKey(const Key('connect-code')), 'happy-cat-11');
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+    expect(connected!.room, 'happy-cat-11');
+    expect(connected!.server, 'my.lan');
+    expect(connected!.port, 1234);
+  });
+
   testWidgets('Advanced password is sent without mutating the typed room',
       (tester) async {
     // Regression for the private/self-hosted server case: typing a plain room

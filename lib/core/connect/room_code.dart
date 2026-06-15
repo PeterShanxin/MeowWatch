@@ -7,11 +7,12 @@ import 'dart:math';
 /// On a public Syncplay server the room name is the only thing that keeps a room
 /// private: rooms are isolated and unlisted, and the wire `password` field is a
 /// *server* password that public servers ignore. So privacy here comes from
-/// making the room name unguessable. The whole generated string IS the room — to
-/// join, a friend hands it to the server verbatim. We do NOT split it back out or
-/// re-send any part as a server password; that's a separate axis (the Advanced
-/// "Server password" field), and conflating the two would both mangle real room
-/// names and misuse the server password.
+/// making the room name unguessable. The generated string IS the room. For
+/// sharing, `room_share.dart` may wrap it in a self-contained code that appends
+/// a non-default server (`room@host:port`), but the room name itself is never
+/// split apart or re-sent as a server password; that's a separate axis (the
+/// Advanced "Server password" field), and conflating the two would both mangle
+/// real room names and misuse the server password.
 ///
 /// Earlier builds bought unguessability with a random gibberish suffix
 /// (`cozy-fox-42-k3pn`). This generator instead spends the entropy on *real,
