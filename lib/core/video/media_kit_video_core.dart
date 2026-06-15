@@ -32,6 +32,17 @@ class MediaKitVideoCore extends VideoCore {
   /// are stale ticks from the previous file and must be dropped (#132).
   bool _playbackStarted = false;
 
+  /// `false` from a [load] until *this* load's `START_FILE` reset crosses the
+  /// params stream. `_player.open` emits an empty `VideoParams()` synchronously
+  /// inside its internal `stop(open: true)` — always, before the demuxer reads
+  /// the new file — so that empty payload is the per-load boundary marker. Any
+  /// non-empty params seen *before* it belongs to the previous (now superseded)
+  /// file: libmpv events crossing a load boundary, exactly like the stale
+  /// position ticks the position listener guards. Until we see the reset we must
+  /// not let a stale params event latch [PlaybackState.opened] onto the new
+  /// source (which a hung/bad new source would then ride into a false open).
+  bool _paramsResetSeen = false;
+
   Player get player => _player;
 
   /// Configure libmpv decode and sync properties. Reads [Platform.environment]
@@ -108,11 +119,19 @@ class MediaKitVideoCore extends VideoCore {
       // source genuinely opened" signal — it fires only once data is actually
       // read, so (unlike a forced play/pause tick) a hung URL never produces it,
       // and (unlike a duration) a durationless live stream still does. mpv resets
-      // these to empty on the next START_FILE, so an empty params payload is the
-      // reset, not an open — ignore it. Never let a late open unmask a sticky
-      // error (mirrors the `playing`/`completed` guards above).
+      // videoParams to empty on each START_FILE (inside `open`), so an empty
+      // payload is the reset, not an open: ignore it as evidence, but use it to
+      // arm [_paramsResetSeen] — it marks the boundary after which params belong
+      // to *this* load. Never let a late open unmask a sticky error (mirrors the
+      // `playing`/`completed` guards above).
       _player.stream.videoParams.listen((p) {
-        if (p.w != null && p.h != null) _markOpened();
+        if (p.w == null || p.h == null) {
+          // The empty START_FILE reset for the current load: params from here on
+          // belong to this source.
+          _paramsResetSeen = true;
+          return;
+        }
+        _markOpened();
       }),
       _player.stream.audioParams.listen((p) {
         if (p.sampleRate != null) _markOpened();
@@ -127,9 +146,12 @@ class MediaKitVideoCore extends VideoCore {
   }
 
   /// Latch the current source as genuinely open (see the params listeners). No-op
-  /// if already marked, or if the load already failed — a late params event must
-  /// not revive a sticky error screen.
+  /// if this load hasn't crossed its `START_FILE` reset yet (the params event is
+  /// stale, from a superseded source — see [_paramsResetSeen]), if already
+  /// marked, or if the load already failed — a late params event must not revive
+  /// a sticky error screen.
   void _markOpened() {
+    if (!_paramsResetSeen) return;
     if (state.opened || state.status == PlaybackStatus.error) return;
     emit(state.copyWith(opened: true));
   }
@@ -144,6 +166,9 @@ class MediaKitVideoCore extends VideoCore {
     // legitimately sits at 0:00 and any non-zero tick is the previous file's
     // lingering end position (#132).
     _playbackStarted = false;
+    // Arm the params-open guard: a real params event seen before this load's
+    // START_FILE reset is the previous source's, and must not latch `opened`.
+    _paramsResetSeen = false;
     emit(state.copyWith(
       status: PlaybackStatus.loading,
       fileName: mediaSourceName(source),

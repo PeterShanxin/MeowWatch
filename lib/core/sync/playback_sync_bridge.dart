@@ -50,14 +50,21 @@ class PlaybackSyncBridge {
   /// suffices to mark the tick as a load event rather than a user seek.
   String? _lastFilePath;
 
-  /// The `filePath` the load coordinator (`HomeScreen._load` / [awaitOpenResult])
-  /// has *confirmed open*, set via [markSourceOpen]. This is the authoritative
-  /// "source accepted" signal: a live/direct stream may never report a duration,
-  /// and the player pins its position at 0 while the duration is unknown
-  /// (`position_guard.dart`), so the bridge cannot infer "open" from the state
-  /// stream alone. With this marker, an accepted durationless stream's later
-  /// play/pause still drives the heartbeat. Re-validated against the live
-  /// `filePath` on every tick, so a stale marker can't open a different source.
+  /// The `filePath` the load coordinator (`HomeScreen._load`) has *accepted*,
+  /// set via [markSourceOpen]. This is the **sole** "source confirmed" signal the
+  /// heartbeat gates on. The backend reporting a source open ([isPlaybackOpen] —
+  /// a real duration, or the demuxer-params `opened` latch) happens several steps
+  /// *before* the coordinator accepts it: `_load` still awaits `_recordOpen`
+  /// (file-size/DB) before calling [markSourceOpen] and announcing the file. If a
+  /// newer load starts in that window the generation guard skips the old source's
+  /// announce/chat, but a heartbeat keyed off `isPlaybackOpen` would already have
+  /// paused/rewound peers for that unannounced, superseded source. Gating only on
+  /// this coordinator marker keeps the heartbeat silent until the exact accepted
+  /// source is confirmed — and it is what carries a live/direct stream that never
+  /// reports a duration (the player pins its position at 0 via
+  /// `position_guard.dart`, so the bridge cannot infer "open" from the stream
+  /// alone). Re-validated against the live `filePath` on every tick, so a stale
+  /// marker can't open a different source.
   String? _confirmedOpenSource;
 
   /// Whether the most recent *pre-open* `playing` tick (one suppressed because
@@ -104,19 +111,19 @@ class PlaybackSyncBridge {
     // the source's ticks rejoin the heartbeat.
     if (s.status == PlaybackStatus.loading) _confirmedOpenSource = null;
 
-    // A source feeds the heartbeat only once it is confirmed open: it reported a
-    // real duration / `ended` ([isPlaybackOpen]), OR the load coordinator
-    // accepted it ([markSourceOpen]). The marker is what carries a live/direct
-    // stream that never reports a duration — `isPlaybackOpen` alone can never
-    // open it (and its position is pinned at 0 by the position guard). `error`
-    // and `loading` are never published: a new/failing/loading source sits at
-    // position 0, and broadcasting that would make a watching peer pause/rewind
-    // for a load that may never land (e.g. an unreachable URL). Keep the
-    // seek-detection bookkeeping so the next real tick isn't read as a seek, but
-    // don't publish until confirmed.
+    // A source feeds the heartbeat only once the load coordinator has accepted
+    // *this exact* source ([markSourceOpen] → [_confirmedOpenSource]). We do NOT
+    // confirm on the backend's own open signal ([isPlaybackOpen]): that fires
+    // before the coordinator finishes accepting (across `_load`'s `_recordOpen`
+    // await), so a superseded source could heartbeat to peers before it is ever
+    // announced — see [_confirmedOpenSource]. `error` and `loading` are likewise
+    // never published: a new/failing/loading source sits at position 0, and
+    // broadcasting that would make a watching peer pause/rewind for a load that
+    // may never land (e.g. an unreachable URL). Keep the seek-detection
+    // bookkeeping so the next real tick isn't read as a seek, but don't publish
+    // until confirmed.
     final source = s.filePath;
-    final confirmed =
-        isPlaybackOpen(s) || (source != null && source == _confirmedOpenSource);
+    final confirmed = source != null && source == _confirmedOpenSource;
     if (!confirmed ||
         s.status == PlaybackStatus.loading ||
         s.status == PlaybackStatus.error) {

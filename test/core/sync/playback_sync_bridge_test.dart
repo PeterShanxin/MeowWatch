@@ -88,16 +88,26 @@ void main() {
   });
 
   test('local pause toggle notifies a non-seek change', () async {
-    // Confirmed-open states carry a duration; only those drive the heartbeat
-    // and seek/pause detection.
+    // Only a source the load coordinator has accepted (markSourceOpen) drives
+    // the heartbeat and seek/pause detection — a duration alone no longer
+    // confirms it (the backend opens before the coordinator accepts).
+    video.push(const PlaybackState(
+        status: PlaybackStatus.paused,
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a'));
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
     video.push(const PlaybackState(
         status: PlaybackStatus.playing,
         duration: Duration(minutes: 10),
+        filePath: 'a',
         fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
     video.push(const PlaybackState(
         status: PlaybackStatus.paused,
         duration: Duration(minutes: 10),
+        filePath: 'a',
         fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
     expect(sync.changes, contains(false));
@@ -108,12 +118,16 @@ void main() {
         status: PlaybackStatus.playing,
         position: Duration(seconds: 1),
         duration: Duration(minutes: 10),
+        filePath: 'a',
         fileName: 'a'));
+    bridge.markSourceOpen('a');
     await Future<void>.delayed(Duration.zero);
+    sync.changes.clear();
     video.push(const PlaybackState(
         status: PlaybackStatus.playing,
         position: Duration(seconds: 30),
         duration: Duration(minutes: 10),
+        filePath: 'a',
         fileName: 'a'));
     await Future<void>.delayed(Duration.zero);
     expect(sync.changes, contains(true));
@@ -262,6 +276,7 @@ void main() {
       filePath: '/videos/a.mkv',
       fileName: 'a.mkv',
     ));
+    bridge.markSourceOpen('/videos/a.mkv');
     await Future<void>.delayed(Duration.zero);
     sync.changes.clear();
 
@@ -331,7 +346,28 @@ void main() {
         reason: 'a zero-duration (unconfirmed) open must not drive the heartbeat');
   });
 
-  test('a playable state IS published to the heartbeat', () async {
+  test('a coordinator-accepted state IS published to the heartbeat', () async {
+    video.push(const PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration(seconds: 3),
+      duration: Duration(minutes: 10),
+      filePath: '/videos/a.mkv',
+      fileName: 'a.mkv',
+    ));
+    bridge.markSourceOpen('/videos/a.mkv');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.localUpdates, isNotEmpty);
+    expect(sync.localUpdates.last.position, const Duration(seconds: 3));
+    expect(sync.localUpdates.last.paused, isTrue);
+  });
+
+  test('a backend-open but coordinator-unaccepted source does NOT heartbeat',
+      () async {
+    // The backend reported the source open (a real duration → isPlaybackOpen),
+    // but `_load` hasn't called markSourceOpen yet (it's still in _recordOpen).
+    // Publishing here would broadcast a source that may be superseded before it
+    // is ever announced — the race from PR #129's post-merge review.
     video.push(const PlaybackState(
       status: PlaybackStatus.paused,
       position: Duration(seconds: 3),
@@ -341,9 +377,9 @@ void main() {
     ));
     await Future<void>.delayed(Duration.zero);
 
-    expect(sync.localUpdates, isNotEmpty);
-    expect(sync.localUpdates.last.position, const Duration(seconds: 3));
-    expect(sync.localUpdates.last.paused, isTrue);
+    expect(sync.localUpdates, isEmpty,
+        reason: 'a duration alone must not drive the heartbeat before the '
+            'coordinator accepts the source');
   });
 
   test('an accepted live stream (no duration) drives the heartbeat after '
