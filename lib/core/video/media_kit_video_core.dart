@@ -43,6 +43,12 @@ class MediaKitVideoCore extends VideoCore {
   /// source (which a hung/bad new source would then ride into a false open).
   bool _paramsResetSeen = false;
 
+  /// In-flight [reset] (leave-room teardown) on this reused engine, or null when
+  /// idle. [load] awaits it before touching the shared player so a fast re-join
+  /// can't open a new source only for the previous room's trailing `stop()` to
+  /// unload it (#143 review).
+  Future<void>? _pendingReset;
+
   Player get player => _player;
 
   /// Configure libmpv decode and sync properties. Reads [Platform.environment]
@@ -105,12 +111,25 @@ class MediaKitVideoCore extends VideoCore {
         emit(state.copyWith(position: pos));
       }),
       _player.stream.duration.listen((dur) {
+        // Boundary guard (mirrors the params/_markOpened guard): until this
+        // load's START_FILE reset is seen, a non-zero duration belongs to the
+        // source we just left. This matters because the engine is now reused
+        // across rooms (#137) — a late duration from the previous room would
+        // otherwise mark the new source "open" (isPlaybackOpen treats
+        // duration>0 as opened) before it has really opened.
+        if (!_paramsResetSeen) return;
         emit(state.copyWith(duration: dur));
       }),
       _player.stream.volume.listen((vol) {
         emit(state.copyWith(volume: vol / 100.0));
       }),
       _player.stream.completed.listen((done) {
+        // Same boundary guard as duration/error: with the engine reused across
+        // rooms (#137), a stale `completed` from the source we left (e.g. left at
+        // EOF) must not mark the next source `ended` before its START_FILE reset
+        // — awaitOpenResult treats `ended` as opened, so a slow/bad next source
+        // would be falsely recorded/announced as loaded.
+        if (!_paramsResetSeen) return;
         if (done && state.status != PlaybackStatus.error) {
           emit(state.copyWith(status: PlaybackStatus.ended));
         }
@@ -137,6 +156,11 @@ class MediaKitVideoCore extends VideoCore {
         if (p.sampleRate != null) _markOpened();
       }),
       _player.stream.error.listen((err) {
+        // Same boundary guard as duration: with the engine reused across rooms
+        // (#137), a late error from the source we left must not error out the
+        // next room. A real error for this source arrives after its START_FILE
+        // reset; a hung/failed load is still caught by the load() open-timeout.
+        if (!_paramsResetSeen) return;
         emit(state.copyWith(
           status: PlaybackStatus.error,
           errorMessage: err.toString(),
@@ -162,6 +186,11 @@ class MediaKitVideoCore extends VideoCore {
   /// file and the full link for a URL (the Syncplay convention).
   @override
   Future<void> load(String source) async {
+    // Let any in-flight leave-room [reset] finish first: the engine is shared
+    // across rooms, so a fast re-join must not open a new source only for the
+    // previous room's trailing stop() to unload it mid-load (#143 review).
+    final pendingReset = _pendingReset;
+    if (pendingReset != null) await pendingReset;
     // Arm the stale-position guard: until the user plays or seeks, the new file
     // legitimately sits at 0:00 and any non-zero tick is the previous file's
     // lingering end position (#132).
@@ -200,6 +229,51 @@ class MediaKitVideoCore extends VideoCore {
   @override
   Future<void> setVolume(double volume) =>
       _player.setVolume((volume.clamp(0.0, 1.0)) * 100.0);
+
+  /// Empty the engine between rooms **without** tearing it down, so the same
+  /// long-lived engine can be reused for the next room.
+  ///
+  /// This is the leave-room path instead of [dispose]: media_kit's
+  /// [Player.dispose] runs libmpv's teardown on the UI isolate and, when players
+  /// are created/destroyed repeatedly on Windows, `mpv_terminate_destroy` can
+  /// deadlock there and permanently freeze the next screen (issue #137). We only
+  /// ever [Player.stop] here — it unloads the current media but leaves the Player
+  /// (and its [videoController] + listeners) usable. See [VideoEnginePool].
+  ///
+  /// Re-arms the same guards [load] sets so the reused engine starts the next
+  /// room as cleanly as a fresh one, and emits a blank [PlaybackState] so the
+  /// next screen opens on the load view with no stale file/position.
+  Future<void> reset() async {
+    _playbackStarted = false;
+    _paramsResetSeen = false;
+    // Clear stored state synchronously, before any await, so the next room reads
+    // a blank slate even if it mounts immediately. stop()'s trailing events
+    // (playing:false, position/duration 0) are harmless on the load screen.
+    emit(const PlaybackState());
+    // Publish the teardown future synchronously (before yielding) so a fast
+    // re-join's [load] can await it before reusing the shared player (#143).
+    final done = _doReset();
+    _pendingReset = done;
+    await done;
+    if (identical(_pendingReset, done)) _pendingReset = null;
+  }
+
+  /// The actual leave-room teardown. Stop playback **first** — that unloads the
+  /// media so nothing bleeds into the lobby — *then* restore the pooled player's
+  /// volume to what a freshly-created Player would have (100%). The engine is
+  /// reused, so native properties persist across rooms; without this the next
+  /// room's slider would read 100% while audio stayed silent. Order matters:
+  /// raising volume before stop() could briefly play the previous room's audio
+  /// at full volume (#143 review).
+  ///
+  /// Best-effort: a failed stop/volume call must not crash the (fire-and-forget)
+  /// leave path nor reject [_pendingReset], which [load] awaits.
+  Future<void> _doReset() async {
+    try {
+      await _player.stop();
+      await _player.setVolume(100.0);
+    } catch (_) {}
+  }
 
   @override
   Future<void> disposeBackend() async {

@@ -35,6 +35,7 @@ import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 import '../core/video/media_kit_video_core.dart';
+import '../core/video/video_engine_pool.dart';
 import '../core/video/await_open_result.dart';
 import '../core/video/playback_state.dart';
 import '../core/video/seek_when_ready.dart';
@@ -286,11 +287,14 @@ class _HomeScreenState extends State<HomeScreen> {
       widthPx: widget.initialWidthPx,
       heightPx: widget.initialHeightPx,
     );
-    _core = MediaKitVideoCore();
+    // Borrow the process-lifetime engines instead of creating per-room ones:
+    // disposing a libmpv Player on leave can deadlock the UI thread on Windows
+    // and permanently freeze the Connect screen (#137). See [VideoEnginePool].
+    _core = VideoEnginePool.instance.videoCore;
     _sync = SyncplayClient(onLog: _log);
     _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
     _chat = ChatStore(sync: _sync);
-    _audioPlayer = Player();
+    _audioPlayer = VideoEnginePool.instance.audioPlayer;
     _chatSub = _chat.stream.listen((msgs) async {
       if (!mounted) return;
       final newCount = msgs.length - _messages.length;
@@ -753,8 +757,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _autoPauseTimer?.cancel();
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
-    unawaited(_core.dispose());
-    unawaited(_audioPlayer.dispose());
+    // Reset, don't dispose: the engines are shared (process-lifetime) and a
+    // libmpv dispose here can deadlock-freeze the next screen on Windows (#137).
+    // The bridge above already cancelled its subscriptions to _core, and each
+    // new room re-subscribes to the reused engine. See [VideoEnginePool].
+    unawaited(_core.reset());
+    unawaited(_audioPlayer.stop());
     unawaited(_syncLog?.close() ?? Future<void>.value());
     _videoFocus.dispose();
     _rootFocus.dispose();
