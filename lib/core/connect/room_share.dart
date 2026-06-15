@@ -38,6 +38,17 @@ import '../sync/syncplay_constants.dart';
 /// server — exactly as before this feature existed. The split only fires when
 /// the tail carries a `:` (the host:port separator the encoder always emits) or
 /// is a bracketed IPv6 literal — neither of which a magic sentence contains.
+///
+/// ## Known limitation (accepted)
+/// URL-style sharing is inherently ambiguous for a *manually-named* room shaped
+/// exactly like a code, e.g. a default-server room literally named
+/// `movie@home:9000`: it's indistinguishable from room `movie` on `home:9000`,
+/// and disambiguating it would conflict with supporting real single-label
+/// servers (`room@myserver:8999`). Fully resolving it would require a version
+/// marker or percent-escaping — a product decision taken against in favour of
+/// short, readable codes. This never affects generated codes or any old code
+/// (none contain `@`); it only touches deliberately hand-typed names, which
+/// stay joinable via the room field. See issue #110.
 
 /// Shown when a structured code (`room@…`) is present but malformed, so the
 /// joiner gets clear feedback instead of a confusing failed join into a garbage
