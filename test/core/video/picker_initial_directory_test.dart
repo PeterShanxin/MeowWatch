@@ -3,8 +3,8 @@ import 'package:meowwatch/core/video/picker_initial_directory.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
-  // An async directoryExists that resolves true only for the given paths.
-  Future<bool> Function(String) existsFor(Set<String> existing) =>
+  // An async usability predicate that resolves true only for the given paths.
+  Future<bool> Function(String) usableFor(Set<String> existing) =>
       (path) async => existing.contains(path);
 
   group('resolvePickerInitialDirectory', () {
@@ -15,7 +15,7 @@ void main() {
         lastLoadedFilePath: last,
         recentFilePath: p.join('E', 'Other', 'old.mp4'),
         environment: {'USERPROFILE': p.join('C', 'Users', 'me')},
-        directoryExists: existsFor({lastDir}),
+        isDirectoryUsable: usableFor({lastDir}),
       );
       expect(result, lastDir);
     });
@@ -27,7 +27,7 @@ void main() {
         lastLoadedFilePath: null,
         recentFilePath: recent,
         environment: {'USERPROFILE': p.join('C', 'Users', 'me')},
-        directoryExists: existsFor({recentDir}),
+        isDirectoryUsable: usableFor({recentDir}),
       );
       expect(result, recentDir);
     });
@@ -39,7 +39,7 @@ void main() {
         lastLoadedFilePath: 'https://cdn.example.com/stream.m3u8',
         recentFilePath: recent,
         environment: {'USERPROFILE': p.join('C', 'Users', 'me')},
-        directoryExists: existsFor({recentDir}),
+        isDirectoryUsable: usableFor({recentDir}),
       );
       expect(result, recentDir);
     });
@@ -51,7 +51,7 @@ void main() {
         lastLoadedFilePath: 'http://a.example/v.mp4',
         recentFilePath: 'https://b.example/v.mp4',
         environment: {'USERPROFILE': home},
-        directoryExists: existsFor({videos, home}),
+        isDirectoryUsable: usableFor({videos, home}),
       );
       expect(result, videos);
     });
@@ -64,7 +64,7 @@ void main() {
         lastLoadedFilePath: p.join('D', 'gone', 'x.mkv'),
         recentFilePath: null,
         environment: {'USERPROFILE': home},
-        directoryExists: existsFor({videos, home}),
+        isDirectoryUsable: usableFor({videos, home}),
       );
       expect(result, videos);
     });
@@ -75,7 +75,7 @@ void main() {
         lastLoadedFilePath: null,
         recentFilePath: null,
         environment: {'USERPROFILE': home},
-        directoryExists: existsFor({home}),
+        isDirectoryUsable: usableFor({home}),
       );
       expect(result, home);
     });
@@ -87,7 +87,7 @@ void main() {
         lastLoadedFilePath: null,
         recentFilePath: null,
         environment: {'HOME': home},
-        directoryExists: existsFor({videos}),
+        isDirectoryUsable: usableFor({videos}),
       );
       expect(result, videos);
     });
@@ -97,7 +97,7 @@ void main() {
         lastLoadedFilePath: p.join('D', 'gone', 'x.mkv'),
         recentFilePath: p.join('E', 'gone', 'y.mkv'),
         environment: {'USERPROFILE': p.join('C', 'Users', 'me')},
-        directoryExists: existsFor({}),
+        isDirectoryUsable: usableFor({}),
       );
       expect(result, isNull);
     });
@@ -107,7 +107,7 @@ void main() {
         lastLoadedFilePath: null,
         recentFilePath: null,
         environment: const {},
-        directoryExists: (_) async => true,
+        isDirectoryUsable: (_) async => true,
       );
       expect(result, isNull);
     });
@@ -118,7 +118,7 @@ void main() {
         lastLoadedFilePath: '',
         recentFilePath: '',
         environment: {'USERPROFILE': home},
-        directoryExists: existsFor({home}),
+        isDirectoryUsable: usableFor({home}),
       );
       expect(result, home);
     });
@@ -132,7 +132,7 @@ void main() {
         lastLoadedFilePath: null,
         recentFilePath: null,
         environment: {'USERPROFILE': home},
-        directoryExists: (path) async {
+        isDirectoryUsable: (path) async {
           probed.add(path);
           return path == videos; // Videos exists; home should never be probed.
         },

@@ -23,29 +23,31 @@ import 'video_url.dart';
 /// 3. the user's `Videos` folder, then their home folder.
 ///
 /// `http(s)` sources are ignored (a stream URL has no folder). Returns `null`
-/// when no candidate exists — the picker then keeps its own default. (The
+/// when no candidate is usable — the picker then keeps its own default. (The
 /// backend's `SetFolder` silently no-ops on a missing path, so guessing a
 /// non-existent folder would gain nothing.)
 ///
-/// **[directoryExists] must not block the UI thread (#144 review).** A history
-/// path can point at a disconnected mapped drive or a stalled cloud folder,
-/// where a *synchronous* `existsSync` would hang the UI isolate — reintroducing
-/// the very freeze this fixes. The app passes an async, timeout-guarded
-/// `Directory(path).exists()` (dart:io async I/O runs off the UI isolate), so a
-/// slow stat costs at most the timeout, never a freeze. It is also injected so
-/// the policy stays unit-testable without a real filesystem.
+/// **[isDirectoryUsable] must confirm responsiveness, not mere existence, and
+/// must not block the UI thread (#144 review).** A history path can point at a
+/// disconnected mapped drive or a cloud-backed folder that still answers
+/// `exists()` but then stalls while the shell enumerates it — and
+/// `IFileDialog::Show` would synchronously navigate that same slow folder on the
+/// UI thread, reintroducing the very freeze this fixes. So the predicate should
+/// actually probe the folder (e.g. enumerate one entry) off the UI isolate under
+/// a timeout, treating a stall as unusable. It is injected so the policy stays
+/// unit-testable without a real filesystem.
 Future<String?> resolvePickerInitialDirectory({
   String? lastLoadedFilePath,
   String? recentFilePath,
   required Map<String, String> environment,
-  required Future<bool> Function(String path) directoryExists,
+  required Future<bool> Function(String path) isDirectoryUsable,
 }) async {
   for (final candidate in _candidateDirectories(
     lastLoadedFilePath,
     recentFilePath,
     environment,
   )) {
-    if (candidate.isNotEmpty && await directoryExists(candidate)) {
+    if (candidate.isNotEmpty && await isDirectoryUsable(candidate)) {
       return candidate;
     }
   }

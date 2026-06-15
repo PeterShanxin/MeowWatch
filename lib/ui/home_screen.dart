@@ -199,6 +199,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// confirmed open in [_load], invalidated when a new load starts.
   String? _loadedSource;
 
+  /// True while a [_browse] is between its click and the file picker appearing.
+  /// The picker preflight now awaits (DB read + folder probes) before the modal
+  /// opens, so the UI stays live in that gap; without this guard a second Load
+  /// Video click would queue a second picker (#144 review).
+  bool _browsing = false;
+
   /// Bumped at the start of every [_load]. Browse/Paste/drop stay reachable
   /// while a load is in flight, so a newer load can supersede an older one that's
   /// still awaiting its async open result. Each [_load] captures its generation
@@ -1171,35 +1177,46 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _browse() async {
-    final typeGroup = XTypeGroup(
-      label: 'Video',
-      extensions: videoExtensions.toList(),
-    );
-    // Open the picker in a concrete local folder, never the Windows Quick-access
-    // view whose recent/cloud scan can hang the (UI-thread-blocking) dialog and
-    // freeze the whole app (#139).
-    final initialDirectory = await _pickerInitialDirectory();
-    // The preflight awaits (DB read + folder probes); if the screen went away
-    // meanwhile, a stale click must not open a dialog or load into reset
-    // state (#144 review).
-    if (!mounted) return;
-    final file = await openFile(
-      acceptedTypeGroups: [typeGroup],
-      initialDirectory: initialDirectory,
-    );
-    if (file == null || !mounted) return;
-    await _load(file.path);
+    // A preflight or picker is already in flight: a second click would queue a
+    // duplicate picker now that the preflight awaits before the modal opens
+    // (#144 review).
+    if (_browsing) return;
+    _browsing = true;
+    try {
+      final typeGroup = XTypeGroup(
+        label: 'Video',
+        extensions: videoExtensions.toList(),
+      );
+      // Open the picker in a concrete local folder, never the Windows
+      // Quick-access view whose recent/cloud scan can hang the
+      // (UI-thread-blocking) dialog and freeze the whole app (#139).
+      final initialDirectory = await _pickerInitialDirectory();
+      // The preflight awaits (DB read + folder probes); if the screen went away
+      // meanwhile, a stale click must not open a dialog or load into reset
+      // state (#144 review).
+      if (!mounted) return;
+      final file = await openFile(
+        acceptedTypeGroups: [typeGroup],
+        initialDirectory: initialDirectory,
+      );
+      if (file == null || !mounted) return;
+      await _load(file.path);
+    } finally {
+      _browsing = false;
+    }
   }
 
   /// Best-effort folder to open the file picker in (#139): the last-watched
   /// video's folder, else the most recent history entry's folder, else Videos /
   /// home.
   ///
-  /// The existence probe is **async and timeout-guarded** — a history path on a
-  /// disconnected mapped drive or stalled cloud folder must never block the UI
-  /// thread (a sync `existsSync` there would reintroduce the freeze this fixes,
-  /// #144 review). `Directory.exists()` runs off the UI isolate, and the timeout
-  /// caps a slow stat so we move on to the next (local) candidate.
+  /// Each candidate is probed by [_isDirResponsive] before use. Existence alone
+  /// is not enough: a history folder on a disconnected mapped drive or a
+  /// cloud-backed (OneDrive) folder can still `exists()` yet stall when
+  /// `IFileDialog::Show` synchronously navigates into it on the UI thread —
+  /// reintroducing the freeze this fixes (#144 review). The probe runs off the
+  /// UI isolate under a timeout, so a slow/stale candidate is skipped (never
+  /// awaited to completion) and we fall through to the next, local one.
   Future<String?> _pickerInitialDirectory() async {
     String? recentFilePath;
     try {
@@ -1215,10 +1232,27 @@ class _HomeScreenState extends State<HomeScreen> {
       lastLoadedFilePath: _loadedSource,
       recentFilePath: recentFilePath,
       environment: Platform.environment,
-      directoryExists: (path) => Directory(path)
-          .exists()
-          .timeout(const Duration(milliseconds: 800), onTimeout: () => false),
+      isDirectoryUsable: _isDirResponsive,
     );
+  }
+
+  /// Whether [path] is a directory the file picker can open *without stalling*.
+  ///
+  /// We don't just check existence: a UNC / mapped-drive / cloud-backed folder
+  /// can answer `exists()` but then hang the shell while it enumerates, which
+  /// would freeze `IFileDialog::Show` on the UI thread (#144 review). So we
+  /// actually enumerate one entry — `dart:io` async listing runs off the UI
+  /// isolate, and the timeout caps a stalled folder so the UI never blocks. A
+  /// folder that responds quickly here is one the picker can navigate quickly.
+  /// A non-existent folder, a permission error, or a timeout all read as
+  /// unusable.
+  Future<bool> _isDirResponsive(String path) {
+    return Directory(path)
+        .list(followLinks: false)
+        .isEmpty
+        .then((_) => true)
+        .timeout(const Duration(milliseconds: 800), onTimeout: () => false)
+        .catchError((_) => false);
   }
 
   /// Prompt for a direct video link and load it through the same path as a
