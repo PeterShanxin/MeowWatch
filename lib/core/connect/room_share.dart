@@ -14,11 +14,12 @@ import '../sync/syncplay_constants.dart';
 ///   `sleepy-otter-counts-cozy-stars`
 ///
 /// When the server or port differ from the defaults, the endpoint is appended
-/// URL-style, and the port only when it isn't the default:
+/// URL-style, always with an explicit port (the `:` is the unambiguous marker):
 ///
-///   `sleepy-otter-counts-cozy-stars@cozy.example.net`        (custom host)
-///   `sleepy-otter-counts-cozy-stars@cozy.example.net:9000`   (custom host+port)
-///   `sleepy-otter-counts-cozy-stars@syncplay.pl:9000`        (custom port only)
+///   `sleepy-otter-counts-cozy-stars@cozy.example.net:8999`    (custom host)
+///   `sleepy-otter-counts-cozy-stars@cozy.example.net:9000`    (custom host+port)
+///   `sleepy-otter-counts-cozy-stars@syncplay.pl:9000`         (custom port only)
+///   `sleepy-otter-counts-cozy-stars@[2001:db8::1]:8999`       (IPv6 literal)
 ///
 /// ## No password, ever
 /// The Advanced *server* password is deliberately NOT encoded. A cipher would
@@ -30,12 +31,13 @@ import '../sync/syncplay_constants.dart';
 ///
 /// ## Backward compatibility
 /// A string with no `@` — or one whose tail after `@` doesn't look like a
-/// server endpoint (e.g. a manual room literally named `movie@home`) — is
-/// treated as a plain room name. Old room-only codes (`happy-cat-11`), folded
-/// `happy-cat-11-k3pn` codes, and every magic sentence fall here and join
-/// verbatim against the default (or Advanced-overridden) server — exactly as
-/// before this feature existed. The split only fires when the tail is a dotted
-/// host, a bracketed IPv6 literal, or carries an explicit `:port`.
+/// server endpoint (e.g. a manual room literally named `movie@home` or
+/// `movie@example.com`) — is treated as a plain room name. Old room-only codes
+/// (`happy-cat-11`), folded `happy-cat-11-k3pn` codes, and every magic sentence
+/// fall here and join verbatim against the default (or Advanced-overridden)
+/// server — exactly as before this feature existed. The split only fires when
+/// the tail carries a `:` (the host:port separator the encoder always emits) or
+/// is a bracketed IPv6 literal — neither of which a magic sentence contains.
 
 /// Shown when a structured code (`room@…`) is present but malformed, so the
 /// joiner gets clear feedback instead of a confusing failed join into a garbage
@@ -78,13 +80,16 @@ class ParsedShareCode {
 
 /// Builds the shareable code for [room] given the [server] and [port] it's
 /// hosted on. Returns the bare [room] when both are the defaults; otherwise
-/// appends `@host` (and `:port` only when the port is non-default).
+/// appends `@host:port`, **always including the port**.
 ///
-/// An IPv6 literal host is bracketed (`room@[2001:db8::1]`) so its colons can't
-/// be confused with a port separator. If the host alone wouldn't be recognized
-/// as a structured endpoint on the way back (a bare single-label name like
-/// `myserver`, no dot/colon/bracket), the port is pinned explicitly so the code
-/// still round-trips through [parseShareCode].
+/// The explicit port is what makes the form unambiguous: a colon never appears
+/// in a magic sentence, so "the tail has a colon" cleanly marks a share code
+/// and a manual room name that merely contains `@` (even a dotted one like
+/// `movie@example.com`) is left to join verbatim. An IPv6 literal host is
+/// bracketed (`room@[2001:db8::1]:9000`) so its own colons aren't read as the
+/// port separator. Default-server codes stay the bare sentence, so the common
+/// case is unaffected; only the already-technical non-default codes carry the
+/// port.
 String encodeShareCode({
   required String room,
   required String server,
@@ -93,10 +98,7 @@ String encodeShareCode({
   final isDefaultServer = server == SyncplayConstants.defaultServer;
   final isDefaultPort = port == SyncplayConstants.defaultPort;
   if (isDefaultServer && isDefaultPort) return room;
-  final host = _encodeHost(server);
-  final includePort = !isDefaultPort || !_looksLikeEndpoint(host);
-  final portPart = includePort ? ':$port' : '';
-  return '$room@$host$portPart';
+  return '$room@${_encodeHost(server)}:$port';
 }
 
 /// Brackets an IPv6 literal so its colons aren't read as a port separator;
@@ -108,13 +110,13 @@ String _encodeHost(String server) {
 }
 
 /// Whether the text after `@` looks like a server endpoint rather than part of
-/// a legacy room name that merely contains `@` (e.g. `movie@home`). True when
-/// it's a bracketed IPv6 literal, a dotted host/IP, or carries an explicit
-/// `:port`. Our own encoder always emits one of these forms.
+/// a legacy room name that merely contains `@` (e.g. `movie@home` or
+/// `movie@example.com`). True only when it's a bracketed IPv6 literal or
+/// carries a `:` (the host:port separator our encoder always emits). A `:` with
+/// a bad/missing port still counts as endpoint-like so it surfaces clear
+/// malformed feedback instead of silently joining a garbage room.
 bool _looksLikeEndpoint(String endpoint) =>
-    endpoint.startsWith('[') ||
-    endpoint.contains('.') ||
-    RegExp(r':\d').hasMatch(endpoint);
+    endpoint.startsWith('[') || endpoint.contains(':');
 
 /// Parses a pasted [raw] code into a room + optional server/port.
 ///

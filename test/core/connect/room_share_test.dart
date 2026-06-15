@@ -16,10 +16,12 @@ void main() {
       );
     });
 
-    test('custom server, default port appends @host only', () {
+    test('custom server carries the port even when it is the default', () {
+      // The explicit port is the unambiguous marker, so it's always present on a
+      // non-default code (a colon never appears in a magic sentence).
       expect(
         encodeShareCode(room: sentence, server: 'cozy.example.net', port: 8999),
-        '$sentence@cozy.example.net',
+        '$sentence@cozy.example.net:8999',
       );
     });
 
@@ -40,7 +42,7 @@ void main() {
     test('an IPv6 literal host is bracketed', () {
       expect(
         encodeShareCode(room: sentence, server: '2001:db8::1', port: 8999),
-        '$sentence@[2001:db8::1]',
+        '$sentence@[2001:db8::1]:8999',
       );
       expect(
         encodeShareCode(room: sentence, server: '2001:db8::1', port: 9000),
@@ -48,9 +50,7 @@ void main() {
       );
     });
 
-    test('a bare single-label host pins the port so it round-trips', () {
-      // `myserver` alone wouldn't read as an endpoint on parse, so the default
-      // port is made explicit to keep the `@` form unambiguous.
+    test('a bare single-label host carries the port', () {
       expect(
         encodeShareCode(room: sentence, server: 'myserver', port: 8999),
         '$sentence@myserver:8999',
@@ -86,6 +86,8 @@ void main() {
     // must still join as that exact room, not be split into room + server.
     for (final legacy in const [
       'movie@home', // single-label tail, not a server
+      'movie@example.com', // dotted but no port -> still a room name, not a host
+      'sleepy-otter-counts-cozy-stars@cozy.example.net', // port-less, verbatim
       'sleepy-otter-counts-cozy-stars@host@extra', // two @, no endpoint
       'sleepy-otter-counts-cozy-stars@', // trailing @
       '@cozy.example.net', // empty room half
@@ -101,14 +103,6 @@ void main() {
   });
 
   group('parseShareCode — structured codes', () {
-    test('room@host yields the room + server, default port', () {
-      final r = parseShareCode('$sentence@cozy.example.net');
-      expect(r.isValid, isTrue);
-      expect(r.room, sentence);
-      expect(r.server, 'cozy.example.net');
-      expect(r.port, isNull);
-    });
-
     test('room@host:port yields room + server + port', () {
       final r = parseShareCode('$sentence@cozy.example.net:9000');
       expect(r.isValid, isTrue);
@@ -175,7 +169,9 @@ void main() {
       '$sentence@cozy.example.net:abc', // non-numeric port
       '$sentence@cozy.example.net:70000', // port out of range
       '$sentence@cozy.example.net:0', // port out of range
-      '$sentence@cozy example.net', // whitespace in host
+      '$sentence@myserver:abc', // single-label host, garbled port
+      '$sentence@myserver:', // single-label host, empty port
+      '$sentence@cozy example.net:9000', // whitespace in host
       '$sentence@[2001:db8::1', // unclosed IPv6 bracket
       '$sentence@[]:9000', // empty bracketed host
       '$sentence@2001:db8::1', // IPv6 must be bracketed to share
