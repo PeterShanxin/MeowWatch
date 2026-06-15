@@ -43,6 +43,12 @@ class MediaKitVideoCore extends VideoCore {
   /// source (which a hung/bad new source would then ride into a false open).
   bool _paramsResetSeen = false;
 
+  /// In-flight [reset] (leave-room teardown) on this reused engine, or null when
+  /// idle. [load] awaits it before touching the shared player so a fast re-join
+  /// can't open a new source only for the previous room's trailing `stop()` to
+  /// unload it (#143 review).
+  Future<void>? _pendingReset;
+
   Player get player => _player;
 
   /// Configure libmpv decode and sync properties. Reads [Platform.environment]
@@ -118,6 +124,12 @@ class MediaKitVideoCore extends VideoCore {
         emit(state.copyWith(volume: vol / 100.0));
       }),
       _player.stream.completed.listen((done) {
+        // Same boundary guard as duration/error: with the engine reused across
+        // rooms (#137), a stale `completed` from the source we left (e.g. left at
+        // EOF) must not mark the next source `ended` before its START_FILE reset
+        // — awaitOpenResult treats `ended` as opened, so a slow/bad next source
+        // would be falsely recorded/announced as loaded.
+        if (!_paramsResetSeen) return;
         if (done && state.status != PlaybackStatus.error) {
           emit(state.copyWith(status: PlaybackStatus.ended));
         }
@@ -174,6 +186,11 @@ class MediaKitVideoCore extends VideoCore {
   /// file and the full link for a URL (the Syncplay convention).
   @override
   Future<void> load(String source) async {
+    // Let any in-flight leave-room [reset] finish first: the engine is shared
+    // across rooms, so a fast re-join must not open a new source only for the
+    // previous room's trailing stop() to unload it mid-load (#143 review).
+    final pendingReset = _pendingReset;
+    if (pendingReset != null) await pendingReset;
     // Arm the stale-position guard: until the user plays or seeks, the new file
     // legitimately sits at 0:00 and any non-zero tick is the previous file's
     // lingering end position (#132).
@@ -229,17 +246,33 @@ class MediaKitVideoCore extends VideoCore {
   Future<void> reset() async {
     _playbackStarted = false;
     _paramsResetSeen = false;
-    // Clear stored state synchronously, before the await, so the next room reads
+    // Clear stored state synchronously, before any await, so the next room reads
     // a blank slate even if it mounts immediately. stop()'s trailing events
     // (playing:false, position/duration 0) are harmless on the load screen.
     emit(const PlaybackState());
-    // The engine is reused, so native player properties persist across rooms.
-    // Restore volume to what a freshly-created Player would have (100%) so it
-    // matches the blank PlaybackState above — otherwise a room left muted/quiet
-    // would leave the next room's slider reading 100% while audio stays silent,
-    // and a mute toggle would set 0 again instead of restoring sound (#143).
-    await _player.setVolume(100.0);
-    await _player.stop();
+    // Publish the teardown future synchronously (before yielding) so a fast
+    // re-join's [load] can await it before reusing the shared player (#143).
+    final done = _doReset();
+    _pendingReset = done;
+    await done;
+    if (identical(_pendingReset, done)) _pendingReset = null;
+  }
+
+  /// The actual leave-room teardown. Stop playback **first** — that unloads the
+  /// media so nothing bleeds into the lobby — *then* restore the pooled player's
+  /// volume to what a freshly-created Player would have (100%). The engine is
+  /// reused, so native properties persist across rooms; without this the next
+  /// room's slider would read 100% while audio stayed silent. Order matters:
+  /// raising volume before stop() could briefly play the previous room's audio
+  /// at full volume (#143 review).
+  ///
+  /// Best-effort: a failed stop/volume call must not crash the (fire-and-forget)
+  /// leave path nor reject [_pendingReset], which [load] awaits.
+  Future<void> _doReset() async {
+    try {
+      await _player.stop();
+      await _player.setVolume(100.0);
+    } catch (_) {}
   }
 
   @override
