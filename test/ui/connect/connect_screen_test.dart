@@ -241,6 +241,51 @@ void main() {
     expect(find.textContaining('looks off'), findsOneWidget);
   });
 
+  testWidgets(
+      'share code with a server but no port uses the host default, not '
+      'Advanced Port (#110)', (tester) async {
+    // The host omits the port only when on the default 8999, so a server-bearing
+    // code must dial 8999 — never the joiner's leftover Advanced Port.
+    await pump(tester);
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.tap(find.byKey(const Key('connect-advanced')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('connect-advanced-port')), '1234');
+    await tester.enterText(find.byKey(const Key('connect-code')),
+        'sleepy-otter-counts-cozy-stars@cozy.example.net');
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+    expect(connected!.server, 'cozy.example.net');
+    expect(connected!.port, 8999);
+  });
+
+  testWidgets('a bare room code still honors the Advanced server/port (#110)',
+      (tester) async {
+    // No server in the code → fall back to whatever the joiner typed in Advanced.
+    await pump(tester);
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.tap(find.byKey(const Key('connect-advanced')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('connect-advanced-server')), 'my.lan');
+    await tester.enterText(
+        find.byKey(const Key('connect-advanced-port')), '1234');
+    await tester.enterText(
+        find.byKey(const Key('connect-code')), 'happy-cat-11');
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+    expect(connected!.room, 'happy-cat-11');
+    expect(connected!.server, 'my.lan');
+    expect(connected!.port, 1234);
+  });
+
   testWidgets('Advanced password is sent without mutating the typed room',
       (tester) async {
     // Regression for the private/self-hosted server case: typing a plain room

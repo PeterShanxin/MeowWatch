@@ -29,10 +29,13 @@ import '../sync/syncplay_constants.dart';
 /// self-hosted server password is typed once into Advanced by the joiner.
 ///
 /// ## Backward compatibility
-/// Any string with no `@` is treated as a plain room name. Old room-only codes
-/// (`happy-cat-11`), folded `happy-cat-11-k3pn` codes, and every magic sentence
-/// fall here and join verbatim against the default (or Advanced-overridden)
-/// server — exactly as before this feature existed.
+/// A string with no `@` — or one whose tail after `@` doesn't look like a
+/// server endpoint (e.g. a manual room literally named `movie@home`) — is
+/// treated as a plain room name. Old room-only codes (`happy-cat-11`), folded
+/// `happy-cat-11-k3pn` codes, and every magic sentence fall here and join
+/// verbatim against the default (or Advanced-overridden) server — exactly as
+/// before this feature existed. The split only fires when the tail is a dotted
+/// host, a bracketed IPv6 literal, or carries an explicit `:port`.
 
 /// Shown when a structured code (`room@…`) is present but malformed, so the
 /// joiner gets clear feedback instead of a confusing failed join into a garbage
@@ -76,6 +79,12 @@ class ParsedShareCode {
 /// Builds the shareable code for [room] given the [server] and [port] it's
 /// hosted on. Returns the bare [room] when both are the defaults; otherwise
 /// appends `@host` (and `:port` only when the port is non-default).
+///
+/// An IPv6 literal host is bracketed (`room@[2001:db8::1]`) so its colons can't
+/// be confused with a port separator. If the host alone wouldn't be recognized
+/// as a structured endpoint on the way back (a bare single-label name like
+/// `myserver`, no dot/colon/bracket), the port is pinned explicitly so the code
+/// still round-trips through [parseShareCode].
 String encodeShareCode({
   required String room,
   required String server,
@@ -84,45 +93,99 @@ String encodeShareCode({
   final isDefaultServer = server == SyncplayConstants.defaultServer;
   final isDefaultPort = port == SyncplayConstants.defaultPort;
   if (isDefaultServer && isDefaultPort) return room;
-  final portPart = isDefaultPort ? '' : ':$port';
-  return '$room@$server$portPart';
+  final host = _encodeHost(server);
+  final includePort = !isDefaultPort || !_looksLikeEndpoint(host);
+  final portPart = includePort ? ':$port' : '';
+  return '$room@$host$portPart';
 }
 
-/// Parses a pasted [raw] code into a room + optional server/port. A string with
-/// no `@` is a plain room name (back-compat). A `room@host[:port]` code yields
-/// the room and endpoint; anything structured-but-broken returns an [error]
-/// ([malformedShareCodeMessage]) so the caller can warn instead of joining.
+/// Brackets an IPv6 literal so its colons aren't read as a port separator;
+/// leaves an already-bracketed or non-IPv6 host untouched.
+String _encodeHost(String server) {
+  if (server.startsWith('[')) return server;
+  if (server.contains(':')) return '[$server]';
+  return server;
+}
+
+/// Whether the text after `@` looks like a server endpoint rather than part of
+/// a legacy room name that merely contains `@` (e.g. `movie@home`). True when
+/// it's a bracketed IPv6 literal, a dotted host/IP, or carries an explicit
+/// `:port`. Our own encoder always emits one of these forms.
+bool _looksLikeEndpoint(String endpoint) =>
+    endpoint.startsWith('[') ||
+    endpoint.contains('.') ||
+    RegExp(r':\d').hasMatch(endpoint);
+
+/// Parses a pasted [raw] code into a room + optional server/port.
+///
+/// - No `@`, or a tail that doesn't look like a server endpoint → the whole
+///   string is the room. This keeps old room-only codes (`happy-cat-11`) AND
+///   legacy room names that happen to contain `@` (`movie@home`) joining
+///   verbatim, exactly like the pre-feature join path.
+/// - `room@host`, `room@host:port`, or `room@[ipv6]:port` → room + endpoint.
+/// - A tail that looks structured but is broken (bad/out-of-range port, empty
+///   host) → [error] ([malformedShareCodeMessage]) so the caller warns instead
+///   of joining a garbage room.
 ParsedShareCode parseShareCode(String raw) {
   final trimmed = raw.trim();
   final at = trimmed.indexOf('@');
-
-  // No endpoint attached: the whole thing is the room (magic sentence,
-  // happy-cat-11, …). This is the backward-compatible path.
   if (at < 0) return ParsedShareCode(room: trimmed);
 
   final room = trimmed.substring(0, at);
   final endpoint = trimmed.substring(at + 1);
-  // Empty room, empty endpoint, or a second `@` is not a code we produce.
-  if (room.isEmpty || endpoint.isEmpty || endpoint.contains('@')) {
-    return ParsedShareCode(room: trimmed, error: malformedShareCodeMessage);
+  // An empty room or a tail that isn't endpoint-like is a plain room name, not
+  // one of our share codes — join it verbatim (back-compat).
+  if (room.isEmpty || !_looksLikeEndpoint(endpoint)) {
+    return ParsedShareCode(room: trimmed);
   }
 
-  var host = endpoint;
+  final parsed = _parseEndpoint(endpoint);
+  if (parsed == null) {
+    return ParsedShareCode(room: trimmed, error: malformedShareCodeMessage);
+  }
+  return ParsedShareCode(room: room, server: parsed.host, port: parsed.port);
+}
+
+/// A host + optional port split out of the text after `@`.
+class _Endpoint {
+  const _Endpoint(this.host, this.port);
+  final String host;
+  final int? port;
+}
+
+/// Splits `host`, `host:port`, `[ipv6]`, or `[ipv6]:port` into its parts, or
+/// null when malformed. A bare unbracketed IPv6 (multiple colons, no brackets)
+/// is rejected — our encoder always brackets those.
+_Endpoint? _parseEndpoint(String endpoint) {
+  if (endpoint.startsWith('[')) {
+    final close = endpoint.indexOf(']');
+    if (close < 0) return null;
+    final host = endpoint.substring(1, close);
+    final rest = endpoint.substring(close + 1);
+    if (host.isEmpty) return null;
+    if (rest.isEmpty) return _Endpoint(host, null);
+    if (!rest.startsWith(':')) return null;
+    final port = _parsePort(rest.substring(1));
+    return port == null ? null : _Endpoint(host, port);
+  }
+
+  String host = endpoint;
   int? port;
-  final colon = endpoint.indexOf(':');
+  final colon = endpoint.lastIndexOf(':');
   if (colon >= 0) {
+    port = _parsePort(endpoint.substring(colon + 1));
+    if (port == null) return null;
     host = endpoint.substring(0, colon);
-    final portStr = endpoint.substring(colon + 1);
-    final parsed = int.tryParse(portStr);
-    if (parsed == null || parsed < 1 || parsed > 65535) {
-      return ParsedShareCode(room: trimmed, error: malformedShareCodeMessage);
-    }
-    port = parsed;
   }
-  // A host can't be empty or contain whitespace or a stray colon.
-  if (host.isEmpty || host.contains(' ') || host.contains(':')) {
-    return ParsedShareCode(room: trimmed, error: malformedShareCodeMessage);
-  }
+  // A bare host can't be empty, hold whitespace, or still carry a colon (an
+  // unbracketed IPv6 — share those bracketed).
+  if (host.isEmpty || host.contains(' ') || host.contains(':')) return null;
+  return _Endpoint(host, port);
+}
 
-  return ParsedShareCode(room: room, server: host, port: port);
+/// Parses a port string, returning null unless it's a valid 1–65535 number.
+int? _parsePort(String s) {
+  final n = int.tryParse(s);
+  if (n == null || n < 1 || n > 65535) return null;
+  return n;
 }

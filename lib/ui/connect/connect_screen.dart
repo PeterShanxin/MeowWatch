@@ -278,11 +278,16 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _showSnack(parsed.error!);
       return;
     }
-    // A server/port the code carried wins over the Advanced fields (it's the
-    // friend's explicit destination); otherwise fall back to what's typed there.
+    // A code that names a server describes a complete destination: it carries a
+    // port only when non-default, so an omitted port means the host's default
+    // (8999) — NOT whatever sits in the joiner's Advanced Port. Only a bare room
+    // code (no server in the code) falls back to the Advanced fields.
+    final fromCode = parsed.server != null;
     await _connect(RoomConfig(
-      server: parsed.server ?? _serverValue,
-      port: parsed.port ?? _portValue,
+      server: fromCode ? parsed.server! : _serverValue,
+      port: fromCode
+          ? (parsed.port ?? SyncplayConstants.defaultPort)
+          : _portValue,
       room: parsed.room,
       username: _username,
       password: _passwordValue,
@@ -588,10 +593,16 @@ class _ConnectScreenState extends State<ConnectScreen> {
         childrenPadding: const EdgeInsets.only(bottom: Spacing.sm),
         children: [
           _label('Server'),
-          _textField(controller: _server, hint: SyncplayConstants.defaultServer),
+          _textField(
+              key: const Key('connect-advanced-server'),
+              controller: _server,
+              hint: SyncplayConstants.defaultServer),
           const SizedBox(height: Spacing.md),
           _label('Port'),
-          _textField(controller: _port, hint: '${SyncplayConstants.defaultPort}'),
+          _textField(
+              key: const Key('connect-advanced-port'),
+              controller: _port,
+              hint: '${SyncplayConstants.defaultPort}'),
           const SizedBox(height: Spacing.md),
           _label('Server password — advanced / self-hosted only'),
           _textField(
