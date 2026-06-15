@@ -134,6 +134,25 @@ void main() {
       expect(r.server, '2001:db8::1');
       expect(r.port, 9000);
     });
+
+    test('splits on the last @ so a room name containing @ survives', () {
+      // Re-sharing a room joined as `movie@example.com` from a custom server.
+      final r = parseShareCode('movie@example.com@cozy.example.net:9000');
+      expect(r.isValid, isTrue);
+      expect(r.room, 'movie@example.com');
+      expect(r.server, 'cozy.example.net');
+      expect(r.port, 9000);
+    });
+
+    test('a room name with @ round-trips through encode → parse', () {
+      final encoded = encodeShareCode(
+          room: 'movie@example.com', server: 'cozy.example.net', port: 9000);
+      expect(encoded, 'movie@example.com@cozy.example.net:9000');
+      final r = parseShareCode(encoded);
+      expect(r.room, 'movie@example.com');
+      expect(r.server, 'cozy.example.net');
+      expect(r.port, 9000);
+    });
   });
 
   group('parseShareCode — round-trips with encodeShareCode', () {

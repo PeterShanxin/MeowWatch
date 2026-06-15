@@ -128,9 +128,15 @@ bool _looksLikeEndpoint(String endpoint) =>
 /// - A tail that looks structured but is broken (bad/out-of-range port, empty
 ///   host) → [error] ([malformedShareCodeMessage]) so the caller warns instead
 ///   of joining a garbage room.
+///
+/// The room/endpoint boundary is the **last** `@`, not the first: a host:port
+/// never contains `@`, so the last one is always the real separator. That lets
+/// a room name that itself contains `@` (e.g. re-sharing a room joined as
+/// `movie@example.com` from a custom server) round-trip correctly instead of
+/// being truncated at the first `@`.
 ParsedShareCode parseShareCode(String raw) {
   final trimmed = raw.trim();
-  final at = trimmed.indexOf('@');
+  final at = trimmed.lastIndexOf('@');
   if (at < 0) return ParsedShareCode(room: trimmed);
 
   final room = trimmed.substring(0, at);
