@@ -37,6 +37,7 @@ import '../core/theme/tokens/type_scale.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/video_engine_pool.dart';
 import '../core/video/await_open_result.dart';
+import '../core/video/picker_initial_directory.dart';
 import '../core/video/playback_state.dart';
 import '../core/video/seek_when_ready.dart';
 import '../core/video/source_announce.dart';
@@ -1174,10 +1175,39 @@ class _HomeScreenState extends State<HomeScreen> {
       label: 'Video',
       extensions: videoExtensions.toList(),
     );
-    final file = await openFile(acceptedTypeGroups: [typeGroup]);
+    // Open the picker in a concrete local folder, never the Windows Quick-access
+    // view whose recent/cloud scan can hang the (UI-thread-blocking) dialog and
+    // freeze the whole app (#139).
+    final initialDirectory = await _pickerInitialDirectory();
+    final file = await openFile(
+      acceptedTypeGroups: [typeGroup],
+      initialDirectory: initialDirectory,
+    );
     if (file != null) {
       await _load(file.path);
     }
+  }
+
+  /// Best-effort folder to open the file picker in (#139). Reads the most recent
+  /// watch-history entry for a starting folder; any failure (slow/absent DB)
+  /// just yields `null` and the picker keeps its own default.
+  Future<String?> _pickerInitialDirectory() async {
+    String? recentFilePath;
+    try {
+      final recent = await widget.history
+          .watchRecent(limit: 1)
+          .first
+          .timeout(const Duration(seconds: 1));
+      if (recent.isNotEmpty) recentFilePath = recent.first.filePath;
+    } catch (_) {
+      // DB slow or unavailable — fall through to the env folders.
+    }
+    return resolvePickerInitialDirectory(
+      lastLoadedFilePath: _loadedSource,
+      recentFilePath: recentFilePath,
+      environment: Platform.environment,
+      directoryExists: (path) => Directory(path).existsSync(),
+    );
   }
 
   /// Prompt for a direct video link and load it through the same path as a
