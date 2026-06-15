@@ -201,6 +201,29 @@ class MediaKitVideoCore extends VideoCore {
   Future<void> setVolume(double volume) =>
       _player.setVolume((volume.clamp(0.0, 1.0)) * 100.0);
 
+  /// Empty the engine between rooms **without** tearing it down, so the same
+  /// long-lived engine can be reused for the next room.
+  ///
+  /// This is the leave-room path instead of [dispose]: media_kit's
+  /// [Player.dispose] runs libmpv's teardown on the UI isolate and, when players
+  /// are created/destroyed repeatedly on Windows, `mpv_terminate_destroy` can
+  /// deadlock there and permanently freeze the next screen (issue #137). We only
+  /// ever [Player.stop] here — it unloads the current media but leaves the Player
+  /// (and its [videoController] + listeners) usable. See [VideoEnginePool].
+  ///
+  /// Re-arms the same guards [load] sets so the reused engine starts the next
+  /// room as cleanly as a fresh one, and emits a blank [PlaybackState] so the
+  /// next screen opens on the load view with no stale file/position.
+  Future<void> reset() async {
+    _playbackStarted = false;
+    _paramsResetSeen = false;
+    // Clear stored state synchronously, before the await, so the next room reads
+    // a blank slate even if it mounts immediately. stop()'s trailing events
+    // (playing:false, position/duration 0) are harmless on the load screen.
+    emit(const PlaybackState());
+    await _player.stop();
+  }
+
   @override
   Future<void> disposeBackend() async {
     for (final s in _subs) {

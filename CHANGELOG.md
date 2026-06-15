@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.28.1-alpha] - 2026-06-16
+- Fixed a freeze where **leaving a room could lock up the Connect screen** — you'd land back on the start screen but nothing was clickable, and the app had to be force-closed. The cause was the video player shutting itself down at the moment you left; on some PCs that shutdown gets stuck and freezes the whole window. MeowWatch now keeps one video player running for the life of the app and simply empties it between rooms instead of tearing it down each time, so leaving a room is instant and the start screen stays responsive. (Whether this happened depended on your graphics card, which is why it hit some people and not others.) (#137)
+
 ## [0.28.0-alpha] - 2026-06-15
 - Shared room codes are now **self-contained when you're on a non-default server**. If a host changes the server or port in Advanced settings, the code they copy now carries that address (e.g. `sleepy-otter-counts-cozy-stars@cozy.example.net:9000`), so a friend joins from a single paste instead of being told the server separately. Codes on the regular public server stay the exact same short magic sentence as before, and old codes like `happy-cat-11` still join unchanged. A self-hosted server *password* is deliberately never put in the code (it can't be truly hidden in a copy-pasteable code), so the joiner enters that once in Advanced — and a garbled code now shows a clear "copy it again" message instead of dropping you into the wrong room. (#110)
 
