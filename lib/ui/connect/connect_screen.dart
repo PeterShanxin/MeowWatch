@@ -156,6 +156,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
   /// location for. There is no live session log in the lobby, so this just zips
   /// whatever past sessions are already on disk.
   Future<void> _exportLogs() async {
+    // Flush the live session log first: it's process-wide now (#140), so the
+    // lobby holds the still-buffered tail of the run (and of a just-left room).
+    // Without this, exporting right after leaving could miss the most relevant
+    // lines (#146 review).
+    await appLogInstance?.flush();
     final dir = await resolveAppLogsDir();
     final zipBytes = zipLogFiles(dir);
     if (zipBytes == null) {

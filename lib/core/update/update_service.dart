@@ -145,7 +145,10 @@ class UpdateService extends ChangeNotifier {
       final response = await _client.get(uri).timeout(
         const Duration(seconds: 10),
       );
-      if (response.statusCode != 200) return UpdateStatus.checkFailed;
+      if (response.statusCode != 200) {
+        appLog('update: check failed (HTTP ${response.statusCode})');
+        return UpdateStatus.checkFailed;
+      }
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       final remoteVersion = json['version'] as String;
@@ -153,11 +156,17 @@ class UpdateService extends ChangeNotifier {
       // Determine the correct asset key for this machine's architecture.
       final arch = _windowsArch;
       final assets = json['assets'] as Map<String, dynamic>?;
-      if (assets == null) return UpdateStatus.checkFailed;
+      if (assets == null) {
+        appLog('update: check failed (latest.json has no assets)');
+        return UpdateStatus.checkFailed;
+      }
 
       final assetKey = 'windows-$arch';
       final asset = assets[assetKey] as Map<String, dynamic>?;
-      if (asset == null) return UpdateStatus.checkFailed;
+      if (asset == null) {
+        appLog('update: check failed (no $assetKey asset)');
+        return UpdateStatus.checkFailed;
+      }
 
       _latestUpdate = UpdateInfo(
         version: remoteVersion,

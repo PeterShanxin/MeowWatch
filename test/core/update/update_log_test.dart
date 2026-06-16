@@ -52,6 +52,21 @@ void main() {
     expect(readLog(), contains('update: check remote=0.0.1'));
   });
 
+  test('an early check failure (non-200) is logged', () async {
+    final log = DebugLog.inDir(dir, baseName: 'meowwatch_sync')..start();
+    installAppLog(log);
+
+    final mock = MockClient((req) async => http.Response('', 503));
+    final svc =
+        UpdateService.forTest(baseUrl: 'https://example.test', client: mock);
+
+    final status = await svc.checkForUpdate();
+    await log.close();
+
+    expect(status, UpdateStatus.checkFailed);
+    expect(readLog(), contains('update: check failed (HTTP 503)'));
+  });
+
   test('a thrown check (malformed JSON) logs the failure', () async {
     final log = DebugLog.inDir(dir, baseName: 'meowwatch_sync')..start();
     installAppLog(log);

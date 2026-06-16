@@ -1139,6 +1139,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _historyTimer?.cancel();
     await _saveResumePosition();
     await _sync.disconnect();
+    // Await the flush *before* popping: dispose's libmpv teardown is the very
+    // freeze we want logged (#137), so the buffered verbose trace up to the
+    // leave must be on disk before that risky teardown runs — dispose's own
+    // flush is only a fire-and-forget backstop (#146 review).
+    await _syncLog?.flush();
     if (mounted) Navigator.of(context).pop();
     appLog('life: returned to connect screen');
   }
