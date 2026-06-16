@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
 import '../app_version.dart';
+import '../debug/app_log.dart';
+import '../debug/log_redact.dart';
 
 /// Metadata about an available update.
 class UpdateInfo {
@@ -144,7 +146,10 @@ class UpdateService extends ChangeNotifier {
       final response = await _client.get(uri).timeout(
         const Duration(seconds: 10),
       );
-      if (response.statusCode != 200) return UpdateStatus.checkFailed;
+      if (response.statusCode != 200) {
+        appLog('update: check failed (HTTP ${response.statusCode})');
+        return UpdateStatus.checkFailed;
+      }
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       final remoteVersion = json['version'] as String;
@@ -152,11 +157,17 @@ class UpdateService extends ChangeNotifier {
       // Determine the correct asset key for this machine's architecture.
       final arch = _windowsArch;
       final assets = json['assets'] as Map<String, dynamic>?;
-      if (assets == null) return UpdateStatus.checkFailed;
+      if (assets == null) {
+        appLog('update: check failed (latest.json has no assets)');
+        return UpdateStatus.checkFailed;
+      }
 
       final assetKey = 'windows-$arch';
       final asset = assets[assetKey] as Map<String, dynamic>?;
-      if (asset == null) return UpdateStatus.checkFailed;
+      if (asset == null) {
+        appLog('update: check failed (no $assetKey asset)');
+        return UpdateStatus.checkFailed;
+      }
 
       _latestUpdate = UpdateInfo(
         version: remoteVersion,
@@ -166,11 +177,16 @@ class UpdateService extends ChangeNotifier {
         releaseDate: (json['release_date'] as String?) ?? '',
       );
 
-      if (_isNewer(remoteVersion, appVersion)) {
-        return UpdateStatus.updateAvailable;
-      }
-      return UpdateStatus.upToDate;
-    } on Exception {
+      final available = _isNewer(remoteVersion, appVersion);
+      appLog(
+        'update: check remote=$remoteVersion local=$appVersion '
+        '${available ? '→ update available' : '→ up to date'}',
+      );
+      return available
+          ? UpdateStatus.updateAvailable
+          : UpdateStatus.upToDate;
+    } on Exception catch (e) {
+      appLog('update: check failed (${redactUrls('$e')})');
       return UpdateStatus.checkFailed;
     }
   }
@@ -262,10 +278,13 @@ class UpdateService extends ChangeNotifier {
       });
       _downloadedZipPath = path;
       _phase = UpdatePhase.readyToInstall;
+      appLog('update: download ok ${_latestUpdate?.version ?? '?'}');
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Download failed: $e';
       _phase = UpdatePhase.error;
+      // The asset URL can be signed; strip any token before persisting.
+      appLog('update: download failed (${redactUrls('$e')})');
       notifyListeners();
     }
   }
@@ -313,6 +332,7 @@ class UpdateService extends ChangeNotifier {
   /// Pass [restartAfter] false to swap the files without relaunching — used by
   /// the apply-on-close path (#62), where the user is quitting.
   Future<void> applyUpdate(String zipPath, {bool restartAfter = true}) async {
+    appLog('update: apply start ${_latestUpdate?.version ?? '?'} (verify+extract)');
     final zipBytes = await File(zipPath).readAsBytes();
 
     // Integrity gate: confirm the bytes match the hash published in
@@ -365,6 +385,10 @@ class UpdateService extends ChangeNotifier {
       mode: ProcessStartMode.detached,
     );
 
+    // Last chance to get the update trace onto disk: exit(0) below kills the
+    // process, so flush the session log before it goes (#140).
+    appLog('update: updater launched; exiting');
+    await appLogInstance?.flush();
     exit(0);
   }
 

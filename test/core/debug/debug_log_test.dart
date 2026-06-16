@@ -71,6 +71,36 @@ void main() {
       expect(isVerboseOnly('ERROR socket closed'), isFalse);
     });
 
+    test('flags app firehose lines carrying the trace: prefix (#140)', () {
+      expect(isVerboseOnly('trace: play'), isTrue);
+      expect(isVerboseOnly('trace: pause'), isTrue);
+      expect(isVerboseOnly('trace: seek 00:01:23'), isTrue);
+      expect(isVerboseOnly('trace: db updatePosition Episode.mkv'), isTrue);
+    });
+
+    test('only treats apply=false as no-op on FOLLOW lines (#146)', () {
+      // A meaningful app line that merely contains the substring (e.g. a
+      // filename) must NOT be dropped at neat.
+      expect(isVerboseOnly('video: load apply=false.mkv'), isFalse);
+      expect(
+        isVerboseOnly('db: recordOpen FAILED apply=false.mkv: oops'),
+        isFalse,
+      );
+      // The real no-op FOLLOW decision is still verbose-only.
+      expect(isVerboseOnly('FOLLOW g l => apply=false'), isTrue);
+    });
+
+    test('keeps the broadened meaningful app events (#140)', () {
+      expect(isVerboseOnly('video: load Episode.mkv'), isFalse);
+      expect(isVerboseOnly('video: opened Episode.mkv'), isFalse);
+      expect(isVerboseOnly('video: open failed Episode.mkv (timeout)'), isFalse);
+      expect(isVerboseOnly('video: mpv error host/clip.mp4: cannot open'), isFalse);
+      expect(isVerboseOnly('life: leave room (button)'), isFalse);
+      expect(isVerboseOnly('db: recordOpen ok Episode.mkv'), isFalse);
+      expect(isVerboseOnly('update: download ok 0.29.0-alpha'), isFalse);
+      expect(isVerboseOnly('settings: log level=neat'), isFalse);
+    });
+
     test(
       'keeps a raw server Error line (bad password / room full / kicked)',
       () {
@@ -131,6 +161,19 @@ void main() {
       final text = logsIn(dir).single.readAsStringSync();
       expect(text, contains('<< heartbeat'));
       expect(text, contains('apply=false'));
+    });
+
+    test('eagerly flushes a meaningful line without an explicit flush/close',
+        () async {
+      // A fast OS window-close skips the close handler's flush, so meaningful
+      // run-level events must reach disk on their own (#140 review).
+      final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.verbose)
+        ..start();
+      log('life: app start'); // meaningful → eager flush
+      // Give the unawaited flush an IO turn (mirrors the off-switch test).
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(logsIn(dir).single.readAsStringSync(), contains('life: app start'));
+      await log.close();
     });
 
     test('flush makes buffered lines readable without closing', () async {

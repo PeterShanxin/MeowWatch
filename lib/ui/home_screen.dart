@@ -13,9 +13,11 @@ import '../core/connect/room_config.dart';
 import '../core/connect/room_share.dart';
 import '../core/data/settings_store.dart';
 import '../core/data/stores.dart';
+import '../core/debug/app_log.dart';
 import '../core/debug/debug_log.dart';
 import '../core/debug/log_archive.dart';
 import '../core/debug/log_level.dart';
+import '../core/debug/log_redact.dart';
 import '../core/sync/auto_pause.dart';
 import '../core/sync/file_match.dart';
 import '../core/sync/join_prompt.dart';
@@ -86,32 +88,15 @@ class _HomeScreenState extends State<HomeScreen> {
   late final SyncplayClient _sync;
   late final PlaybackSyncBridge _bridge;
 
-  /// Rotating diagnostic log. Built once the app-support dir resolves in
-  /// [_initSettings] (path_provider is async), so it's null at first; [_log]
-  /// forwards safely and early startup lines are simply dropped. Captures the
-  /// Syncplay trace persistently so the intermittent co-watch A/V lag is on
-  /// disk the next time it strikes.
-  DebugLog? _syncLog;
+  /// The process-wide rotating diagnostic log, installed once at startup in
+  /// `main()` and shared by the lobby, every room, and the update service
+  /// (#140). Held as a getter (not a field) so HomeScreen reads the same
+  /// instance everyone else writes to — it never owns, creates, or closes it.
+  /// Null only if the log dir was unavailable, in which case the gear's
+  /// export/level controls degrade gracefully.
+  DebugLog? get _syncLog => appLogInstance;
   LogLevel _logLevel = LogLevel.verbose;
   late final Player _audioPlayer;
-
-  /// Lines emitted before the async [_initSyncLog] installs [_syncLog] — the
-  /// connection handshake and any fast early failures. Held here and replayed
-  /// into the logger once it exists, so startup problems aren't silently
-  /// dropped. Capped so a stuck init can't grow it without bound.
-  final List<String> _pendingLog = <String>[];
-  static const int _maxPendingLog = 1000;
-
-  /// Stable sink handed to [SyncplayClient] before [_syncLog] exists, so the
-  /// client never holds a dangling closure and all traffic lands in one place.
-  void _log(String line) {
-    final log = _syncLog;
-    if (log != null) {
-      log(line);
-    } else if (_pendingLog.length < _maxPendingLog) {
-      _pendingLog.add(line);
-    }
-  }
 
   // Notification chime: bundled assets (portable, no dependency on a
   // system-specific sound file), throttled so a burst of messages doesn't
@@ -298,7 +283,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // disposing a libmpv Player on leave can deadlock the UI thread on Windows
     // and permanently freeze the Connect screen (#137). See [VideoEnginePool].
     _core = VideoEnginePool.instance.videoCore;
-    _sync = SyncplayClient(onLog: _log);
+    // Hashed label, never the raw room: a private room's name is its access
+    // code, so logging it verbatim would leak the room credential (#146 review).
+    appLog('life: enter ${roomLogLabel(widget.config.room)}');
+    _sync = SyncplayClient(onLog: appLog);
     _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
     _chat = ChatStore(sync: _sync);
     _audioPlayer = VideoEnginePool.instance.audioPlayer;
@@ -547,7 +535,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // Announce a deliberate leave if the window is closed (X button) while we're
     // in the room — disconnect() sends the leaving signal with a bounded flush
     // (#92). The Leave button already does this directly via _leave().
-    _closeHook = () => _sync.disconnect();
+    _closeHook = () {
+      appLog('life: window-close hook fired (announcing leave)');
+      return _sync.disconnect();
+    };
     appCloseHook.value = _closeHook;
     final resume = widget.config.resumeFilePath;
     if (resume != null) {
@@ -588,7 +579,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initSettings() async {
-    await _initSyncLog();
+    await _loadLogLevel();
     final dimSetting = await widget.settings.get(kChatAutoDimSettingKey);
     if (dimSetting == 'false' && mounted) {
       setState(() => _chatAutoDim = false);
@@ -616,42 +607,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Build the rotating diagnostic log in a stable app dir and start it at the
-  /// persisted level (default verbose). Guarded end-to-end so a missing dir or
-  /// platform plugin can never block playback startup.
-  Future<void> _initSyncLog() async {
+  /// Read the persisted diagnostic-log level into [_logLevel] so the gear menu
+  /// shows the right selection. The live log itself was already opened at this
+  /// level in `main()` (#140) — this only mirrors it into the UI state.
+  Future<void> _loadLogLevel() async {
     final level = logLevelFromName(
       await widget.settings.get(kLogLevelSettingKey),
     );
-    DebugLog? log;
-    try {
-      final logsDir = await resolveAppLogsDir();
-      log = DebugLog.inDir(logsDir, baseName: 'meowwatch_sync', level: level)
-        ..start();
-    } on Object {
-      log = null; // No log dir available — diagnostics off, app unaffected.
-    }
-    if (!mounted) {
-      await log?.close();
-      return;
-    }
-    if (log != null) {
-      // Replay lines captured before the logger existed (handshake / early
-      // failures). They take the replay timestamp rather than the original,
-      // but that's within a few ms — and the alternative is losing them.
-      for (final line in _pendingLog) {
-        log(line);
-      }
-    }
-    _pendingLog.clear();
-    setState(() {
-      _syncLog = log;
-      _logLevel = level;
-    });
+    if (mounted) setState(() => _logLevel = level);
   }
 
   /// Apply a new diagnostic-log level live and persist it.
   void _onLogLevelChanged(LogLevel level) {
+    // Log the change at the *current* level first — switching to `off` closes
+    // the sink, so a line emitted afterward would be dropped.
+    appLog('settings: log level=${level.storageName}');
     setState(() => _logLevel = level);
     _syncLog?.level = level;
     widget.settings.set(kLogLevelSettingKey, level.storageName);
@@ -735,6 +705,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    appLog('life: dispose home (tearing down room)');
     // Drop the window-close hook (only if it's still ours) so a closed room
     // doesn't keep preventing the OS fast-close path.
     if (identical(appCloseHook.value, _closeHook)) appCloseHook.value = null;
@@ -770,7 +741,11 @@ class _HomeScreenState extends State<HomeScreen> {
     // new room re-subscribes to the reused engine. See [VideoEnginePool].
     unawaited(_core.reset());
     unawaited(_audioPlayer.stop());
-    unawaited(_syncLog?.close() ?? Future<void>.value());
+    // Flush, don't close: the session log is process-wide (#140) and the lobby
+    // (and any next room) keep writing to it. Pushing buffered lines to disk
+    // here means a freeze right after leaving still has this room's trace on
+    // disk. The log is closed only on app exit (the window-close handler).
+    unawaited(_syncLog?.flush() ?? Future<void>.value());
     _videoFocus.dispose();
     _rootFocus.dispose();
     super.dispose();
@@ -1010,6 +985,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // boundary below once we're no longer current, so a stale/slow load can't act
     // on a core state that now belongs to a different source.
     final gen = ++_loadGeneration;
+    // Redacted name only (a URL's signed token must never hit disk). A "load"
+    // line with no matching "opened"/"open failed" line localizes a load-time
+    // freeze (#139) the old sync-only log couldn't see (#140).
+    appLog('video: load ${mediaDisplayName(path)}');
     // Invalidate the accepted-source marker until this load is confirmed, so a
     // reconnect mid-load can't re-announce the previous source.
     _loadedSource = null;
@@ -1031,8 +1010,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final opened = await awaitOpenResult(_core, source: path);
     // Superseded while we awaited: a newer load owns the core now, so do nothing
     // here (no failLoad, no announce) — the newer load reports its own outcome.
-    if (gen != _loadGeneration) return false;
+    if (gen != _loadGeneration) {
+      appLog('video: load superseded ${mediaDisplayName(path)}');
+      return false;
+    }
     if (!opened) {
+      appLog('video: open failed ${mediaDisplayName(path)} (timed out)');
       // A load that never confirmed open must be surfaced as an error, or the
       // user is stuck on a frozen surface with no recovery buttons (those only
       // show on PlaybackStatus.error). This covers both a plain `loading` hang
@@ -1046,6 +1029,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return false;
     }
     if (!mounted || _core.state.filePath != path) return false;
+    appLog('video: opened ${mediaDisplayName(path)}');
     await _recordOpen(path);
     // _recordOpen awaits file-size/DB work; a newer load could have started and
     // swapped the core state (and _localFileSizeBytes) meanwhile.
@@ -1109,14 +1093,21 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted && _core.state.filePath == path) {
       setState(() => _localFileSizeBytes = size);
     }
-    await widget.history.recordOpen(
-      filePath: path,
-      fileName: state.fileName ?? path,
-      fileSizeBytes: size,
-      durationMs: state.duration.inMilliseconds,
-      room: widget.config.room,
-      username: widget.config.username,
-    );
+    // Best-effort + logged: a history write must never crash a load, and a
+    // recordOpen line with no match localizes a DB stall (#140).
+    try {
+      await widget.history.recordOpen(
+        filePath: path,
+        fileName: state.fileName ?? path,
+        fileSizeBytes: size,
+        durationMs: state.duration.inMilliseconds,
+        room: widget.config.room,
+        username: widget.config.username,
+      );
+      appLog('db: recordOpen ok ${mediaDisplayName(path)}');
+    } catch (e) {
+      appLog('db: recordOpen FAILED ${mediaDisplayName(path)}: ${redactUrls('$e')}');
+    }
   }
 
   Future<void> _saveResumePosition() async {
@@ -1128,18 +1119,35 @@ class _HomeScreenState extends State<HomeScreen> {
     // or a moved local file retried from history), and saving that would erase
     // the real saved position for that history row.
     if (!isPlaybackOpen(state)) return;
-    await widget.history.updatePosition(
-      filePath: path,
-      positionMs: state.position.inMilliseconds,
-      durationMs: state.duration.inMilliseconds,
-    );
+    // `trace:` — this runs every few seconds, so it's firehose kept only at
+    // verbose; neat drops it (#140).
+    try {
+      await widget.history.updatePosition(
+        filePath: path,
+        positionMs: state.position.inMilliseconds,
+        durationMs: state.duration.inMilliseconds,
+      );
+      appLog(
+        'trace: db updatePosition ${mediaDisplayName(path)} '
+        '@${state.position.inMilliseconds}ms',
+      );
+    } catch (e) {
+      appLog('db: updatePosition FAILED ${mediaDisplayName(path)}: ${redactUrls('$e')}');
+    }
   }
 
   Future<void> _leave() async {
+    appLog('life: leave room (button)');
     _historyTimer?.cancel();
     await _saveResumePosition();
     await _sync.disconnect();
+    // Await the flush *before* popping: dispose's libmpv teardown is the very
+    // freeze we want logged (#137), so the buffered verbose trace up to the
+    // leave must be on disk before that risky teardown runs — dispose's own
+    // flush is only a fire-and-forget backstop (#146 review).
+    await _syncLog?.flush();
     if (mounted) Navigator.of(context).pop();
+    appLog('life: returned to connect screen');
   }
 
   /// Whether the just-(re)connected room should be told about the current
@@ -1455,7 +1463,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             myUsername: _username,
                             myDisplayName: widget.config.username,
                             currentTheme: widget.currentTheme,
-                            onThemeChanged: widget.onThemeChanged,
+                            onThemeChanged: (theme) {
+                              appLog('settings: theme=${theme.name}');
+                              widget.onThemeChanged(theme);
+                            },
                             onLoadVideo: _browse,
                             onPasteLink: () => unawaited(_promptPasteLink()),
                             onLeave: _leave,
@@ -1485,11 +1496,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             },
                             primarySoundId: _primarySoundId,
                             onPrimarySoundChanged: (id) {
+                              appLog('settings: primary sound=$id');
                               setState(() => _primarySoundId = id);
                               widget.settings.set(kNotifyPrimarySoundKey, id);
                             },
                             secondarySoundId: _secondarySoundId,
                             onSecondarySoundChanged: (id) {
+                              appLog('settings: secondary sound=$id');
                               setState(() => _secondarySoundId = id);
                               widget.settings.set(kNotifySecondarySoundKey, id);
                             },

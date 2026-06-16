@@ -1,12 +1,20 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'log_level.dart';
 
-/// True for lines that are only useful at [LogLevel.verbose]: the raw
-/// per-heartbeat protocol traffic (`<<` / `>>`) and FOLLOW decisions that
-/// resolved to no action (`apply=false`). Everything else — applied follows,
-/// reconnects/drops, errors, log markers — is a meaningful event kept at
-/// [LogLevel.neat]. Pure so it can be unit-tested without any I/O.
+/// True for lines that are only useful at [LogLevel.verbose]: the high-frequency
+/// firehose. Three shapes qualify:
+/// - raw per-heartbeat protocol traffic (`<<` / `>>`),
+/// - FOLLOW decisions that resolved to no action (`apply=false`), and
+/// - app-wide playback/position trace lines, which all carry the `trace:` prefix
+///   (locally-applied play/pause/seek ticks, duration/position churn, periodic
+///   resume-position DB writes) added for the broadened diagnostics in #140.
+///
+/// Everything else — applied follows, reconnects/drops, errors, log markers, and
+/// the meaningful app events (`video:`/`life:`/`db:`/`update:`/`settings:` —
+/// loads, opens, failures, lifecycle, history outcomes) — is a meaningful event
+/// kept at [LogLevel.neat]. Pure so it can be unit-tested without any I/O.
 bool isVerboseOnly(String line) {
   final trimmed = line.trimLeft();
   final isRawTraffic = trimmed.startsWith('<<') || trimmed.startsWith('>>');
@@ -16,7 +24,14 @@ bool isVerboseOnly(String line) {
     // keep — so don't treat an Error-bearing raw line as verbose-only spam.
     return !trimmed.contains('"Error"');
   }
-  return trimmed.contains('apply=false');
+  // The `trace:` prefix tags the broadened app firehose (#140): per-tick
+  // playback state, position churn, and the every-few-seconds resume save.
+  if (trimmed.startsWith('trace:')) return true;
+  // `apply=false` is a no-op FOLLOW decision. Scope the check to FOLLOW lines:
+  // with the broadened app logging, arbitrary filenames/error text now pass
+  // through here, and a meaningful line that merely contains that substring
+  // (e.g. `video: load apply=false.mkv`) must not be dropped at neat (#146).
+  return trimmed.startsWith('FOLLOW') && trimmed.contains('apply=false');
 }
 
 /// A tiny append-only text logger that captures the Syncplay protocol trace
@@ -77,6 +92,24 @@ class DebugLog {
   /// "Off" would read the file before the last buffered lines land.
   Future<void>? _closing;
 
+  /// Serial chain of best-effort flushes. The eager per-line flush ([call]) and
+  /// every explicit [flush]/[close]/off-switch all queue their `IOSink.flush()`
+  /// here so two never overlap — concurrent flushes throw "StreamSink is bound
+  /// to a stream". Errors are swallowed so the chain (and logging) survives a
+  /// transient I/O failure.
+  Future<void> _pendingFlush = Future<void>.value();
+
+  /// Queue [sink].flush() onto [_pendingFlush] so it runs after any in-flight
+  /// flush, never concurrently. Returns the queued future so a caller can await
+  /// exactly its own flush.
+  Future<void> _queueFlush(IOSink sink) {
+    final next = _pendingFlush
+        .then((_) => sink.flush())
+        .catchError((Object _) {});
+    _pendingFlush = next;
+    return next;
+  }
+
   /// Directory holding the rotating logs (null for a fixed-file logger).
   /// Handy for the Export-logs feature.
   Directory? get dir => _dir;
@@ -100,10 +133,12 @@ class DebugLog {
       _sink = null;
       if (sink != null) {
         // Best-effort; never block the UI thread. Tracked in [_closing] so a
-        // following [flush]/[close] can wait for the last lines to land.
+        // following [flush]/[close] can wait for the last lines to land. The
+        // flush goes through [_queueFlush] so it can't overlap an in-flight
+        // eager flush on the same sink.
         _closing = () async {
           try {
-            await sink.flush();
+            await _queueFlush(sink);
             await sink.close();
           } on FileSystemException {
             // Nothing to recover; the file just stops where it was.
@@ -131,6 +166,12 @@ class DebugLog {
     if (sink == null) return;
     try {
       sink.writeln('${_clock().toIso8601String()} $line');
+      // Eagerly flush meaningful events (not the `trace:`/raw firehose) so a
+      // fast OS window-close — which in the lobby / after leaving a room skips
+      // the close handler's flush — still leaves the run-level trace on disk
+      // (#140 review). Queued (not a bare `sink.flush()`) so it never overlaps
+      // another flush. The frequent firehose stays buffered to keep this cheap.
+      if (!isVerboseOnly(line)) unawaited(_queueFlush(sink));
     } on FileSystemException {
       // Drop the line rather than disrupt playback.
     }
@@ -144,19 +185,23 @@ class DebugLog {
     // close started in the level setter — wait for it before reading the file.
     await _closing;
     final sink = _sink;
-    if (sink == null) return;
-    try {
-      await sink.flush();
-    } on FileSystemException {
-      // Best-effort; a failed flush just means the export is slightly behind.
+    if (sink == null) {
+      await _pendingFlush; // let any tail eager flushes land
+      return;
     }
+    // Queue our flush behind any in-flight one and await exactly it, so the
+    // export read sees the latest lines without two flushes overlapping.
+    await _queueFlush(sink);
   }
 
   Future<void> close() async {
     await _closing;
     _closing = null;
     final sink = _sink;
+    // Stop new writes/eager flushes first; queued flushes then no-op on the
+    // detached sink, so our final flush+close can't overlap one.
     _sink = null;
+    await _pendingFlush;
     if (sink == null) return;
     try {
       await sink.flush();

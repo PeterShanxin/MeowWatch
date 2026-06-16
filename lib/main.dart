@@ -6,9 +6,14 @@ import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
+import 'core/app_version.dart';
 import 'core/data/app_database.dart';
 import 'core/data/drift_stores.dart';
 import 'core/data/settings_store.dart';
+import 'core/debug/app_log.dart';
+import 'core/debug/debug_log.dart';
+import 'core/debug/log_archive.dart';
+import 'core/debug/log_level.dart';
 import 'core/theme/meow_theme.dart';
 import 'ui/chat/chat_overlay_layout.dart';
 import 'ui/gallery/design_gallery.dart';
@@ -21,6 +26,13 @@ Future<void> main() async {
 
   final db = await openAppDatabase();
   final settings = DriftSettingsStore(db);
+
+  // Open the process-wide diagnostic log before any UI runs so it captures the
+  // whole app run — lobby, every room, video, updates — not just one room's
+  // Syncplay traffic (#140). Best-effort: a missing log dir leaves it null and
+  // every `appLog` call simply no-ops, so startup is never blocked.
+  await _initAppLog(settings);
+
   final savedTheme = MeowThemeId.fromName(await settings.get(kThemeSettingKey));
   final (cardW, cardH) =
       parseCardSize(await settings.get(kChatCardSizeSettingKey));
@@ -56,6 +68,31 @@ Future<void> main() async {
         MaterialPageRoute<void>(builder: (_) => const DesignGallery()),
       );
     });
+  }
+}
+
+/// Build and install the process-wide rotating session log at the persisted
+/// level (default verbose), then stamp the run's first line. One file per app
+/// run; the level can be changed live from either screen's gear menu. Wrapped so
+/// a missing app-support dir or platform plugin can never block startup — on any
+/// failure the log stays uninstalled and diagnostics are simply off.
+Future<void> _initAppLog(SettingsStore settings) async {
+  final level = logLevelFromName(await settings.get(kLogLevelSettingKey));
+  try {
+    final dir = await resolveAppLogsDir();
+    // retain: 8 — one file per app run now covers the whole app (not just one
+    // room's sync traffic), so each file is larger; keep a few fewer runs on
+    // disk (#140 volume lever).
+    final log = DebugLog.inDir(
+      dir,
+      baseName: 'meowwatch_sync',
+      retain: 8,
+      level: level,
+    )..start();
+    installAppLog(log);
+    appLog('life: app start (version=$appVersion)');
+  } on Object {
+    // No log dir available — diagnostics off, app unaffected.
   }
 }
 

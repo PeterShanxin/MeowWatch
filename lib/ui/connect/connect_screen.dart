@@ -14,6 +14,7 @@ import '../../core/data/history_entry.dart';
 import '../../core/data/saved_profile.dart';
 import '../../core/data/settings_store.dart';
 import '../../core/data/stores.dart';
+import '../../core/debug/app_log.dart';
 import '../../core/debug/log_archive.dart';
 import '../../core/debug/log_level.dart';
 import '../../core/sync/syncplay_constants.dart';
@@ -111,17 +112,23 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   void _setPrimarySound(String id) {
+    appLog('settings: primary sound=$id');
     setState(() => _primarySoundId = id);
     _persistSetting(kNotifyPrimarySoundKey, id);
   }
 
   void _setSecondarySound(String id) {
+    appLog('settings: secondary sound=$id');
     setState(() => _secondarySoundId = id);
     _persistSetting(kNotifySecondarySoundKey, id);
   }
 
   void _setLogLevel(LogLevel level) {
+    // Log the change at the current level first (switching to `off` closes the
+    // sink), then apply it live to the shared session log (#140) and persist it.
+    appLog('settings: log level=${level.storageName}');
     setState(() => _logLevel = level);
+    appLogInstance?.level = level;
     _persistSetting(kLogLevelSettingKey, level.storageName);
   }
 
@@ -149,6 +156,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
   /// location for. There is no live session log in the lobby, so this just zips
   /// whatever past sessions are already on disk.
   Future<void> _exportLogs() async {
+    // Flush the live session log first: it's process-wide now (#140), so the
+    // lobby holds the still-buffered tail of the run (and of a just-left room).
+    // Without this, exporting right after leaving could miss the most relevant
+    // lines (#146 review).
+    await appLogInstance?.flush();
     final dir = await resolveAppLogsDir();
     final zipBytes = zipLogFiles(dir);
     if (zipBytes == null) {
@@ -427,7 +439,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
             right: Spacing.md,
             child: LobbySettingsButton(
               currentTheme: widget.currentTheme,
-              onThemeChanged: widget.onThemeChanged,
+              onThemeChanged: (theme) {
+                appLog('settings: theme=${theme.name}');
+                widget.onThemeChanged(theme);
+              },
               primarySoundId: _primarySoundId,
               onPrimarySoundChanged: _setPrimarySound,
               secondarySoundId: _secondarySoundId,
@@ -648,7 +663,10 @@ class _ContinueWatching extends StatelessWidget {
                 ),
                 TextButton(
                   key: const Key('continue-clear-all'),
-                  onPressed: () => history.clearAll(),
+                  onPressed: () {
+                    appLog('db: history cleared (all)');
+                    history.clearAll();
+                  },
                   style: TextButton.styleFrom(
                     foregroundColor: m.textDim,
                     padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
