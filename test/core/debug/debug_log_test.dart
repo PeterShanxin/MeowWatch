@@ -151,6 +151,19 @@ void main() {
       expect(text, contains('apply=false'));
     });
 
+    test('eagerly flushes a meaningful line without an explicit flush/close',
+        () async {
+      // A fast OS window-close skips the close handler's flush, so meaningful
+      // run-level events must reach disk on their own (#140 review).
+      final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.verbose)
+        ..start();
+      log('life: app start'); // meaningful → eager flush
+      // Give the unawaited flush an IO turn (mirrors the off-switch test).
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(logsIn(dir).single.readAsStringSync(), contains('life: app start'));
+      await log.close();
+    });
+
     test('flush makes buffered lines readable without closing', () async {
       final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.verbose)
         ..start();

@@ -31,6 +31,34 @@ void main() {
       );
     });
 
+    test('strips userinfo credentials (user:token@host)', () {
+      expect(
+        redactUrls('video: mpv error https://user:tok3n@cdn.example/movie.mp4'),
+        'video: mpv error https://cdn.example/movie.mp4',
+      );
+    });
+
+    test('strips userinfo together with a query token', () {
+      expect(
+        redactUrls('open https://u:p@host/path/a.mp4?exp=9#frag now'),
+        'open https://host/path/a.mp4 now',
+      );
+    });
+
+    test('keeps a port while dropping userinfo', () {
+      expect(
+        redactUrls('https://user@host:9000/a.mp4'),
+        'https://host:9000/a.mp4',
+      );
+    });
+
+    test('does not treat an @ in the path as userinfo', () {
+      expect(
+        redactUrls('https://host/path/@handle/clip.mp4'),
+        'https://host/path/@handle/clip.mp4',
+      );
+    });
+
     test('redacts multiple URLs in one line', () {
       expect(
         redactUrls('a https://h/x?t=1 b http://h2/y?z=2 c'),
