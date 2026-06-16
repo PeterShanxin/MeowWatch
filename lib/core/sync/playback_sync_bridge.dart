@@ -130,7 +130,8 @@ class PlaybackSyncBridge {
       // Record whether a pre-open *play* was remote-applied (peer heartbeat,
       // inside the remote-apply window) vs local, so markSourceOpen re-asserts
       // only a genuinely local play. Non-play ticks clear it — nothing to assert.
-      _preOpenPlayRemote = s.status == PlaybackStatus.playing &&
+      _preOpenPlayRemote =
+          s.status == PlaybackStatus.playing &&
           (_applyingRemote || DateTime.now().isBefore(_remoteApplyUntil));
       _lastFilePath = s.filePath;
       _lastPaused = paused;
@@ -171,8 +172,9 @@ class PlaybackSyncBridge {
       // Seek detection: compare actual position to where natural playback
       // would have carried us since the last tick.
       final now = DateTime.now();
-      final elapsed =
-          (_lastPaused == false) ? now.difference(_lastTick) : Duration.zero;
+      final elapsed = (_lastPaused == false)
+          ? now.difference(_lastTick)
+          : Duration.zero;
       final expected = _lastPosition + elapsed;
       final diff = (s.position - expected).abs();
       if (diff > seekDetectThreshold) {
@@ -191,13 +193,14 @@ class PlaybackSyncBridge {
     // bridge applies each one: align position, then match play/pause.
     _applyingRemote = true;
     try {
-      // Seek only on an explicit peer seek, or when we've drifted materially
-      // from the room. A pause/play flip where we're already frame-aligned
-      // (within the threshold) skips the seek, so network jitter never causes
-      // a visible micro-jump backward. This mirrors real Syncplay, which only
-      // repositions on a genuine seek or correction.
+      // Seek on an explicit peer seek, when a peer pauses (frame inspection
+      // needs the exact paused frame), or when we've drifted materially from
+      // the room. Resume/play flips stay thresholded so network jitter does not
+      // cause a visible micro-jump during normal watching.
       final drift = (peer.position - video.state.position).abs();
-      if (peer.doSeek || drift > remoteSeekThreshold) {
+      if (peer.doSeek ||
+          (peer.paused && drift > Duration.zero) ||
+          drift > remoteSeekThreshold) {
         await video.seek(peer.position);
       }
 

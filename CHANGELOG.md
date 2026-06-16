@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.28.3-alpha] - 2026-06-16
+- Pausing now lines your friend up on the exact same timestamp, even for tiny differences under a quarter-second. That means frame-hunting moments - like pausing on a single surprising frame in a video - land on the same picture for both of you, while normal resume/play still avoids tiny jitter jumps.
+
 ## [0.28.2-alpha] - 2026-06-16
 - Fixed a freeze where clicking **Load Video** could make the whole app go "Not Responding". The Windows "choose a file" box opens on the UI thread, and by default it lands on the *Quick access / Recent* view, which scans every recent, pinned, and cloud (OneDrive / network-drive) folder. On some machines one of those is slow or stuck, so the box never finished opening and the app waited forever. MeowWatch now opens the picker straight in a known-good local folder — your last-watched video's folder, falling back to your Videos folder — so it skips that flaky scan. (Like the leave-room freeze, whether it hit you depended on your PC's folders, so it affected some people and not others.) (#139)
 
