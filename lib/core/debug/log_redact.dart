@@ -11,8 +11,24 @@
 library;
 
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+
+/// Random per-run salt for [roomLogLabel]. A generated room code is drawn from
+/// small published word lists (~7e8 combinations), so a *deterministic* digest
+/// of it could be reversed offline by hashing that whole space. Salting with a
+/// secret that only lives in this process (never logged, regenerated each run)
+/// makes the label opaque while still correlating within one run. Lazy so it
+/// isn't computed in runs that never log a room.
+final String _roomLabelSalt = _newRoomLabelSalt();
+
+String _newRoomLabelSalt() {
+  final rnd = Random.secure();
+  return List<int>.generate(16, (_) => rnd.nextInt(256))
+      .map((b) => b.toRadixString(16).padLeft(2, '0'))
+      .join();
+}
 
 /// Matches an `http(s)` URL run up to the next whitespace. [redactUrls] then
 /// strips the query/fragment (from the first `?`/`#`) and any `user:pass@`
@@ -31,12 +47,17 @@ final RegExp _urlRun = RegExp(r'https?://\S+', caseSensitive: false);
 /// For a generated private room the room name *is* the unguessable access code
 /// (no separate password on the public server), so writing it verbatim — even
 /// on a neat-kept lifecycle line — would leak the live room credential into an
-/// exportable log (#146 review). We log a short, stable, non-reversible hash
-/// instead: `room#<8 hex>` lets the same room be correlated across a run's lines
-/// without exposing how to join it. Empty → `(none)`.
+/// exportable log (#146 review). We log an opaque per-run label instead:
+/// `room#<8 hex>` of a salted digest. The salt ([_roomLabelSalt]) is random per
+/// process and never logged, so the low-entropy room code can't be recovered by
+/// hashing the word-list space offline; the same room still maps to one label
+/// within a run for correlation. Empty → `(none)`.
 String roomLogLabel(String room) {
   if (room.isEmpty) return '(none)';
-  final digest = sha256.convert(utf8.encode(room)).toString().substring(0, 8);
+  final digest = sha256
+      .convert(utf8.encode('$_roomLabelSalt:$room'))
+      .toString()
+      .substring(0, 8);
   return 'room#$digest';
 }
 

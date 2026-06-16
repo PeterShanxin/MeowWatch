@@ -78,6 +78,18 @@ void main() {
       expect(isVerboseOnly('trace: db updatePosition Episode.mkv'), isTrue);
     });
 
+    test('only treats apply=false as no-op on FOLLOW lines (#146)', () {
+      // A meaningful app line that merely contains the substring (e.g. a
+      // filename) must NOT be dropped at neat.
+      expect(isVerboseOnly('video: load apply=false.mkv'), isFalse);
+      expect(
+        isVerboseOnly('db: recordOpen FAILED apply=false.mkv: oops'),
+        isFalse,
+      );
+      // The real no-op FOLLOW decision is still verbose-only.
+      expect(isVerboseOnly('FOLLOW g l => apply=false'), isTrue);
+    });
+
     test('keeps the broadened meaningful app events (#140)', () {
       expect(isVerboseOnly('video: load Episode.mkv'), isFalse);
       expect(isVerboseOnly('video: opened Episode.mkv'), isFalse);

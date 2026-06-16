@@ -27,7 +27,11 @@ bool isVerboseOnly(String line) {
   // The `trace:` prefix tags the broadened app firehose (#140): per-tick
   // playback state, position churn, and the every-few-seconds resume save.
   if (trimmed.startsWith('trace:')) return true;
-  return trimmed.contains('apply=false');
+  // `apply=false` is a no-op FOLLOW decision. Scope the check to FOLLOW lines:
+  // with the broadened app logging, arbitrary filenames/error text now pass
+  // through here, and a meaningful line that merely contains that substring
+  // (e.g. `video: load apply=false.mkv`) must not be dropped at neat (#146).
+  return trimmed.startsWith('FOLLOW') && trimmed.contains('apply=false');
 }
 
 /// A tiny append-only text logger that captures the Syncplay protocol trace
