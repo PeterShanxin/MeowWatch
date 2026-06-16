@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.28.2-alpha] - 2026-06-16
+- Fixed a freeze where clicking **Load Video** could make the whole app go "Not Responding". The Windows "choose a file" box opens on the UI thread, and by default it lands on the *Quick access / Recent* view, which scans every recent, pinned, and cloud (OneDrive / network-drive) folder. On some machines one of those is slow or stuck, so the box never finished opening and the app waited forever. MeowWatch now opens the picker straight in a known-good local folder — your last-watched video's folder, falling back to your Videos folder — so it skips that flaky scan. (Like the leave-room freeze, whether it hit you depended on your PC's folders, so it affected some people and not others.) (#139)
+
 ## [0.28.1-alpha] - 2026-06-16
 - Fixed a freeze where **leaving a room could lock up the Connect screen** — you'd land back on the start screen but nothing was clickable, and the app had to be force-closed. The cause was the video player shutting itself down at the moment you left; on some PCs that shutdown gets stuck and freezes the whole window. MeowWatch now keeps one video player running for the life of the app and simply empties it between rooms instead of tearing it down each time, so leaving a room is instant and the start screen stays responsive. (Whether this happened depended on your graphics card, which is why it hit some people and not others.) (#137)
 
