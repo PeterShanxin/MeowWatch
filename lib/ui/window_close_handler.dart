@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../core/debug/app_log.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/tokens/icon_sizes.dart';
 import '../core/theme/tokens/radii.dart';
@@ -126,6 +127,10 @@ class WindowCloseHandler with WindowListener {
     // Announce a deliberate leave (if in a room) before tearing the window down,
     // so peers see "left the room" rather than "lost connection" (#92).
     await runAppCloseHook();
+    // Flush the session log before the window is destroyed so this run's trace
+    // (including the close itself) is on disk (#140).
+    appLog('life: app closing');
+    await appLogInstance?.flush();
     await _destroyWindow();
   }
 }

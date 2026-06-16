@@ -71,6 +71,24 @@ void main() {
       expect(isVerboseOnly('ERROR socket closed'), isFalse);
     });
 
+    test('flags app firehose lines carrying the trace: prefix (#140)', () {
+      expect(isVerboseOnly('trace: play'), isTrue);
+      expect(isVerboseOnly('trace: pause'), isTrue);
+      expect(isVerboseOnly('trace: seek 00:01:23'), isTrue);
+      expect(isVerboseOnly('trace: db updatePosition Episode.mkv'), isTrue);
+    });
+
+    test('keeps the broadened meaningful app events (#140)', () {
+      expect(isVerboseOnly('video: load Episode.mkv'), isFalse);
+      expect(isVerboseOnly('video: opened Episode.mkv'), isFalse);
+      expect(isVerboseOnly('video: open failed Episode.mkv (timeout)'), isFalse);
+      expect(isVerboseOnly('video: mpv error host/clip.mp4: cannot open'), isFalse);
+      expect(isVerboseOnly('life: leave room (button)'), isFalse);
+      expect(isVerboseOnly('db: recordOpen ok Episode.mkv'), isFalse);
+      expect(isVerboseOnly('update: download ok 0.29.0-alpha'), isFalse);
+      expect(isVerboseOnly('settings: log level=neat'), isFalse);
+    });
+
     test(
       'keeps a raw server Error line (bad password / room full / kicked)',
       () {

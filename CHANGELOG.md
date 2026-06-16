@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.29.0-alpha] - 2026-06-16
+- The built-in diagnostic log now records **everything the app does**, not just the chat/sync traffic it used to. It captures loading a video, errors from the player, leaving a room, saving your spot, settings changes, and update downloads — across the whole time the app is open (the lobby and every room), all in one file. So if something freezes or misbehaves, a single exported log is enough to pinpoint where it got stuck — the kind of trouble the old log couldn't see at all. The detailed firehose (every play/pause/seek tick) is still kept only on the "verbose" setting; "neat" keeps just the meaningful events, and "off" still writes nothing. Links are always stored with any private access token stripped out. (#140)
+
 ## [0.28.3-alpha] - 2026-06-16
 - Pausing now lines your friend up on the exact same timestamp, even for tiny differences under a quarter-second. That means frame-hunting moments - like pausing on a single surprising frame in a video - land on the same picture for both of you, while normal resume/play still avoids tiny jitter jumps.
 

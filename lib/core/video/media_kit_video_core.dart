@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../debug/app_log.dart';
+import '../debug/log_redact.dart';
 import 'playback_state.dart';
 import 'position_guard.dart';
 import 'video_core.dart';
@@ -161,6 +163,9 @@ class MediaKitVideoCore extends VideoCore {
         // next room. A real error for this source arrives after its START_FILE
         // reset; a hung/failed load is still caught by the load() open-timeout.
         if (!_paramsResetSeen) return;
+        // Redact any signed token in a URL the mpv message embeds before it
+        // hits disk (#140). Neat-kept: a real playback error is a key event.
+        appLog('video: mpv error: ${redactUrls(err.toString())}');
         emit(state.copyWith(
           status: PlaybackStatus.error,
           errorMessage: err.toString(),
@@ -214,15 +219,20 @@ class MediaKitVideoCore extends VideoCore {
   @override
   Future<void> play() {
     _playbackStarted = true;
+    appLog('trace: play');
     return _player.play();
   }
 
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> pause() {
+    appLog('trace: pause');
+    return _player.pause();
+  }
 
   @override
   Future<void> seek(Duration position) {
     _playbackStarted = true;
+    appLog('trace: seek ${position.inMilliseconds}ms');
     return _player.seek(position);
   }
 

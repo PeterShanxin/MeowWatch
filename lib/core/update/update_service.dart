@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
 import '../app_version.dart';
+import '../debug/app_log.dart';
 
 /// Metadata about an available update.
 class UpdateInfo {
@@ -166,11 +167,16 @@ class UpdateService extends ChangeNotifier {
         releaseDate: (json['release_date'] as String?) ?? '',
       );
 
-      if (_isNewer(remoteVersion, appVersion)) {
-        return UpdateStatus.updateAvailable;
-      }
-      return UpdateStatus.upToDate;
-    } on Exception {
+      final available = _isNewer(remoteVersion, appVersion);
+      appLog(
+        'update: check remote=$remoteVersion local=$appVersion '
+        '${available ? '→ update available' : '→ up to date'}',
+      );
+      return available
+          ? UpdateStatus.updateAvailable
+          : UpdateStatus.upToDate;
+    } on Exception catch (e) {
+      appLog('update: check failed ($e)');
       return UpdateStatus.checkFailed;
     }
   }
@@ -262,10 +268,12 @@ class UpdateService extends ChangeNotifier {
       });
       _downloadedZipPath = path;
       _phase = UpdatePhase.readyToInstall;
+      appLog('update: download ok ${_latestUpdate?.version ?? '?'}');
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Download failed: $e';
       _phase = UpdatePhase.error;
+      appLog('update: download failed ($e)');
       notifyListeners();
     }
   }
@@ -313,6 +321,7 @@ class UpdateService extends ChangeNotifier {
   /// Pass [restartAfter] false to swap the files without relaunching — used by
   /// the apply-on-close path (#62), where the user is quitting.
   Future<void> applyUpdate(String zipPath, {bool restartAfter = true}) async {
+    appLog('update: apply start ${_latestUpdate?.version ?? '?'} (verify+extract)');
     final zipBytes = await File(zipPath).readAsBytes();
 
     // Integrity gate: confirm the bytes match the hash published in
@@ -365,6 +374,10 @@ class UpdateService extends ChangeNotifier {
       mode: ProcessStartMode.detached,
     );
 
+    // Last chance to get the update trace onto disk: exit(0) below kills the
+    // process, so flush the session log before it goes (#140).
+    appLog('update: updater launched; exiting');
+    await appLogInstance?.flush();
     exit(0);
   }
 

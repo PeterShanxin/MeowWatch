@@ -2,11 +2,18 @@ import 'dart:io';
 
 import 'log_level.dart';
 
-/// True for lines that are only useful at [LogLevel.verbose]: the raw
-/// per-heartbeat protocol traffic (`<<` / `>>`) and FOLLOW decisions that
-/// resolved to no action (`apply=false`). Everything else — applied follows,
-/// reconnects/drops, errors, log markers — is a meaningful event kept at
-/// [LogLevel.neat]. Pure so it can be unit-tested without any I/O.
+/// True for lines that are only useful at [LogLevel.verbose]: the high-frequency
+/// firehose. Three shapes qualify:
+/// - raw per-heartbeat protocol traffic (`<<` / `>>`),
+/// - FOLLOW decisions that resolved to no action (`apply=false`), and
+/// - app-wide playback/position trace lines, which all carry the `trace:` prefix
+///   (locally-applied play/pause/seek ticks, duration/position churn, periodic
+///   resume-position DB writes) added for the broadened diagnostics in #140.
+///
+/// Everything else — applied follows, reconnects/drops, errors, log markers, and
+/// the meaningful app events (`video:`/`life:`/`db:`/`update:`/`settings:` —
+/// loads, opens, failures, lifecycle, history outcomes) — is a meaningful event
+/// kept at [LogLevel.neat]. Pure so it can be unit-tested without any I/O.
 bool isVerboseOnly(String line) {
   final trimmed = line.trimLeft();
   final isRawTraffic = trimmed.startsWith('<<') || trimmed.startsWith('>>');
@@ -16,6 +23,9 @@ bool isVerboseOnly(String line) {
     // keep — so don't treat an Error-bearing raw line as verbose-only spam.
     return !trimmed.contains('"Error"');
   }
+  // The `trace:` prefix tags the broadened app firehose (#140): per-tick
+  // playback state, position churn, and the every-few-seconds resume save.
+  if (trimmed.startsWith('trace:')) return true;
   return trimmed.contains('apply=false');
 }
 
