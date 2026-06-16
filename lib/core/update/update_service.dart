@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import '../app_version.dart';
 import '../debug/app_log.dart';
+import '../debug/log_redact.dart';
 
 /// Metadata about an available update.
 class UpdateInfo {
@@ -185,7 +186,7 @@ class UpdateService extends ChangeNotifier {
           ? UpdateStatus.updateAvailable
           : UpdateStatus.upToDate;
     } on Exception catch (e) {
-      appLog('update: check failed ($e)');
+      appLog('update: check failed (${redactUrls('$e')})');
       return UpdateStatus.checkFailed;
     }
   }
@@ -282,7 +283,8 @@ class UpdateService extends ChangeNotifier {
     } catch (e) {
       _errorMessage = 'Download failed: $e';
       _phase = UpdatePhase.error;
-      appLog('update: download failed ($e)');
+      // The asset URL can be signed; strip any token before persisting.
+      appLog('update: download failed (${redactUrls('$e')})');
       notifyListeners();
     }
   }

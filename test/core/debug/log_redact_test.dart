@@ -78,4 +78,22 @@ void main() {
       );
     });
   });
+
+  group('roomLogLabel', () {
+    test('never echoes the raw room (it is the access code)', () {
+      const room = 'happy-otter-counts-cozy-stars';
+      final label = roomLogLabel(room);
+      expect(label, isNot(contains(room)));
+      expect(label, startsWith('room#'));
+    });
+
+    test('is stable for the same room and differs across rooms', () {
+      expect(roomLogLabel('alpha-room'), roomLogLabel('alpha-room'));
+      expect(roomLogLabel('alpha-room'), isNot(roomLogLabel('beta-room')));
+    });
+
+    test('empty room reads as (none)', () {
+      expect(roomLogLabel(''), '(none)');
+    });
+  });
 }

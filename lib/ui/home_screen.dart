@@ -283,7 +283,9 @@ class _HomeScreenState extends State<HomeScreen> {
     // disposing a libmpv Player on leave can deadlock the UI thread on Windows
     // and permanently freeze the Connect screen (#137). See [VideoEnginePool].
     _core = VideoEnginePool.instance.videoCore;
-    appLog('life: enter room ${widget.config.room}');
+    // Hashed label, never the raw room: a private room's name is its access
+    // code, so logging it verbatim would leak the room credential (#146 review).
+    appLog('life: enter ${roomLogLabel(widget.config.room)}');
     _sync = SyncplayClient(onLog: appLog);
     _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
     _chat = ChatStore(sync: _sync);

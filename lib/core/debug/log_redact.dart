@@ -10,6 +10,10 @@
 /// (`redactUrlSecrets`) already applies. Pure — unit-tested without any I/O.
 library;
 
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
 /// Matches an `http(s)` URL run up to the next whitespace. [redactUrls] then
 /// strips the query/fragment (from the first `?`/`#`) and any `user:pass@`
 /// userinfo from each match.
@@ -22,6 +26,20 @@ final RegExp _urlRun = RegExp(r'https?://\S+', caseSensitive: false);
 /// `https://cdn.example/clip.mp4`. Trailing punctuation that isn't part of the
 /// query (e.g. a sentence-ending `.` or a closing paren) is preserved because we
 /// only ever trim from the first `?`/`#` onward.
+/// A safe label for a room name in the diagnostic log.
+///
+/// For a generated private room the room name *is* the unguessable access code
+/// (no separate password on the public server), so writing it verbatim — even
+/// on a neat-kept lifecycle line — would leak the live room credential into an
+/// exportable log (#146 review). We log a short, stable, non-reversible hash
+/// instead: `room#<8 hex>` lets the same room be correlated across a run's lines
+/// without exposing how to join it. Empty → `(none)`.
+String roomLogLabel(String room) {
+  if (room.isEmpty) return '(none)';
+  final digest = sha256.convert(utf8.encode(room)).toString().substring(0, 8);
+  return 'room#$digest';
+}
+
 String redactUrls(String text) {
   return text.replaceAllMapped(_urlRun, (match) {
     var url = match.group(0)!;
