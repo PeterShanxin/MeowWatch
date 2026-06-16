@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.29.1-alpha] - 2026-06-17
+- Fixed a bug where **switching to a different video — like loading the next episode — could get stuck on the "Couldn't play that video / Timed out" error screen**, even though the file was perfectly fine; you'd have to reload and press Play to get past it. MeowWatch opens a video paused on purpose (so you and your friend don't both jump to the start), but a recent change started waiting for the player to *prove* the file had opened — and a paused video doesn't always send that proof, so the second file you loaded would just sit there and time out. (The very first video after launching opened fine; it was switching files afterwards that hung.) The app now accepts the video's length as proof it opened — which a paused file always reports — so switching episodes works on the first try. This also clears the related "keeps rewinding to sync" loop that kicked in when one of you was stuck on that error screen while the other kept playing. (#147)
+
 ## [0.29.0-alpha] - 2026-06-16
 - The built-in diagnostic log now records **everything the app does**, not just the chat/sync traffic it used to. It captures loading a video, errors from the player, leaving a room, saving your spot, settings changes, and update downloads — across the whole time the app is open (the lobby and every room), all in one file. So if something freezes or misbehaves, a single exported log is enough to pinpoint where it got stuck — the kind of trouble the old log couldn't see at all. The detailed firehose (every play/pause/seek tick) is still kept only on the "verbose" setting; "neat" keeps just the meaningful events, and "off" still writes nothing. Links are always stored with any private access token stripped out. (#140)
 

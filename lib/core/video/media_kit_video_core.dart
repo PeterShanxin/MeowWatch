@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../debug/app_log.dart';
 import '../debug/log_redact.dart';
+import 'duration_open_gate.dart';
 import 'playback_state.dart';
 import 'position_guard.dart';
 import 'video_core.dart';
@@ -44,6 +45,17 @@ class MediaKitVideoCore extends VideoCore {
   /// not let a stale params event latch [PlaybackState.opened] onto the new
   /// source (which a hung/bad new source would then ride into a false open).
   bool _paramsResetSeen = false;
+
+  /// `false` from a [load] until *this* load's `duration: 0` reset crosses the
+  /// duration stream. media_kit emits that zero inside `_player.open`'s
+  /// `stop(open: true)`, before the demuxer reads the new container, so it is the
+  /// per-load boundary on the duration stream itself. Gated separately from
+  /// [_paramsResetSeen] on purpose: duration and videoParams are different
+  /// streams, and on a warm reused engine the real container duration can
+  /// overtake the empty-params marker — gating duration on that cross-stream
+  /// marker dropped a genuine duration and starved a PAUSED load of open
+  /// evidence (#137/#143 regression). See [evaluateDurationEvent].
+  bool _durationResetSeen = false;
 
   /// In-flight [reset] (leave-room teardown) on this reused engine, or null when
   /// idle. [load] awaits it before touching the shared player so a fast re-join
@@ -113,14 +125,18 @@ class MediaKitVideoCore extends VideoCore {
         emit(state.copyWith(position: pos));
       }),
       _player.stream.duration.listen((dur) {
-        // Boundary guard (mirrors the params/_markOpened guard): until this
-        // load's START_FILE reset is seen, a non-zero duration belongs to the
-        // source we just left. This matters because the engine is now reused
-        // across rooms (#137) — a late duration from the previous room would
-        // otherwise mark the new source "open" (isPlaybackOpen treats
-        // duration>0 as opened) before it has really opened.
-        if (!_paramsResetSeen) return;
-        emit(state.copyWith(duration: dur));
+        // Fence a stale duration from a just-unloaded source on the reused
+        // engine (#137/#143) using the duration stream's OWN reset — the
+        // `duration: 0` media_kit emits inside open()'s stop(open: true) — not
+        // the videoParams marker. Gating on that cross-stream marker dropped a
+        // genuine container duration that overtook it on a warm engine, starving
+        // a PAUSED load of open evidence (isPlaybackOpen treats duration>0 as
+        // opened) → a false open-timeout when switching files. See
+        // [evaluateDurationEvent].
+        final result =
+            evaluateDurationEvent(resetSeen: _durationResetSeen, incoming: dur);
+        _durationResetSeen = result.resetSeen;
+        if (result.accept) emit(state.copyWith(duration: dur));
       }),
       _player.stream.volume.listen((vol) {
         emit(state.copyWith(volume: vol / 100.0));
@@ -203,6 +219,8 @@ class MediaKitVideoCore extends VideoCore {
     // Arm the params-open guard: a real params event seen before this load's
     // START_FILE reset is the previous source's, and must not latch `opened`.
     _paramsResetSeen = false;
+    // Arm the duration guard on its own stream's reset (see [_durationResetSeen]).
+    _durationResetSeen = false;
     emit(state.copyWith(
       status: PlaybackStatus.loading,
       fileName: mediaSourceName(source),
@@ -256,6 +274,7 @@ class MediaKitVideoCore extends VideoCore {
   Future<void> reset() async {
     _playbackStarted = false;
     _paramsResetSeen = false;
+    _durationResetSeen = false;
     // Clear stored state synchronously, before any await, so the next room reads
     // a blank slate even if it mounts immediately. stop()'s trailing events
     // (playing:false, position/duration 0) are harmless on the load screen.
