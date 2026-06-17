@@ -6,22 +6,31 @@ import 'package:meowwatch/core/video/playback_state.dart';
 import 'package:meowwatch/core/video/video_core.dart';
 
 class _FakeVideoCore extends VideoCore {
+  final List<String> commands = [];
+
   @override
   Future<void> load(String filePath) async {
+    commands.add('load:$filePath');
     emit(state.copyWith(fileName: filePath, status: PlaybackStatus.paused));
   }
 
   @override
-  Future<void> play() async =>
-      emit(state.copyWith(status: PlaybackStatus.playing));
+  Future<void> play() async {
+    commands.add('play');
+    emit(state.copyWith(status: PlaybackStatus.playing));
+  }
 
   @override
-  Future<void> pause() async =>
-      emit(state.copyWith(status: PlaybackStatus.paused));
+  Future<void> pause() async {
+    commands.add('pause');
+    emit(state.copyWith(status: PlaybackStatus.paused));
+  }
 
   @override
-  Future<void> seek(Duration position) async =>
-      emit(state.copyWith(position: position));
+  Future<void> seek(Duration position) async {
+    commands.add('seek:${position.inMilliseconds}ms');
+    emit(state.copyWith(position: position));
+  }
 
   @override
   Future<void> setVolume(double volume) async =>
@@ -125,59 +134,56 @@ void main() {
     expect(sync.changes, contains(false));
   });
 
-  test(
-    'a stale backend tick during the remote-apply window is not fed to the '
-    'heartbeat',
-    () async {
-      // Confirm a source so its ticks drive the heartbeat.
-      video.push(
-        const PlaybackState(
-          status: PlaybackStatus.paused,
-          duration: Duration(minutes: 10),
-          filePath: 'a',
-          fileName: 'a',
-        ),
-      );
-      bridge.markSourceOpen('a');
-      await Future<void>.delayed(Duration.zero);
+  test('a stale backend tick during the remote-apply window is not fed to the '
+      'heartbeat', () async {
+    // Confirm a source so its ticks drive the heartbeat.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
 
-      // A peer seeks us forward and pauses — the bridge applies it locally and
-      // opens the remote-apply suppression window (during which local fallout
-      // must be ignored, not echoed back to the room).
-      sync.pushPeer(
-        const PeerPlayState(
-          position: Duration(seconds: 386),
-          paused: true,
-          doSeek: true,
-          setBy: 'peer',
-        ),
-      );
-      await Future<void>.delayed(Duration.zero);
+    // A peer seeks us forward and pauses — the bridge applies it locally and
+    // opens the remote-apply suppression window (during which local fallout
+    // must be ignored, not echoed back to the room).
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 386),
+        paused: true,
+        doSeek: true,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
 
-      sync.localUpdates.clear();
+    sync.localUpdates.clear();
 
-      // A delayed libmpv tick from BEFORE the apply now lands (near 0, playing).
-      // Feeding it to the heartbeat would broadcast the pre-apply position and
-      // start a rewind/seek fight with the peer (the post-0.28.0 sync thrash).
-      video.push(
-        const PlaybackState(
-          status: PlaybackStatus.playing,
-          position: Duration(milliseconds: 33),
-          duration: Duration(minutes: 10),
-          filePath: 'a',
-          fileName: 'a',
-        ),
-      );
-      await Future<void>.delayed(Duration.zero);
+    // A delayed libmpv tick from BEFORE the apply now lands (near 0, playing).
+    // Feeding it to the heartbeat would broadcast the pre-apply position and
+    // start a rewind/seek fight with the peer (the post-0.28.0 sync thrash).
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(milliseconds: 33),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
 
-      expect(
-        sync.localUpdates,
-        isEmpty,
-        reason:
-            'a stale tick within the remote-apply window must not reach the heartbeat',
-      );
-    },
-  );
+    expect(
+      sync.localUpdates,
+      isEmpty,
+      reason:
+          'a stale tick within the remote-apply window must not reach the heartbeat',
+    );
+  });
 
   test('a large position jump is detected as a seek', () async {
     video.push(
@@ -203,6 +209,34 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
     expect(sync.changes, contains(true));
+  });
+
+  test('a seek landing with a pause flip is still sent as a seek', () async {
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 10),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    sync.changes.clear();
+
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 90),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(sync.changes, <bool>[true]);
   });
 
   test(
@@ -249,6 +283,35 @@ void main() {
     },
   );
 
+  test(
+    'remote resume still kicks the core when local state already says playing',
+    () async {
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.playing,
+          position: Duration(seconds: 4),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+      video.commands.clear();
+
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 4),
+          paused: false,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(video.commands, <String>['play']);
+    },
+  );
+
   test('a small-drift pause flip aligns exactly for frame inspection', () async {
     video.push(
       const PlaybackState(
@@ -292,6 +355,32 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 10));
     expect(video.state.status, PlaybackStatus.playing);
     expect(video.state.position, const Duration(seconds: 10));
+  });
+
+  test('remote resume wakes a paused video before seeking', () async {
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(milliseconds: 395),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(milliseconds: 2900),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(video.commands, <String>['play', 'seek:2900ms']);
   });
 
   // ── File-load suppression (#91) ───────────────────────────────────────────

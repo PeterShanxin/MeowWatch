@@ -76,7 +76,9 @@ class PlaybackSyncBridge {
 
   void start() {
     _videoSub = video.stateStream.listen(_onLocalState);
-    _peerSub = sync.peerState.listen(_onPeerState);
+    _peerSub = sync.peerState.listen((peer) {
+      unawaited(_onPeerState(peer));
+    });
   }
 
   /// Called by the load coordinator once [awaitOpenResult] has accepted [source]
@@ -175,26 +177,25 @@ class PlaybackSyncBridge {
       return;
     }
 
-    // Pause/play transition.
-    if (_lastPaused != null && paused != _lastPaused) {
+    // Seek detection: compare actual position to where natural playback would
+    // have carried us since the last tick. A real seek can also produce a
+    // transient play/pause flip from the backend, so a large position jump wins.
+    final hadPreviousTick = _lastPaused != null;
+    final now = DateTime.now();
+    final elapsed = (_lastPaused == false)
+        ? now.difference(_lastTick)
+        : Duration.zero;
+    final expected = _lastPosition + elapsed;
+    final diff = (s.position - expected).abs();
+    if (hadPreviousTick && diff > seekDetectThreshold) {
+      sync.notifyLocalChange(doSeek: true);
+    } else if (hadPreviousTick && paused != _lastPaused) {
       sync.notifyLocalChange(doSeek: false);
-    } else {
-      // Seek detection: compare actual position to where natural playback
-      // would have carried us since the last tick.
-      final now = DateTime.now();
-      final elapsed = (_lastPaused == false)
-          ? now.difference(_lastTick)
-          : Duration.zero;
-      final expected = _lastPosition + elapsed;
-      final diff = (s.position - expected).abs();
-      if (diff > seekDetectThreshold) {
-        sync.notifyLocalChange(doSeek: true);
-      }
     }
 
     _lastPaused = paused;
     _lastPosition = s.position;
-    _lastTick = DateTime.now();
+    _lastTick = now;
   }
 
   Future<void> _onPeerState(PeerPlayState peer) async {
@@ -203,6 +204,10 @@ class PlaybackSyncBridge {
     // bridge applies each one: align position, then match play/pause.
     _applyingRemote = true;
     try {
+      if (!peer.paused) {
+        await video.play();
+      }
+
       // Seek on an explicit peer seek, when a peer pauses (frame inspection
       // needs the exact paused frame), or when we've drifted materially from
       // the room. Resume/play flips stay thresholded so network jitter does not
@@ -214,11 +219,8 @@ class PlaybackSyncBridge {
         await video.seek(peer.position);
       }
 
-      final localPaused = video.state.status != PlaybackStatus.playing;
-      if (peer.paused && !localPaused) {
+      if (peer.paused) {
         await video.pause();
-      } else if (!peer.paused && localPaused) {
-        await video.play();
       }
     } finally {
       _applyingRemote = false;
