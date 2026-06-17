@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../debug/app_log.dart';
 import '../debug/log_redact.dart';
+import 'await_open_result.dart';
 import 'playback_state.dart';
 import 'position_guard.dart';
 import 'video_core.dart';
@@ -236,9 +237,11 @@ class MediaKitVideoCore extends VideoCore {
   /// calls `markSourceOpen` — which happens *after* this returns — so the
   /// transient play is never published, and using the private [_player] (not the
   /// public [play]/[seek]) keeps `_playbackStarted` false so the file still
-  /// legitimately sits at 0:00 for the user. Best-effort: a fresh-engine load
-  /// that already proved open is skipped, and any failure just falls through to
-  /// the coordinator's open-timeout, exactly as before.
+  /// legitimately sits at 0:00 for the user. A fresh-engine load that already
+  /// proved open is skipped. The wait shares the coordinator's [openConfirmTimeout]
+  /// (not a second stacked one); if the source never confirms within it we
+  /// [failLoad] here so the coordinator's [awaitOpenResult] short-circuits rather
+  /// than waiting the full budget again.
   Future<void> _forceDecodeToConfirmOpen(String source) async {
     if (state.filePath != source) return; // superseded by a newer load
     if (isPlaybackOpen(state) || state.status == PlaybackStatus.error) return;
@@ -247,30 +250,45 @@ class MediaKitVideoCore extends VideoCore {
     final native = platform is NativePlayer ? platform : null;
 
     // Subscribe BEFORE playing so a near-instant open event can't slip past
-    // between play() and the listen. Resolves on confirmed open, an error, or a
-    // newer load superseding this source.
-    final proven = Completer<void>();
+    // between play() and the listen. Resolves true on confirmed open, false on an
+    // error or a newer load superseding this source.
+    final proven = Completer<bool>();
+    void settle(bool opened) {
+      if (!proven.isCompleted) proven.complete(opened);
+    }
+
     final sub = stateStream.listen((s) {
-      if (s.filePath != source ||
-          s.status == PlaybackStatus.error ||
-          isPlaybackOpen(s)) {
-        if (!proven.isCompleted) proven.complete();
+      if (s.filePath != source || s.status == PlaybackStatus.error) {
+        settle(false);
+      } else if (isPlaybackOpen(s)) {
+        settle(true);
       }
     });
+    var opened = false;
     try {
       await native?.setProperty('mute', 'yes');
       await _player.play();
-      // On a valid file the decoder proves open within milliseconds; cap the
-      // wait so a genuinely stuck source still falls through to the open-timeout.
-      await proven.future.timeout(const Duration(seconds: 10));
+      // A valid file decodes its first frame within milliseconds. Share the
+      // coordinator's [openConfirmTimeout] budget — NOT a second one stacked on
+      // top — so a genuinely stuck source (e.g. an unresponsive URL) still fails
+      // at ~12s, not ~22s.
+      opened = await proven.future.timeout(openConfirmTimeout);
     } catch (_) {
-      // Timed out or stream closed: leave it to the coordinator's open-timeout.
+      opened = false; // timed out or the stream closed
     } finally {
       await sub.cancel();
-      // Settle back to a paused start, but only if this load still owns the core.
       if (state.filePath == source && state.status != PlaybackStatus.error) {
-        await _player.pause();
-        await _player.seek(Duration.zero);
+        if (opened) {
+          // Settle back to a paused start.
+          await _player.pause();
+          await _player.seek(Duration.zero);
+        } else {
+          // Never confirmed within the budget — surface the failure now so the
+          // coordinator's own [awaitOpenResult] short-circuits on the error
+          // instead of adding a second full timeout. [failLoad] no-ops if the
+          // source genuinely opened.
+          failLoad('Timed out waiting for the video to open.');
+        }
       }
       await native?.setProperty('mute', 'no');
     }
