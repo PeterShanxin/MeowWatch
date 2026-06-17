@@ -125,6 +125,60 @@ void main() {
     expect(sync.changes, contains(false));
   });
 
+  test(
+    'a stale backend tick during the remote-apply window is not fed to the '
+    'heartbeat',
+    () async {
+      // Confirm a source so its ticks drive the heartbeat.
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+
+      // A peer seeks us forward and pauses — the bridge applies it locally and
+      // opens the remote-apply suppression window (during which local fallout
+      // must be ignored, not echoed back to the room).
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 386),
+          paused: true,
+          doSeek: true,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      sync.localUpdates.clear();
+
+      // A delayed libmpv tick from BEFORE the apply now lands (near 0, playing).
+      // Feeding it to the heartbeat would broadcast the pre-apply position and
+      // start a rewind/seek fight with the peer (the post-0.28.0 sync thrash).
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.playing,
+          position: Duration(milliseconds: 33),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        sync.localUpdates,
+        isEmpty,
+        reason:
+            'a stale tick within the remote-apply window must not reach the heartbeat',
+      );
+    },
+  );
+
   test('a large position jump is detected as a seek', () async {
     video.push(
       const PlaybackState(

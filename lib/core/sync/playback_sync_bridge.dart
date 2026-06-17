@@ -140,8 +140,20 @@ class PlaybackSyncBridge {
       return;
     }
 
-    // Feed the latest playable position to the sync layer for its heartbeat.
-    sync.updateLocalState(position: s.position, paused: paused);
+    final suppressed =
+        _applyingRemote || DateTime.now().isBefore(_remoteApplyUntil);
+
+    // Feed local playback to the heartbeat only when this tick is NOT fallout
+    // from a remote apply. SyncplayClient already adopts the peer target before
+    // emitting peerState; overwriting that cache with a delayed/stale media_kit
+    // tick during the suppression window makes the next heartbeat report the
+    // pre-apply position, and the peer then rewinds/seeks to it — the post-0.28.0
+    // sync thrash, surfaced by the reused engine (#137) emitting more out-of-order
+    // ticks. The seek-detection bookkeeping below still runs so the next real tick
+    // isn't misread as a seek.
+    if (!suppressed) {
+      sync.updateLocalState(position: s.position, paused: paused);
+    }
 
     // Suppress seek detection on a file-load event: a different filePath means a
     // new (or different) file was opened — catching the position-reset-to-0 that
@@ -156,8 +168,6 @@ class PlaybackSyncBridge {
       return;
     }
 
-    final suppressed =
-        _applyingRemote || DateTime.now().isBefore(_remoteApplyUntil);
     if (suppressed) {
       _lastPaused = paused;
       _lastPosition = s.position;
