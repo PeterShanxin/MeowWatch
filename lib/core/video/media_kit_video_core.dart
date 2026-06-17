@@ -278,9 +278,14 @@ class MediaKitVideoCore extends VideoCore {
     } finally {
       await sub.cancel();
       if (state.filePath == source && state.status != PlaybackStatus.error) {
+        // Stop the probe's playback in BOTH outcomes — including the timeout —
+        // BEFORE surfacing anything. Otherwise a source that only recovers
+        // *after* the budget keeps the probe's play() running and starts playing
+        // audibly behind the (sticky) error screen, since post-error playing
+        // ticks are ignored but the audio still comes out.
+        await _player.pause();
         if (opened) {
           // Settle back to a paused start.
-          await _player.pause();
           await _player.seek(Duration.zero);
         } else {
           // Never confirmed within the budget — surface the failure now so the
