@@ -95,9 +95,11 @@ class MediaKitVideoCore extends VideoCore {
         // let those downgrade a sticky error back to paused/playing and unmask
         // the error screen. Only load() clears the error (it resets the state).
         if (state.status == PlaybackStatus.error) return;
-        emit(state.copyWith(
-          status: playing ? PlaybackStatus.playing : PlaybackStatus.paused,
-        ));
+        emit(
+          state.copyWith(
+            status: playing ? PlaybackStatus.playing : PlaybackStatus.paused,
+          ),
+        );
       }),
       _player.stream.position.listen((pos) {
         // Reject a stale end-of-file position from the previous file that
@@ -167,10 +169,12 @@ class MediaKitVideoCore extends VideoCore {
         // Redact any signed token in a URL the mpv message embeds before it
         // hits disk (#140). Neat-kept: a real playback error is a key event.
         appLog('video: mpv error: ${redactUrls(err.toString())}');
-        emit(state.copyWith(
-          status: PlaybackStatus.error,
-          errorMessage: err.toString(),
-        ));
+        emit(
+          state.copyWith(
+            status: PlaybackStatus.error,
+            errorMessage: err.toString(),
+          ),
+        );
       }),
     ];
   }
@@ -204,16 +208,18 @@ class MediaKitVideoCore extends VideoCore {
     // Arm the params-open guard: a real params event seen before this load's
     // START_FILE reset is the previous source's, and must not latch `opened`.
     _paramsResetSeen = false;
-    emit(state.copyWith(
-      status: PlaybackStatus.loading,
-      fileName: mediaSourceName(source),
-      filePath: source,
-      position: Duration.zero,
-      duration: Duration.zero,
-      errorMessage: null,
-      // Clear the confirmed-open latch: this new source must re-prove it opens.
-      opened: false,
-    ));
+    emit(
+      state.copyWith(
+        status: PlaybackStatus.loading,
+        fileName: mediaSourceName(source),
+        filePath: source,
+        position: Duration.zero,
+        duration: Duration.zero,
+        errorMessage: null,
+        // Clear the confirmed-open latch: this new source must re-prove it opens.
+        opened: false,
+      ),
+    );
     await _player.open(Media(source), play: false);
     await _forceDecodeToConfirmOpen(source);
   }
@@ -277,17 +283,19 @@ class MediaKitVideoCore extends VideoCore {
       opened = false; // timed out or the stream closed
     } finally {
       await sub.cancel();
-      if (state.filePath == source && state.status != PlaybackStatus.error) {
+      bool ownsSource() =>
+          state.filePath == source && state.status != PlaybackStatus.error;
+      if (ownsSource()) {
         // Stop the probe's playback in BOTH outcomes — including the timeout —
         // BEFORE surfacing anything. Otherwise a source that only recovers
         // *after* the budget keeps the probe's play() running and starts playing
         // audibly behind the (sticky) error screen, since post-error playing
         // ticks are ignored but the audio still comes out.
         await _player.pause();
-        if (opened) {
+        if (ownsSource() && opened) {
           // Settle back to a paused start.
           await _player.seek(Duration.zero);
-        } else {
+        } else if (ownsSource()) {
           // Never confirmed within the budget — surface the failure now so the
           // coordinator's own [awaitOpenResult] short-circuits on the error
           // instead of adding a second full timeout. [failLoad] no-ops if the
@@ -295,7 +303,9 @@ class MediaKitVideoCore extends VideoCore {
           failLoad('Timed out waiting for the video to open.');
         }
       }
-      await native?.setProperty('mute', 'no');
+      if (state.filePath == source) {
+        await native?.setProperty('mute', 'no');
+      }
     }
   }
 
