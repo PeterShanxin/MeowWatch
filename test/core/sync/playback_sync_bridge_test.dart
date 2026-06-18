@@ -682,6 +682,25 @@ void main() {
 
       video.push(
         const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration(seconds: 20),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        sync.localUpdates,
+        isEmpty,
+        reason:
+            'late backend fallout after the target lands must not echo an '
+            'old pause/position as local input',
+      );
+
+      video.push(
+        const PlaybackState(
           status: PlaybackStatus.playing,
           position: Duration(seconds: 680),
           duration: Duration(minutes: 10),

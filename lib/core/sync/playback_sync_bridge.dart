@@ -63,6 +63,9 @@ class PlaybackSyncBridge {
   DateTime _remoteSettleUntil = DateTime.fromMillisecondsSinceEpoch(0);
   PeerPlayState? _remoteSettleTarget;
   bool _remoteSettleRequiresPosition = false;
+  DateTime _remoteFalloutUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  PeerPlayState? _remoteFalloutTarget;
+  bool _remoteFalloutRequiresPosition = false;
   bool? _lastPaused;
   Duration _lastPosition = Duration.zero;
   DateTime _lastTick = DateTime.now();
@@ -176,6 +179,7 @@ class PlaybackSyncBridge {
     final source = s.filePath;
     final confirmed = source != null && source == _confirmedOpenSource;
     final settlingRemote = _isSettlingRemoteState(s, now);
+    final lateRemoteFallout = _isLateRemoteFallout(s, now);
 
     if (!confirmed ||
         s.status == PlaybackStatus.loading ||
@@ -187,7 +191,8 @@ class PlaybackSyncBridge {
           s.status == PlaybackStatus.playing &&
           (_applyingRemote ||
               now.isBefore(_remoteApplyUntil) ||
-              settlingRemote);
+              settlingRemote ||
+              lateRemoteFallout);
       _lastFilePath = s.filePath;
       _lastPaused = paused;
       _lastPosition = s.position;
@@ -196,7 +201,10 @@ class PlaybackSyncBridge {
     }
 
     final suppressed =
-        _applyingRemote || now.isBefore(_remoteApplyUntil) || settlingRemote;
+        _applyingRemote ||
+        now.isBefore(_remoteApplyUntil) ||
+        settlingRemote ||
+        lateRemoteFallout;
 
     // Feed local playback to the heartbeat only when this tick is NOT fallout
     // from a remote apply. SyncplayClient already adopts the peer target before
@@ -254,6 +262,9 @@ class PlaybackSyncBridge {
     final target = _remoteSettleTarget;
     if (target == null) return false;
     if (_matchesRemoteTarget(s, target)) {
+      _remoteFalloutTarget = target;
+      _remoteFalloutRequiresPosition = _remoteSettleRequiresPosition;
+      _remoteFalloutUntil = now.add(remoteApplyWindow + remoteCommandWait);
       _remoteSettleTarget = null;
       _remoteSettleRequiresPosition = false;
       return true;
@@ -262,6 +273,24 @@ class PlaybackSyncBridge {
     _remoteSettleTarget = null;
     _remoteSettleRequiresPosition = false;
     return false;
+  }
+
+  bool _isLateRemoteFallout(PlaybackState s, DateTime now) {
+    final target = _remoteFalloutTarget;
+    if (target == null) return false;
+    if (!now.isBefore(_remoteFalloutUntil)) {
+      _remoteFalloutTarget = null;
+      _remoteFalloutRequiresPosition = false;
+      return false;
+    }
+
+    final paused = s.status != PlaybackStatus.playing;
+    if (paused != target.paused) return true;
+    if (!_remoteFalloutRequiresPosition) return false;
+    if (target.paused) {
+      return (s.position - target.position).abs() > remoteSeekThreshold;
+    }
+    return s.position < target.position - remoteSeekThreshold;
   }
 
   bool _matchesRemoteTarget(PlaybackState s, PeerPlayState target) {
@@ -326,6 +355,8 @@ class PlaybackSyncBridge {
       _remoteSettleTarget = peer;
       _remoteSettleRequiresPosition = shouldSeek;
       _remoteSettleUntil = DateTime.now().add(remoteSettleWindow);
+      _remoteFalloutTarget = null;
+      _remoteFalloutRequiresPosition = false;
 
       Future<void>? seekDone;
       if (shouldSeek) {
