@@ -400,7 +400,42 @@ void main() {
     expect(video.commands, <String>['seek:2900ms', 'play']);
   });
 
-  test('remote resume waits for a required seek before playing', () async {
+  test(
+    'remote resume does not wait forever for a stalled seek future',
+    () async {
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration(seconds: 20),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+      sync.localUpdates.clear();
+      video.commands.clear();
+      video.seekGate = Completer<void>();
+
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 679),
+          paused: false,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(video.commands, <String>['seek:679000ms', 'play']);
+
+      video.seekGate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      video.seekGate = null;
+    },
+  );
+
+  test('stalled remote resume seek does not block later peer states', () async {
     video.push(
       const PlaybackState(
         status: PlaybackStatus.paused,
@@ -412,7 +447,6 @@ void main() {
     );
     bridge.markSourceOpen('a');
     await Future<void>.delayed(Duration.zero);
-    sync.localUpdates.clear();
     video.commands.clear();
     video.seekGate = Completer<void>();
 
@@ -425,14 +459,71 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
 
-    expect(video.commands, <String>['seek:679000ms']);
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 680),
+        paused: true,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(video.commands, <String>[
+      'seek:679000ms',
+      'play',
+      'seek:680000ms',
+      'pause',
+    ]);
 
     video.seekGate!.complete();
     await Future<void>.delayed(Duration.zero);
     video.seekGate = null;
-
-    expect(video.commands, <String>['seek:679000ms', 'play']);
   });
+
+  test(
+    'remote resume re-seeks after play when paused seek has not landed',
+    () async {
+      await bridge.dispose();
+      bridge = PlaybackSyncBridge(
+        video: video,
+        sync: sync,
+        remoteResumeSeekWait: const Duration(milliseconds: 1),
+      )..start();
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration(seconds: 20),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+      video.commands.clear();
+      video.emitFromSeek = false;
+      video.seekGate = Completer<void>();
+
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 679),
+          paused: false,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(video.commands, <String>[
+        'seek:679000ms',
+        'play',
+        'seek:679000ms',
+      ]);
+
+      video.seekGate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      video.seekGate = null;
+    },
+  );
 
   test(
     'explicit peer seek is issued before a slow play can leak stale ticks',
