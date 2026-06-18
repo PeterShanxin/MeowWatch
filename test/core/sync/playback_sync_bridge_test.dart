@@ -702,6 +702,25 @@ void main() {
       video.push(
         const PlaybackState(
           status: PlaybackStatus.playing,
+          position: Duration(seconds: 700),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        sync.localUpdates,
+        isEmpty,
+        reason:
+            'late pre-seek ticks ahead of a backward remote seek target must '
+            'not be echoed as local playback',
+      );
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.playing,
           position: Duration(seconds: 680),
           duration: Duration(minutes: 10),
           filePath: 'a',

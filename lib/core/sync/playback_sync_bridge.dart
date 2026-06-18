@@ -64,6 +64,7 @@ class PlaybackSyncBridge {
   PeerPlayState? _remoteSettleTarget;
   bool _remoteSettleRequiresPosition = false;
   DateTime _remoteFalloutUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _remoteFalloutStartedAt = DateTime.fromMillisecondsSinceEpoch(0);
   PeerPlayState? _remoteFalloutTarget;
   bool _remoteFalloutRequiresPosition = false;
   bool? _lastPaused;
@@ -264,6 +265,7 @@ class PlaybackSyncBridge {
     if (_matchesRemoteTarget(s, target)) {
       _remoteFalloutTarget = target;
       _remoteFalloutRequiresPosition = _remoteSettleRequiresPosition;
+      _remoteFalloutStartedAt = now;
       _remoteFalloutUntil = now.add(remoteApplyWindow + remoteCommandWait);
       _remoteSettleTarget = null;
       _remoteSettleRequiresPosition = false;
@@ -290,7 +292,14 @@ class PlaybackSyncBridge {
     if (target.paused) {
       return (s.position - target.position).abs() > remoteSeekThreshold;
     }
-    return s.position < target.position - remoteSeekThreshold;
+    final progressSlop = seekDetectThreshold > remoteSeekThreshold
+        ? seekDetectThreshold
+        : remoteSeekThreshold;
+    final plausibleProgress =
+        now.difference(_remoteFalloutStartedAt) + progressSlop;
+    final minPosition = target.position - remoteSeekThreshold;
+    final maxPosition = target.position + plausibleProgress;
+    return s.position < minPosition || s.position > maxPosition;
   }
 
   bool _matchesRemoteTarget(PlaybackState s, PeerPlayState target) {
