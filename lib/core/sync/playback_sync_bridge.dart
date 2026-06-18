@@ -162,6 +162,8 @@ class PlaybackSyncBridge {
     // until confirmed.
     final source = s.filePath;
     final confirmed = source != null && source == _confirmedOpenSource;
+    final settlingRemote = _isSettlingRemoteState(s, now);
+
     if (!confirmed ||
         s.status == PlaybackStatus.loading ||
         s.status == PlaybackStatus.error) {
@@ -172,7 +174,7 @@ class PlaybackSyncBridge {
           s.status == PlaybackStatus.playing &&
           (_applyingRemote ||
               now.isBefore(_remoteApplyUntil) ||
-              _isSettlingRemoteState(s, now));
+              settlingRemote);
       _lastFilePath = s.filePath;
       _lastPaused = paused;
       _lastPosition = s.position;
@@ -181,9 +183,7 @@ class PlaybackSyncBridge {
     }
 
     final suppressed =
-        _applyingRemote ||
-        now.isBefore(_remoteApplyUntil) ||
-        _isSettlingRemoteState(s, now);
+        _applyingRemote || now.isBefore(_remoteApplyUntil) || settlingRemote;
 
     // Feed local playback to the heartbeat only when this tick is NOT fallout
     // from a remote apply. SyncplayClient already adopts the peer target before
@@ -243,7 +243,7 @@ class PlaybackSyncBridge {
     if (_matchesRemoteTarget(s, target)) {
       _remoteSettleTarget = null;
       _remoteSettleRequiresPosition = false;
-      return false;
+      return true;
     }
     if (now.isBefore(_remoteSettleUntil)) return true;
     _remoteSettleTarget = null;
