@@ -115,6 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<SyncActivity>? _activitySub;
   StreamSubscription<List<String>>? _rosterSub;
   StreamSubscription<String>? _leavingSub;
+  bool _leavingRoom = false;
 
   /// Our registered window-close hook (announces a deliberate leave so peers see
   /// "left the room" not "lost connection" when the app is closed via the X
@@ -1145,17 +1146,36 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _leave() async {
+    if (_leavingRoom) return;
+    _leavingRoom = true;
     appLog('life: leave room (button)');
     _historyTimer?.cancel();
-    await _saveResumePosition();
-    await _sync.disconnect();
-    // Await the flush *before* popping: dispose's libmpv teardown is the very
-    // freeze we want logged (#137), so the buffered verbose trace up to the
-    // leave must be on disk before that risky teardown runs — dispose's own
-    // flush is only a fire-and-forget backstop (#146 review).
-    await _syncLog?.flush();
+    if (isPlaybackOpen(_core.state)) {
+      try {
+        await _saveResumePosition().timeout(const Duration(milliseconds: 600));
+      } on Object catch (e) {
+        appLog('life: leave resume-save skipped: ${redactUrls('$e')}');
+      }
+    }
+    final cleanup = _finishLeaveCleanup();
     if (mounted) Navigator.of(context).pop();
     appLog('life: returned to connect screen');
+    unawaited(cleanup);
+  }
+
+  Future<void> _finishLeaveCleanup() async {
+    try {
+      await _sync.disconnect().timeout(const Duration(milliseconds: 800));
+    } on Object catch (e) {
+      appLog('life: leave disconnect cleanup skipped: ${redactUrls('$e')}');
+    }
+    try {
+      await (_syncLog?.flush() ?? Future<void>.value()).timeout(
+        const Duration(milliseconds: 500),
+      );
+    } on Object catch (e) {
+      appLog('life: leave log flush skipped: ${redactUrls('$e')}');
+    }
   }
 
   /// Whether the just-(re)connected room should be told about the current
@@ -1356,6 +1376,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (state.fileName == null)
                       EmptyState(
                         onBrowse: _browse,
+                        onLeave: () => unawaited(_leave()),
                         onLoadUrl: (url) => unawaited(_load(url)),
                         notice: _joinPrompt,
                       )

@@ -5,6 +5,10 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.30.0-alpha] - 2026-06-19
+- Connect screen polish: Advanced server, port, and server-password fields now show a small reset icon only after you change them, with a hover tooltip and a quick "Advanced setting updated." confirmation when you leave an edited field. Continue Watching and Saved Rooms now keep their saved identity when you click the main card, and when your typed name differs they offer a clear "Join as <name> this time" action instead of silently overwriting the saved name. (#138)
+- Tightened the new resume-name flow after manual testing: the "Join as <name> this time" row now grows and un-grows more gently instead of snapping the card shape, the name field stays visually stable while entering or leaving a saved room, keeps your typed name when you return, and now has an in-field clear button. Rooms can also be left immediately from the no-video screen without first loading a video.
+
 ## [0.29.4-alpha] - 2026-06-19
 - Made the "I left the room" goodbye more reliable when you close the app with the X button. The previous fix sent that goodbye and gave it a brief moment to go out, but on a normal close the app didn't actually wait for that moment to finish before quitting — so it could quit mid-send and your friend would briefly see "lost connection" instead of "left the room". The window still hides instantly (so closing still feels instant), but the app now waits the short, capped moment for the goodbye to finish leaving before it shuts down. The wait is bounded with a hard-timeout backstop, so a dead network still can't make closing hang. (#148)
 

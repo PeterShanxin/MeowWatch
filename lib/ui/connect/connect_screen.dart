@@ -58,8 +58,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
   final _server = TextEditingController(text: SyncplayConstants.defaultServer);
   final _port = TextEditingController(text: '${SyncplayConstants.defaultPort}');
   final _password = TextEditingController();
+  final _serverFocus = FocusNode();
+  final _portFocus = FocusNode();
+  final _passwordFocus = FocusNode();
   final _scroll = ScrollController();
   bool _advancedOpen = false;
+  String? _serverFocusStart;
+  String? _portFocusStart;
+  String? _passwordFocusStart;
 
   // Lobby-gear settings. These mirror the same SettingsStore keys the in-room
   // gear uses, so a change made here (before joining) and one made in a room are
@@ -82,19 +88,74 @@ class _ConnectScreenState extends State<ConnectScreen> {
   @override
   void initState() {
     super.initState();
+    _name.addListener(_refreshDynamicControls);
+    _server.addListener(_refreshDynamicControls);
+    _port.addListener(_refreshDynamicControls);
+    _password.addListener(_refreshDynamicControls);
+    _serverFocus.addListener(
+      () => _handleAdvancedFocus(
+        _serverFocus,
+        _server,
+        _serverFocusStart,
+        (value) => _serverFocusStart = value,
+      ),
+    );
+    _portFocus.addListener(
+      () => _handleAdvancedFocus(
+        _portFocus,
+        _port,
+        _portFocusStart,
+        (value) => _portFocusStart = value,
+      ),
+    );
+    _passwordFocus.addListener(
+      () => _handleAdvancedFocus(
+        _passwordFocus,
+        _password,
+        _passwordFocusStart,
+        (value) => _passwordFocusStart = value,
+      ),
+    );
     _loadSettings();
   }
 
   @override
   void dispose() {
+    _name.removeListener(_refreshDynamicControls);
+    _server.removeListener(_refreshDynamicControls);
+    _port.removeListener(_refreshDynamicControls);
+    _password.removeListener(_refreshDynamicControls);
     _name.dispose();
     _code.dispose();
     _server.dispose();
     _port.dispose();
     _password.dispose();
+    _serverFocus.dispose();
+    _portFocus.dispose();
+    _passwordFocus.dispose();
     _scroll.dispose();
     unawaited(_preview?.dispose() ?? Future<void>.value());
     super.dispose();
+  }
+
+  void _refreshDynamicControls() {
+    if (mounted) setState(() {});
+  }
+
+  void _handleAdvancedFocus(
+    FocusNode node,
+    TextEditingController controller,
+    String? focusStart,
+    ValueChanged<String?> setFocusStart,
+  ) {
+    if (node.hasFocus) {
+      setFocusStart(controller.text);
+      return;
+    }
+    if (focusStart != null && focusStart != controller.text) {
+      _showSnack('Advanced setting updated.');
+    }
+    setFocusStart(null);
   }
 
   Future<void> _loadSettings() async {
@@ -184,17 +245,21 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final m = context.meow;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: m.surface,
-        content: Text(text, style: TextStyle(color: m.textPrimary)),
-      ));
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: m.surface,
+          content: Text(text, style: TextStyle(color: m.textPrimary)),
+        ),
+      );
   }
 
   String get _username {
     final typed = _name.text.trim();
     return typed.isEmpty ? 'meow' : typed;
   }
+
+  String get _typedUsername => _name.text.trim();
 
   String get _serverValue => _server.text.trim().isEmpty
       ? SyncplayConstants.defaultServer
@@ -205,13 +270,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   String? get _passwordValue => _password.text.isEmpty ? null : _password.text;
 
-  Future<void> _connect(RoomConfig config) async {
+  Future<void> _connect(RoomConfig config, {String? profileUsername}) async {
     await widget.profiles.saveUsed(
       name: config.room,
       server: config.server,
       port: config.port,
       room: config.room,
-      username: config.username,
+      username: profileUsername ?? config.username,
       password: config.password,
     );
     if (!mounted) return;
@@ -237,19 +302,24 @@ class _ConnectScreenState extends State<ConnectScreen> {
     // The *shared* code is self-contained: on the default public server it's the
     // bare sentence, but a non-default server/port is appended so a friend joins
     // from one paste (#110). The room we actually join is still the bare [code].
-    final share =
-        encodeShareCode(room: code, server: _serverValue, port: _portValue);
+    final share = encodeShareCode(
+      room: code,
+      server: _serverValue,
+      port: _portValue,
+    );
     // Copy without blocking the join — clipboard is a convenience, and on a
     // headless test binding the platform channel never replies.
     Clipboard.setData(ClipboardData(text: share)).ignore();
     _showCopiedSnack(share);
-    await _connect(RoomConfig(
-      server: _serverValue,
-      port: _portValue,
-      room: code,
-      username: _username,
-      password: _passwordValue,
-    ));
+    await _connect(
+      RoomConfig(
+        server: _serverValue,
+        port: _portValue,
+        room: code,
+        username: _username,
+        password: _passwordValue,
+      ),
+    );
   }
 
   /// Confirm the new join code was copied. Shown on the app-level messenger so
@@ -258,22 +328,26 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final m = context.meow;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: m.surface,
-        duration: const Duration(seconds: 3),
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
-            const SizedBox(width: Spacing.md),
-            Expanded(
-              child: Text('Room code $code copied — share it with your friend',
-                  style: TextStyle(color: m.textPrimary)),
-            ),
-          ],
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: m.surface,
+          duration: const Duration(seconds: 3),
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
+              const SizedBox(width: Spacing.md),
+              Expanded(
+                child: Text(
+                  'Room code $code copied — share it with your friend',
+                  style: TextStyle(color: m.textPrimary),
+                ),
+              ),
+            ],
+          ),
         ),
-      ));
+      );
   }
 
   Future<void> _joinTypedCode() async {
@@ -295,55 +369,73 @@ class _ConnectScreenState extends State<ConnectScreen> {
     // (8999) — NOT whatever sits in the joiner's Advanced Port. Only a bare room
     // code (no server in the code) falls back to the Advanced fields.
     final fromCode = parsed.server != null;
-    await _connect(RoomConfig(
-      server: fromCode ? parsed.server! : _serverValue,
-      port: fromCode
-          ? (parsed.port ?? SyncplayConstants.defaultPort)
-          : _portValue,
-      room: parsed.room,
-      username: _username,
-      password: _passwordValue,
-    ));
+    await _connect(
+      RoomConfig(
+        server: fromCode ? parsed.server! : _serverValue,
+        port: fromCode
+            ? (parsed.port ?? SyncplayConstants.defaultPort)
+            : _portValue,
+        room: parsed.room,
+        username: _username,
+        password: _passwordValue,
+      ),
+    );
   }
 
-  Future<void> _connectProfile(SavedProfile p) async {
-    _name.text = p.username;
-    await _connect(RoomConfig(
-      server: p.server,
-      port: p.port,
-      room: p.room,
-      username: p.username,
-      password: p.password,
-    ));
+  Future<void> _connectProfile(
+    SavedProfile p, {
+    String? usernameOverride,
+  }) async {
+    final username = usernameOverride ?? p.username;
+    await _connect(
+      RoomConfig(
+        server: p.server,
+        port: p.port,
+        room: p.room,
+        username: username,
+        password: p.password,
+      ),
+      profileUsername: p.username,
+    );
   }
 
-  Future<void> _resumeHistory(HistoryEntry entry, SavedProfile? recent) async {
-    // Identity priority: a freshly typed name wins; otherwise reuse the name
-    // this file was watched as, then the most-recent room's name, then the
-    // default. Falling straight to "meow" lost the user's identity on resume
-    // and, by colliding with a peer's default, triggered a server rename that
-    // flipped chat ownership (#40).
+  Future<void> _resumeHistory(
+    HistoryEntry entry,
+    SavedProfile? recent, {
+    String? usernameOverride,
+  }) async {
+    // Identity priority: tapping a history card means "resume as watched
+    // before"; the inline "Join as current name" action is the explicit
+    // override.
+    // When an old history row has no saved name, still honor a typed name before
+    // falling back to the most recent room/default so #40 stays fixed.
     final typed = _name.text.trim();
     final entryName = entry.username;
-    final username = typed.isNotEmpty
-        ? typed
-        : (entryName != null && entryName.isNotEmpty)
+    final username =
+        usernameOverride ??
+        ((entryName != null && entryName.isNotEmpty)
             ? entryName
-            : (recent?.username ?? 'meow');
-    // Reflect the resolved name in the field so the user sees who they joined as.
-    _name.text = username;
+            : typed.isNotEmpty
+            ? typed
+            : (recent?.username ?? 'meow'));
+    final savedUsername = (entryName != null && entryName.isNotEmpty)
+        ? entryName
+        : recent?.username;
     final room = (entry.room != null && entry.room!.isNotEmpty)
         ? entry.room!
         : (recent?.room ?? generateRoomCode());
-    await _connect(RoomConfig(
-      server: recent?.server ?? _serverValue,
-      port: recent?.port ?? _portValue,
-      room: room,
-      username: username,
-      password: recent?.password ?? _passwordValue,
-      resumeFilePath: entry.filePath,
-      resumePositionMs: entry.lastPositionMs,
-    ));
+    await _connect(
+      RoomConfig(
+        server: recent?.server ?? _serverValue,
+        port: recent?.port ?? _portValue,
+        room: room,
+        username: username,
+        password: recent?.password ?? _passwordValue,
+        resumeFilePath: entry.filePath,
+        resumePositionMs: entry.lastPositionMs,
+      ),
+      profileUsername: usernameOverride == null ? null : savedUsername,
+    );
   }
 
   @override
@@ -369,26 +461,31 @@ class _ConnectScreenState extends State<ConnectScreen> {
                 child: SingleChildScrollView(
                   controller: _scroll,
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
                     child: Center(
                       child: StreamBuilder<List<SavedProfile>>(
                         stream: widget.profiles.watchProfiles(),
                         initialData: const [],
                         builder: (context, profileSnap) {
                           final savedProfiles = profileSnap.data ?? const [];
-                          final mostRecent =
-                              savedProfiles.isEmpty ? null : savedProfiles.first;
+                          final mostRecent = savedProfiles.isEmpty
+                              ? null
+                              : savedProfiles.first;
                           // Only go two-column when there's a library to fill the
                           // right side; first-run (no saved rooms) stays centered.
                           final twoColumn = wide && savedProfiles.isNotEmpty;
                           return ConstrainedBox(
                             constraints: BoxConstraints(
-                                maxWidth: twoColumn ? 920 : 460),
+                              maxWidth: twoColumn ? 920 : 460,
+                            ),
                             child: Padding(
                               padding: const EdgeInsets.all(Spacing.xxl),
                               child: twoColumn
                                   ? Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Expanded(
                                           child: Column(
@@ -396,7 +493,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                                 CrossAxisAlignment.stretch,
                                             children: [
                                               ..._formColumn(),
-                                              const SizedBox(height: Spacing.lg),
+                                              const SizedBox(
+                                                height: Spacing.lg,
+                                              ),
                                               _advancedSection(),
                                             ],
                                           ),
@@ -406,8 +505,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                           child: Column(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.stretch,
-                                            children:
-                                                _libraryColumn(savedProfiles, mostRecent),
+                                            children: _libraryColumn(
+                                              savedProfiles,
+                                              mostRecent,
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -417,7 +518,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                           CrossAxisAlignment.stretch,
                                       children: [
                                         ..._formColumn(),
-                                        ..._libraryColumn(savedProfiles, mostRecent),
+                                        ..._libraryColumn(
+                                          savedProfiles,
+                                          mostRecent,
+                                        ),
                                         const SizedBox(height: Spacing.lg),
                                         _advancedSection(),
                                       ],
@@ -469,16 +573,27 @@ class _ConnectScreenState extends State<ConnectScreen> {
   List<Widget> _formColumn() {
     final m = context.meow;
     return [
-      Text('MeowWatch',
-          style: context.meowText.display
-              .copyWith(fontWeight: TypeScale.semibold)),
+      Text(
+        'MeowWatch',
+        style: context.meowText.display.copyWith(
+          fontWeight: TypeScale.semibold,
+        ),
+      ),
       const SizedBox(height: Spacing.xs),
-      Text('Watch together, in sync.',
-          style: context.meowText.body.copyWith(color: m.textDim)),
+      Text(
+        'Watch together, in sync.',
+        style: context.meowText.body.copyWith(color: m.textDim),
+      ),
       const SizedBox(height: Spacing.lg),
       _label('Your name'),
       _textField(
-          key: const Key('connect-name'), controller: _name, hint: 'e.g. lin'),
+        key: const Key('connect-name'),
+        controller: _name,
+        hint: 'e.g. lin',
+        suffixIcon: _name.text.isNotEmpty
+            ? _clearNameButton(key: const Key('connect-name-clear'))
+            : null,
+      ),
       const SizedBox(height: Spacing.xl),
       FilledButton(
         key: const Key('connect-start-new'),
@@ -488,47 +603,64 @@ class _ConnectScreenState extends State<ConnectScreen> {
           padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
         ),
         onPressed: _startNewRoom,
-        child: const Text('Start new room',
-            style: TextStyle(fontWeight: TypeScale.bold)),
+        child: const Text(
+          'Start new room',
+          style: TextStyle(fontWeight: TypeScale.bold),
+        ),
       ),
       const SizedBox(height: 8),
-      Text('A private code is generated and copied to clipboard.',
-          style: context.meowText.body.copyWith(color: m.textDim)),
+      Text(
+        'A private code is generated and copied to clipboard.',
+        style: context.meowText.body.copyWith(color: m.textDim),
+      ),
       const SizedBox(height: Spacing.xl),
       _label('Enter code from friend'),
-      Row(children: [
-        Expanded(
-          child: _textField(
+      Row(
+        children: [
+          Expanded(
+            child: _textField(
               key: const Key('connect-code'),
               controller: _code,
-              hint: 'sleepy-otter-counts-cozy-stars'),
-        ),
-        const SizedBox(width: Spacing.sm),
-        FilledButton(
-          key: const Key('connect-join'),
-          style: FilledButton.styleFrom(
-              backgroundColor: m.surface, foregroundColor: m.textPrimary),
-          onPressed: _joinTypedCode,
-          child: const Text('Join'),
-        ),
-      ]),
+              hint: 'sleepy-otter-counts-cozy-stars',
+            ),
+          ),
+          const SizedBox(width: Spacing.sm),
+          FilledButton(
+            key: const Key('connect-join'),
+            style: FilledButton.styleFrom(
+              backgroundColor: m.surface,
+              foregroundColor: m.textPrimary,
+            ),
+            onPressed: _joinTypedCode,
+            child: const Text('Join'),
+          ),
+        ],
+      ),
     ];
   }
 
   /// Saved rooms + continue-watching — the right column when wide, appended
   /// below the form when narrow.
   List<Widget> _libraryColumn(
-      List<SavedProfile> savedProfiles, SavedProfile? mostRecent) {
+    List<SavedProfile> savedProfiles,
+    SavedProfile? mostRecent,
+  ) {
     return [
       if (savedProfiles.isNotEmpty) ...[
         const SizedBox(height: Spacing.xxl),
         _label('Saved rooms'),
-        ...savedProfiles
-            .map((p) => _profileCard(p, isMostRecent: p == mostRecent)),
+        ...savedProfiles.map(
+          (p) => _profileCard(p, isMostRecent: p == mostRecent),
+        ),
       ],
       _ContinueWatching(
         history: widget.history,
-        onResume: (entry) => _resumeHistory(entry, mostRecent),
+        currentUsername: _typedUsername,
+        onResume: (entry, {usernameOverride}) => _resumeHistory(
+          entry,
+          mostRecent,
+          usernameOverride: usernameOverride,
+        ),
       ),
     ];
   }
@@ -537,7 +669,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final m = context.meow;
     return Padding(
       padding: const EdgeInsets.only(bottom: Spacing.sm),
-      child: Text(text, style: context.meowText.body.copyWith(color: m.textDim)),
+      child: Text(
+        text,
+        style: context.meowText.body.copyWith(color: m.textDim),
+      ),
     );
   }
 
@@ -546,16 +681,20 @@ class _ConnectScreenState extends State<ConnectScreen> {
     required String hint,
     Key? key,
     bool obscure = false,
+    FocusNode? focusNode,
+    Widget? suffixIcon,
   }) {
     final m = context.meow;
     return TextField(
       key: key,
       controller: controller,
+      focusNode: focusNode,
       obscureText: obscure,
       style: TextStyle(color: m.textPrimary),
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(color: m.textDim),
+        suffixIcon: suffixIcon,
         filled: true,
         fillColor: m.surface,
         isDense: true,
@@ -573,6 +712,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   Widget _profileCard(SavedProfile p, {required bool isMostRecent}) {
     final m = context.meow;
+    final typed = _typedUsername;
+    final showCurrentNameAction = typed.isNotEmpty && typed != p.username;
     return Card(
       color: m.surface,
       shape: RoundedRectangleBorder(
@@ -581,11 +722,30 @@ class _ConnectScreenState extends State<ConnectScreen> {
       ),
       child: ListTile(
         onTap: () => _connectProfile(p),
-        leading: Icon(Icons.circle,
-            size: 10, color: isMostRecent ? m.online : m.textDim),
+        leading: Icon(
+          Icons.circle,
+          size: 10,
+          color: isMostRecent ? m.online : m.textDim,
+        ),
         title: Text(p.name, style: TextStyle(color: m.textPrimary)),
-        subtitle: Text('${p.username} · ${p.server}',
-            style: context.meowText.body.copyWith(color: m.textDim)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${p.username} · ${p.server}',
+              style: context.meowText.body.copyWith(color: m.textDim),
+            ),
+            _CurrentNameAction(
+              actionKey: showCurrentNameAction
+                  ? Key('connect-profile-use-current-${p.id}')
+                  : null,
+              visible: showCurrentNameAction,
+              username: typed,
+              onPressed: () => _connectProfile(p, usernameOverride: typed),
+            ),
+          ],
+        ),
         trailing: IconButton(
           key: Key('connect-delete-${p.id}'),
           icon: Icon(Icons.close, color: m.textDim, size: IconSizes.md),
@@ -597,6 +757,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   Widget _advancedSection() {
     final m = context.meow;
+    final serverChanged =
+        _server.text.trim().isNotEmpty &&
+        _server.text.trim() != SyncplayConstants.defaultServer;
+    final portChanged =
+        _port.text.trim().isNotEmpty &&
+        _port.text.trim() != '${SyncplayConstants.defaultPort}';
+    final passwordChanged = _password.text.isNotEmpty;
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
@@ -609,21 +776,47 @@ class _ConnectScreenState extends State<ConnectScreen> {
         children: [
           _label('Server'),
           _textField(
-              key: const Key('connect-advanced-server'),
-              controller: _server,
-              hint: SyncplayConstants.defaultServer),
+            key: const Key('connect-advanced-server'),
+            controller: _server,
+            focusNode: _serverFocus,
+            hint: SyncplayConstants.defaultServer,
+            suffixIcon: serverChanged
+                ? _resetFieldButton(
+                    key: const Key('connect-advanced-server-reset'),
+                    onPressed: () =>
+                        _server.text = SyncplayConstants.defaultServer,
+                  )
+                : null,
+          ),
           const SizedBox(height: Spacing.md),
           _label('Port'),
           _textField(
-              key: const Key('connect-advanced-port'),
-              controller: _port,
-              hint: '${SyncplayConstants.defaultPort}'),
+            key: const Key('connect-advanced-port'),
+            controller: _port,
+            focusNode: _portFocus,
+            hint: '${SyncplayConstants.defaultPort}',
+            suffixIcon: portChanged
+                ? _resetFieldButton(
+                    key: const Key('connect-advanced-port-reset'),
+                    onPressed: () =>
+                        _port.text = '${SyncplayConstants.defaultPort}',
+                  )
+                : null,
+          ),
           const SizedBox(height: Spacing.md),
           _label('Server password — advanced / self-hosted only'),
           _textField(
-              key: const Key('connect-advanced-password'),
-              controller: _password,
-              hint: 'only needed for a private Syncplay server'),
+            key: const Key('connect-advanced-password'),
+            controller: _password,
+            focusNode: _passwordFocus,
+            hint: 'only needed for a private Syncplay server',
+            suffixIcon: passwordChanged
+                ? _resetFieldButton(
+                    key: const Key('connect-advanced-password-reset'),
+                    onPressed: _password.clear,
+                  )
+                : null,
+          ),
           const SizedBox(height: Spacing.xs),
           Text(
             'No effect on the public server. Private rooms come from the '
@@ -634,13 +827,41 @@ class _ConnectScreenState extends State<ConnectScreen> {
       ),
     );
   }
+
+  Widget _resetFieldButton({
+    required Key key,
+    required VoidCallback onPressed,
+  }) {
+    final m = context.meow;
+    return IconButton(
+      key: key,
+      tooltip: 'Reset to default',
+      icon: Icon(Icons.restart_alt, color: m.textDim, size: IconSizes.md),
+      onPressed: onPressed,
+    );
+  }
+
+  Widget _clearNameButton({required Key key}) {
+    final m = context.meow;
+    return IconButton(
+      key: key,
+      tooltip: 'Clear name',
+      icon: Icon(Icons.close, color: m.textDim, size: IconSizes.md),
+      onPressed: _name.clear,
+    );
+  }
 }
 
 class _ContinueWatching extends StatelessWidget {
-  const _ContinueWatching({required this.history, required this.onResume});
+  const _ContinueWatching({
+    required this.history,
+    required this.currentUsername,
+    required this.onResume,
+  });
 
   final HistoryStore history;
-  final void Function(HistoryEntry entry) onResume;
+  final String currentUsername;
+  final void Function(HistoryEntry entry, {String? usernameOverride}) onResume;
 
   @override
   Widget build(BuildContext context) {
@@ -658,8 +879,10 @@ class _ContinueWatching extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text('Continue watching',
-                      style: context.meowText.body.copyWith(color: m.textDim)),
+                  child: Text(
+                    'Continue watching',
+                    style: context.meowText.body.copyWith(color: m.textDim),
+                  ),
                 ),
                 TextButton(
                   key: const Key('continue-clear-all'),
@@ -673,8 +896,10 @@ class _ContinueWatching extends StatelessWidget {
                     minimumSize: const Size(0, 32),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child:
-                      const Text('Clear all', style: TextStyle(fontSize: TypeScale.body)),
+                  child: const Text(
+                    'Clear all',
+                    style: TextStyle(fontSize: TypeScale.body),
+                  ),
                 ),
               ],
             ),
@@ -682,7 +907,11 @@ class _ContinueWatching extends StatelessWidget {
             ...recent.map(
               (e) => _HistoryCard(
                 entry: e,
+                currentUsername: currentUsername,
                 onResume: () => onResume(e),
+                onResumeWithCurrentName: currentUsername.isEmpty
+                    ? null
+                    : () => onResume(e, usernameOverride: currentUsername),
                 onDelete: () => history.delete(e.id),
               ),
             ),
@@ -698,12 +927,16 @@ class _ContinueWatching extends StatelessWidget {
 class _HistoryCard extends StatelessWidget {
   const _HistoryCard({
     required this.entry,
+    required this.currentUsername,
     required this.onResume,
+    required this.onResumeWithCurrentName,
     required this.onDelete,
   });
 
   final HistoryEntry entry;
+  final String currentUsername;
   final VoidCallback onResume;
+  final VoidCallback? onResumeWithCurrentName;
   final VoidCallback onDelete;
 
   @override
@@ -711,6 +944,12 @@ class _HistoryCard extends StatelessWidget {
     final m = context.meow;
     final frac = progressFraction(entry);
     final roomLine = historyRoomLine(entry);
+    final savedUsername = entry.username?.trim() ?? '';
+    final showCurrentNameAction =
+        savedUsername.isNotEmpty &&
+        currentUsername.isNotEmpty &&
+        currentUsername != savedUsername &&
+        onResumeWithCurrentName != null;
     return Card(
       color: m.surface,
       shape: RoundedRectangleBorder(
@@ -724,10 +963,12 @@ class _HistoryCard extends StatelessWidget {
             key: Key('continue-${entry.id}'),
             onTap: onResume,
             leading: Icon(Icons.play_circle, color: m.accent),
-            title: Text(mediaDisplayName(entry.fileName),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: m.textPrimary)),
+            title: Text(
+              mediaDisplayName(entry.fileName),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: m.textPrimary),
+            ),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -750,11 +991,22 @@ class _HistoryCard extends StatelessWidget {
                             roomLine,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: context.meowText.body.copyWith(color: m.accent),
+                            style: context.meowText.body.copyWith(
+                              color: m.accent,
+                            ),
                           ),
                         ),
                       ],
                     ),
+                  ),
+                if (savedUsername.isNotEmpty)
+                  _CurrentNameAction(
+                    actionKey: showCurrentNameAction
+                        ? Key('continue-use-current-${entry.id}')
+                        : null,
+                    visible: showCurrentNameAction,
+                    username: currentUsername,
+                    onPressed: onResumeWithCurrentName ?? () {},
                   ),
               ],
             ),
@@ -768,7 +1020,11 @@ class _HistoryCard extends StatelessWidget {
           if (frac != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  Spacing.lg, 0, Spacing.lg, Spacing.md),
+                Spacing.lg,
+                0,
+                Spacing.lg,
+                Spacing.md,
+              ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(Radii.xs),
                 child: LinearProgressIndicator(
@@ -781,6 +1037,59 @@ class _HistoryCard extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+class _CurrentNameAction extends StatelessWidget {
+  const _CurrentNameAction({
+    required this.actionKey,
+    required this.visible,
+    required this.username,
+    required this.onPressed,
+  });
+
+  final Key? actionKey;
+  final bool visible;
+  final String username;
+  final VoidCallback onPressed;
+  static const Duration _growDuration = Duration(milliseconds: 300);
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return AnimatedSize(
+      duration: _growDuration,
+      reverseDuration: _growDuration,
+      curve: Curves.easeInOutCubic,
+      alignment: Alignment.topLeft,
+      child: visible
+          ? Padding(
+              padding: const EdgeInsets.only(top: Spacing.xs),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: actionKey,
+                  style: TextButton.styleFrom(
+                    foregroundColor: m.accent,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Spacing.sm,
+                      vertical: Spacing.xs,
+                    ),
+                    minimumSize: const Size(0, 30),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: onPressed,
+                  icon: const Icon(Icons.person_outline, size: IconSizes.sm),
+                  label: Text(
+                    'Join as $username this time',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            )
+          : const SizedBox.shrink(),
     );
   }
 }
