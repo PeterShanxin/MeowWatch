@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../debug/app_log.dart';
 import '../debug/log_redact.dart';
+import 'await_open_result.dart';
 import 'playback_state.dart';
 import 'position_guard.dart';
 import 'video_core.dart';
@@ -94,9 +95,11 @@ class MediaKitVideoCore extends VideoCore {
         // let those downgrade a sticky error back to paused/playing and unmask
         // the error screen. Only load() clears the error (it resets the state).
         if (state.status == PlaybackStatus.error) return;
-        emit(state.copyWith(
-          status: playing ? PlaybackStatus.playing : PlaybackStatus.paused,
-        ));
+        emit(
+          state.copyWith(
+            status: playing ? PlaybackStatus.playing : PlaybackStatus.paused,
+          ),
+        );
       }),
       _player.stream.position.listen((pos) {
         // Reject a stale end-of-file position from the previous file that
@@ -166,10 +169,12 @@ class MediaKitVideoCore extends VideoCore {
         // Redact any signed token in a URL the mpv message embeds before it
         // hits disk (#140). Neat-kept: a real playback error is a key event.
         appLog('video: mpv error: ${redactUrls(err.toString())}');
-        emit(state.copyWith(
-          status: PlaybackStatus.error,
-          errorMessage: err.toString(),
-        ));
+        emit(
+          state.copyWith(
+            status: PlaybackStatus.error,
+            errorMessage: err.toString(),
+          ),
+        );
       }),
     ];
   }
@@ -203,17 +208,105 @@ class MediaKitVideoCore extends VideoCore {
     // Arm the params-open guard: a real params event seen before this load's
     // START_FILE reset is the previous source's, and must not latch `opened`.
     _paramsResetSeen = false;
-    emit(state.copyWith(
-      status: PlaybackStatus.loading,
-      fileName: mediaSourceName(source),
-      filePath: source,
-      position: Duration.zero,
-      duration: Duration.zero,
-      errorMessage: null,
-      // Clear the confirmed-open latch: this new source must re-prove it opens.
-      opened: false,
-    ));
+    emit(
+      state.copyWith(
+        status: PlaybackStatus.loading,
+        fileName: mediaSourceName(source),
+        filePath: source,
+        position: Duration.zero,
+        duration: Duration.zero,
+        errorMessage: null,
+        // Clear the confirmed-open latch: this new source must re-prove it opens.
+        opened: false,
+      ),
+    );
     await _player.open(Media(source), play: false);
+    await _forceDecodeToConfirmOpen(source);
+  }
+
+  /// Force the just-opened [source] to decode so it can confirm it opened.
+  ///
+  /// **The reused-engine paused-load trap.** We open every source paused
+  /// (`play: false`) so two clients don't both jolt to 0:00. On a *fresh* engine
+  /// that is fine — wiring the video output decodes the first frame, which emits
+  /// the real audio/video params that latch [PlaybackState.opened]. But on the
+  /// **reused** engine ([VideoEnginePool], #137) a second paused `open` decodes
+  /// nothing: libmpv emits no params and no duration until playback actually
+  /// starts, so [isPlaybackOpen] can never confirm the source and the load times
+  /// out on a perfectly good file — the "Couldn't play that video / Timed out"
+  /// screen users hit when switching episodes. (A `seek` does **not** wake the
+  /// decoder; only starting playback does — confirmed from session logs.)
+  ///
+  /// So we briefly start playback to force exactly that decode, muted and at the
+  /// start, then settle straight back to paused. This stays invisible to the
+  /// room: the sync bridge only broadcasts a source after the load coordinator
+  /// calls `markSourceOpen` — which happens *after* this returns — so the
+  /// transient play is never published, and using the private [_player] (not the
+  /// public [play]/[seek]) keeps `_playbackStarted` false so the file still
+  /// legitimately sits at 0:00 for the user. A fresh-engine load that already
+  /// proved open is skipped. The wait shares the coordinator's [openConfirmTimeout]
+  /// (not a second stacked one); if the source never confirms within it we
+  /// [failLoad] here so the coordinator's [awaitOpenResult] short-circuits rather
+  /// than waiting the full budget again.
+  Future<void> _forceDecodeToConfirmOpen(String source) async {
+    if (state.filePath != source) return; // superseded by a newer load
+    if (isPlaybackOpen(state) || state.status == PlaybackStatus.error) return;
+
+    final platform = _player.platform;
+    final native = platform is NativePlayer ? platform : null;
+
+    // Subscribe BEFORE playing so a near-instant open event can't slip past
+    // between play() and the listen. Resolves true on confirmed open, false on an
+    // error or a newer load superseding this source.
+    final proven = Completer<bool>();
+    void settle(bool opened) {
+      if (!proven.isCompleted) proven.complete(opened);
+    }
+
+    final sub = stateStream.listen((s) {
+      if (s.filePath != source || s.status == PlaybackStatus.error) {
+        settle(false);
+      } else if (isPlaybackOpen(s)) {
+        settle(true);
+      }
+    });
+    var opened = false;
+    try {
+      await native?.setProperty('mute', 'yes');
+      await _player.play();
+      // A valid file decodes its first frame within milliseconds. Share the
+      // coordinator's [openConfirmTimeout] budget — NOT a second one stacked on
+      // top — so a genuinely stuck source (e.g. an unresponsive URL) still fails
+      // at ~12s, not ~22s.
+      opened = await proven.future.timeout(openConfirmTimeout);
+    } catch (_) {
+      opened = false; // timed out or the stream closed
+    } finally {
+      await sub.cancel();
+      bool ownsSource() =>
+          state.filePath == source && state.status != PlaybackStatus.error;
+      if (ownsSource()) {
+        // Stop the probe's playback in BOTH outcomes — including the timeout —
+        // BEFORE surfacing anything. Otherwise a source that only recovers
+        // *after* the budget keeps the probe's play() running and starts playing
+        // audibly behind the (sticky) error screen, since post-error playing
+        // ticks are ignored but the audio still comes out.
+        await _player.pause();
+        if (ownsSource() && opened) {
+          // Settle back to a paused start.
+          await _player.seek(Duration.zero);
+        } else if (ownsSource()) {
+          // Never confirmed within the budget — surface the failure now so the
+          // coordinator's own [awaitOpenResult] short-circuits on the error
+          // instead of adding a second full timeout. [failLoad] no-ops if the
+          // source genuinely opened.
+          failLoad('Timed out waiting for the video to open.');
+        }
+      }
+      if (state.filePath == source) {
+        await native?.setProperty('mute', 'no');
+      }
+    }
   }
 
   @override

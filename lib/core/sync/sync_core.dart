@@ -10,8 +10,10 @@ import 'peer_state.dart';
 abstract class SyncCore {
   final StreamController<SyncConnectionState> _connection =
       StreamController<SyncConnectionState>.broadcast();
+  // Peer state is the command path from the room to the local player. Deliver it
+  // before the Syncplay heartbeat reply continues so cache and video stay paired.
   final StreamController<PeerPlayState> _peer =
-      StreamController<PeerPlayState>.broadcast();
+      StreamController<PeerPlayState>.broadcast(sync: true);
   final StreamController<PresenceEvent> _presence =
       StreamController<PresenceEvent>.broadcast();
   final StreamController<ChatMessage> _chat =

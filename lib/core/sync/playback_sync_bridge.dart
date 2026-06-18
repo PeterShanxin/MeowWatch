@@ -16,6 +16,7 @@ class PlaybackSyncBridge {
     required this.sync,
     this.seekDetectThreshold = SyncplayConstants.seekDetectThreshold,
     this.remoteApplyWindow = const Duration(milliseconds: 800),
+    this.remoteSettleWindow = const Duration(seconds: 3),
     this.remoteSeekThreshold = const Duration(milliseconds: 250),
   });
 
@@ -30,15 +31,25 @@ class PlaybackSyncBridge {
   /// wrongly echo it back as a local change, causing the two clients to fight.
   final Duration remoteApplyWindow;
 
+  /// Longer condition-based guard while the backend settles to a remote target.
+  /// The reused media_kit/mpv engine can emit late pre-command ticks after a
+  /// remote seek/pause; those must not overwrite the adopted room state.
+  final Duration remoteSettleWindow;
+
   /// On a non-seek apply (pause/play flip or drift rewind) we only reposition
   /// if we're off by more than this — avoids latency-jitter micro-seeks.
   final Duration remoteSeekThreshold;
 
   StreamSubscription<PlaybackState>? _videoSub;
   StreamSubscription<PeerPlayState>? _peerSub;
+  final List<PeerPlayState> _queuedPeerStates = [];
 
   bool _applyingRemote = false;
+  bool _drainingPeerStates = false;
   DateTime _remoteApplyUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _remoteSettleUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  PeerPlayState? _remoteSettleTarget;
+  bool _remoteSettleRequiresPosition = false;
   bool? _lastPaused;
   Duration _lastPosition = Duration.zero;
   DateTime _lastTick = DateTime.now();
@@ -76,7 +87,33 @@ class PlaybackSyncBridge {
 
   void start() {
     _videoSub = video.stateStream.listen(_onLocalState);
-    _peerSub = sync.peerState.listen(_onPeerState);
+    _peerSub = sync.peerState.listen(_queuePeerState);
+  }
+
+  void _queuePeerState(PeerPlayState peer) {
+    if (_drainingPeerStates) {
+      _queuedPeerStates.add(peer);
+      return;
+    }
+
+    _drainingPeerStates = true;
+    unawaited(_drainPeerStates(peer));
+  }
+
+  Future<void> _drainPeerStates(PeerPlayState peer) async {
+    var next = peer;
+    while (true) {
+      try {
+        await _onPeerState(next);
+      } catch (_) {
+        // Keep later peer states flowing even if one backend command fails.
+      }
+      if (_queuedPeerStates.isEmpty) {
+        _drainingPeerStates = false;
+        return;
+      }
+      next = _queuedPeerStates.removeAt(0);
+    }
   }
 
   /// Called by the load coordinator once [awaitOpenResult] has accepted [source]
@@ -106,6 +143,7 @@ class PlaybackSyncBridge {
 
   void _onLocalState(PlaybackState s) {
     final paused = s.status != PlaybackStatus.playing;
+    final now = DateTime.now();
 
     // A reload re-enters `loading`; require the coordinator to re-confirm before
     // the source's ticks rejoin the heartbeat.
@@ -124,6 +162,8 @@ class PlaybackSyncBridge {
     // until confirmed.
     final source = s.filePath;
     final confirmed = source != null && source == _confirmedOpenSource;
+    final settlingRemote = _isSettlingRemoteState(s, now);
+
     if (!confirmed ||
         s.status == PlaybackStatus.loading ||
         s.status == PlaybackStatus.error) {
@@ -132,16 +172,30 @@ class PlaybackSyncBridge {
       // only a genuinely local play. Non-play ticks clear it — nothing to assert.
       _preOpenPlayRemote =
           s.status == PlaybackStatus.playing &&
-          (_applyingRemote || DateTime.now().isBefore(_remoteApplyUntil));
+          (_applyingRemote ||
+              now.isBefore(_remoteApplyUntil) ||
+              settlingRemote);
       _lastFilePath = s.filePath;
       _lastPaused = paused;
       _lastPosition = s.position;
-      _lastTick = DateTime.now();
+      _lastTick = now;
       return;
     }
 
-    // Feed the latest playable position to the sync layer for its heartbeat.
-    sync.updateLocalState(position: s.position, paused: paused);
+    final suppressed =
+        _applyingRemote || now.isBefore(_remoteApplyUntil) || settlingRemote;
+
+    // Feed local playback to the heartbeat only when this tick is NOT fallout
+    // from a remote apply. SyncplayClient already adopts the peer target before
+    // emitting peerState; overwriting that cache with a delayed/stale media_kit
+    // tick during the suppression window makes the next heartbeat report the
+    // pre-apply position, and the peer then rewinds/seeks to it — the post-0.28.0
+    // sync thrash, surfaced by the reused engine (#137) emitting more out-of-order
+    // ticks. The seek-detection bookkeeping below still runs so the next real tick
+    // isn't misread as a seek.
+    if (!suppressed) {
+      sync.updateLocalState(position: s.position, paused: paused);
+    }
 
     // Suppress seek detection on a file-load event: a different filePath means a
     // new (or different) file was opened — catching the position-reset-to-0 that
@@ -156,8 +210,6 @@ class PlaybackSyncBridge {
       return;
     }
 
-    final suppressed =
-        _applyingRemote || DateTime.now().isBefore(_remoteApplyUntil);
     if (suppressed) {
       _lastPaused = paused;
       _lastPosition = s.position;
@@ -165,26 +217,45 @@ class PlaybackSyncBridge {
       return;
     }
 
-    // Pause/play transition.
-    if (_lastPaused != null && paused != _lastPaused) {
+    // Seek detection: compare actual position to where natural playback would
+    // have carried us since the last tick. A real seek can also produce a
+    // transient play/pause flip from the backend, so a large position jump wins.
+    final hadPreviousTick = _lastPaused != null;
+    final elapsed = (_lastPaused == false)
+        ? now.difference(_lastTick)
+        : Duration.zero;
+    final expected = _lastPosition + elapsed;
+    final diff = (s.position - expected).abs();
+    if (hadPreviousTick && diff > seekDetectThreshold) {
+      sync.notifyLocalChange(doSeek: true);
+    } else if (hadPreviousTick && paused != _lastPaused) {
       sync.notifyLocalChange(doSeek: false);
-    } else {
-      // Seek detection: compare actual position to where natural playback
-      // would have carried us since the last tick.
-      final now = DateTime.now();
-      final elapsed = (_lastPaused == false)
-          ? now.difference(_lastTick)
-          : Duration.zero;
-      final expected = _lastPosition + elapsed;
-      final diff = (s.position - expected).abs();
-      if (diff > seekDetectThreshold) {
-        sync.notifyLocalChange(doSeek: true);
-      }
     }
 
     _lastPaused = paused;
     _lastPosition = s.position;
-    _lastTick = DateTime.now();
+    _lastTick = now;
+  }
+
+  bool _isSettlingRemoteState(PlaybackState s, DateTime now) {
+    final target = _remoteSettleTarget;
+    if (target == null) return false;
+    if (_matchesRemoteTarget(s, target)) {
+      _remoteSettleTarget = null;
+      _remoteSettleRequiresPosition = false;
+      return true;
+    }
+    if (now.isBefore(_remoteSettleUntil)) return true;
+    _remoteSettleTarget = null;
+    _remoteSettleRequiresPosition = false;
+    return false;
+  }
+
+  bool _matchesRemoteTarget(PlaybackState s, PeerPlayState target) {
+    final paused = s.status != PlaybackStatus.playing;
+    if (paused != target.paused) return false;
+    if (!_remoteSettleRequiresPosition) return true;
+    return (s.position - target.position).abs() <= remoteSeekThreshold;
   }
 
   Future<void> _onPeerState(PeerPlayState peer) async {
@@ -192,23 +263,41 @@ class PlaybackSyncBridge {
     // (the convergence/anti-fight decision lives in decideFollow), so the
     // bridge applies each one: align position, then match play/pause.
     _applyingRemote = true;
+    _remoteApplyUntil = DateTime.now().add(remoteApplyWindow);
     try {
       // Seek on an explicit peer seek, when a peer pauses (frame inspection
       // needs the exact paused frame), or when we've drifted materially from
       // the room. Resume/play flips stay thresholded so network jitter does not
       // cause a visible micro-jump during normal watching.
       final drift = (peer.position - video.state.position).abs();
-      if (peer.doSeek ||
+      final shouldSeek =
+          peer.doSeek ||
           (peer.paused && drift > Duration.zero) ||
-          drift > remoteSeekThreshold) {
-        await video.seek(peer.position);
+          drift > remoteSeekThreshold;
+      _remoteSettleTarget = peer;
+      _remoteSettleRequiresPosition = shouldSeek;
+      _remoteSettleUntil = DateTime.now().add(remoteSettleWindow);
+
+      Future<void>? seekDone;
+      if (shouldSeek) {
+        seekDone = video.seek(peer.position);
       }
 
-      final localPaused = video.state.status != PlaybackStatus.playing;
-      if (peer.paused && !localPaused) {
-        await video.pause();
-      } else if (!peer.paused && localPaused) {
+      Future<void>? pauseDone;
+      if (!peer.paused) {
+        if (seekDone != null) {
+          await seekDone;
+          seekDone = null;
+        }
         await video.play();
+      } else {
+        pauseDone = video.pause();
+      }
+      if (seekDone != null) {
+        await seekDone;
+      }
+      if (pauseDone != null) {
+        await pauseDone;
       }
     } finally {
       _applyingRemote = false;

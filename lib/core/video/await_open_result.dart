@@ -3,6 +3,13 @@ import 'dart:async';
 import 'playback_state.dart';
 import 'video_core.dart';
 
+/// How long we wait for a just-issued load to confirm it opened before treating
+/// it as a hang. Shared so the in-core decode probe
+/// ([MediaKitVideoCore] `_forceDecodeToConfirmOpen`) and this coordinator wait
+/// use the SAME budget rather than two stacked timeouts — a genuinely stuck
+/// source fails at ~this duration, not double it.
+const Duration openConfirmTimeout = Duration(seconds: 12);
+
 /// Wait for a just-issued [VideoCore.load] of [source] to either open or fail,
 /// returning `true` on a confirmed open and `false` on error/supersede/timeout.
 ///
@@ -28,7 +35,7 @@ import 'video_core.dart';
 Future<bool> awaitOpenResult(
   VideoCore core, {
   required String source,
-  Duration timeout = const Duration(seconds: 12),
+  Duration timeout = openConfirmTimeout,
 }) async {
   bool superseded(PlaybackState s) => s.filePath != source;
   bool isError(PlaybackState s) => s.status == PlaybackStatus.error;
