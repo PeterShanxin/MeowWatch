@@ -525,6 +525,59 @@ void main() {
     },
   );
 
+  test('remote resume fallback seek waits until playback is running', () async {
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeSeekWait: const Duration(milliseconds: 1),
+      remoteCommandWait: const Duration(milliseconds: 1),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+    video.emitFromSeek = false;
+    video.emitFromPlay = false;
+    video.playGate = Completer<void>();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(video.commands, <String>['seek:679000ms', 'play']);
+
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(video.commands, <String>['seek:679000ms', 'play', 'seek:679000ms']);
+
+    video.playGate!.complete();
+    await Future<void>.delayed(Duration.zero);
+    video.playGate = null;
+  });
+
   test(
     'explicit peer seek is issued before a slow play can leak stale ticks',
     () async {

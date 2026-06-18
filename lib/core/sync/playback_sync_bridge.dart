@@ -55,6 +55,8 @@ class PlaybackSyncBridge {
 
   StreamSubscription<PlaybackState>? _videoSub;
   StreamSubscription<PeerPlayState>? _peerSub;
+  StreamSubscription<PlaybackState>? _resumeSeekSub;
+  Timer? _resumeSeekTimer;
   final List<PeerPlayState> _queuedPeerStates = [];
 
   bool _applyingRemote = false;
@@ -345,6 +347,43 @@ class PlaybackSyncBridge {
     return completer.future;
   }
 
+  void _cancelResumeSeek() {
+    _resumeSeekTimer?.cancel();
+    _resumeSeekTimer = null;
+    unawaited(_resumeSeekSub?.cancel());
+    _resumeSeekSub = null;
+  }
+
+  void _seekWhenPlaying(Duration position) {
+    _cancelResumeSeek();
+    if (video.state.status == PlaybackStatus.playing) {
+      unawaited(_waitForCommand(video.seek(position)));
+      return;
+    }
+
+    late final StreamSubscription<PlaybackState> sub;
+    Timer? timer;
+
+    void cancelWait() {
+      timer?.cancel();
+      timer = null;
+      if (identical(_resumeSeekSub, sub)) {
+        _resumeSeekSub = null;
+        _resumeSeekTimer = null;
+      }
+      unawaited(sub.cancel());
+    }
+
+    sub = video.stateStream.listen((state) {
+      if (state.status != PlaybackStatus.playing) return;
+      cancelWait();
+      unawaited(_waitForCommand(video.seek(position)));
+    });
+    timer = Timer(remoteSettleWindow, cancelWait);
+    _resumeSeekSub = sub;
+    _resumeSeekTimer = timer;
+  }
+
   Future<void> _onPeerState(PeerPlayState peer) async {
     // The SyncCore only emits states that genuinely require a local change
     // (the convergence/anti-fight decision lives in decideFollow), so the
@@ -366,6 +405,7 @@ class PlaybackSyncBridge {
       _remoteSettleUntil = DateTime.now().add(remoteSettleWindow);
       _remoteFalloutTarget = null;
       _remoteFalloutRequiresPosition = false;
+      _cancelResumeSeek();
 
       Future<void>? seekDone;
       if (shouldSeek) {
@@ -381,7 +421,7 @@ class PlaybackSyncBridge {
         }
         await _waitForCommand(video.play());
         if (shouldSeek && !landedBeforePlay) {
-          unawaited(_waitForCommand(video.seek(peer.position)));
+          _seekWhenPlaying(peer.position);
         }
         seekDone = null;
       } else {
@@ -399,6 +439,8 @@ class PlaybackSyncBridge {
   }
 
   Future<void> dispose() async {
+    _resumeSeekTimer?.cancel();
+    await _resumeSeekSub?.cancel();
     await _videoSub?.cancel();
     await _peerSub?.cancel();
   }
