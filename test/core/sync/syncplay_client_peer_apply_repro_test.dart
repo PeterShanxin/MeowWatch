@@ -86,37 +86,42 @@ void main() {
     await client.dispose();
   });
 
-  test(
-    'peer apply commands video before the heartbeat reply continues',
-    () async {
-      final video = _FakeVideoCore();
-      final client = SyncplayClient();
-      final bridge = PlaybackSyncBridge(video: video, sync: client)..start();
+  test('peer apply starts the video command path synchronously', () async {
+    final video = _FakeVideoCore();
+    final client = SyncplayClient();
+    final bridge = PlaybackSyncBridge(video: video, sync: client)..start();
 
-      client.debugMarkLoggedIn('p2');
-      client.updateLocalState(position: Duration.zero, paused: true);
+    client.debugMarkLoggedIn('p2');
+    client.updateLocalState(position: Duration.zero, paused: true);
 
-      client.debugHandleMessage(
-        const StateMessage(
-          peer: PeerPlayState(
-            position: Duration(milliseconds: 522),
-            paused: false,
-            doSeek: false,
-            setBy: 'p1',
-          ),
+    client.debugHandleMessage(
+      const StateMessage(
+        peer: PeerPlayState(
+          position: Duration(milliseconds: 522),
+          paused: false,
+          doSeek: false,
+          setBy: 'p1',
         ),
-      );
+      ),
+    );
 
-      expect(
-        video.commands,
-        contains('play'),
-        reason:
-            'peer apply must not depend on a later stream microtask after the '
-            'client has already adopted the peer state into its cache',
-      );
+    expect(
+      video.commands,
+      contains('seek:522ms'),
+      reason:
+          'peer apply must enter the video command path before the client '
+          'continues with its heartbeat reply',
+    );
 
-      await bridge.dispose();
-      await client.dispose();
-    },
-  );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      video.commands,
+      contains('play'),
+      reason: 'resume playback follows once the required seek completes',
+    );
+
+    await bridge.dispose();
+    await client.dispose();
+  });
 }

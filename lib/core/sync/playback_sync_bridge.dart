@@ -285,6 +285,10 @@ class PlaybackSyncBridge {
 
       Future<void>? pauseDone;
       if (!peer.paused) {
+        if (seekDone != null) {
+          await seekDone;
+          seekDone = null;
+        }
         await video.play();
       } else {
         pauseDone = video.pause();
