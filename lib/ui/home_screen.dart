@@ -227,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late String _username;
   bool _peekPulsing = false;
   Timer? _peekTimer;
+
   /// Non-null while the load-screen "Press Tab" hint toast is on screen; its
   /// value re-keys [_FadingToast] so each show replays the fade animation.
   int? _chatHintToken;
@@ -402,7 +403,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _prevSyncStatus = s.status;
       if (s.status == SyncConnectionStatus.connected &&
           _shouldReannounceOnConnect()) {
-        unawaited(_announceCurrentFile());
+        _announceLoadedFile(_loadedSource);
       }
     });
     // Track peers who announced a deliberate leave so the presence listener can
@@ -428,6 +429,9 @@ class _HomeScreenState extends State<HomeScreen> {
             _chat.addSystem(
               peerJoinMessage(username: e.username, reconnected: reconnected),
             );
+            if (_shouldReannounceOnConnect()) {
+              _announceLoadedFile(_loadedSource);
+            }
           }
         } else {
           _peers.remove(e.username);
@@ -1030,7 +1034,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (!mounted || _core.state.filePath != path) return false;
     appLog('video: opened ${mediaDisplayName(path)}');
-    await _recordOpen(path);
+    final size = await _recordOpen(path);
     // _recordOpen awaits file-size/DB work; a newer load could have started and
     // swapped the core state (and _localFileSizeBytes) meanwhile.
     if (gen != _loadGeneration || !mounted) return false;
@@ -1039,10 +1043,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // accepts the source's ticks — essential for a live/direct stream that never
     // reports a duration (the bridge can't infer "open" from such a stream).
     _bridge.markSourceOpen(path);
-    await _announceCurrentFile();
-    // `dispose()` doesn't bump the generation, so guard on `mounted` too — a
-    // leave/close during the announce await must not post a chat line into an
-    // already-disposed ChatStore (closed controller → uncaught async error).
+    _announceLoadedFile(path, sizeBytes: size);
+    // `dispose()` doesn't bump the generation, so guard on `mounted` too.
     if (gen != _loadGeneration || !mounted) return false;
     _addLoadedFileMessage();
     return true;
@@ -1081,7 +1083,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _recordOpen(String path) async {
+  Future<int> _recordOpen(String path) async {
     final state = _core.state;
     // A stream URL has no byte size — don't stat it as a file (the URL isn't a
     // valid path, and on Windows the ':' would throw a different error).
@@ -1106,8 +1108,11 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       appLog('db: recordOpen ok ${mediaDisplayName(path)}');
     } catch (e) {
-      appLog('db: recordOpen FAILED ${mediaDisplayName(path)}: ${redactUrls('$e')}');
+      appLog(
+        'db: recordOpen FAILED ${mediaDisplayName(path)}: ${redactUrls('$e')}',
+      );
     }
+    return size;
   }
 
   Future<void> _saveResumePosition() async {
@@ -1132,7 +1137,9 @@ class _HomeScreenState extends State<HomeScreen> {
         '@${state.position.inMilliseconds}ms',
       );
     } catch (e) {
-      appLog('db: updatePosition FAILED ${mediaDisplayName(path)}: ${redactUrls('$e')}');
+      appLog(
+        'db: updatePosition FAILED ${mediaDisplayName(path)}: ${redactUrls('$e')}',
+      );
     }
   }
 
@@ -1158,20 +1165,21 @@ class _HomeScreenState extends State<HomeScreen> {
     status: _core.state.status,
   );
 
-  Future<void> _announceCurrentFile() async {
-    final state = _core.state;
-    final path = state.filePath;
+  void _announceLoadedFile(String? path, {int? sizeBytes}) {
     if (path == null) return;
     // For a URL, size is unknown (streams have no byte length) and the URL
     // itself is the name we share — matching official Syncplay.
-    final size = isHttpUrl(path) ? 0 : await _fileSize(path);
-    // Statting a local file awaits; a newer load may have swapped the source in
-    // the meantime. Don't announce this (now-stale) file against the new source.
-    if (_core.state.filePath != path) return;
+    if (_loadedSource != path || !mounted) return;
+    final size = isHttpUrl(path) ? 0 : (sizeBytes ?? _localFileSizeBytes ?? 0);
+    final state = _core.state;
+    final fallbackName = isHttpUrl(path) ? path : mediaDisplayName(path);
+    appLog('sync: announce file ${mediaDisplayName(path)}');
     _sync.announceFile(
-      name: state.fileName ?? path,
+      name: state.filePath == path
+          ? (state.fileName ?? fallbackName)
+          : fallbackName,
       size: size,
-      duration: state.duration,
+      duration: state.filePath == path ? state.duration : Duration.zero,
     );
   }
 

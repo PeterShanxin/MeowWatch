@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/sync/peer_state.dart';
 import 'package:meowwatch/core/sync/playback_sync_bridge.dart';
@@ -7,6 +9,8 @@ import 'package:meowwatch/core/video/video_core.dart';
 
 class _FakeVideoCore extends VideoCore {
   final List<String> commands = [];
+  Completer<void>? playGate;
+  Completer<void>? seekGate;
 
   @override
   Future<void> load(String filePath) async {
@@ -18,6 +22,8 @@ class _FakeVideoCore extends VideoCore {
   Future<void> play() async {
     commands.add('play');
     emit(state.copyWith(status: PlaybackStatus.playing));
+    final gate = playGate;
+    if (gate != null) await gate.future;
   }
 
   @override
@@ -30,6 +36,8 @@ class _FakeVideoCore extends VideoCore {
   Future<void> seek(Duration position) async {
     commands.add('seek:${position.inMilliseconds}ms');
     emit(state.copyWith(position: position));
+    final gate = seekGate;
+    if (gate != null) await gate.future;
   }
 
   @override
@@ -357,7 +365,7 @@ void main() {
     expect(video.state.position, const Duration(seconds: 10));
   });
 
-  test('remote resume wakes a paused video before seeking', () async {
+  test('remote resume seeks before waking a paused video', () async {
     video.push(
       const PlaybackState(
         status: PlaybackStatus.paused,
@@ -380,8 +388,171 @@ void main() {
     );
     await Future<void>.delayed(const Duration(milliseconds: 10));
 
-    expect(video.commands, <String>['play', 'seek:2900ms']);
+    expect(video.commands, <String>['seek:2900ms', 'play']);
   });
+
+  test(
+    'explicit peer seek is issued before a slow play can leak stale ticks',
+    () async {
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.playing,
+          position: Duration(seconds: 20),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+      sync.localUpdates.clear();
+      video.commands.clear();
+      video.playGate = Completer<void>();
+
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 679),
+          paused: false,
+          doSeek: true,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(video.commands, <String>['seek:679000ms', 'play']);
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.playing,
+          position: Duration(seconds: 21),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        sync.localUpdates,
+        isEmpty,
+        reason:
+            'stale pre-seek ticks must stay out of the heartbeat while '
+            'remote play is still applying',
+      );
+
+      video.playGate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      video.playGate = null;
+    },
+  );
+
+  test(
+    'remote resume with drift waits for the target position before settling',
+    () async {
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration(seconds: 20),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+      sync.localUpdates.clear();
+      video.commands.clear();
+      video.playGate = Completer<void>();
+
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 679),
+          paused: false,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(video.commands, <String>['seek:679000ms', 'play']);
+
+      video.playGate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      video.playGate = null;
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.playing,
+          position: Duration(seconds: 21),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 850));
+
+      expect(
+        sync.localUpdates,
+        isEmpty,
+        reason:
+            'a remote resume that had to seek must not settle on a stale '
+            'playing tick at the old position',
+      );
+    },
+  );
+
+  test(
+    'remote pause is issued immediately even when the aligning seek is slow',
+    () async {
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.playing,
+          position: Duration(seconds: 9),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+      sync.localUpdates.clear();
+      video.commands.clear();
+      video.seekGate = Completer<void>();
+
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(milliseconds: 8666),
+          paused: true,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(video.commands, <String>['seek:8666ms', 'pause']);
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.playing,
+          position: Duration(milliseconds: 10266),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        sync.localUpdates,
+        isEmpty,
+        reason:
+            'a late playing tick from a remote pause must not resume the '
+            'room heartbeat',
+      );
+
+      video.seekGate!.complete();
+      await Future<void>.delayed(Duration.zero);
+      video.seekGate = null;
+    },
+  );
 
   // ── File-load suppression (#91) ───────────────────────────────────────────
 
