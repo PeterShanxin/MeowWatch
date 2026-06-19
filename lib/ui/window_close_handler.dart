@@ -139,17 +139,14 @@ class WindowCloseHandler with WindowListener {
     // leave then runs after the visible window is already gone (#106), so the
     // user perceives an instant close regardless of how long the leave takes.
     await _bestEffortCloseStep(_hideWindow, label: 'hide-on-close');
-    // Record + flush the close marker BEFORE the (awaited) room leave. The leave
-    // takes up to a few hundred ms (its socket flush) before exit(0); a log flush
-    // done only *after* it races that exit and loses the tail of the trace — the
-    // exact in-room close path #148 needs to debug. Flushing now, while there's
-    // slack, guarantees this run's close is on disk regardless of exit timing
-    // (#140).
+    // Record the close marker BEFORE the (awaited) room leave — but only the
+    // cheap append, NOT a blocking flush. appLog eagerly queues its own flush for
+    // meaningful `life:` lines (#140), and that flush lands during the leave's
+    // own await window, so the marker reaches disk without a pre-leave
+    // best-effort flush that could spend the hard-exit budget and starve the
+    // leave itself. The leave is the priority (peers must see a clean exit), so
+    // nothing that can consume the close-step budget runs between here and it.
     appLog('life: app closing');
-    await _bestEffortCloseStep(
-      () => appLogInstance?.flush() ?? Future<void>.value(),
-      label: 'flush-on-close',
-    );
     // Announce a deliberate leave (if in a room) before tearing the window down,
     // so peers see "left the room" rather than "lost connection" (#92). This is
     // AWAITED — runAppCloseHook is self-bounded by _closeHookTimeout and the
@@ -157,11 +154,11 @@ class WindowCloseHandler with WindowListener {
     // awaiting is what lets disconnectForAppClose()'s socket flush actually
     // complete before exit(0) instead of being killed mid-flush (#148).
     await runAppCloseHook(timeout: _closeHookTimeout);
-    // Best-effort second flush to also persist the leave-send lines; the close
-    // marker above is already safely on disk if this one loses the exit race.
+    // Best-effort flush so the leave-send lines also land before the window is
+    // destroyed; the close marker above is already on disk via its eager flush.
     await _bestEffortCloseStep(
       () => appLogInstance?.flush() ?? Future<void>.value(),
-      label: 'flush-after-leave',
+      label: 'flush-on-close',
     );
     await _bestEffortCloseStep(_destroyWindow, label: 'destroy-on-close');
     // A prevented in-room close can leave Dart timers / media resources alive
