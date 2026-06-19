@@ -601,6 +601,12 @@ class SyncplayClient extends SyncCore {
     _socket = socket;
   }
 
+  @visibleForTesting
+  void debugAttachLoggedInSocket(Socket socket, {required String username}) {
+    debugMarkLoggedIn(username);
+    _socket = socket;
+  }
+
   /// Test hook: seed an already-established session (requested name + the
   /// server-assigned identity equal), without dialing a socket. Lets a test
   /// exercise the reconnect Hello path.
@@ -651,25 +657,25 @@ class SyncplayClient extends SyncCore {
   /// a connection drop (issue #92). Shared by the Leave button ([disconnect]) and
   /// app close ([disposeBackend]); call only when [_loggedIn].
   ///
-  /// Only awaits when there is a real socket to flush — with no socket it returns
-  /// synchronously after recording the send, so callers that read connection
-  /// state right after `await disconnect()` aren't deferred by a stray microtask.
-  /// Best-effort — the bounded flush ensures a half-open socket can't wedge the
-  /// teardown (the original close() bug — see docs/AGENT_GUIDE.md); a lost bye degrades
-  /// gracefully to peers seeing "lost connection" instead of "left the room".
+  /// Best-effort: give the bye a very short chance to leave before destroying
+  /// the socket. The timeout stays bounded because a half-open socket flush can
+  /// otherwise wedge teardown.
   Future<void> _announceLeaving() async {
     _send(encodeChat(encodeLeaving()));
     final socket = _socket;
     if (socket == null) return;
     try {
-      await socket.flush().timeout(const Duration(milliseconds: 300));
-    } catch (_) {}
+      await socket.flush().timeout(const Duration(milliseconds: 120));
+    } on Object {
+      // Leaving is advisory; teardown must continue even if the packet cannot
+      // be flushed to a half-open connection.
+    }
   }
 
   @override
   Future<void> disconnect() async {
-    // Cancel the watchdog and any pending reconnect FIRST (synchronously) so a
-    // timer can't fire during the flush await below and resurrect the link.
+    // Cancel the watchdog and any pending reconnect FIRST so a timer can't fire
+    // during teardown and resurrect the link.
     _stopReconnecting();
     if (_loggedIn) await _announceLeaving();
     // destroy(), not close(): a half-open socket's close() awaits a flush that

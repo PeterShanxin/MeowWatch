@@ -47,8 +47,11 @@ void main() {
     expect(client.debugReconnectScheduled, isTrue);
 
     await client.disconnect();
-    expect(client.debugReconnectScheduled, isFalse,
-        reason: 'leaving must cancel the armed retry');
+    expect(
+      client.debugReconnectScheduled,
+      isFalse,
+      reason: 'leaving must cancel the armed retry',
+    );
     expect(statuses.last, SyncConnectionStatus.disconnected);
 
     // A drop arriving after a manual leave must NOT restart reconnection.
@@ -59,11 +62,36 @@ void main() {
     expect(client.debugReconnectScheduled, isFalse);
   });
 
-  test('disconnect with no live socket completes quickly (never hangs)',
-      () async {
-    // The wedged "Leave room" came from awaiting close() on a half-open socket.
-    // disconnect() must always resolve promptly regardless of socket state.
-    await client.disconnect().timeout(const Duration(seconds: 1));
+  test(
+    'disconnect with no live socket completes quickly (never hangs)',
+    () async {
+      // The wedged "Leave room" came from awaiting close() on a half-open socket.
+      // disconnect() must always resolve promptly regardless of socket state.
+      await client.disconnect().timeout(const Duration(seconds: 1));
+      expect(statuses.last, SyncConnectionStatus.disconnected);
+    },
+  );
+
+  test('disconnect with a live socket bounds the leaving flush', () async {
+    final server = await ServerSocket.bind('127.0.0.1', 0);
+    final accepted = <Socket>[];
+    server.listen((s) {
+      accepted.add(s);
+      s.listen((_) {}); // keep the connection open and otherwise silent.
+    });
+    final socket = await Socket.connect('127.0.0.1', server.port);
+    addTearDown(() async {
+      socket.destroy();
+      for (final s in accepted) {
+        s.destroy();
+      }
+      await server.close();
+    });
+
+    client.debugAttachLoggedInSocket(socket, username: 'me');
+
+    await client.disconnect().timeout(const Duration(milliseconds: 500));
+    await Future<void>.delayed(Duration.zero);
     expect(statuses.last, SyncConnectionStatus.disconnected);
   });
 

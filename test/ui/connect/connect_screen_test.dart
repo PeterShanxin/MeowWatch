@@ -16,6 +16,7 @@ class _FakeProfileStore implements ProfileStore {
   final _ctrl = StreamController<List<SavedProfile>>.broadcast();
   final List<SavedProfile> profiles = [];
   final List<int> deleted = [];
+  final List<String> savedUsernames = [];
   int saveUsedCalls = 0;
 
   void emit() => _ctrl.add(List.unmodifiable(profiles));
@@ -36,6 +37,7 @@ class _FakeProfileStore implements ProfileStore {
     String? password,
   }) async {
     saveUsedCalls++;
+    savedUsernames.add(username);
   }
 
   @override
@@ -121,19 +123,29 @@ void main() {
   late _FakeHistoryStore history;
   RoomConfig? connected;
 
-  Future<void> pump(WidgetTester tester, {SettingsStore? settings}) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    SettingsStore? settings,
+    Future<void> Function(RoomConfig config)? onConnect,
+  }) async {
     connected = null;
-    await tester.pumpWidget(MaterialApp(
-      theme: themeDataFor(MeowThemeId.cozy),
-      home: ConnectScreen(
-        profiles: profiles,
-        history: history,
-        settings: settings ?? _FakeSettingsStore(),
-        currentTheme: MeowThemeId.cozy,
-        onThemeChanged: (_) {},
-        onConnect: (config) async => connected = config,
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: themeDataFor(MeowThemeId.cozy),
+        home: ConnectScreen(
+          profiles: profiles,
+          history: history,
+          settings: settings ?? _FakeSettingsStore(),
+          currentTheme: MeowThemeId.cozy,
+          onThemeChanged: (_) {},
+          onConnect:
+              onConnect ??
+              (config) async {
+                connected = config;
+              },
+        ),
       ),
-    ));
+    );
     await tester.pump();
   }
 
@@ -147,22 +159,52 @@ void main() {
 
   testWidgets('renders a saved profile card', (tester) async {
     // Use a name that won't collide with the enter-code hint placeholder.
-    profiles.profiles.add(SavedProfile(
-      id: 1,
-      name: 'happy-otter-99',
-      server: 'syncplay.pl',
-      port: 8999,
-      room: 'happy-otter-99',
-      username: 'lin',
-      password: null,
-      lastUsedAt: DateTime(2026, 5, 29),
-    ));
+    profiles.profiles.add(
+      SavedProfile(
+        id: 1,
+        name: 'happy-otter-99',
+        server: 'syncplay.pl',
+        port: 8999,
+        room: 'happy-otter-99',
+        username: 'lin',
+        password: null,
+        lastUsedAt: DateTime(2026, 5, 29),
+      ),
+    );
     await pump(tester);
     expect(find.text('happy-otter-99'), findsOneWidget);
   });
 
-  testWidgets('Start new room generates a private code and connects',
-      (tester) async {
+  testWidgets('name field clear button appears only while filled', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    expect(find.byKey(const Key('connect-name-clear')), findsNothing);
+
+    await tester.enterText(find.byKey(const Key('connect-name')), 'alice');
+    await tester.pump();
+
+    final clearButton = find.byKey(const Key('connect-name-clear'));
+    expect(clearButton, findsOneWidget);
+    expect(tester.widget<IconButton>(clearButton).tooltip, 'Clear name');
+
+    await tester.tap(clearButton);
+    await tester.pump();
+
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('connect-name')))
+          .controller!
+          .text,
+      '',
+    );
+    expect(find.byKey(const Key('connect-name-clear')), findsNothing);
+  });
+
+  testWidgets('Start new room generates a private code and connects', (
+    tester,
+  ) async {
     await pump(tester);
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
     await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
@@ -171,8 +213,10 @@ void main() {
     expect(connected, isNotNull);
     // The room is a short "magic sentence" whose entropy lives in the words:
     // <adj>-<animal>-<verb>-<adj>-<noun>, always within Syncplay's 35-char cap.
-    expect(connected!.room,
-        matches(RegExp(r'^[a-z]+-[a-z]+-[a-z]+-[a-z]+-[a-z]+$')));
+    expect(
+      connected!.room,
+      matches(RegExp(r'^[a-z]+-[a-z]+-[a-z]+-[a-z]+-[a-z]+$')),
+    );
     expect(connected!.room.length, lessThanOrEqualTo(35));
     // The unguessable code is the room name itself; nothing is sent as a server
     // password (that would be a no-op on the public server and could be
@@ -180,16 +224,20 @@ void main() {
     expect(connected!.password, isNull);
     expect(connected!.username, 'lin');
     expect(profiles.saveUsedCalls, 1);
+    expect(profiles.savedUsernames.single, 'lin');
   });
 
-  testWidgets('Enter code joins an old room-only code unchanged (#108)',
-      (tester) async {
+  testWidgets('Enter code joins an old room-only code unchanged (#108)', (
+    tester,
+  ) async {
     // Backward compatibility: a friend on the old build shares "sleepy-owl-13".
     // It must join that exact room with no password, so old + new clients meet.
     await pump(tester);
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
     await tester.enterText(
-        find.byKey(const Key('connect-code')), 'sleepy-owl-13');
+      find.byKey(const Key('connect-code')),
+      'sleepy-owl-13',
+    );
     await tester.ensureVisible(find.byKey(const Key('connect-join')));
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
@@ -197,11 +245,15 @@ void main() {
     expect(connected!.password, isNull);
   });
 
-  testWidgets('Enter code joins a folded private code verbatim', (tester) async {
+  testWidgets('Enter code joins a folded private code verbatim', (
+    tester,
+  ) async {
     await pump(tester);
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
     await tester.enterText(
-        find.byKey(const Key('connect-code')), 'sleepy-owl-13-k3pn');
+      find.byKey(const Key('connect-code')),
+      'sleepy-owl-13-k3pn',
+    );
     await tester.ensureVisible(find.byKey(const Key('connect-join')));
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
@@ -211,29 +263,36 @@ void main() {
     expect(connected!.password, isNull);
   });
 
-  testWidgets('Enter code with @host:port joins that server in one paste (#110)',
-      (tester) async {
-    // A self-contained share code carries the host's non-default server/port, so
-    // the friend joins without touching Advanced.
-    await pump(tester);
-    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
-    await tester.enterText(find.byKey(const Key('connect-code')),
-        'sleepy-otter-counts-cozy-stars@cozy.example.net:9000');
-    await tester.ensureVisible(find.byKey(const Key('connect-join')));
-    await tester.tap(find.byKey(const Key('connect-join')));
-    await tester.pump();
-    expect(connected!.room, 'sleepy-otter-counts-cozy-stars');
-    expect(connected!.server, 'cozy.example.net');
-    expect(connected!.port, 9000);
-  });
+  testWidgets(
+    'Enter code with @host:port joins that server in one paste (#110)',
+    (tester) async {
+      // A self-contained share code carries the host's non-default server/port, so
+      // the friend joins without touching Advanced.
+      await pump(tester);
+      await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+      await tester.enterText(
+        find.byKey(const Key('connect-code')),
+        'sleepy-otter-counts-cozy-stars@cozy.example.net:9000',
+      );
+      await tester.ensureVisible(find.byKey(const Key('connect-join')));
+      await tester.tap(find.byKey(const Key('connect-join')));
+      await tester.pump();
+      expect(connected!.room, 'sleepy-otter-counts-cozy-stars');
+      expect(connected!.server, 'cozy.example.net');
+      expect(connected!.port, 9000);
+    },
+  );
 
-  testWidgets('Enter code rejects a malformed share code with feedback (#110)',
-      (tester) async {
+  testWidgets('Enter code rejects a malformed share code with feedback (#110)', (
+    tester,
+  ) async {
     // A structured-but-broken code must warn, not silently join a garbage room.
     await pump(tester);
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
-    await tester.enterText(find.byKey(const Key('connect-code')),
-        'sleepy-otter-counts-cozy-stars@cozy.example.net:notaport');
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-otter-counts-cozy-stars@cozy.example.net:notaport',
+    );
     await tester.ensureVisible(find.byKey(const Key('connect-join')));
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
@@ -241,8 +300,7 @@ void main() {
     expect(find.textContaining('looks off'), findsOneWidget);
   });
 
-  testWidgets(
-      'share code with a server but no port uses the host default, not '
+  testWidgets('share code with a server but no port uses the host default, not '
       'Advanced Port (#110)', (tester) async {
     // A server-bearing code that omits the port (here a bracketed IPv6 host)
     // must dial the Syncplay default 8999 — never the joiner's Advanced Port.
@@ -253,9 +311,13 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-advanced')));
     await tester.pumpAndSettle();
     await tester.enterText(
-        find.byKey(const Key('connect-advanced-port')), '1234');
-    await tester.enterText(find.byKey(const Key('connect-code')),
-        'sleepy-otter-counts-cozy-stars@[2001:db8::1]');
+      find.byKey(const Key('connect-advanced-port')),
+      '1234',
+    );
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-otter-counts-cozy-stars@[2001:db8::1]',
+    );
     await tester.ensureVisible(find.byKey(const Key('connect-join')));
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
@@ -263,8 +325,9 @@ void main() {
     expect(connected!.port, 8999);
   });
 
-  testWidgets('a bare room code still honors the Advanced server/port (#110)',
-      (tester) async {
+  testWidgets('a bare room code still honors the Advanced server/port (#110)', (
+    tester,
+  ) async {
     // No server in the code → fall back to whatever the joiner typed in Advanced.
     await pump(tester);
     await tester.binding.setSurfaceSize(const Size(800, 1200));
@@ -273,11 +336,17 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-advanced')));
     await tester.pumpAndSettle();
     await tester.enterText(
-        find.byKey(const Key('connect-advanced-server')), 'my.lan');
+      find.byKey(const Key('connect-advanced-server')),
+      'my.lan',
+    );
     await tester.enterText(
-        find.byKey(const Key('connect-advanced-port')), '1234');
+      find.byKey(const Key('connect-advanced-port')),
+      '1234',
+    );
     await tester.enterText(
-        find.byKey(const Key('connect-code')), 'happy-cat-11');
+      find.byKey(const Key('connect-code')),
+      'happy-cat-11',
+    );
     await tester.ensureVisible(find.byKey(const Key('connect-join')));
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
@@ -286,19 +355,21 @@ void main() {
     expect(connected!.port, 1234);
   });
 
-  testWidgets('Advanced password is sent without mutating the typed room',
-      (tester) async {
+  testWidgets('Advanced password is sent without mutating the typed room', (
+    tester,
+  ) async {
     // Regression for the private/self-hosted server case: typing a plain room
     // plus an Advanced (server) password must join that exact room and send the
     // password in the handshake — never fold the password into the room name.
     await pump(tester);
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
-    await tester.enterText(
-        find.byKey(const Key('connect-code')), 'movienight');
+    await tester.enterText(find.byKey(const Key('connect-code')), 'movienight');
     await tester.tap(find.byKey(const Key('connect-advanced')));
     await tester.pumpAndSettle();
     await tester.enterText(
-        find.byKey(const Key('connect-advanced-password')), 'secret');
+      find.byKey(const Key('connect-advanced-password')),
+      'secret',
+    );
     await tester.ensureVisible(find.byKey(const Key('connect-join')));
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
@@ -306,17 +377,119 @@ void main() {
     expect(connected!.password, 'secret');
   });
 
-  testWidgets('Advanced password is labelled as a server password (#117)',
-      (tester) async {
+  testWidgets('Advanced password is labelled as a server password (#117)', (
+    tester,
+  ) async {
     // The field wires to the Syncplay handshake as the server password, not a
     // per-room password — the label must say so, and not the old misleading
     // "Room password" that implied it locked a public room.
     await pump(tester);
     await tester.tap(find.byKey(const Key('connect-advanced')));
     await tester.pumpAndSettle();
-    expect(find.text('Server password — advanced / self-hosted only'),
-        findsOneWidget);
+    expect(
+      find.text('Server password — advanced / self-hosted only'),
+      findsOneWidget,
+    );
     expect(find.textContaining('Room password'), findsNothing);
+  });
+
+  testWidgets('Advanced fields reset individually when changed', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pump(tester);
+    await tester.tap(find.byKey(const Key('connect-advanced')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('connect-advanced-server-reset')),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('connect-advanced-port-reset')), findsNothing);
+    expect(
+      find.byKey(const Key('connect-advanced-password-reset')),
+      findsNothing,
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('connect-advanced-server')),
+      'my.lan',
+    );
+    await tester.enterText(
+      find.byKey(const Key('connect-advanced-port')),
+      '1234',
+    );
+    await tester.enterText(
+      find.byKey(const Key('connect-advanced-password')),
+      'secret',
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('connect-advanced-server-reset')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('connect-advanced-port-reset')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('connect-advanced-password-reset')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const Key('connect-advanced-server-reset')),
+          )
+          .tooltip,
+      'Reset to default',
+    );
+
+    await tester.tap(find.byKey(const Key('connect-advanced-server-reset')));
+    await tester.tap(find.byKey(const Key('connect-advanced-port-reset')));
+    await tester.tap(find.byKey(const Key('connect-advanced-password-reset')));
+    await tester.pump();
+
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('connect-advanced-server')))
+          .controller!
+          .text,
+      'syncplay.pl',
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('connect-advanced-port')))
+          .controller!
+          .text,
+      '8999',
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('connect-advanced-password')))
+          .controller!
+          .text,
+      '',
+    );
+  });
+
+  testWidgets('Advanced edit confirms after the field loses focus', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(find.byKey(const Key('connect-advanced')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('connect-advanced-server')),
+      'my.lan',
+    );
+    await tester.tap(find.byKey(const Key('connect-name')));
+    await tester.pump();
+
+    expect(find.text('Advanced setting updated.'), findsOneWidget);
   });
 
   testWidgets('settings gear opens the lobby settings popover', (tester) async {
@@ -335,8 +508,9 @@ void main() {
     expect(find.byKey(const Key('player-menu-leave')), findsNothing);
   });
 
-  testWidgets('Start waits for a pending lobby-settings write before connecting',
-      (tester) async {
+  testWidgets('Start waits for a pending lobby-settings write before connecting', (
+    tester,
+  ) async {
     // A level the user just picked in the lobby gear must reach the room. Hold
     // the settings write open, change the level, hit Start — the room must not
     // be entered until the write lands, or HomeScreen would read the old value
@@ -373,16 +547,18 @@ void main() {
   });
 
   testWidgets('delete icon removes the profile', (tester) async {
-    profiles.profiles.add(SavedProfile(
-      id: 7,
-      name: 'r',
-      server: 's',
-      port: 1,
-      room: 'r',
-      username: 'u',
-      password: null,
-      lastUsedAt: DateTime(2026),
-    ));
+    profiles.profiles.add(
+      SavedProfile(
+        id: 7,
+        name: 'r',
+        server: 's',
+        port: 1,
+        room: 'r',
+        username: 'u',
+        password: null,
+        lastUsedAt: DateTime(2026),
+      ),
+    );
     await pump(tester);
     await tester.ensureVisible(find.byKey(const Key('connect-delete-7')));
     await tester.tap(find.byKey(const Key('connect-delete-7')));
@@ -390,18 +566,178 @@ void main() {
     expect(profiles.deleted, [7]);
   });
 
-  HistoryEntry historyEntry(int id, String name) => HistoryEntry(
-        id: id,
-        filePath: '/$name.mkv',
-        fileName: '$name.mkv',
-        fileSizeBytes: 1,
-        durationMs: 600000,
-        lastPositionMs: 120000,
-        playedAt: DateTime(2026, 5, 29),
+  testWidgets('saved room shows an alternate current-name action', (
+    tester,
+  ) async {
+    profiles.profiles.add(
+      SavedProfile(
+        id: 7,
+        name: 'cozy-fox-42',
+        server: 'syncplay.pl',
+        port: 8999,
+        room: 'cozy-fox-42',
+        username: 'meowPEOW',
+        password: null,
+        lastUsedAt: DateTime(2026),
+      ),
+    );
+    await pump(tester);
+
+    await tester.enterText(find.byKey(const Key('connect-name')), 'alice');
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('connect-profile-use-current-7')),
+      findsOneWidget,
+    );
+    expect(find.text('Join as alice this time'), findsOneWidget);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('connect-profile-use-current-7')));
+    await tester.pumpAndSettle();
+
+    expect(connected!.room, 'cozy-fox-42');
+    expect(connected!.username, 'alice');
+    expect(profiles.savedUsernames.single, 'meowPEOW');
+  });
+
+  testWidgets(
+    'saved room tap keeps the typed-name option stable while entering',
+    (tester) async {
+      final gate = Completer<void>();
+      profiles.profiles.add(
+        SavedProfile(
+          id: 7,
+          name: 'cozy-fox-42',
+          server: 'syncplay.pl',
+          port: 8999,
+          room: 'cozy-fox-42',
+          username: 'meowPEOW',
+          password: null,
+          lastUsedAt: DateTime(2026),
+        ),
+      );
+      await pump(
+        tester,
+        onConnect: (config) async {
+          connected = config;
+          await gate.future;
+        },
       );
 
-  testWidgets('continue-watching row shows progress and can be deleted',
-      (tester) async {
+      await tester.enterText(find.byKey(const Key('connect-name')), 'alice');
+      await tester.pump();
+      final action = find.byKey(const Key('connect-profile-use-current-7'));
+      expect(action, findsOneWidget);
+
+      await tester.tap(find.text('cozy-fox-42'));
+      await tester.pump();
+
+      expect(connected!.username, 'meowPEOW');
+      expect(action, findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('connect-name')))
+            .controller!
+            .text,
+        'alice',
+      );
+
+      gate.complete();
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('saved room keeps the typed name after returning', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    profiles.profiles.add(
+      SavedProfile(
+        id: 7,
+        name: 'cozy-fox-42',
+        server: 'syncplay.pl',
+        port: 8999,
+        room: 'cozy-fox-42',
+        username: 'meowPEOW',
+        password: null,
+        lastUsedAt: DateTime(2026),
+      ),
+    );
+    await pump(
+      tester,
+      onConnect: (config) async {
+        connected = config;
+        await gate.future;
+      },
+    );
+
+    await tester.enterText(find.byKey(const Key('connect-name')), 'alice');
+    await tester.pump();
+    await tester.tap(find.text('cozy-fox-42'));
+    await tester.pump();
+
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(connected!.username, 'meowPEOW');
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('connect-name')))
+          .controller!
+          .text,
+      'alice',
+    );
+  });
+
+  testWidgets('saved room current-name action expands the card smoothly', (
+    tester,
+  ) async {
+    profiles.profiles.add(
+      SavedProfile(
+        id: 7,
+        name: 'cozy-fox-42',
+        server: 'syncplay.pl',
+        port: 8999,
+        room: 'cozy-fox-42',
+        username: 'meowPEOW',
+        password: null,
+        lastUsedAt: DateTime(2026),
+      ),
+    );
+    await pump(tester);
+    final card = find.byType(Card).first;
+    final before = tester.getSize(card);
+
+    await tester.enterText(find.byKey(const Key('connect-name')), 'alice');
+    await tester.pump();
+    expect(
+      find.byKey(const Key('connect-profile-use-current-7')),
+      findsOneWidget,
+    );
+    expect(find.byType(AnimatedSize), findsWidgets);
+
+    await tester.pump(const Duration(milliseconds: 100));
+    final during = tester.getSize(card);
+    await tester.pumpAndSettle();
+    final after = tester.getSize(card);
+
+    expect(after.height, greaterThan(before.height));
+    expect(during.height, inInclusiveRange(before.height, after.height));
+  });
+
+  HistoryEntry historyEntry(int id, String name) => HistoryEntry(
+    id: id,
+    filePath: '/$name.mkv',
+    fileName: '$name.mkv',
+    fileSizeBytes: 1,
+    durationMs: 600000,
+    lastPositionMs: 120000,
+    playedAt: DateTime(2026, 5, 29),
+  );
+
+  testWidgets('continue-watching row shows progress and can be deleted', (
+    tester,
+  ) async {
     history.recent
       ..add(historyEntry(1, 'ep1'))
       ..add(historyEntry(2, 'ep2'));
@@ -432,31 +768,53 @@ void main() {
       );
 
   testWidgets(
-      'continue-watching resumes with the saved username when name is blank',
-      (tester) async {
-    // #40: resuming with an empty name field must reuse the name the file was
-    // watched as, not silently fall back to the "meow" default.
-    history.recent.add(historyEntryAs(1, 'ep1', 'meowPEOW'));
-    await pump(tester);
+    'continue-watching resumes with the saved username when name is blank',
+    (tester) async {
+      // #40: resuming with an empty name field must reuse the name the file was
+      // watched as, not silently fall back to the "meow" default.
+      history.recent.add(historyEntryAs(1, 'ep1', 'meowPEOW'));
+      await pump(tester);
 
-    await tester.ensureVisible(find.byKey(const Key('continue-1')));
-    await tester.tap(find.byKey(const Key('continue-1')));
-    await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('continue-1')));
+      await tester.tap(find.byKey(const Key('continue-1')));
+      await tester.pumpAndSettle();
 
-    expect(connected!.username, 'meowPEOW');
-  });
+      expect(connected!.username, 'meowPEOW');
+    },
+  );
 
-  testWidgets('continue-watching prefers a freshly typed name over the saved one',
-      (tester) async {
+  testWidgets(
+    'continue-watching keeps saved username on the main card (#138)',
+    (tester) async {
+      history.recent.add(historyEntryAs(1, 'ep1', 'meowPEOW'));
+      await pump(tester);
+
+      await tester.enterText(find.byKey(const Key('connect-name')), 'alice');
+      await tester.ensureVisible(find.byKey(const Key('continue-1')));
+      await tester.tap(find.byKey(const Key('continue-1')));
+      await tester.pumpAndSettle();
+
+      expect(connected!.username, 'meowPEOW');
+    },
+  );
+
+  testWidgets('continue-watching offers the freshly typed username (#138)', (
+    tester,
+  ) async {
     history.recent.add(historyEntryAs(1, 'ep1', 'meowPEOW'));
     await pump(tester);
 
     await tester.enterText(find.byKey(const Key('connect-name')), 'alice');
-    await tester.ensureVisible(find.byKey(const Key('continue-1')));
-    await tester.tap(find.byKey(const Key('continue-1')));
+    await tester.pump();
+    expect(find.text('Join as alice this time'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('continue-use-current-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('continue-use-current-1')));
     await tester.pumpAndSettle();
 
     expect(connected!.username, 'alice');
+    expect(connected!.room, 'cozy-fox-42');
+    expect(profiles.savedUsernames.single, 'meowPEOW');
   });
 
   testWidgets('Clear all empties continue-watching', (tester) async {

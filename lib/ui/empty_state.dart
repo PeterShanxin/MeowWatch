@@ -11,11 +11,13 @@ class EmptyState extends StatelessWidget {
   const EmptyState({
     required this.onBrowse,
     this.onLoadUrl,
+    this.onLeave,
     this.notice,
     super.key,
   });
 
   final VoidCallback onBrowse;
+  final VoidCallback? onLeave;
 
   /// Loads a pasted direct video link. When non-null an "or paste a link" field
   /// is shown beneath Browse; omitted (e.g. in the design gallery) it's hidden.
@@ -93,6 +95,16 @@ class EmptyState extends StatelessWidget {
                     onPressed: onBrowse,
                     child: const Text('Browse…'),
                   ),
+                  if (onLeave != null) ...[
+                    const SizedBox(height: Spacing.md),
+                    TextButton.icon(
+                      key: const Key('empty-state-leave'),
+                      style: TextButton.styleFrom(foregroundColor: m.textDim),
+                      onPressed: onLeave,
+                      icon: const Icon(Icons.logout, size: 18),
+                      label: const Text('Leave room'),
+                    ),
+                  ],
                   if (onLoadUrl != null) ...[
                     const SizedBox(height: Spacing.xl),
                     Text(
