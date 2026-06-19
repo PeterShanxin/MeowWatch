@@ -54,6 +54,22 @@ Then build Release and do the manual test (see the Gotchas: kill build-path `meo
 
 Remove this note once billing resets and Actions runs normally again.
 
+## Continuous integration (CI)
+
+The repo is **private**, so GitHub-hosted Actions minutes are metered (GitHub Pro = 3,000 min/month, resetting on the 1st). Minutes are charged by a per-OS multiplier: **Linux 1×, Windows 2×, macOS 10×**. Self-hosted runners are **not** billed at all. The workflow (`.github/workflows/build.yml`) is split to minimize burn:
+
+- **`check` (analyze + test)** → `ubuntu-latest`. Platform-agnostic, so it runs on hosted Linux at the cheap 1× rate. Runs on every PR / main push / tag.
+- **`build-windows-x64`** → `[self-hosted, windows]`. The expensive 2× Windows build runs on **our own PC** for free. Tag-push only.
+- **`release`** (GitHub Release + R2 upload) → `ubuntu-latest`. Bash/rclone job, 1×. Tag-push only.
+
+### Self-hosted Windows runner
+
+Installed at `C:\actions-runner`, registered to this repo with the **`self-hosted` + `windows`** labels. It must be **online** for tag builds to run — otherwise the `build-windows-x64` job queues until a runner appears.
+
+- **Toolchain:** the build job uses `subosito/flutter-action`'s own stable Flutter (independent of the local Puro install), but `flutter build windows` still needs the **Visual Studio Desktop C++ workload**. The runner therefore must run under an account that can see that toolchain — run it as **the logged-in user**, not `NETWORK SERVICE`.
+- **Start it:** run `C:\actions-runner\run.cmd` (interactive — works while logged in) or install it as a service under the user account for always-on. Confirm it's live with `gh api repos/PeterShanxin/MeowWatch/actions/runners`.
+- **Mid-cycle exhaustion:** if hosted minutes are already spent, the `ubuntu` `check`/`release` jobs won't run until the monthly reset, but the self-hosted Windows build still runs free. Bridge PR gating with the local-verification gate (temporary note above).
+
 ## Architecture
 
 **Commands-in / streams-out.** The two core subsystems — video and sync — expose the same shape: an abstract interface with imperative methods for input and broadcast `Stream`s for output. UI never reaches into internals; it calls methods and listens to streams. This makes both swappable with fakes in tests.

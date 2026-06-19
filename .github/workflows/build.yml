@@ -23,7 +23,10 @@ jobs:
   # ── Fast gate: analyze + test (every PR / main push / tag) ─────────
   check:
     name: Analyze & Test
-    runs-on: windows-2022
+    # Analyze + the (platform-agnostic) test suite run on hosted Linux: 1×
+    # minute multiplier vs Windows' 2×, and these don't need the Windows
+    # toolchain. The Windows-specific build is exercised by build-windows-x64.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
@@ -47,7 +50,12 @@ jobs:
     name: Windows x64
     needs: [check]
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-2022
+    # Runs on a self-hosted Windows runner (our own PC) so the expensive 2×
+    # Windows build consumes no GitHub-hosted minutes. Requires a runner
+    # registered with the `self-hosted` + `windows` labels and the Visual Studio
+    # desktop C++ toolchain installed (see docs/AGENT_GUIDE.md → CI). Falls back
+    # to nothing if no runner is online — the job queues until one is.
+    runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v6
 
