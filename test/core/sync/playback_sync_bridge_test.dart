@@ -1449,4 +1449,52 @@ void main() {
       reason: 'a deliberately paused player must not be kicked into playing',
     );
   });
+
+  test('a remote resume on a durationless live stream is not re-kicked', () async {
+    // A confirmed live/direct stream has no duration. The position guard
+    // intentionally pins its reported position (it rejects positive positions
+    // without a duration), so "position not advancing" is normal there, not a
+    // frozen resume. Kicking it would re-issue seek(0)+play on a live URL,
+    // which can jump or stall the stream — so the watchdog must stand down.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration.zero,
+        duration: Duration.zero,
+        filePath: 'live',
+        fileName: 'live',
+      ),
+    );
+    bridge.markSourceOpen('live');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Peer resumes far ahead, so the resume seeks + plays like any other.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    final afterResume = List<String>.from(video.commands);
+
+    // Past the advance window, a durationless stream must NOT be re-kicked.
+    await _pumpUntil(
+      () => video.commands.length > afterResume.length,
+      timeout: const Duration(milliseconds: 200),
+    );
+    expect(
+      video.commands,
+      afterResume,
+      reason: 'a durationless live stream must not trigger the stalled-resume kick',
+    );
+  });
 }

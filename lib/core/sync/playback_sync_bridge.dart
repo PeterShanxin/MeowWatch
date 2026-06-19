@@ -413,6 +413,12 @@ class PlaybackSyncBridge {
     _advanceWatchTimer = Timer(remoteResumeAdvanceWait, () {
       _advanceWatchTimer = null;
       final s = video.state;
+      // A durationless live/direct stream intentionally holds its reported
+      // position (position_guard rejects positive positions without a
+      // duration), so a non-advancing position is normal there, not a frozen
+      // resume. Re-issuing seek(0)+play on a live URL can jump or stall it, so
+      // only the stalled-resume kick applies to sources with a real duration.
+      if (s.duration <= Duration.zero) return;
       final advanced = s.position > from + remoteSeekThreshold;
       if (s.status == PlaybackStatus.playing && !advanced) {
         unawaited(_kickStalledResume());
