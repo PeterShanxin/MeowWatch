@@ -33,7 +33,7 @@ FLUTTER=C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat
 $FLUTTER analyze                                   # lint/type check — keep at "No issues found!"
 $FLUTTER test                                      # full suite
 $FLUTTER test test/ui/chat/chat_bubble_test.dart   # single file
-$FLUTTER test path/to/file_test.dart -p "name"     # single test by name (-p / --plain-name)
+$FLUTTER test path/to/file_test.dart --plain-name "name"  # single test by name (--plain-name)
 $FLUTTER test test/ui/chat/chat_overlay_golden_test.dart --update-goldens  # regenerate goldens
 $FLUTTER build windows                             # Release exe (kill running instances first)
 $FLUTTER run -d windows                            # debug run
