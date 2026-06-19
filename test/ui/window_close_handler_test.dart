@@ -117,59 +117,127 @@ void main() {
       service: UpdateService.forTest(), // phase idle → no update dialog
       hideWindow: () async => order.add('hide'),
       destroyWindow: () async => order.add('destroy'),
+      exitProcess: (_) => order.add('exit'),
     );
 
     await handler.handleClose();
 
     // The leave must be announced before the window is destroyed, else the
     // socket dies first and peers see "lost connection" (#92).
-    expect(order, ['hide', 'leave', 'destroy']);
+    expect(order, ['hide', 'leave', 'destroy', 'exit']);
   });
 
-  test(
-    'handleClose hides the window before waiting on a slow room leave',
-    () async {
-      final order = <String>[];
-      final releaseHook = Completer<void>();
-      appCloseHook.value = () async {
-        order.add('leave-start');
-        await releaseHook.future;
-        order.add('leave-done');
-      };
-      addTearDown(() => appCloseHook.value = null);
+  test('handleClose does not wait on a slow room leave', () async {
+    final order = <String>[];
+    final releaseHook = Completer<void>();
+    appCloseHook.value = () async {
+      order.add('leave-start');
+      await releaseHook.future;
+      order.add('leave-done');
+    };
+    addTearDown(() => appCloseHook.value = null);
 
-      final handler = WindowCloseHandler(
-        navigatorKey: GlobalKey<NavigatorState>(),
-        service: UpdateService.forTest(),
-        hideWindow: () async => order.add('hide'),
-        destroyWindow: () async => order.add('destroy'),
-      );
+    final handler = WindowCloseHandler(
+      navigatorKey: GlobalKey<NavigatorState>(),
+      service: UpdateService.forTest(),
+      hideWindow: () async => order.add('hide'),
+      destroyWindow: () async => order.add('destroy'),
+      exitProcess: (_) => order.add('exit'),
+    );
 
-      final close = handler.handleClose();
-      await Future<void>.delayed(Duration.zero);
+    await handler.handleClose();
 
-      expect(order, ['hide', 'leave-start']);
+    expect(order, ['hide', 'leave-start', 'destroy', 'exit']);
 
-      releaseHook.complete();
-      await close;
+    releaseHook.complete();
+    await Future<void>.delayed(Duration.zero);
 
-      expect(order, ['hide', 'leave-start', 'leave-done', 'destroy']);
-    },
-  );
+    expect(order, ['hide', 'leave-start', 'destroy', 'exit', 'leave-done']);
+  });
+
+  test('handleClose exits even when room leave never completes', () async {
+    final order = <String>[];
+    appCloseHook.value = () async {
+      order.add('leave-start');
+      await Completer<void>().future;
+    };
+    addTearDown(() => appCloseHook.value = null);
+
+    final handler = WindowCloseHandler(
+      navigatorKey: GlobalKey<NavigatorState>(),
+      service: UpdateService.forTest(),
+      hideWindow: () async => order.add('hide'),
+      destroyWindow: () async => order.add('destroy'),
+      exitProcess: (_) => order.add('exit'),
+      closeHookTimeout: const Duration(milliseconds: 1),
+    );
+
+    await handler.handleClose();
+
+    expect(order, ['hide', 'leave-start', 'destroy', 'exit']);
+  });
+
+  test('handleClose exits even when hiding the window hangs', () async {
+    appCloseHook.value = null;
+    final order = <String>[];
+
+    final handler = WindowCloseHandler(
+      navigatorKey: GlobalKey<NavigatorState>(),
+      service: UpdateService.forTest(),
+      hideWindow: () async {
+        order.add('hide-start');
+        await Completer<void>().future;
+      },
+      destroyWindow: () async => order.add('destroy'),
+      exitProcess: (_) => order.add('exit'),
+      closeStepTimeout: const Duration(milliseconds: 1),
+    );
+
+    await handler.handleClose();
+
+    expect(order, ['hide-start', 'destroy', 'exit']);
+  });
+
+  test('hard exit fires if a close step wedges before normal exit', () async {
+    appCloseHook.value = null;
+    final order = <String>[];
+
+    final handler = WindowCloseHandler(
+      navigatorKey: GlobalKey<NavigatorState>(),
+      service: UpdateService.forTest(),
+      hideWindow: () async {
+        order.add('hide-start');
+        await Completer<void>().future;
+      },
+      destroyWindow: () async => order.add('destroy'),
+      exitProcess: (_) => order.add('exit'),
+      closeStepTimeout: const Duration(milliseconds: 30),
+      hardExitTimeout: const Duration(milliseconds: 1),
+    );
+
+    final close = handler.handleClose();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(order, ['hide-start', 'exit']);
+
+    await close;
+    expect(order, ['hide-start', 'exit', 'destroy']);
+  });
 
   test('handleClose without a hook still destroys the window', () async {
     appCloseHook.value = null;
-    var destroyed = false;
+    final order = <String>[];
 
     final handler = WindowCloseHandler(
       navigatorKey: GlobalKey<NavigatorState>(),
       service: UpdateService.forTest(),
       hideWindow: () async {},
-      destroyWindow: () async => destroyed = true,
+      destroyWindow: () async => order.add('destroy'),
+      exitProcess: (_) => order.add('exit'),
     );
 
     await handler.handleClose();
 
-    expect(destroyed, isTrue);
+    expect(order, ['destroy', 'exit']);
   });
 }

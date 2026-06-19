@@ -34,18 +34,32 @@ void main() {
     expect(client.debugSentMessages, isEmpty);
   });
 
-  test('app close (dispose) also sends a leaving signal when logged in',
-      () async {
+  test('app-close disconnect sends leaving signal synchronously', () {
     client.debugMarkLoggedIn('me');
 
-    await client.dispose();
+    client.disconnectForAppClose();
 
     expect(
       client.debugSentMessages.any((m) => m['Chat'] == encodeLeaving()),
       isTrue,
-      reason: 'closing the app should announce a deliberate departure',
+      reason: 'window close must announce leaving without awaiting a socket',
     );
   });
+
+  test(
+    'app close (dispose) also sends a leaving signal when logged in',
+    () async {
+      client.debugMarkLoggedIn('me');
+
+      await client.dispose();
+
+      expect(
+        client.debugSentMessages.any((m) => m['Chat'] == encodeLeaving()),
+        isTrue,
+        reason: 'closing the app should announce a deliberate departure',
+      );
+    },
+  );
 
   test('leave then dispose does not double-send the leaving signal', () async {
     client.debugMarkLoggedIn('me');

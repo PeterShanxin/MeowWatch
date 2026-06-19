@@ -541,7 +541,9 @@ class _HomeScreenState extends State<HomeScreen> {
     // (#92). The Leave button already does this directly via _leave().
     _closeHook = () {
       appLog('life: window-close hook fired (announcing leave)');
-      return _sync.disconnect();
+      _sync.disconnectForAppClose();
+      appLog('life: window-close leave sent');
+      return Future<void>.value();
     };
     appCloseHook.value = _closeHook;
     final resume = widget.config.resumeFilePath;

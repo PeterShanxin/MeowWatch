@@ -1,4 +1,7 @@
+// ignore_for_file: prefer_initializing_formals
+
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
@@ -33,9 +36,17 @@ class WindowCloseHandler with WindowListener {
     UpdateService? service,
     Future<void> Function()? hideWindow,
     Future<void> Function()? destroyWindow,
+    void Function(int code)? exitProcess,
+    Duration closeHookTimeout = const Duration(seconds: 1),
+    Duration closeStepTimeout = const Duration(milliseconds: 750),
+    Duration hardExitTimeout = const Duration(milliseconds: 1500),
   }) : _service = service ?? UpdateService.instance,
        _hideWindow = hideWindow ?? windowManager.hide,
-       _destroyWindow = destroyWindow ?? windowManager.destroy;
+       _destroyWindow = destroyWindow ?? windowManager.destroy,
+       _exitProcess = exitProcess ?? exit,
+       _closeHookTimeout = closeHookTimeout,
+       _closeStepTimeout = closeStepTimeout,
+       _hardExitTimeout = hardExitTimeout;
 
   final GlobalKey<NavigatorState> navigatorKey;
   final UpdateService _service;
@@ -43,6 +54,11 @@ class WindowCloseHandler with WindowListener {
   /// How the window is torn down — `windowManager.destroy` in production,
   /// injectable in tests (the real call hangs without platform plumbing).
   final Future<void> Function() _destroyWindow;
+  final void Function(int code) _exitProcess;
+  final Duration _closeHookTimeout;
+  final Duration _closeStepTimeout;
+  final Duration _hardExitTimeout;
+  bool _exitStarted = false;
 
   /// How the window is made invisible before best-effort close cleanup.
   /// Injectable so tests can prove close feels instant without platform
@@ -105,7 +121,7 @@ class WindowCloseHandler with WindowListener {
             await Future<void>.delayed(const Duration(milliseconds: 80));
           }
           // Tell the room we're leaving before the process exits (#92).
-          await runAppCloseHook();
+          await runAppCloseHook(timeout: _closeHookTimeout);
           await _service.applyUpdate(zip, restartAfter: false); // exits
           return;
         } catch (e, st) {
@@ -117,21 +133,52 @@ class WindowCloseHandler with WindowListener {
       }
     }
 
+    final hardExit = _armHardExit();
+
     // Make the X-button close feel instant; the room leave remains best-effort
     // and bounded, but it happens after the visible window is gone (#106).
-    try {
-      await _hideWindow();
-    } catch (e, st) {
-      debugPrint('hide-on-close failed: $e\n$st');
-    }
+    await _bestEffortCloseStep(_hideWindow, label: 'hide-on-close');
     // Announce a deliberate leave (if in a room) before tearing the window down,
     // so peers see "left the room" rather than "lost connection" (#92).
-    await runAppCloseHook();
+    unawaited(runAppCloseHook(timeout: _closeHookTimeout));
     // Flush the session log before the window is destroyed so this run's trace
     // (including the close itself) is on disk (#140).
     appLog('life: app closing');
-    await appLogInstance?.flush();
-    await _destroyWindow();
+    await _bestEffortCloseStep(
+      () => appLogInstance?.flush() ?? Future<void>.value(),
+      label: 'flush-on-close',
+    );
+    await _bestEffortCloseStep(_destroyWindow, label: 'destroy-on-close');
+    // A prevented in-room close can leave Dart timers / media resources alive
+    // after the native window is gone. At this point the user committed to
+    // quitting, the leave signal has had its bounded chance, and the log has
+    // been flushed, so terminate the process explicitly instead of leaving a
+    // headless player behind (#148).
+    hardExit.cancel();
+    _exitNow();
+  }
+
+  Timer _armHardExit() {
+    return Timer(_hardExitTimeout, _exitNow);
+  }
+
+  void _exitNow() {
+    if (_exitStarted) return;
+    _exitStarted = true;
+    _exitProcess(0);
+  }
+
+  Future<void> _bestEffortCloseStep(
+    Future<void> Function() action, {
+    required String label,
+  }) async {
+    try {
+      await action().timeout(_closeStepTimeout);
+    } on TimeoutException {
+      debugPrint('$label timed out');
+    } catch (e, st) {
+      debugPrint('$label failed: $e\n$st');
+    }
   }
 }
 

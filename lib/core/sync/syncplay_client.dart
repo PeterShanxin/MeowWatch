@@ -680,6 +680,26 @@ class SyncplayClient extends SyncCore {
     );
   }
 
+  /// Window-close fast path: send the advisory leave packet if possible, then
+  /// tear down synchronously so app shutdown can continue to `exit(0)`.
+  ///
+  /// The normal [disconnect] path gives the socket a short async flush window,
+  /// which is fine for the Leave button. The OS close path cannot depend on any
+  /// socket Future, because a wedged native/network flush can leave the visible
+  /// window gone while Dart timers keep running headless (#148).
+  void disconnectForAppClose() {
+    _stopReconnecting();
+    if (_loggedIn) _send(encodeChat(encodeLeaving()));
+    _loggedIn = false;
+    final old = _socket;
+    _socket = null;
+    // Keep the close hook synchronous and tiny. Destroying the socket or
+    // emitting UI-facing disconnect state belongs to normal Leave/dispose; app
+    // close is about to `exit(0)`, and doing native/network teardown inline has
+    // already left hidden headless processes behind on Windows (#148).
+    if (old != null) Timer.run(old.destroy);
+  }
+
   @override
   Future<void> disposeBackend() async {
     // App is closing — also a deliberate leave, so announce it. No-op if a prior
