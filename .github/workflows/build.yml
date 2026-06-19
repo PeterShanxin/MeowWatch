@@ -23,7 +23,16 @@ jobs:
   # ── Fast gate: analyze + test (every PR / main push / tag) ─────────
   check:
     name: Analyze & Test
-    runs-on: windows-2022
+    # The suite is NOT cross-platform: it has Windows-path assertions
+    # (test/core/video/video_url_test.dart expects a C:\... path to basename) and
+    # Windows-rendered golden images (test/ui/chat/chat_overlay_golden_test.dart),
+    # so analyze+test must run on Windows — on Linux those 4 tests fail. PR /
+    # branch / main pushes use hosted `windows-2022`; TAG pushes use the
+    # self-hosted runner instead, because build-windows-x64 has `needs: [check]`
+    # and gating a tag's check on hosted-Actions availability would skip the free
+    # self-hosted Windows build whenever hosted Actions is unavailable, blocking
+    # releases. (The big minute win is the self-hosted *build*, not the check.) (#153)
+    runs-on: ${{ (startsWith(github.ref, 'refs/tags/v') && fromJSON('["self-hosted", "windows"]')) || 'windows-2022' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -47,7 +56,12 @@ jobs:
     name: Windows x64
     needs: [check]
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-2022
+    # Runs on a self-hosted Windows runner (our own PC) so the expensive 2×
+    # Windows build consumes no GitHub-hosted minutes. Requires a runner
+    # registered with the `self-hosted` + `windows` labels and the Visual Studio
+    # desktop C++ toolchain installed (see docs/AGENT_GUIDE.md → CI). Falls back
+    # to nothing if no runner is online — the job queues until one is.
+    runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v6
 

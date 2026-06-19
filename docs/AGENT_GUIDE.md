@@ -39,20 +39,34 @@ $FLUTTER build windows                             # Release exe (kill running i
 $FLUTTER run -d windows                            # debug run
 ```
 
-### ⏳ Temporary (until end of June 2026): GitHub Actions CI is unavailable
+### When hosted Actions is unavailable: the local gate
 
-The repo's free GitHub Actions minutes are exhausted / over the billing limit, so **every CI run fails instantly** — this is expected, not a real failure, and retrying the remote run will not help. Do **not** sit waiting on the `Build / Analyze & Test` check to go green, and do not keep re-triggering it.
+Hosted Actions is normally funded — the 3,000 included Pro minutes plus a small monthly **Actions budget** (a few dollars, with "stop usage when budget is reached" **on**). Because the self-hosted runner keeps the expensive Windows builds off the meter, hosted overage is tiny (only the 1× Ubuntu `check`/`release` jobs), so runs work in normal operation.
 
-While CI is down, **local verification is the substitute gate** on this dev PC. Run the full set and treat green here as the PR gate:
+Hosted Actions becomes **unavailable** only if both the included minutes *and* the budget cap are spent (or the budget is removed). When that happens hosted runs fail/stop instantly — **don't wait on or re-trigger the hosted check.** Use local verification on this dev PC as the substitute PR gate:
 
 ```bash
 C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze --no-pub
 C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test --no-pub --concurrency=1 --reporter compact
 ```
 
-Then build Release and do the manual test (see the Gotchas: kill build-path `meowwatch.exe` first, verify the rebuild via `build/windows/x64/runner/Release/data/app.so` mtime, launch the Release exe). Only after local analyze + test + build are green and the manual test passes should the PR be merged.
+Then build Release and do the manual test (see the Gotchas: kill build-path `meowwatch.exe` first, verify the rebuild via `build/windows/x64/runner/Release/data/app.so` mtime, launch the Release exe). Merge only after local analyze + test + build are green and the manual test passes.
 
-Remove this note once billing resets and Actions runs normally again.
+## Continuous integration (CI)
+
+The repo is **private**, so GitHub-hosted Actions minutes are metered (GitHub Pro = 3,000 min/month, resetting on the 1st). Minutes are charged by a per-OS multiplier: **Linux 1×, Windows 2×, macOS 10×**. Self-hosted runners are **not** billed at all. The workflow (`.github/workflows/build.yml`) is split to minimize burn:
+
+- **`check` (analyze + test)** → hosted `windows-2022` for PR / branch / main pushes. The suite is **not cross-platform** — `test/core/video/video_url_test.dart` asserts on Windows paths (`C:\…` → basename) and `test/ui/chat/chat_overlay_golden_test.dart` uses Windows-rendered goldens — so on Linux 4 tests fail; it must run on Windows (2×). **For tag pushes it runs on `[self-hosted, windows]` instead** — `build-windows-x64` has `needs: [check]`, so gating a tag's check on hosted-Actions availability would skip the free self-hosted Windows build whenever hosted Actions is unavailable; self-hosting the tag check keeps the test gate while making the release path independent of hosted minutes. (The real minute win is the self-hosted *build*, below — not the check.)
+- **`build-windows-x64`** → `[self-hosted, windows]`. The expensive 2× Windows build runs on **our own PC** for free. Tag-push only.
+- **`release`** (GitHub Release + R2 upload) → `ubuntu-latest`. Bash/rclone job, 1×. Tag-push only. This one **runs on hosted Linux**, so it needs hosted Actions to be available. **Failure path:** if a tag is pushed while hosted Actions is unavailable (budget cap reached, or minutes exhausted with no budget), the self-hosted `check` + `build-windows-x64` still produce the Windows artifact, but this `release` job fails or never starts — so **R2 is not updated and `latest.json` / `changelog.json` stay stale (the in-app updater keeps offering the old version).** The operator must then either **re-run the `release` job from the Actions UI once hosted Actions is restored** (no re-tag needed — re-running picks up the already-built artifact), or **manually publish** the build zip + a regenerated `latest.json` + `changelog.json` to R2. Fully self-hosting this job (rewriting its bash/rclone steps for Windows) would remove the dependency — a separate follow-up.
+
+### Self-hosted Windows runner
+
+Installed at `C:\actions-runner`, registered to this repo with the **`self-hosted` + `windows`** labels. It must be **online** for tag builds to run — otherwise the `build-windows-x64` job queues until a runner appears.
+
+- **Toolchain:** the build job uses `subosito/flutter-action`'s own stable Flutter (independent of the local Puro install), but `flutter build windows` still needs the **Visual Studio Desktop C++ workload**. The runner therefore must run under an account that can see that toolchain — run it as **the logged-in user**, not `NETWORK SERVICE`.
+- **Start it (manual by design):** the runner is **not** auto-started — no service, no logon autostart (user's explicit choice; don't add one). Start it by launching `C:\actions-runner\run.cmd` before pushing a `v*` tag. Confirm it's live with `gh api repos/PeterShanxin/MeowWatch/actions/runners` (`status: online`). If a tag's `build-windows-x64` job sits **queued**, the runner is offline — start `run.cmd`.
+- **If hosted Actions is unavailable** (included minutes *and* the Actions budget cap both spent): a **tag** push is unaffected for the build — its check + Windows build both run on the self-hosted runner for free — but the hosted `release` upload won't run (see the `release` failure path above: re-run it once hosted Actions is restored, or publish to R2 manually, else `latest.json`/`changelog.json` go stale). **PR/branch** checks (hosted `windows-2022`) are blocked — bridge those with the local-verification gate (see "When hosted Actions is unavailable" above).
 
 ## Architecture
 
@@ -96,7 +110,7 @@ Keep the `-alpha` suffix until we move off alpha. CI parses `CHANGELOG.md` → `
 1. Land work on a feature/fix branch → open a PR to `main`. Don't push `v*` tags from the branch.
 2. Wait for the automatic **Copilot review**, then run the `address-pr-review` skill: fix or reject each comment with a real reason, reply, resolve the threads, push.
 3. If a manual test is warranted (visible behavior change), get the user's confirmation first; pure edge-case/defensive fixes with unit coverage don't need one — say so. If the user already confirmed a manual test but later review/CI feedback requires any app-behavior patch, stop after CI/reviews clear, build/open the updated Release app again, and get a fresh manual confirmation before merging/tagging. Docs/comment/CI-only follow-ups do not invalidate an already-confirmed manual app test; say that explicitly.
-4. Wait for **CI green** (the `Build / Analyze & Test` check — the PR gate). The full `Windows x64` build does **not** run on PRs; it runs only on the tag push. Then **merge** the PR to `main` (merge commit). _(Temporary, until end of June 2026: Actions CI fails instantly — use the local verification gate from the "GitHub Actions is unavailable" note above instead of waiting on this check.)_
+4. Wait for **CI green** (the `Build / Analyze & Test` check — the PR gate). The full `Windows x64` build does **not** run on PRs; it runs only on the tag push. Then **merge** the PR to `main` (merge commit). _(If hosted Actions is ever unavailable — included minutes and the Actions budget cap both spent — use the local verification gate from "When hosted Actions is unavailable" above instead of waiting on this check.)_
 5. `git checkout main && git pull` → **tag** `v<version>` on the merge commit → `git push origin v<version>`. The tag fires the build + release jobs (build → R2 upload + `changelog.json`). Since this is the *first* clean-room Windows build for the change, watch it — a build-only breakage surfaces here, not at PR time.
 6. Wait for the release run green, then **verify R2**: `curl …/releases/latest.json` (version matches) and `…/releases/changelog.json` (array includes the new version).
 7. **Wrap up** once R2 is verified — run the `call-it-a-day` skill (or do it by hand): `git checkout main && git pull` so main is the merge+tag commit, delete the merged branch (local + remote), prune the feature worktree under the active agent's worktree directory (for example, `.claude/worktrees/` or `.Codex/worktrees/`), remove session scratch files, and stop any leftover `meowwatch.exe` dev/test instances. End on a clean `git status` on `main`. Don't start this until after the merge, tag, and R2 verification — the worktree is still needed for PR iteration before then.
