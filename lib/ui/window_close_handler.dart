@@ -139,6 +139,17 @@ class WindowCloseHandler with WindowListener {
     // leave then runs after the visible window is already gone (#106), so the
     // user perceives an instant close regardless of how long the leave takes.
     await _bestEffortCloseStep(_hideWindow, label: 'hide-on-close');
+    // Record + flush the close marker BEFORE the (awaited) room leave. The leave
+    // takes up to a few hundred ms (its socket flush) before exit(0); a log flush
+    // done only *after* it races that exit and loses the tail of the trace — the
+    // exact in-room close path #148 needs to debug. Flushing now, while there's
+    // slack, guarantees this run's close is on disk regardless of exit timing
+    // (#140).
+    appLog('life: app closing');
+    await _bestEffortCloseStep(
+      () => appLogInstance?.flush() ?? Future<void>.value(),
+      label: 'flush-on-close',
+    );
     // Announce a deliberate leave (if in a room) before tearing the window down,
     // so peers see "left the room" rather than "lost connection" (#92). This is
     // AWAITED — runAppCloseHook is self-bounded by _closeHookTimeout and the
@@ -146,12 +157,11 @@ class WindowCloseHandler with WindowListener {
     // awaiting is what lets disconnectForAppClose()'s socket flush actually
     // complete before exit(0) instead of being killed mid-flush (#148).
     await runAppCloseHook(timeout: _closeHookTimeout);
-    // Flush the session log before the window is destroyed so this run's trace
-    // (including the close itself) is on disk (#140).
-    appLog('life: app closing');
+    // Best-effort second flush to also persist the leave-send lines; the close
+    // marker above is already safely on disk if this one loses the exit race.
     await _bestEffortCloseStep(
       () => appLogInstance?.flush() ?? Future<void>.value(),
-      label: 'flush-on-close',
+      label: 'flush-after-leave',
     );
     await _bestEffortCloseStep(_destroyWindow, label: 'destroy-on-close');
     // A prevented in-room close can leave Dart timers / media resources alive
