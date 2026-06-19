@@ -58,9 +58,9 @@ Remove this note once billing resets and Actions runs normally again.
 
 The repo is **private**, so GitHub-hosted Actions minutes are metered (GitHub Pro = 3,000 min/month, resetting on the 1st). Minutes are charged by a per-OS multiplier: **Linux 1×, Windows 2×, macOS 10×**. Self-hosted runners are **not** billed at all. The workflow (`.github/workflows/build.yml`) is split to minimize burn:
 
-- **`check` (analyze + test)** → `ubuntu-latest`. Platform-agnostic, so it runs on hosted Linux at the cheap 1× rate. Runs on every PR / main push / tag.
+- **`check` (analyze + test)** → `ubuntu-latest` for PR / branch / main pushes (cheap 1×, platform-agnostic). **For tag pushes it runs on `[self-hosted, windows]` instead** — `build-windows-x64` has `needs: [check]`, so gating a tag's check on hosted minutes would skip the free Windows build during a billing-exhaustion window; self-hosting the tag check keeps the test gate while making the release path independent of hosted minutes.
 - **`build-windows-x64`** → `[self-hosted, windows]`. The expensive 2× Windows build runs on **our own PC** for free. Tag-push only.
-- **`release`** (GitHub Release + R2 upload) → `ubuntu-latest`. Bash/rclone job, 1×. Tag-push only.
+- **`release`** (GitHub Release + R2 upload) → `ubuntu-latest`. Bash/rclone job, 1×. Tag-push only. This one **still needs hosted minutes**, so during exhaustion the tag's check + Windows build run free but the upload waits for the monthly reset (or use a manual R2 publish). Fully self-hosting it would mean rewriting its bash/rclone steps for Windows — a separate follow-up.
 
 ### Self-hosted Windows runner
 
@@ -68,7 +68,7 @@ Installed at `C:\actions-runner`, registered to this repo with the **`self-hoste
 
 - **Toolchain:** the build job uses `subosito/flutter-action`'s own stable Flutter (independent of the local Puro install), but `flutter build windows` still needs the **Visual Studio Desktop C++ workload**. The runner therefore must run under an account that can see that toolchain — run it as **the logged-in user**, not `NETWORK SERVICE`.
 - **Start it (manual by design):** the runner is **not** auto-started — no service, no logon autostart (user's explicit choice; don't add one). Start it by launching `C:\actions-runner\run.cmd` before pushing a `v*` tag. Confirm it's live with `gh api repos/PeterShanxin/MeowWatch/actions/runners` (`status: online`). If a tag's `build-windows-x64` job sits **queued**, the runner is offline — start `run.cmd`.
-- **Mid-cycle exhaustion:** if hosted minutes are already spent, the `ubuntu` `check`/`release` jobs won't run until the monthly reset, but the self-hosted Windows build still runs free. Bridge PR gating with the local-verification gate (temporary note above).
+- **Mid-cycle exhaustion:** if hosted minutes are already spent, hosted-Ubuntu jobs won't run until the monthly reset. A **tag** push is unaffected for the build — its check + Windows build both run on the self-hosted runner for free; only the `release` upload job (hosted Ubuntu) waits for reset. **PR/branch** checks (hosted Ubuntu) are blocked during exhaustion — bridge those with the local-verification gate (temporary note above).
 
 ## Architecture
 

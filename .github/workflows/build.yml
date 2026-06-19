@@ -23,10 +23,15 @@ jobs:
   # ── Fast gate: analyze + test (every PR / main push / tag) ─────────
   check:
     name: Analyze & Test
-    # Analyze + the (platform-agnostic) test suite run on hosted Linux: 1×
-    # minute multiplier vs Windows' 2×, and these don't need the Windows
-    # toolchain. The Windows-specific build is exercised by build-windows-x64.
-    runs-on: ubuntu-latest
+    # PR / branch / main pushes run analyze + the (platform-agnostic) test suite
+    # on hosted Linux: 1× minute multiplier vs Windows' 2×, and they don't need
+    # the Windows toolchain. TAG pushes run the same check on the self-hosted
+    # runner instead — because build-windows-x64 has `needs: [check]`, gating a
+    # tag's check on hosted minutes would skip the (free) self-hosted Windows
+    # build whenever hosted minutes are exhausted, blocking releases until the
+    # monthly reset. Self-hosting the tag check keeps the test gate while making
+    # the release path independent of hosted-minute availability. (#153)
+    runs-on: ${{ (startsWith(github.ref, 'refs/tags/v') && fromJSON('["self-hosted", "windows"]')) || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
 
