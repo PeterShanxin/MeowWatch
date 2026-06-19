@@ -408,12 +408,21 @@ class PlaybackSyncBridge {
   /// pause→seek→resume (three peer states inside one handshake) can leave the
   /// reused media_kit/mpv engine reporting `playing` while its clock is frozen
   /// at the seek frame — the friend looks stuck and the advancing peer gets
-  /// rewound. If, after [remoteResumeAdvanceWait], the player still claims to be
-  /// playing but its position has not moved past [from], the resume never took:
-  /// re-kick it. A player that has since gone paused (a later pause apply, or the
-  /// user pausing) is correct, not stuck, so it is left alone.
-  void _watchResumeAdvances(Duration from, int seq) {
+  /// rewound.
+  ///
+  /// The freeze signature is the position not moving from where the resume left
+  /// it ([armedAt]) while the player still claims to be playing. Keying on that
+  /// — rather than the position relative to the peer target — is what keeps the
+  /// watchdog from firing on legitimate movement: a healthy advance moves the
+  /// position forward, and any local action (the user seeking or pausing) moves
+  /// or stops it; either way the engine is demonstrably not frozen, so the
+  /// watchdog stands down. Only a truly stuck engine is re-kicked, and it is
+  /// re-kicked to the peer's resume [target]. Durationless live streams (whose
+  /// position is intentionally pinned) and resumes superseded by a newer peer
+  /// state are skipped.
+  void _watchResumeAdvances(Duration target, int seq) {
     _cancelAdvanceWatch();
+    final armedAt = video.state.position;
     _advanceWatchTimer = Timer(remoteResumeAdvanceWait, () {
       _advanceWatchTimer = null;
       // A newer peer state has been applied since this resume — it owns the
@@ -426,9 +435,11 @@ class PlaybackSyncBridge {
       // resume. Re-issuing seek(0)+play on a live URL can jump or stall it, so
       // only the stalled-resume kick applies to sources with a real duration.
       if (s.duration <= Duration.zero) return;
-      final advanced = s.position > from + remoteSeekThreshold;
-      if (s.status == PlaybackStatus.playing && !advanced) {
-        unawaited(_kickStalledResume(from, seq));
+      // Moved at all since arming — forward (healthy) or to a new spot (a local
+      // seek) — means the engine is producing frames, so it is not frozen.
+      final moved = (s.position - armedAt).abs() > remoteSeekThreshold;
+      if (s.status == PlaybackStatus.playing && !moved) {
+        unawaited(_kickStalledResume(target, seq));
       }
     });
   }

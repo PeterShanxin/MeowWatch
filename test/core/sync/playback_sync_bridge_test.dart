@@ -1610,4 +1610,62 @@ void main() {
       reason: 'a stale resume kick must not undo a newer peer pause',
     );
   });
+
+  test('a local seek during the resume window stands the watchdog down', () async {
+    // The watchdog detects a frozen engine by the position staying put. A local
+    // user action moves the position, so it is not a freeze — the watchdog must
+    // not re-seek to the peer target and undo the user's seek.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Peer resumes to 679; it lands and we play, arming the watchdog.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(video.commands, <String>['seek:679000ms', 'play']);
+    video.commands.clear();
+
+    // Before playback advances, the local user seeks back to 20s, still playing.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+
+    // The watchdog must stand down — no re-seek to the peer target.
+    await _pumpUntil(
+      () => video.commands.isNotEmpty,
+      timeout: const Duration(milliseconds: 120),
+    );
+    expect(
+      video.commands,
+      isEmpty,
+      reason: 'a local seek moved the position, so the resume is not frozen',
+    );
+  });
 }
