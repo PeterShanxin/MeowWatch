@@ -175,16 +175,20 @@ jobs:
 
           foreach ($asset in @($release.assets)) {
             if ($asset.name -eq $assetName) {
-              Invoke-RestMethod `
-                -Method Delete `
-                -Uri "https://api.github.com/repos/$repo/releases/assets/$($asset.id)" `
-                -Headers $headers
+              try {
+                Invoke-RestMethod `
+                  -Method Delete `
+                  -Uri "https://api.github.com/repos/$repo/releases/assets/$($asset.id)" `
+                  -Headers $headers
+              } catch {
+                Write-Host "Warning: could not delete existing asset $($asset.id): $($_.Exception.Message)"
+              }
             }
           }
           $uploadUrl = $release.upload_url -replace '\{\?name,label\}$', ''
           Invoke-RestMethod `
             -Method Post `
-            -Uri "$uploadUrl?name=$assetName" `
+            -Uri "${uploadUrl}?name=$assetName" `
             -Headers $headers `
             -ContentType 'application/zip' `
             -InFile $assetName
