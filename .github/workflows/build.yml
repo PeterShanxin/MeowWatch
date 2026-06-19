@@ -23,15 +23,16 @@ jobs:
   # ── Fast gate: analyze + test (every PR / main push / tag) ─────────
   check:
     name: Analyze & Test
-    # PR / branch / main pushes run analyze + the (platform-agnostic) test suite
-    # on hosted Linux: 1× minute multiplier vs Windows' 2×, and they don't need
-    # the Windows toolchain. TAG pushes run the same check on the self-hosted
-    # runner instead — because build-windows-x64 has `needs: [check]`, gating a
-    # tag's check on hosted minutes would skip the (free) self-hosted Windows
-    # build whenever hosted minutes are exhausted, blocking releases until the
-    # monthly reset. Self-hosting the tag check keeps the test gate while making
-    # the release path independent of hosted-minute availability. (#153)
-    runs-on: ${{ (startsWith(github.ref, 'refs/tags/v') && fromJSON('["self-hosted", "windows"]')) || 'ubuntu-latest' }}
+    # The suite is NOT cross-platform: it has Windows-path assertions
+    # (test/core/video/video_url_test.dart expects a C:\... path to basename) and
+    # Windows-rendered golden images (test/ui/chat/chat_overlay_golden_test.dart),
+    # so analyze+test must run on Windows — on Linux those 4 tests fail. PR /
+    # branch / main pushes use hosted `windows-2022`; TAG pushes use the
+    # self-hosted runner instead, because build-windows-x64 has `needs: [check]`
+    # and gating a tag's check on hosted-Actions availability would skip the free
+    # self-hosted Windows build whenever hosted Actions is unavailable, blocking
+    # releases. (The big minute win is the self-hosted *build*, not the check.) (#153)
+    runs-on: ${{ (startsWith(github.ref, 'refs/tags/v') && fromJSON('["self-hosted", "windows"]')) || 'windows-2022' }}
     steps:
       - uses: actions/checkout@v6
 
