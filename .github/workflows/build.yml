@@ -36,19 +36,40 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Flutter
+      # Hosted runners (PR / main / branch) download Flutter fresh. That action
+      # shells out to bash for its setup script, which on our self-hosted Windows
+      # runner resolves to wsl.exe with no distro installed and exits 1 — so on
+      # self-hosted we use the Flutter already installed via Puro instead of
+      # downloading one. Detected via runner.environment, not the runs-on label,
+      # so it stays correct if the topology changes. (#154)
+      - name: Setup Flutter (hosted)
+        if: runner.environment == 'github-hosted'
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true # caches both the Flutter SDK and pub dependencies
+      - name: Setup Flutter (self-hosted, pre-installed via Puro)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        run: |
+          $flutterBin = Join-Path $env:USERPROFILE '.puro\envs\stable\flutter\bin'
+          if (-not (Test-Path (Join-Path $flutterBin 'flutter.bat'))) {
+            Write-Error "Flutter not found at $flutterBin — is Puro's stable env installed on the runner?"
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $flutterBin
+          Write-Host "Using pre-installed Flutter at $flutterBin"
 
       - name: Install dependencies
+        shell: pwsh
         run: flutter pub get
 
       - name: Analyze
+        shell: pwsh
         run: flutter analyze
 
       - name: Run tests
+        shell: pwsh
         run: flutter test
 
   # ── Build Windows x64 (tag pushes only — release builds anyway) ────
@@ -65,16 +86,36 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Flutter
+      # Hosted runners (PR / main / branch) download Flutter fresh. That action
+      # shells out to bash for its setup script, which on our self-hosted Windows
+      # runner resolves to wsl.exe with no distro installed and exits 1 — so on
+      # self-hosted we use the Flutter already installed via Puro instead of
+      # downloading one. Detected via runner.environment, not the runs-on label,
+      # so it stays correct if the topology changes. (#154)
+      - name: Setup Flutter (hosted)
+        if: runner.environment == 'github-hosted'
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true # caches both the Flutter SDK and pub dependencies
+      - name: Setup Flutter (self-hosted, pre-installed via Puro)
+        if: runner.environment == 'self-hosted'
+        shell: pwsh
+        run: |
+          $flutterBin = Join-Path $env:USERPROFILE '.puro\envs\stable\flutter\bin'
+          if (-not (Test-Path (Join-Path $flutterBin 'flutter.bat'))) {
+            Write-Error "Flutter not found at $flutterBin — is Puro's stable env installed on the runner?"
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $flutterBin
+          Write-Host "Using pre-installed Flutter at $flutterBin"
 
       - name: Install dependencies
+        shell: pwsh
         run: flutter pub get
 
       - name: Build Windows release
+        shell: pwsh
         run: flutter build windows --release
 
       - name: Package release
