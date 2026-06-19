@@ -197,7 +197,12 @@ jobs:
   release:
     name: Publish R2 Metadata
     needs: [build-windows-x64]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # build-windows-x64 runs via always() because its check-hosted sibling is
+    # skipped on tag pushes. That skip propagates transitively through `needs`, so a
+    # plain `if` here lets the implicit success() gate skip R2 even when the build
+    # succeeded. Guard with always() + an explicit result check (same pattern as
+    # build-windows-x64) so R2 publishes whenever the build is green.
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.build-windows-x64.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
