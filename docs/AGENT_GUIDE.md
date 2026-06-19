@@ -67,7 +67,7 @@ The repo is **private**, so GitHub-hosted Actions minutes are metered (GitHub Pr
 Installed at `C:\actions-runner`, registered to this repo with the **`self-hosted` + `windows`** labels. It must be **online** for tag builds to run — otherwise the `build-windows-x64` job queues until a runner appears.
 
 - **Toolchain:** the build job uses `subosito/flutter-action`'s own stable Flutter (independent of the local Puro install), but `flutter build windows` still needs the **Visual Studio Desktop C++ workload**. The runner therefore must run under an account that can see that toolchain — run it as **the logged-in user**, not `NETWORK SERVICE`.
-- **Start it:** run `C:\actions-runner\run.cmd` (interactive — works while logged in) or install it as a service under the user account for always-on. Confirm it's live with `gh api repos/PeterShanxin/MeowWatch/actions/runners`.
+- **Start it (manual by design):** the runner is **not** auto-started — no service, no logon autostart (user's explicit choice; don't add one). Start it by launching `C:\actions-runner\run.cmd` before pushing a `v*` tag. Confirm it's live with `gh api repos/PeterShanxin/MeowWatch/actions/runners` (`status: online`). If a tag's `build-windows-x64` job sits **queued**, the runner is offline — start `run.cmd`.
 - **Mid-cycle exhaustion:** if hosted minutes are already spent, the `ubuntu` `check`/`release` jobs won't run until the monthly reset, but the self-hosted Windows build still runs free. Bridge PR gating with the local-verification gate (temporary note above).
 
 ## Architecture
