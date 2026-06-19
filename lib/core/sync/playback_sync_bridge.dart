@@ -72,6 +72,10 @@ class PlaybackSyncBridge {
 
   bool _applyingRemote = false;
   bool _drainingPeerStates = false;
+  // Bumped each time a peer state is applied. A stalled-resume kick captures the
+  // sequence of the resume that spawned it and bails before it would override a
+  // newer peer state that landed while its seek was still in flight.
+  int _peerStateSeq = 0;
   DateTime _remoteApplyUntil = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _remoteSettleUntil = DateTime.fromMillisecondsSinceEpoch(0);
   PeerPlayState? _remoteSettleTarget;
@@ -408,10 +412,13 @@ class PlaybackSyncBridge {
   /// playing but its position has not moved past [from], the resume never took:
   /// re-kick it. A player that has since gone paused (a later pause apply, or the
   /// user pausing) is correct, not stuck, so it is left alone.
-  void _watchResumeAdvances(Duration from) {
+  void _watchResumeAdvances(Duration from, int seq) {
     _cancelAdvanceWatch();
     _advanceWatchTimer = Timer(remoteResumeAdvanceWait, () {
       _advanceWatchTimer = null;
+      // A newer peer state has been applied since this resume — it owns the
+      // current intent, so this watchdog is stale.
+      if (seq != _peerStateSeq) return;
       final s = video.state;
       // A durationless live/direct stream intentionally holds its reported
       // position (position_guard rejects positive positions without a
@@ -421,7 +428,7 @@ class PlaybackSyncBridge {
       if (s.duration <= Duration.zero) return;
       final advanced = s.position > from + remoteSeekThreshold;
       if (s.status == PlaybackStatus.playing && !advanced) {
-        unawaited(_kickStalledResume());
+        unawaited(_kickStalledResume(from, seq));
       }
     });
   }
@@ -431,12 +438,17 @@ class PlaybackSyncBridge {
   /// settled (this is the engine equivalent of the user's pause-wait-resume
   /// workaround), so the fresh play takes. Runs inside the remote-apply guard so
   /// the kick is never echoed back to the room as a local change.
-  Future<void> _kickStalledResume() async {
+  Future<void> _kickStalledResume(Duration target, int seq) async {
     _applyingRemote = true;
     _remoteApplyUntil = DateTime.now().add(remoteApplyWindow);
     try {
-      final pos = video.state.position;
-      await _waitForCommand(video.seek(pos));
+      // Seek to the peer's resume target, not the current position: when the
+      // original seek has not landed yet, the player is still sitting at the
+      // pre-resume spot, and snapshotting that would yank the client backwards.
+      await _waitForCommand(video.seek(target));
+      // The seek above can await; if a newer peer state landed meanwhile, this
+      // kick is stale — do not play over it.
+      if (seq != _peerStateSeq) return;
       await _waitForCommand(video.play());
     } finally {
       _applyingRemote = false;
@@ -447,6 +459,7 @@ class PlaybackSyncBridge {
     // The SyncCore only emits states that genuinely require a local change
     // (the convergence/anti-fight decision lives in decideFollow), so the
     // bridge applies each one: align position, then match play/pause.
+    final seq = ++_peerStateSeq;
     _applyingRemote = true;
     _remoteApplyUntil = DateTime.now().add(remoteApplyWindow);
     try {
@@ -485,7 +498,7 @@ class PlaybackSyncBridge {
         seekDone = null;
         // Verify playback actually starts moving; re-kick if the engine freezes
         // at the seek frame (the fast pause→seek→resume bug).
-        _watchResumeAdvances(peer.position);
+        _watchResumeAdvances(peer.position, seq);
       } else {
         pauseDone = video.pause();
         // A deliberate pause is not a stalled resume — stand the watchdog down.

@@ -1497,4 +1497,117 @@ void main() {
       reason: 'a durationless live stream must not trigger the stalled-resume kick',
     );
   });
+
+  test('a stalled resume is re-kicked to the peer target, not the stale position', () async {
+    // The big resume seek is slow to land (e.g. a paused VOD): when the watchdog
+    // fires, the player is still sitting at the old position. The kick must seek
+    // to the peer's resume target, not snapshot the stale current position and
+    // yank the client back to where it was before the resume.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeSeekWait: const Duration(milliseconds: 10),
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    // Seeks never move the reported position — the resume target never lands.
+    video.emitFromSeek = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+
+    // Let the resume path, watchdog, and kick all run (kick adds a 2nd play).
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 400),
+    );
+    expect(
+      video.commands,
+      isNot(contains('seek:20000ms')),
+      reason: 'the kick must target the peer position, never the stale current one',
+    );
+    expect(video.commands, contains('seek:679000ms'));
+  });
+
+  test('a watchdog kick does not override a newer peer pause', () async {
+    // The watchdog fires and the kick begins, but its seek is still in flight
+    // when a newer peer PAUSE arrives. The kick must not finish by playing over
+    // that pause — stale resume kicks cannot override later remote state.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 but never advances — the watchdog will arm.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so we can interleave a newer pause while it is in
+    // flight.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // A newer peer pause arrives and is applied while the kick is blocked.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: true,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(video.state.status, PlaybackStatus.paused);
+
+    // Release the kick; it must abort rather than play over the newer pause.
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 120),
+    );
+    expect(
+      video.state.status,
+      PlaybackStatus.paused,
+      reason: 'a stale resume kick must not undo a newer peer pause',
+    );
+  });
 }
