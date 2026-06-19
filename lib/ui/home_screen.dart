@@ -539,9 +539,10 @@ class _HomeScreenState extends State<HomeScreen> {
     // Announce a deliberate leave if the window is closed (X button) while we're
     // in the room — disconnect() sends the leaving signal with a bounded flush
     // (#92). The Leave button already does this directly via _leave().
-    _closeHook = () {
+    _closeHook = () async {
       appLog('life: window-close hook fired (announcing leave)');
-      return _sync.disconnect();
+      await _sync.disconnectForAppClose();
+      appLog('life: window-close leave sent');
     };
     appCloseHook.value = _closeHook;
     final resume = widget.config.resumeFilePath;

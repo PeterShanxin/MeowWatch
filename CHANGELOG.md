@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.29.3-alpha] - 2026-06-19
+- Fixed a Windows close bug where clicking X while in a room could make the window disappear but leave MeowWatch secretly running in the background, still saving playback position and sometimes keeping audio/player resources alive. Closing now gives the room-leave message a short best-effort chance, flushes the log, tears down the window, and then exits the process explicitly so there is no hidden headless instance left behind. (#148)
+
 ## [0.29.2-alpha] - 2026-06-19
 - Fixed the 0.29.1 co-watch regression where your friend could resume and your app would show the sync notification, but the video stayed paused. The follower was seeking to the right timestamp first, but on some paused media_kit/mpv paths that seek command reported its new position while its Future stayed unfinished, so MeowWatch never sent the follow-up Play command. Remote resume now treats player command Futures as best-effort, wakes playback after the seek visibly lands (or after a short wait), and re-seeks after Play if needed so later pause/seek commands cannot get stuck behind one slow backend Future.
 

@@ -596,6 +596,11 @@ class SyncplayClient extends SyncCore {
     _loggedIn = true;
   }
 
+  @visibleForTesting
+  void debugAttachSocket(Socket socket) {
+    _socket = socket;
+  }
+
   /// Test hook: seed an already-established session (requested name + the
   /// server-assigned identity equal), without dialing a socket. Lets a test
   /// exercise the reconnect Hello path.
@@ -678,6 +683,37 @@ class SyncplayClient extends SyncCore {
     emitConnectionState(
       const SyncConnectionState(status: SyncConnectionStatus.disconnected),
     );
+  }
+
+  /// Window-close fast path: send the advisory leave packet if possible, give
+  /// it one bounded flush, then tear down so app shutdown can continue to
+  /// `exit(0)`.
+  ///
+  /// The OS close path still cannot depend on an unbounded socket Future,
+  /// because a wedged native/network flush can leave the visible window gone
+  /// while Dart timers keep running headless (#148). The caller runs this behind
+  /// [runAppCloseHook]'s timeout and the window close handler's hard-exit
+  /// watchdog.
+  Future<void> disconnectForAppClose({
+    Duration flushTimeout = const Duration(milliseconds: 300),
+  }) async {
+    _stopReconnecting();
+    final old = _socket;
+    if (_loggedIn) {
+      _send(encodeChat(encodeLeaving()));
+      if (old != null) {
+        try {
+          await old.flush().timeout(flushTimeout);
+        } catch (_) {}
+      }
+    }
+    _loggedIn = false;
+    _socket = null;
+    // Keep the close hook bounded and tiny. Destroying the socket or emitting
+    // UI-facing disconnect state belongs to normal Leave/dispose; app close is
+    // about to `exit(0)`, and doing native/network teardown inline has already
+    // left hidden headless processes behind on Windows (#148).
+    if (old != null) Timer.run(old.destroy);
   }
 
   @override

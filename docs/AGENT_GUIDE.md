@@ -39,6 +39,21 @@ $FLUTTER build windows                             # Release exe (kill running i
 $FLUTTER run -d windows                            # debug run
 ```
 
+### ⏳ Temporary (until end of June 2026): GitHub Actions CI is unavailable
+
+The repo's free GitHub Actions minutes are exhausted / over the billing limit, so **every CI run fails instantly** — this is expected, not a real failure, and retrying the remote run will not help. Do **not** sit waiting on the `Build / Analyze & Test` check to go green, and do not keep re-triggering it.
+
+While CI is down, **local verification is the substitute gate** on this dev PC. Run the full set and treat green here as the PR gate:
+
+```bash
+C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze --no-pub
+C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test --no-pub --concurrency=1 --reporter compact
+```
+
+Then build Release and do the manual test (see the Gotchas: kill build-path `meowwatch.exe` first, verify the rebuild via `build/windows/x64/runner/Release/data/app.so` mtime, launch the Release exe). Only after local analyze + test + build are green and the manual test passes should the PR be merged.
+
+Remove this note once billing resets and Actions runs normally again.
+
 ## Architecture
 
 **Commands-in / streams-out.** The two core subsystems — video and sync — expose the same shape: an abstract interface with imperative methods for input and broadcast `Stream`s for output. UI never reaches into internals; it calls methods and listens to streams. This makes both swappable with fakes in tests.
@@ -81,7 +96,7 @@ Keep the `-alpha` suffix until we move off alpha. CI parses `CHANGELOG.md` → `
 1. Land work on a feature/fix branch → open a PR to `main`. Don't push `v*` tags from the branch.
 2. Wait for the automatic **Copilot review**, then run the `address-pr-review` skill: fix or reject each comment with a real reason, reply, resolve the threads, push.
 3. If a manual test is warranted (visible behavior change), get the user's confirmation first; pure edge-case/defensive fixes with unit coverage don't need one — say so. If the user already confirmed a manual test but later review/CI feedback requires any app-behavior patch, stop after CI/reviews clear, build/open the updated Release app again, and get a fresh manual confirmation before merging/tagging. Docs/comment/CI-only follow-ups do not invalidate an already-confirmed manual app test; say that explicitly.
-4. Wait for **CI green** (the `Build / Analyze & Test` check — the PR gate). The full `Windows x64` build does **not** run on PRs; it runs only on the tag push. Then **merge** the PR to `main` (merge commit).
+4. Wait for **CI green** (the `Build / Analyze & Test` check — the PR gate). The full `Windows x64` build does **not** run on PRs; it runs only on the tag push. Then **merge** the PR to `main` (merge commit). _(Temporary, until end of June 2026: Actions CI fails instantly — use the local verification gate from the "GitHub Actions is unavailable" note above instead of waiting on this check.)_
 5. `git checkout main && git pull` → **tag** `v<version>` on the merge commit → `git push origin v<version>`. The tag fires the build + release jobs (build → R2 upload + `changelog.json`). Since this is the *first* clean-room Windows build for the change, watch it — a build-only breakage surfaces here, not at PR time.
 6. Wait for the release run green, then **verify R2**: `curl …/releases/latest.json` (version matches) and `…/releases/changelog.json` (array includes the new version).
 7. **Wrap up** once R2 is verified — run the `call-it-a-day` skill (or do it by hand): `git checkout main && git pull` so main is the merge+tag commit, delete the merged branch (local + remote), prune the feature worktree under the active agent's worktree directory (for example, `.claude/worktrees/` or `.Codex/worktrees/`), remove session scratch files, and stop any leftover `meowwatch.exe` dev/test instances. End on a clean `git status` on `main`. Don't start this until after the merge, tag, and R2 verification — the worktree is still needed for PR iteration before then.
