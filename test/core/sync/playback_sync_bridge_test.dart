@@ -99,6 +99,23 @@ class _RecordingSyncCore extends SyncCore {
   void pushPeer(PeerPlayState s) => emitPeerState(s);
 }
 
+/// Pump the event loop until [reached] holds or [timeout] elapses.
+///
+/// Watchdog assertions hinge on a `Timer` that fires after a short window; a
+/// fixed `Future.delayed` barely longer than that window flakes when the whole
+/// suite is competing for the CPU and the timer fires late (the re-kick lands
+/// just after the assertion already ran). Polling returns the moment the
+/// expected state is reached, so the test stays fast while tolerating jitter.
+Future<void> _pumpUntil(
+  bool Function() reached, {
+  Duration timeout = const Duration(seconds: 2),
+}) async {
+  final stopwatch = Stopwatch()..start();
+  while (!reached() && stopwatch.elapsed < timeout) {
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+  }
+}
+
 void main() {
   late _FakeVideoCore video;
   late _RecordingSyncCore sync;
@@ -1283,4 +1300,153 @@ void main() {
       );
     },
   );
+
+  // ── Stalled-resume watchdog (fast pause→seek→resume freeze) ───────────────
+  //
+  // Field bug: a peer fires pause → seek → resume in rapid succession (all in
+  // one ignoringOnTheFly handshake). We apply seek+play, but the engine ends up
+  // reporting `playing` while its position is frozen at the seek target — so the
+  // friend looks stuck and the advancing peer gets rewound. Nothing verified
+  // that playback actually ADVANCED after a remote resume; this watchdog does.
+
+  test(
+    'a remote resume whose playback never advances is re-kicked',
+    () async {
+      await bridge.dispose();
+      bridge = PlaybackSyncBridge(
+        video: video,
+        sync: sync,
+        remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      )..start();
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration(seconds: 20),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+      video.commands.clear();
+
+      // Peer resumes to 679s: we seek + play. The fake reports `playing` at 679s
+      // (status flips) but the position never climbs — the frozen-engine bug.
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 679),
+          paused: false,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(video.commands, <String>['seek:679000ms', 'play']);
+
+      // Playback never advances past the resume target. After the advance
+      // window the bridge re-kicks the stalled resume instead of sitting frozen.
+      // Poll rather than wait a fixed delay: the watchdog timer can fire late
+      // under load, and a fixed wait barely past the window flakes (see the
+      // re-kick race that surfaced when this ran inside the full suite).
+      await _pumpUntil(() => video.commands.length >= 4);
+      expect(
+        video.commands,
+        <String>['seek:679000ms', 'play', 'seek:679000ms', 'play'],
+        reason:
+            'a remote resume that never starts advancing must be re-kicked '
+            'with a fresh seek+play',
+      );
+    },
+  );
+
+  test('a remote resume that begins advancing is not re-kicked', () async {
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(video.commands, <String>['seek:679000ms', 'play']);
+
+    // Playback actually advances past the target — a healthy resume.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 680),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // No kick may follow once playback is genuinely moving.
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    expect(
+      video.commands,
+      <String>['seek:679000ms', 'play'],
+      reason: 'a resume that is advancing normally must not be re-kicked',
+    );
+  });
+
+  test('a remote resume that lands paused is not re-kicked', () async {
+    // A genuine remote PAUSE (not a resume) must never be un-paused by the
+    // watchdog: a paused player that is "not advancing" is correct, not stuck.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 20),
+        paused: true,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(video.commands, <String>['pause']);
+
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    expect(
+      video.commands,
+      <String>['pause'],
+      reason: 'a deliberately paused player must not be kicked into playing',
+    );
+  });
 }

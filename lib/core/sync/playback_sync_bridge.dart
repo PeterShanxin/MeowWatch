@@ -20,6 +20,7 @@ class PlaybackSyncBridge {
     this.remoteSeekThreshold = const Duration(milliseconds: 250),
     this.remoteResumeSeekWait = const Duration(milliseconds: 200),
     this.remoteCommandWait = const Duration(milliseconds: 500),
+    this.remoteResumeAdvanceWait = const Duration(seconds: 2),
   });
 
   final VideoCore video;
@@ -53,10 +54,20 @@ class PlaybackSyncBridge {
   /// block later peer states indefinitely.
   final Duration remoteCommandWait;
 
+  /// After applying a remote resume we expect playback to actually start moving.
+  /// If, within this window, the player still reports `playing` but its position
+  /// has not advanced past the resume target, the engine is frozen (a fast
+  /// pause→seek→resume can leave media_kit/mpv unpaused-but-stalled at the seek
+  /// frame). The bridge then re-kicks the resume (seek+play). Long enough not to
+  /// trip on a slow decode start, far shorter than the ~60s freezes seen in the
+  /// field.
+  final Duration remoteResumeAdvanceWait;
+
   StreamSubscription<PlaybackState>? _videoSub;
   StreamSubscription<PeerPlayState>? _peerSub;
   StreamSubscription<PlaybackState>? _resumeSeekSub;
   Timer? _resumeSeekTimer;
+  Timer? _advanceWatchTimer;
   final List<PeerPlayState> _queuedPeerStates = [];
 
   bool _applyingRemote = false;
@@ -384,6 +395,48 @@ class PlaybackSyncBridge {
     _resumeSeekTimer = timer;
   }
 
+  void _cancelAdvanceWatch() {
+    _advanceWatchTimer?.cancel();
+    _advanceWatchTimer = null;
+  }
+
+  /// Arm the stalled-resume watchdog after applying a remote resume. A fast
+  /// pause→seek→resume (three peer states inside one handshake) can leave the
+  /// reused media_kit/mpv engine reporting `playing` while its clock is frozen
+  /// at the seek frame — the friend looks stuck and the advancing peer gets
+  /// rewound. If, after [remoteResumeAdvanceWait], the player still claims to be
+  /// playing but its position has not moved past [from], the resume never took:
+  /// re-kick it. A player that has since gone paused (a later pause apply, or the
+  /// user pausing) is correct, not stuck, so it is left alone.
+  void _watchResumeAdvances(Duration from) {
+    _cancelAdvanceWatch();
+    _advanceWatchTimer = Timer(remoteResumeAdvanceWait, () {
+      _advanceWatchTimer = null;
+      final s = video.state;
+      final advanced = s.position > from + remoteSeekThreshold;
+      if (s.status == PlaybackStatus.playing && !advanced) {
+        unawaited(_kickStalledResume());
+      }
+    });
+  }
+
+  /// Un-stick a frozen remote resume by re-issuing seek+play from where the
+  /// player is now. By the time this fires the rapid pause/seek churn has long
+  /// settled (this is the engine equivalent of the user's pause-wait-resume
+  /// workaround), so the fresh play takes. Runs inside the remote-apply guard so
+  /// the kick is never echoed back to the room as a local change.
+  Future<void> _kickStalledResume() async {
+    _applyingRemote = true;
+    _remoteApplyUntil = DateTime.now().add(remoteApplyWindow);
+    try {
+      final pos = video.state.position;
+      await _waitForCommand(video.seek(pos));
+      await _waitForCommand(video.play());
+    } finally {
+      _applyingRemote = false;
+    }
+  }
+
   Future<void> _onPeerState(PeerPlayState peer) async {
     // The SyncCore only emits states that genuinely require a local change
     // (the convergence/anti-fight decision lives in decideFollow), so the
@@ -424,8 +477,13 @@ class PlaybackSyncBridge {
           _seekWhenPlaying(peer.position);
         }
         seekDone = null;
+        // Verify playback actually starts moving; re-kick if the engine freezes
+        // at the seek frame (the fast pause→seek→resume bug).
+        _watchResumeAdvances(peer.position);
       } else {
         pauseDone = video.pause();
+        // A deliberate pause is not a stalled resume — stand the watchdog down.
+        _cancelAdvanceWatch();
       }
       if (seekDone != null) {
         await _waitForCommand(seekDone);
@@ -439,6 +497,7 @@ class PlaybackSyncBridge {
   }
 
   Future<void> dispose() async {
+    _cancelAdvanceWatch();
     _resumeSeekTimer?.cancel();
     await _resumeSeekSub?.cancel();
     await _videoSub?.cancel();
