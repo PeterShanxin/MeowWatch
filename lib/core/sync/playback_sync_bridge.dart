@@ -18,6 +18,8 @@ class PlaybackSyncBridge {
     this.remoteApplyWindow = const Duration(milliseconds: 800),
     this.remoteSettleWindow = const Duration(seconds: 3),
     this.remoteSeekThreshold = const Duration(milliseconds: 250),
+    this.remoteResumeSeekWait = const Duration(milliseconds: 200),
+    this.remoteCommandWait = const Duration(milliseconds: 500),
   });
 
   final VideoCore video;
@@ -40,8 +42,21 @@ class PlaybackSyncBridge {
   /// if we're off by more than this — avoids latency-jitter micro-seeks.
   final Duration remoteSeekThreshold;
 
+  /// How long a remote resume waits for the seeked position to appear before
+  /// waking playback anyway. On media_kit/mpv, seek futures can stall while
+  /// paused even after the position has landed; waiting forever drops the
+  /// required play command.
+  final Duration remoteResumeSeekWait;
+
+  /// Remote apply commands are best-effort player requests. Their backend
+  /// futures can lag behind emitted state, so the bridge never lets one future
+  /// block later peer states indefinitely.
+  final Duration remoteCommandWait;
+
   StreamSubscription<PlaybackState>? _videoSub;
   StreamSubscription<PeerPlayState>? _peerSub;
+  StreamSubscription<PlaybackState>? _resumeSeekSub;
+  Timer? _resumeSeekTimer;
   final List<PeerPlayState> _queuedPeerStates = [];
 
   bool _applyingRemote = false;
@@ -50,6 +65,10 @@ class PlaybackSyncBridge {
   DateTime _remoteSettleUntil = DateTime.fromMillisecondsSinceEpoch(0);
   PeerPlayState? _remoteSettleTarget;
   bool _remoteSettleRequiresPosition = false;
+  DateTime _remoteFalloutUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _remoteFalloutStartedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  PeerPlayState? _remoteFalloutTarget;
+  bool _remoteFalloutRequiresPosition = false;
   bool? _lastPaused;
   Duration _lastPosition = Duration.zero;
   DateTime _lastTick = DateTime.now();
@@ -163,6 +182,7 @@ class PlaybackSyncBridge {
     final source = s.filePath;
     final confirmed = source != null && source == _confirmedOpenSource;
     final settlingRemote = _isSettlingRemoteState(s, now);
+    final lateRemoteFallout = _isLateRemoteFallout(s, now);
 
     if (!confirmed ||
         s.status == PlaybackStatus.loading ||
@@ -174,7 +194,8 @@ class PlaybackSyncBridge {
           s.status == PlaybackStatus.playing &&
           (_applyingRemote ||
               now.isBefore(_remoteApplyUntil) ||
-              settlingRemote);
+              settlingRemote ||
+              lateRemoteFallout);
       _lastFilePath = s.filePath;
       _lastPaused = paused;
       _lastPosition = s.position;
@@ -183,7 +204,10 @@ class PlaybackSyncBridge {
     }
 
     final suppressed =
-        _applyingRemote || now.isBefore(_remoteApplyUntil) || settlingRemote;
+        _applyingRemote ||
+        now.isBefore(_remoteApplyUntil) ||
+        settlingRemote ||
+        lateRemoteFallout;
 
     // Feed local playback to the heartbeat only when this tick is NOT fallout
     // from a remote apply. SyncplayClient already adopts the peer target before
@@ -241,6 +265,10 @@ class PlaybackSyncBridge {
     final target = _remoteSettleTarget;
     if (target == null) return false;
     if (_matchesRemoteTarget(s, target)) {
+      _remoteFalloutTarget = target;
+      _remoteFalloutRequiresPosition = _remoteSettleRequiresPosition;
+      _remoteFalloutStartedAt = now;
+      _remoteFalloutUntil = now.add(remoteApplyWindow + remoteCommandWait);
       _remoteSettleTarget = null;
       _remoteSettleRequiresPosition = false;
       return true;
@@ -251,11 +279,109 @@ class PlaybackSyncBridge {
     return false;
   }
 
+  bool _isLateRemoteFallout(PlaybackState s, DateTime now) {
+    final target = _remoteFalloutTarget;
+    if (target == null) return false;
+    if (!now.isBefore(_remoteFalloutUntil)) {
+      _remoteFalloutTarget = null;
+      _remoteFalloutRequiresPosition = false;
+      return false;
+    }
+
+    final paused = s.status != PlaybackStatus.playing;
+    if (paused != target.paused) return true;
+    if (!_remoteFalloutRequiresPosition) return false;
+    if (target.paused) {
+      return (s.position - target.position).abs() > remoteSeekThreshold;
+    }
+    final progressSlop = seekDetectThreshold > remoteSeekThreshold
+        ? seekDetectThreshold
+        : remoteSeekThreshold;
+    final plausibleProgress =
+        now.difference(_remoteFalloutStartedAt) + progressSlop;
+    final minPosition = target.position - remoteSeekThreshold;
+    final maxPosition = target.position + plausibleProgress;
+    return s.position < minPosition || s.position > maxPosition;
+  }
+
   bool _matchesRemoteTarget(PlaybackState s, PeerPlayState target) {
     final paused = s.status != PlaybackStatus.playing;
     if (paused != target.paused) return false;
     if (!_remoteSettleRequiresPosition) return true;
     return (s.position - target.position).abs() <= remoteSeekThreshold;
+  }
+
+  Future<void> _waitForCommand(Future<void> command) async {
+    try {
+      await command.timeout(remoteCommandWait);
+    } catch (_) {
+      // Player command futures are not the source of truth here; backend state
+      // events are. Keep peer-state draining alive even if media_kit is late or
+      // reports a transient command failure.
+    }
+  }
+
+  Future<bool> _waitForPosition(Duration position) async {
+    if ((video.state.position - position).abs() <= remoteSeekThreshold) {
+      return true;
+    }
+
+    final completer = Completer<bool>();
+    late final StreamSubscription<PlaybackState> sub;
+    Timer? timer;
+
+    void complete(bool value) {
+      if (completer.isCompleted) return;
+      timer?.cancel();
+      unawaited(sub.cancel());
+      completer.complete(value);
+    }
+
+    sub = video.stateStream.listen((state) {
+      if ((state.position - position).abs() <= remoteSeekThreshold) {
+        complete(true);
+      }
+    });
+    timer = Timer(remoteResumeSeekWait, () => complete(false));
+
+    return completer.future;
+  }
+
+  void _cancelResumeSeek() {
+    _resumeSeekTimer?.cancel();
+    _resumeSeekTimer = null;
+    unawaited(_resumeSeekSub?.cancel());
+    _resumeSeekSub = null;
+  }
+
+  void _seekWhenPlaying(Duration position) {
+    _cancelResumeSeek();
+    if (video.state.status == PlaybackStatus.playing) {
+      unawaited(_waitForCommand(video.seek(position)));
+      return;
+    }
+
+    late final StreamSubscription<PlaybackState> sub;
+    Timer? timer;
+
+    void cancelWait() {
+      timer?.cancel();
+      timer = null;
+      if (identical(_resumeSeekSub, sub)) {
+        _resumeSeekSub = null;
+        _resumeSeekTimer = null;
+      }
+      unawaited(sub.cancel());
+    }
+
+    sub = video.stateStream.listen((state) {
+      if (state.status != PlaybackStatus.playing) return;
+      cancelWait();
+      unawaited(_waitForCommand(video.seek(position)));
+    });
+    timer = Timer(remoteSettleWindow, cancelWait);
+    _resumeSeekSub = sub;
+    _resumeSeekTimer = timer;
   }
 
   Future<void> _onPeerState(PeerPlayState peer) async {
@@ -277,37 +403,44 @@ class PlaybackSyncBridge {
       _remoteSettleTarget = peer;
       _remoteSettleRequiresPosition = shouldSeek;
       _remoteSettleUntil = DateTime.now().add(remoteSettleWindow);
+      _remoteFalloutTarget = null;
+      _remoteFalloutRequiresPosition = false;
+      _cancelResumeSeek();
 
       Future<void>? seekDone;
       if (shouldSeek) {
         seekDone = video.seek(peer.position);
+        unawaited(_waitForCommand(seekDone));
       }
 
       Future<void>? pauseDone;
       if (!peer.paused) {
-        if (seekDone != null) {
-          await seekDone;
-          seekDone = null;
+        var landedBeforePlay = true;
+        if (shouldSeek) {
+          landedBeforePlay = await _waitForPosition(peer.position);
         }
-        await video.play();
+        await _waitForCommand(video.play());
+        if (shouldSeek && !landedBeforePlay) {
+          _seekWhenPlaying(peer.position);
+        }
+        seekDone = null;
       } else {
         pauseDone = video.pause();
       }
       if (seekDone != null) {
-        await seekDone;
+        await _waitForCommand(seekDone);
       }
       if (pauseDone != null) {
-        await pauseDone;
+        await _waitForCommand(pauseDone);
       }
     } finally {
       _applyingRemote = false;
-      // Keep suppressing local-change detection briefly so the async player
-      // state events triggered above are not echoed back as local changes.
-      _remoteApplyUntil = DateTime.now().add(remoteApplyWindow);
     }
   }
 
   Future<void> dispose() async {
+    _resumeSeekTimer?.cancel();
+    await _resumeSeekSub?.cancel();
     await _videoSub?.cancel();
     await _peerSub?.cancel();
   }
