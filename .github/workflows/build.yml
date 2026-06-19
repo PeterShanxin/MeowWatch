@@ -126,34 +126,88 @@ jobs:
           $releaseDir = "build\windows\x64\runner\Release"
           Compress-Archive -Path "$releaseDir\*" -DestinationPath "MeowWatch-windows-x64.zip" -Force
 
-      # Keep the artifact name and upload-artifact version in sync with
-      # package-check.yml's PR-time artifact round-trip smoke test.
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: MeowWatch-windows-x64
-          path: MeowWatch-windows-x64.zip
-          retention-days: 30
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GITHUB_REF -replace '^refs/tags/', ''
+          $repo = $env:GITHUB_REPOSITORY
+          $assetName = 'MeowWatch-windows-x64.zip'
+          $headers = @{
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $release = $null
+          try {
+            $release = Invoke-RestMethod `
+              -Method Get `
+              -Uri "https://api.github.com/repos/$repo/releases/tags/$tag" `
+              -Headers $headers
+          } catch {
+            $statusCode = if ($_.Exception.Response) {
+              [int]$_.Exception.Response.StatusCode
+            } else {
+              0
+            }
+            if ($statusCode -ne 404) {
+              throw
+            }
+          }
+
+          if ($null -eq $release) {
+            $body = @{
+              tag_name = $tag
+              name = $tag
+              draft = $false
+              prerelease = $tag -match '-(alpha|beta|rc)'
+              generate_release_notes = $true
+            } | ConvertTo-Json
+            $release = Invoke-RestMethod `
+              -Method Post `
+              -Uri "https://api.github.com/repos/$repo/releases" `
+              -Headers $headers `
+              -ContentType 'application/json' `
+              -Body $body
+          }
+
+          foreach ($asset in @($release.assets)) {
+            if ($asset.name -eq $assetName) {
+              Invoke-RestMethod `
+                -Method Delete `
+                -Uri "https://api.github.com/repos/$repo/releases/assets/$($asset.id)" `
+                -Headers $headers
+            }
+          }
+          $uploadUrl = $release.upload_url -replace '\{\?name,label\}$', ''
+          Invoke-RestMethod `
+            -Method Post `
+            -Uri "$uploadUrl?name=$assetName" `
+            -Headers $headers `
+            -ContentType 'application/zip' `
+            -InFile $assetName
 
   # ── Create GitHub Release (tag pushes only) ────────────────────────
   release:
-    name: Create Release
+    name: Publish R2 Metadata
     needs: [build-windows-x64]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      # Keep the download-artifact version, merge-multiple layout, and locate
-      # guard in sync with package-check.yml's PR-time smoke test.
-      - name: Download all artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-          # Flatten into artifacts/ (no per-artifact subdir). download-artifact
-          # changed its default nesting across majors, so don't hardcode a layout
-          # — resolve the zip's real path in the next step instead.
-          merge-multiple: true
+      - name: Download release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          mkdir -p artifacts
+          gh release download "$TAG" \
+            --pattern 'MeowWatch-windows-x64.zip' \
+            --dir artifacts
 
       - name: Locate release zip
         id: zip
@@ -167,30 +221,6 @@ jobs:
           fi
           echo "path=$ZIP" >> "$GITHUB_OUTPUT"
           echo "Resolved release zip: $ZIP"
-
-      - name: Determine prerelease
-        id: prerelease
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          if [[ "$TAG" == *"-alpha"* ]] || [[ "$TAG" == *"-beta"* ]] || [[ "$TAG" == *"-rc"* ]]; then
-            echo "is_prerelease=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_prerelease=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          draft: false
-          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
-          generate_release_notes: true
-          # Fail loudly if the asset is missing instead of publishing an empty
-          # release (a silent glob-miss once shipped an assetless release).
-          fail_on_unmatched_files: true
-          files: |
-            ${{ steps.zip.outputs.path }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ── Upload to Cloudflare R2 ──
       - name: Install rclone
