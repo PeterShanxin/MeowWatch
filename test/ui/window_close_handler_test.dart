@@ -127,12 +127,13 @@ void main() {
     expect(order, ['hide', 'leave', 'destroy', 'exit']);
   });
 
-  test('handleClose does not wait on a slow room leave', () async {
+  test('handleClose awaits the bounded room leave before destroy (#148)', () async {
     final order = <String>[];
-    final releaseHook = Completer<void>();
+    // A leave with an async gap stands in for the real one: send the leave
+    // packet, then await disconnectForAppClose()'s bounded socket flush.
     appCloseHook.value = () async {
       order.add('leave-start');
-      await releaseHook.future;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
       order.add('leave-done');
     };
     addTearDown(() => appCloseHook.value = null);
@@ -147,12 +148,12 @@ void main() {
 
     await handler.handleClose();
 
-    expect(order, ['hide', 'leave-start', 'destroy', 'exit']);
-
-    releaseHook.complete();
-    await Future<void>.delayed(Duration.zero);
-
-    expect(order, ['hide', 'leave-start', 'destroy', 'exit', 'leave-done']);
+    // The leave (including its socket flush) is awaited to completion before the
+    // window is destroyed and the process exits — otherwise a fast destroy/exit
+    // can kill the process mid-flush and peers see a dropped connection instead
+    // of the clean leave (Codex P2 on #148). Boundedness against a *wedged*
+    // leave is covered by the timeout test below.
+    expect(order, ['hide', 'leave-start', 'leave-done', 'destroy', 'exit']);
   });
 
   test('handleClose exits even when room leave never completes', () async {

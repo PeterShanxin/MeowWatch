@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.29.4-alpha] - 2026-06-19
+- Made the "I left the room" goodbye more reliable when you close the app with the X button. The previous fix sent that goodbye and gave it a brief moment to go out, but on a normal close the app didn't actually wait for that moment to finish before quitting — so it could quit mid-send and your friend would briefly see "lost connection" instead of "left the room". The window still hides instantly (so closing still feels instant), but the app now waits the short, capped moment for the goodbye to finish leaving before it shuts down. The wait is bounded with a hard-timeout backstop, so a dead network still can't make closing hang. (#148)
+
 ## [0.29.3-alpha] - 2026-06-19
 - Fixed a Windows close bug where clicking X while in a room could make the window disappear but leave MeowWatch secretly running in the background, still saving playback position and sometimes keeping audio/player resources alive. Closing now gives the room-leave message a short best-effort chance, flushes the log, tears down the window, and then exits the process explicitly so there is no hidden headless instance left behind. (#148)
 
