@@ -1498,11 +1498,12 @@ void main() {
     );
   });
 
-  test('a stalled resume is re-kicked to the peer target, not the stale position', () async {
+  test('a resume whose seek has not landed is not kicked to the stale position', () async {
     // The big resume seek is slow to land (e.g. a paused VOD): when the watchdog
-    // fires, the player is still sitting at the old position. The kick must seek
-    // to the peer's resume target, not snapshot the stale current position and
-    // yank the client back to where it was before the resume.
+    // fires, the player is still sitting below the target. Nothing is frozen to
+    // un-stick yet, and seeking to the stale current position would yank the
+    // client backwards — so the watchdog stands down and leaves the resume's own
+    // re-seek and peer heartbeats to converge to the target.
     await bridge.dispose();
     bridge = PlaybackSyncBridge(
       video: video,
@@ -1533,17 +1534,22 @@ void main() {
       ),
     );
 
-    // Let the resume path, watchdog, and kick all run (kick adds a 2nd play).
+    // No kick: the only play is the resume's own, and nothing seeks to the
+    // stale 20s position.
     await _pumpUntil(
       () => video.commands.where((c) => c == 'play').length >= 2,
-      timeout: const Duration(milliseconds: 400),
+      timeout: const Duration(milliseconds: 120),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      1,
+      reason: 'a not-yet-landed resume is left to converge, not re-kicked',
     );
     expect(
       video.commands,
       isNot(contains('seek:20000ms')),
-      reason: 'the kick must target the peer position, never the stale current one',
+      reason: 'the watchdog must never seek to the stale current position',
     );
-    expect(video.commands, contains('seek:679000ms'));
   });
 
   test('a watchdog kick does not override a newer peer pause', () async {
@@ -1666,6 +1672,68 @@ void main() {
       video.commands,
       isEmpty,
       reason: 'a local seek moved the position, so the resume is not frozen',
+    );
+  });
+
+  test('a slow seek that lands mid-window then freezes is still re-kicked', () async {
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeSeekWait: const Duration(milliseconds: 10),
+      remoteResumeAdvanceWait: const Duration(milliseconds: 60),
+    )..start();
+    // The resume seek is slow: it does not move the reported position when the
+    // watchdog is armed (the player still sits at the old spot).
+    video.emitFromSeek = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    // Let the resume path run to its play (one play so far).
+    await _pumpUntil(
+      () => video.commands.contains('play'),
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // The slow seek finally lands at the target, but the engine freezes there:
+    // playing, position == target, not advancing.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+
+    // A landed-then-frozen resume is still frozen: the watchdog must re-kick
+    // (a second play), not treat the late seek's jump as real progress.
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 300),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      greaterThanOrEqualTo(2),
+      reason: 'a seek that lands then freezes at the target is still frozen',
     );
   });
 }
