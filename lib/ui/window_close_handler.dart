@@ -135,12 +135,17 @@ class WindowCloseHandler with WindowListener {
 
     final hardExit = _armHardExit();
 
-    // Make the X-button close feel instant; the room leave remains best-effort
-    // and bounded, but it happens after the visible window is gone (#106).
+    // Make the X-button close feel instant by hiding the window first; the room
+    // leave then runs after the visible window is already gone (#106), so the
+    // user perceives an instant close regardless of how long the leave takes.
     await _bestEffortCloseStep(_hideWindow, label: 'hide-on-close');
     // Announce a deliberate leave (if in a room) before tearing the window down,
-    // so peers see "left the room" rather than "lost connection" (#92).
-    unawaited(runAppCloseHook(timeout: _closeHookTimeout));
+    // so peers see "left the room" rather than "lost connection" (#92). This is
+    // AWAITED — runAppCloseHook is self-bounded by _closeHookTimeout and the
+    // _armHardExit timer backstops a wedge, so waiting can't trap the quit, and
+    // awaiting is what lets disconnectForAppClose()'s socket flush actually
+    // complete before exit(0) instead of being killed mid-flush (#148).
+    await runAppCloseHook(timeout: _closeHookTimeout);
     // Flush the session log before the window is destroyed so this run's trace
     // (including the close itself) is on disk (#140).
     appLog('life: app closing');
