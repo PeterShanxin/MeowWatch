@@ -21,35 +21,50 @@ concurrency:
 
 jobs:
   # ── Fast gate: analyze + test (every PR / main push / tag) ─────────
-  check:
+  check-hosted:
     name: Analyze & Test
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
     # The suite is NOT cross-platform: it has Windows-path assertions
     # (test/core/video/video_url_test.dart expects a C:\... path to basename) and
     # Windows-rendered golden images (test/ui/chat/chat_overlay_golden_test.dart),
-    # so analyze+test must run on Windows — on Linux those 4 tests fail. PR /
-    # branch / main pushes use hosted `windows-2022`; TAG pushes use the
-    # self-hosted runner instead, because build-windows-x64 has `needs: [check]`
-    # and gating a tag's check on hosted-Actions availability would skip the free
-    # self-hosted Windows build whenever hosted Actions is unavailable, blocking
-    # releases. (The big minute win is the self-hosted *build*, not the check.) (#153)
-    runs-on: ${{ (startsWith(github.ref, 'refs/tags/v') && fromJSON('["self-hosted", "windows"]')) || 'windows-2022' }}
+    # so analyze+test must run on Windows — on Linux those 4 tests fail.
+    # PR / branch / main pushes use hosted `windows-2022`.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v6
 
-      # Hosted runners (PR / main / branch) download Flutter fresh. That action
-      # shells out to bash for its setup script, which on our self-hosted Windows
-      # runner resolves to wsl.exe with no distro installed and exits 1 — so on
-      # self-hosted we use the Flutter already installed via Puro instead of
-      # downloading one. Detected via runner.environment, not the runs-on label,
-      # so it stays correct if the topology changes. (#154)
+      # Hosted runners (PR / main / branch) download Flutter fresh.
       - name: Setup Flutter (hosted)
-        if: runner.environment == 'github-hosted'
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true # caches both the Flutter SDK and pub dependencies
+
+      - name: Install dependencies
+        shell: pwsh
+        run: flutter pub get
+
+      - name: Analyze
+        shell: pwsh
+        run: flutter analyze
+
+      - name: Run tests
+        shell: pwsh
+        run: flutter test
+
+  check-self-hosted:
+    name: Analyze & Test (tag)
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    # Tag pushes use the self-hosted runner so releases remain independent of
+    # hosted Windows availability. Keep this job free of hosted-only composite
+    # actions: self-hosted runners prepare composite action dependencies before
+    # skipped steps are evaluated, so a skipped hosted Flutter action can still
+    # fail a tag release during action download/setup.
+    runs-on: [self-hosted, windows]
+    steps:
+      - uses: actions/checkout@v6
+
       - name: Setup Flutter (self-hosted, pre-installed via Puro)
-        if: runner.environment == 'self-hosted'
         shell: pwsh
         run: |
           $flutterBin = Join-Path $env:USERPROFILE '.puro\envs\stable\flutter\bin'
@@ -75,8 +90,8 @@ jobs:
   # ── Build Windows x64 (tag pushes only — release builds anyway) ────
   build-windows-x64:
     name: Windows x64
-    needs: [check]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [check-hosted, check-self-hosted]
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.check-self-hosted.result == 'success' }}
     # Runs on a self-hosted Windows runner (our own PC) so the expensive 2×
     # Windows build consumes no GitHub-hosted minutes. Requires a runner
     # registered with the `self-hosted` + `windows` labels and the Visual Studio
@@ -86,20 +101,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Hosted runners (PR / main / branch) download Flutter fresh. That action
-      # shells out to bash for its setup script, which on our self-hosted Windows
-      # runner resolves to wsl.exe with no distro installed and exits 1 — so on
-      # self-hosted we use the Flutter already installed via Puro instead of
-      # downloading one. Detected via runner.environment, not the runs-on label,
-      # so it stays correct if the topology changes. (#154)
-      - name: Setup Flutter (hosted)
-        if: runner.environment == 'github-hosted'
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true # caches both the Flutter SDK and pub dependencies
       - name: Setup Flutter (self-hosted, pre-installed via Puro)
-        if: runner.environment == 'self-hosted'
         shell: pwsh
         run: |
           $flutterBin = Join-Path $env:USERPROFILE '.puro\envs\stable\flutter\bin'
