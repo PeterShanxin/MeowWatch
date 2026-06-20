@@ -2037,4 +2037,83 @@ void main() {
       reason: 'a transient seek-pause must not abort the unstick',
     );
   });
+
+  test('a persistent local pause during the kick is published to the room',
+      () async {
+    // Codex PR #157 review (comment 3445483184): a local pause landing while the
+    // kick holds `_applyingRemote` is suppressed by `_onLocalState`, and a still
+    // player may never emit another tick — so the room would keep the stale
+    // peer-driven "playing" forever. When the kick stands down on a settled
+    // pause it must publish that pause so the room follows (a beat later).
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 and parks (frozen) — the watchdog arms.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so the local pause lands while the kick holds the
+    // remote-apply guard.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    sync.localUpdates.clear();
+    sync.changes.clear();
+
+    // The user pauses; the tick is suppressed in the moment (`_applyingRemote`).
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      sync.localUpdates,
+      isEmpty,
+      reason: 'the pause is suppressed while the kick holds the apply guard',
+    );
+
+    // Release the kick; it settles, finds a persistent pause, stands down — and
+    // must publish that pause so the room does not keep the stale "playing".
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => sync.localUpdates.any((u) => u.paused),
+      timeout: const Duration(milliseconds: 200),
+    );
+    expect(
+      sync.localUpdates.any((u) => u.paused),
+      isTrue,
+      reason: 'a stood-down kick must publish the local pause to the room',
+    );
+  });
 }

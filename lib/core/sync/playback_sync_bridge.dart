@@ -502,12 +502,21 @@ class PlaybackSyncBridge {
       // to `playing`; a genuine user/peer pause persists.
       await _waitForPlaying();
       if (_disposed || seq != _peerStateSeq) return;
-      // A settled not-`playing` is a real pause: stand the kick down and leave it
-      // to the normal heartbeat to broadcast, so the room follows a beat later (a
-      // player that is not playing is not a frozen resume to un-stick). Only a
-      // settled `playing` is the freeze we re-assert play on. (A disposed bridge's
-      // pooled player may already be serving the lobby/next room — guarded above.)
-      if (video.state.status != PlaybackStatus.playing) return;
+      // A settled not-`playing` is a real pause: stand the kick down (a player
+      // that is not playing is not a frozen resume to un-stick). Only a settled
+      // `playing` is the freeze we re-assert play on. (A disposed bridge's pooled
+      // player may already be serving the lobby/next room — guarded above.)
+      if (video.state.status != PlaybackStatus.playing) {
+        // The local pause that stood us down arrived while `_applyingRemote` held,
+        // so `_onLocalState` suppressed it; a still player may never re-emit it,
+        // leaving the room on the stale peer-driven "playing". Publish it here so
+        // the room actually follows the pause (a beat later) instead of fighting
+        // a position the user has left.
+        final s = video.state;
+        sync.updateLocalState(position: s.position, paused: true);
+        sync.notifyLocalChange(doSeek: false);
+        return;
+      }
       await _waitForCommand(video.play());
     } finally {
       _applyingRemote = false;
