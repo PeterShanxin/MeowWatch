@@ -535,6 +535,20 @@ class PlaybackSyncBridge {
       // missed entirely). The kick tells a never-started resume (force seek+play)
       // apart from a frozen-clock/user-pause one (settle) via [_resumePlaybackSeen].
       if (atTarget) {
+        // Exhausted the bounded force-kicks and the engine STILL has not started —
+        // and this check is a full advance window after the last play, so a late
+        // recovery would already have shown as advancement above. Only now stand
+        // down to a truthful paused state so the room stops chasing a frozen
+        // "playing" (Codex 3447272582).
+        if (!_resumePlaybackSeen && _kicksLeft <= 0) {
+          _resumeWatchActive = false;
+          sync.updateLocalState(
+            position: s.position,
+            paused: s.status != PlaybackStatus.playing,
+          );
+          sync.notifyLocalChange(doSeek: false);
+          return;
+        }
         unawaited(_kickStalledResume(target, seq));
         return;
       }
@@ -583,17 +597,12 @@ class PlaybackSyncBridge {
         await _waitForCommand(video.play());
         if (_disposed || seq != _peerStateSeq) return;
         _kicksLeft -= 1;
-        if (_kicksLeft > 0) {
-          _watchResumeAdvances(target, seq);
-        } else {
-          _resumeWatchActive = false;
-          final s = video.state;
-          sync.updateLocalState(
-            position: s.position,
-            paused: s.status != PlaybackStatus.playing,
-          );
-          sync.notifyLocalChange(doSeek: false);
-        }
+        // Always re-arm — even after the LAST attempt — so the play has a full
+        // advance window to prove it worked before we ever stand down. The next
+        // watchdog check publishes the paused fallback only if it STILL sees no
+        // advancement (Codex 3447272582); a recovery that starts late shows up as
+        // advancement there and is left to normal sync.
+        _watchResumeAdvances(target, seq);
         return;
       }
 
