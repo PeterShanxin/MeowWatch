@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/audio/notify_sounds.dart';
+import '../../core/data/history_mode.dart';
 import '../../core/debug/log_level.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/tokens/icon_sizes.dart';
@@ -18,6 +19,8 @@ import '../../core/theme/tokens/type_scale.dart';
 /// tests stay stable; only one `SettingsPanel` is ever mounted at a time.
 class SettingsPanel extends StatelessWidget {
   const SettingsPanel({
+    required this.historyMode,
+    required this.onHistoryModeChanged,
     required this.primarySoundId,
     required this.onPrimarySoundChanged,
     required this.secondarySoundId,
@@ -29,6 +32,8 @@ class SettingsPanel extends StatelessWidget {
     super.key,
   });
 
+  final HistoryMode historyMode;
+  final ValueChanged<HistoryMode> onHistoryModeChanged;
   final String primarySoundId;
   final ValueChanged<String> onPrimarySoundChanged;
   final String secondarySoundId;
@@ -45,6 +50,11 @@ class SettingsPanel extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        HistoryModeControl(
+          value: historyMode,
+          onChanged: onHistoryModeChanged,
+        ),
+        Divider(color: m.border, height: Spacing.lg),
         SoundPickerRow(
           key: const Key('primary-sound-picker'),
           title: 'Notification sound',
@@ -156,6 +166,64 @@ class SoundPickerRow extends StatelessWidget {
               color: m.accent,
             ),
             onPressed: () => onPreview(current.asset),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Two-way continue-watching mode picker (Latest per room / Every video) shown
+/// as a labelled segmented row, matching [LogLevelControl]. Picking a segment
+/// fires [onChanged]. Public so it can be unit-tested directly.
+class HistoryModeControl extends StatelessWidget {
+  const HistoryModeControl({
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
+
+  final HistoryMode value;
+  final ValueChanged<HistoryMode> onChanged;
+
+  static const Map<HistoryMode, String> _labels = <HistoryMode, String>{
+    HistoryMode.latestPerRoom: 'Latest per room',
+    HistoryMode.everyVideo: 'Every video',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.sm,
+        vertical: Spacing.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Continue watching',
+            style: TextStyle(color: m.textDim, fontSize: TypeScale.body),
+          ),
+          const SizedBox(height: Spacing.sm),
+          Row(
+            children: [
+              for (final mode in HistoryMode.values)
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: mode == HistoryMode.everyVideo ? 0 : Spacing.xs,
+                    ),
+                    child: _LogLevelSegment(
+                      key: Key('history-mode-${mode.storageName}'),
+                      text: _labels[mode]!,
+                      selected: mode == value,
+                      onTap: () => onChanged(mode),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ],
       ),
