@@ -1878,17 +1878,19 @@ void main() {
     );
   });
 
-  test('a local pause during the in-flight kick seek is respected', () async {
+  test('a persistent local pause during the kick stands it down', () async {
     // Codex PR #157 review (comment 3445411229): if the user pauses while the
-    // kick's seek is still awaiting, `_peerStateSeq` is unchanged (it only
-    // tracks PEER states), so the seq guard alone would let the kick play over
-    // the user's pause. The kick must re-read the live player intent — a player
-    // no longer `playing` is not a frozen resume to un-stick — before playing.
+    // kick's seek is still awaiting, `_peerStateSeq` is unchanged (it only tracks
+    // PEER states), so the seq guard alone would let the kick play over the
+    // user's pause. The kick settles, then stands down on a pause that PERSISTS:
+    // a player no longer `playing` is not a frozen resume to un-stick. (A
+    // transient seek-pause that clears is handled by the sibling test below.)
     await bridge.dispose();
     bridge = PlaybackSyncBridge(
       video: video,
       sync: sync,
       remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
     )..start();
     video.push(
       const PlaybackState(
@@ -1948,6 +1950,91 @@ void main() {
       video.state.status,
       PlaybackStatus.paused,
       reason: 'the user-requested pause must stand',
+    );
+  });
+
+  test('a transient pause from the kick own seek is not mistaken for a user '
+      'pause', () async {
+    // Codex PR #157 review (comment 3445431801): the kick's own seek landing can
+    // briefly report `paused` (backend fallout) even though no user paused.
+    // Reading status in that instant would abort the unstick and leave the
+    // resume frozen — the original bug. The kick must wait for the truth to
+    // settle: a transient pause clears back to playing, so the unstick proceeds.
+    // (A pause that PERSISTS is the user's — see the sibling test above.)
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 and parks there (frozen) — the watchdog will fire.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so we can stage the transient pause around it.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // The seek landing transiently reports paused — backend fallout, NOT a user
+    // action (it does not bump `_peerStateSeq` and it does not persist).
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Release the kick; it enters the settle wait with status momentarily paused.
+    video.seekGate!.complete();
+    await Future<void>.delayed(Duration.zero);
+
+    // The transient clears: the engine reports playing again within the settle.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+
+    // The unstick must still happen — a transient seek-pause is not a user pause.
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      2,
+      reason: 'a transient seek-pause must not abort the unstick',
     );
   });
 }

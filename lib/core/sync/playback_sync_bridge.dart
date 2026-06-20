@@ -366,6 +366,32 @@ class PlaybackSyncBridge {
     return completer.future;
   }
 
+  /// Wait until the player reports `playing` again, up to [remoteResumeSeekWait].
+  /// The stalled-resume kick's own seek can briefly report `paused` as backend
+  /// fallout; only a pause that PERSISTS past this settle is a real user/peer
+  /// stand-down. Returns the moment `playing` is observed, or after the window.
+  Future<void> _waitForPlaying() async {
+    if (video.state.status == PlaybackStatus.playing) return;
+
+    final completer = Completer<void>();
+    late final StreamSubscription<PlaybackState> sub;
+    Timer? timer;
+
+    void complete() {
+      if (completer.isCompleted) return;
+      timer?.cancel();
+      unawaited(sub.cancel());
+      completer.complete();
+    }
+
+    sub = video.stateStream.listen((state) {
+      if (state.status == PlaybackStatus.playing) complete();
+    });
+    timer = Timer(remoteResumeSeekWait, complete);
+
+    return completer.future;
+  }
+
   void _cancelResumeSeek() {
     _resumeSeekTimer?.cancel();
     _resumeSeekTimer = null;
@@ -469,19 +495,19 @@ class PlaybackSyncBridge {
       // after a newer peer state: one that lands while this seek is in flight
       // issues its own later seek (which wins) and bumps `_peerStateSeq`.
       await _waitForCommand(video.seek(target));
-      // If the bridge was disposed, a newer peer state landed, or the player is
-      // no longer `playing` while that seek was in flight, this kick is stale —
-      // do not play over it. The status check is what respects a LOCAL action: a
-      // user pause/seek during the kick does not bump `_peerStateSeq` (that
-      // tracks peer states only), but it does leave the live player not-playing,
-      // and a player that is not playing is not a frozen resume to un-stick. (A
-      // disposed bridge's pooled player may already be serving the lobby/next
-      // room.)
-      if (_disposed ||
-          seq != _peerStateSeq ||
-          video.state.status != PlaybackStatus.playing) {
-        return;
-      }
+      if (_disposed || seq != _peerStateSeq) return;
+      // Don't judge intent in the instant after our own seek: that seek can
+      // transiently report `paused` (backend fallout), which must not be mistaken
+      // for a real pause. Wait for the truth to settle — a transient clears back
+      // to `playing`; a genuine user/peer pause persists.
+      await _waitForPlaying();
+      if (_disposed || seq != _peerStateSeq) return;
+      // A settled not-`playing` is a real pause: stand the kick down and leave it
+      // to the normal heartbeat to broadcast, so the room follows a beat later (a
+      // player that is not playing is not a frozen resume to un-stick). Only a
+      // settled `playing` is the freeze we re-assert play on. (A disposed bridge's
+      // pooled player may already be serving the lobby/next room — guarded above.)
+      if (video.state.status != PlaybackStatus.playing) return;
       await _waitForCommand(video.play());
     } finally {
       _applyingRemote = false;
