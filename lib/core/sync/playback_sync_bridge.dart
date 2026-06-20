@@ -72,6 +72,10 @@ class PlaybackSyncBridge {
 
   bool _applyingRemote = false;
   bool _drainingPeerStates = false;
+  // Set once [dispose] runs. An in-flight stalled-resume kick whose seek is
+  // still awaiting must not seek/play afterwards: the bridge is gone and its
+  // pooled VideoCore may already be driving the lobby or the next room.
+  bool _disposed = false;
   // Bumped each time a peer state is applied. A stalled-resume kick captures the
   // sequence of the resume that spawned it and bails before it would override a
   // newer peer state that landed while its seek was still in flight.
@@ -425,9 +429,10 @@ class PlaybackSyncBridge {
     _cancelAdvanceWatch();
     _advanceWatchTimer = Timer(remoteResumeAdvanceWait, () {
       _advanceWatchTimer = null;
-      // A newer peer state has been applied since this resume — it owns the
-      // current intent, so this watchdog is stale.
-      if (seq != _peerStateSeq) return;
+      // The bridge was torn down (the cancel raced the timer firing), or a newer
+      // peer state has been applied since this resume and owns the current
+      // intent — either way this watchdog is stale.
+      if (_disposed || seq != _peerStateSeq) return;
       final s = video.state;
       // A durationless live/direct stream intentionally holds its reported
       // position (position_guard rejects positive positions without a
@@ -451,6 +456,7 @@ class PlaybackSyncBridge {
   /// workaround), so the fresh play takes. Runs inside the remote-apply guard so
   /// the kick is never echoed back to the room as a local change.
   Future<void> _kickStalledResume(Duration target, int seq) async {
+    if (_disposed) return;
     _applyingRemote = true;
     _remoteApplyUntil = DateTime.now().add(remoteApplyWindow);
     try {
@@ -458,9 +464,10 @@ class PlaybackSyncBridge {
       // original seek has not landed yet, the player is still sitting at the
       // pre-resume spot, and snapshotting that would yank the client backwards.
       await _waitForCommand(video.seek(target));
-      // The seek above can await; if a newer peer state landed meanwhile, this
-      // kick is stale — do not play over it.
-      if (seq != _peerStateSeq) return;
+      // The seek above can await; if the bridge was disposed or a newer peer
+      // state landed meanwhile, this kick is stale — do not play over it (a
+      // disposed bridge's player may already be serving the lobby/next room).
+      if (_disposed || seq != _peerStateSeq) return;
       await _waitForCommand(video.play());
     } finally {
       _applyingRemote = false;
@@ -528,6 +535,7 @@ class PlaybackSyncBridge {
   }
 
   Future<void> dispose() async {
+    _disposed = true;
     _cancelAdvanceWatch();
     _resumeSeekTimer?.cancel();
     await _resumeSeekSub?.cancel();

@@ -1736,4 +1736,62 @@ void main() {
       reason: 'a seek that lands then freezes at the target is still frozen',
     );
   });
+
+  test('a watchdog kick aborts when the bridge is disposed mid-seek', () async {
+    // The user leaves the room after the watchdog fires but while the kick's
+    // seek is still in flight. The bridge is disposed and its VideoCore returns
+    // to the pool; the stale kick must not seek/play that shared player in the
+    // lobby or the next room.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 and parks there — the watchdog will fire.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(video.commands, <String>['seek:679000ms', 'play']);
+
+    // Gate the kick's seek so we can dispose while it is in flight.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // The bridge is disposed while the kick waits on its seek.
+    await bridge.dispose();
+
+    // Release the kick; it must abort rather than play the disposed/pooled player.
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 120),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      1,
+      reason: 'a kick must not play after the bridge is disposed',
+    );
+  });
 }
