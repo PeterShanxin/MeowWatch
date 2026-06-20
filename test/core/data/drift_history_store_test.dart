@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/data/app_database.dart';
 import 'package:meowwatch/core/data/drift_stores.dart';
+import 'package:meowwatch/core/data/history_mode.dart';
 
 void main() {
   late AppDatabase db;
@@ -107,5 +108,39 @@ void main() {
     await store.clearAll();
 
     expect(await store.watchRecent().first, isEmpty);
+  });
+
+  test('latestPerRoom hides older same-room entries but keeps the rows',
+      () async {
+    await store.recordOpen(
+        filePath: 'a', fileName: 'a', fileSizeBytes: 1, room: 'cozy');
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    await store.recordOpen(
+        filePath: 'b', fileName: 'b', fileSizeBytes: 1, room: 'cozy');
+
+    final collapsed =
+        await store.watchRecent(mode: HistoryMode.latestPerRoom).first;
+    expect(collapsed.map((e) => e.fileName).toList(), ['b']);
+
+    // Hide-not-delete: everyVideo still sees both rows (nothing was removed).
+    final all = await store.watchRecent(mode: HistoryMode.everyVideo).first;
+    expect(all.map((e) => e.fileName).toList(), ['b', 'a']);
+  });
+
+  test('latestPerRoom keeps room-less entries and fills limit after collapse',
+      () async {
+    // cozy x2 (collapses to 1) + two solo files → limit:2 should yield 2 rows.
+    await store.recordOpen(
+        filePath: 'a', fileName: 'a', fileSizeBytes: 1, room: 'cozy');
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    await store.recordOpen(filePath: 'b', fileName: 'b', fileSizeBytes: 1);
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    await store.recordOpen(
+        filePath: 'c', fileName: 'c', fileSizeBytes: 1, room: 'cozy');
+
+    final list =
+        await store.watchRecent(limit: 2, mode: HistoryMode.latestPerRoom).first;
+    // newest-first c(cozy), b(solo), a(cozy→hidden) → collapse → [c, b] → take 2.
+    expect(list.map((e) => e.fileName).toList(), ['c', 'b']);
   });
 }

@@ -1,7 +1,9 @@
 import 'package:drift/drift.dart';
 
 import 'app_database.dart';
+import 'history_collapse.dart';
 import 'history_entry.dart';
+import 'history_mode.dart';
 import 'saved_profile.dart';
 import 'settings_store.dart';
 import 'stores.dart';
@@ -81,16 +83,28 @@ class DriftHistoryStore implements HistoryStore {
   final AppDatabase _db;
 
   @override
-  Stream<List<HistoryEntry>> watchRecent({int limit = 6}) {
+  Stream<List<HistoryEntry>> watchRecent({
+    int limit = 6,
+    HistoryMode mode = HistoryMode.everyVideo,
+  }) {
     // playedAt ties at whole-second resolution; id desc is the stable
     // tie-break so the newest write wins.
     final query = _db.select(_db.historyEntries)
       ..orderBy([
         (t) => OrderingTerm(expression: t.playedAt, mode: OrderingMode.desc),
         (t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc),
-      ])
-      ..limit(limit);
-    return query.watch().map((rows) => rows.map(_toModel).toList());
+      ]);
+    if (mode == HistoryMode.everyVideo) {
+      query.limit(limit);
+      return query.watch().map((rows) => rows.map(_toModel).toList());
+    }
+    // latestPerRoom: collapse the full ordered set first, THEN take `limit` —
+    // a limit-then-collapse could under-fill when one room has many entries.
+    return query.watch().map(
+          (rows) => collapseHistory(rows.map(_toModel).toList(), mode)
+              .take(limit)
+              .toList(),
+        );
   }
 
   @override

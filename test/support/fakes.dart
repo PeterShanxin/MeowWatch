@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:meowwatch/core/data/history_entry.dart';
+import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
 import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
@@ -36,7 +37,10 @@ class FakeHistoryStore implements HistoryStore {
   void _emit() => _ctrl.add(List.unmodifiable(recent));
 
   @override
-  Stream<List<HistoryEntry>> watchRecent({int limit = 6}) async* {
+  Stream<List<HistoryEntry>> watchRecent({
+    int limit = 6,
+    HistoryMode mode = HistoryMode.everyVideo,
+  }) async* {
     yield List.unmodifiable(recent);
     yield* _ctrl.stream;
   }
