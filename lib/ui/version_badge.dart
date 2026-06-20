@@ -6,6 +6,7 @@ import '../core/theme/tokens/icon_sizes.dart';
 import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
+import '../core/update/update_availability.dart';
 import '../core/update/update_service.dart';
 import 'gallery/design_gallery.dart';
 import 'update_dialog.dart';
@@ -34,6 +35,7 @@ class VersionBadge extends StatefulWidget {
     _VersionBadgeState._checkedThisSession = false;
     _VersionBadgeState._checkInFlight = false;
     _VersionBadgeState._hasUpdate = false;
+    updateAvailable.value = false;
   }
 
   @override
@@ -69,6 +71,7 @@ class _VersionBadgeState extends State<VersionBadge> {
         // Record the fact unconditionally — even if we've already unmounted,
         // a later badge mount must still show the dot this session.
         _hasUpdate = true;
+        updateAvailable.value = true;
         if (mounted) {
           setState(() {});
           _showUpdateToast();

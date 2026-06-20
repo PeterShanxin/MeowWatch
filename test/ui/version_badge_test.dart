@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:meowwatch/core/app_version.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
+import 'package:meowwatch/core/update/update_availability.dart';
 import 'package:meowwatch/core/update/update_service.dart';
 import 'package:meowwatch/ui/gallery/design_gallery.dart';
 import 'package:meowwatch/ui/version_badge.dart';
@@ -118,6 +119,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.byType(DesignGallery), findsOneWidget);
+  });
+
+  testWidgets('silent check sets the shared updateAvailable notifier',
+      (tester) async {
+    expect(updateAvailable.value, isFalse);
+    await tester.pumpWidget(host(factoryFor(clientReporting('99.0.0'))));
+    await tester.pumpAndSettle();
+    expect(updateAvailable.value, isTrue);
   });
 
   testWidgets('records the update even if the badge unmounts mid-check',
