@@ -457,8 +457,16 @@ class PlaybackSyncBridge {
 
   /// How many times a never-started resume (the dropped-play freeze) is force
   /// re-kicked with a fresh seek+play before standing down to a truthful paused
-  /// state. Bounds recovery so a genuinely dead engine cannot loop forever.
-  static const int _maxKicks = 3;
+  /// state. Kept small on purpose: a genuine dropped play recovers on the FIRST
+  /// nudge (this is the engine equivalent of the user's pause-wait-resume
+  /// workaround, which takes in one go once the rapid churn has settled), so two
+  /// attempts is ample for recovery. The cap also bounds the one case the
+  /// paused-at-target shape cannot tell apart from a dropped play — a user who
+  /// pauses within `remoteSeekThreshold` of a peer resume, before the clock
+  /// advances (the same sub-threshold ambiguity tracked in #161). There the force
+  /// re-kick briefly fights the real pause; a small cap keeps that to ~one short
+  /// window before the watchdog stands down and lets the pause propagate.
+  static const int _maxKicks = 2;
 
   /// Arm the stalled-resume watchdog after applying a remote resume. A fast
   /// pause→seek→resume (three peer states inside one handshake) can leave the
