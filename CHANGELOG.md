@@ -5,6 +5,16 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.32.0-alpha] - 2026-06-20
+
+### Added
+- Continue watching now keeps only the latest video per room by default, with a
+  Settings toggle ("Latest per room" / "Every video") in both the lobby and the
+  in-room gear. Older same-room entries are hidden, not deleted — flip the toggle
+  to bring them all back. (#136)
+- The in-room gear now has a version/updates footer (check version, see what's
+  new, update) — the same as the connect-screen version badge.
+
 ## [0.31.1-alpha] - 2026-06-20
 - Fixed a sync hiccup where pausing and then resuming too quickly could leave your friend's side stuck: their video froze on a single frame while the app reported it as playing, and your side kept rewinding over and over trying to catch up to the frozen spot. MeowWatch now watches whether a resume actually starts moving — if it stalls it quietly nudges the player (re-seek and play) to get it going again, and if you genuinely paused in that moment it tells your friend so they follow your pause instead of fighting it. It's the automatic version of the pause-wait-a-moment-then-resume trick that used to fix it by hand.
 
