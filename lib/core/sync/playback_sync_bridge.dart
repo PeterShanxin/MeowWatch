@@ -434,6 +434,12 @@ class PlaybackSyncBridge {
     _advanceWatchTimer = null;
   }
 
+  /// How many [remoteResumeAdvanceWait] windows the stalled-resume watch re-arms
+  /// across while the resume seek has not landed. Bounds the watch so a seek that
+  /// never lands cannot keep it alive forever, while giving a slow-but-real seek
+  /// several windows to arrive and reveal a freeze.
+  static const int _maxAdvanceChecks = 4;
+
   /// Arm the stalled-resume watchdog after applying a remote resume. A fast
   /// pause→seek→resume (three peer states inside one handshake) can leave the
   /// reused media_kit/mpv engine reporting `playing` while its clock is frozen
@@ -451,13 +457,28 @@ class PlaybackSyncBridge {
   /// re-assert that cannot stomp a position). Durationless live streams (whose
   /// position is intentionally pinned) and resumes superseded by a newer peer
   /// state are skipped.
+  ///
+  /// The check re-arms while the seek is still below the target, so a slow seek
+  /// that lands *after* the first window — then freezes on it — is still caught
+  /// instead of being missed once and forgotten (Codex PR #157, comment
+  /// 3445494454). SyncplayClient has already adopted the peer position, so steady
+  /// heartbeats need not emit another resume to re-arm us; the watch must outlast
+  /// the landing on its own. The re-arm is bounded so a never-landing seek (left
+  /// to the resume path's own re-seek and the next peer state) cannot spin
+  /// forever.
   void _watchResumeAdvances(Duration target, int seq) {
     _cancelAdvanceWatch();
+    _scheduleAdvanceCheck(target, seq, _maxAdvanceChecks);
+  }
+
+  /// One [remoteResumeAdvanceWait] tick of the stalled-resume watch; re-arms
+  /// itself (bounded by [checksLeft]) while the resume seek has not landed yet.
+  void _scheduleAdvanceCheck(Duration target, int seq, int checksLeft) {
     _advanceWatchTimer = Timer(remoteResumeAdvanceWait, () {
       _advanceWatchTimer = null;
       // The bridge was torn down (the cancel raced the timer firing), or a newer
       // peer state has been applied since this resume and owns the current
-      // intent — either way this watchdog is stale.
+      // intent — either way this watch is stale.
       if (_disposed || seq != _peerStateSeq) return;
       final s = video.state;
       // A durationless live/direct stream intentionally holds its reported
@@ -466,12 +487,24 @@ class PlaybackSyncBridge {
       // resume. Re-issuing seek(0)+play on a live URL can jump or stall it, so
       // only the stalled-resume kick applies to sources with a real duration.
       if (s.duration <= Duration.zero) return;
-      // Still sitting on the resume target while "playing" is the freeze. A
-      // healthy advance has moved past it; a local seek has moved away from it;
-      // a not-yet-landed seek sits below it — none of those are re-kicked.
-      final atTarget = (s.position - target).abs() <= remoteSeekThreshold;
+      final delta = s.position - target;
+      final atTarget = delta.abs() <= remoteSeekThreshold;
+      // Still sitting on the resume target while "playing" is the freeze: a full
+      // advance window has passed and the clock has not moved off the seek frame.
       if (s.status == PlaybackStatus.playing && atTarget) {
         unawaited(_kickStalledResume(target, seq));
+        return;
+      }
+      // Still parked BELOW the target while playing: the resume seek has not
+      // landed yet, so we cannot tell a frozen resume from a slow-but-healthy
+      // one — keep watching for it to land. A healthy advance past the target, a
+      // local pause, or a seek away from it are all NOT frozen, so stop. (A real
+      // local action here is published by `_onLocalState` normally; this watch
+      // holds no apply guard.)
+      if (s.status == PlaybackStatus.playing &&
+          delta < Duration.zero &&
+          checksLeft > 1) {
+        _scheduleAdvanceCheck(target, seq, checksLeft - 1);
       }
     });
   }
@@ -502,19 +535,27 @@ class PlaybackSyncBridge {
       // to `playing`; a genuine user/peer pause persists.
       await _waitForPlaying();
       if (_disposed || seq != _peerStateSeq) return;
-      // A settled not-`playing` is a real pause: stand the kick down (a player
-      // that is not playing is not a frozen resume to un-stick). Only a settled
-      // `playing` is the freeze we re-assert play on. (A disposed bridge's pooled
-      // player may already be serving the lobby/next room — guarded above.)
-      if (video.state.status != PlaybackStatus.playing) {
-        // The local pause that stood us down arrived while `_applyingRemote` held,
-        // so `_onLocalState` suppressed it; a still player may never re-emit it,
-        // leaving the room on the stale peer-driven "playing". Publish it here so
-        // the room actually follows the pause (a beat later) instead of fighting
-        // a position the user has left.
-        final s = video.state;
-        sync.updateLocalState(position: s.position, paused: true);
-        sync.notifyLocalChange(doSeek: false);
+      // Only one settled shape is the freeze we re-assert play on: still `playing`
+      // AND still parked on the resume target. Anything else means the truth
+      // settled to a real local action the user took during the kick — a pause, or
+      // a seek away from the target — which `_onLocalState` SUPPRESSED because the
+      // kick holds `_applyingRemote`. A still player may never re-emit it, so the
+      // room would otherwise keep the stale peer-driven "playing"/position. Stand
+      // down and publish the settled local state so the room follows it (a beat
+      // later) instead of fighting a state the user has left — the minimal unstick
+      // hands back to normal sync. (A disposed/superseded kick already returned.)
+      final s = video.state;
+      final atTarget = (s.position - target).abs() <= remoteSeekThreshold;
+      final frozenAtTarget = s.status == PlaybackStatus.playing && atTarget;
+      if (!frozenAtTarget) {
+        sync.updateLocalState(
+          position: s.position,
+          paused: s.status != PlaybackStatus.playing,
+        );
+        // A position that moved off the target is a user seek — peers only follow
+        // a backward jump via the explicit doSeek path. A pure pause still parked
+        // on the target is a non-seek play/pause flip.
+        sync.notifyLocalChange(doSeek: !atTarget);
         return;
       }
       await _waitForCommand(video.play());

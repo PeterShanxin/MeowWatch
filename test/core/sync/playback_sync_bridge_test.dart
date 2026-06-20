@@ -2116,4 +2116,171 @@ void main() {
       reason: 'a stood-down kick must publish the local pause to the room',
     );
   });
+
+  test('a backward local seek during the kick is published to the room',
+      () async {
+    // Codex PR #157 review (comment 3445494456): a local action during the kick
+    // is suppressed by `_onLocalState` (the kick holds `_applyingRemote`). Round 8
+    // fixed this for a pause; a backward SEEK while still `playing` was still lost
+    // — the settle guard only stood down on `status != playing`, so a playing seek
+    // fell through to `play()`, which re-asserted the target AND never told the
+    // room. The kick must stand down on ANY settled divergence from the target and
+    // publish the true state, sending the seek via `doSeek` so the peer follows.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 and parks (frozen) — the watchdog arms.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so the user's backward seek lands while the kick holds
+    // the remote-apply guard.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    sync.localUpdates.clear();
+    sync.changes.clear();
+
+    // The user scrubs backward to 100s, still playing. Suppressed in the moment
+    // (`_applyingRemote` held by the kick).
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 100),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      sync.localUpdates,
+      isEmpty,
+      reason: 'the seek is suppressed while the kick holds the apply guard',
+    );
+
+    // Release the kick; it settles, sees the position moved off the target,
+    // stands down, and publishes the seek so the room follows.
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => sync.localUpdates.isNotEmpty,
+      timeout: const Duration(milliseconds: 200),
+    );
+    expect(
+      sync.localUpdates.any(
+        (u) => u.position == const Duration(seconds: 100) && !u.paused,
+      ),
+      isTrue,
+      reason: 'a stood-down kick must publish the settled local seek to the room',
+    );
+    expect(
+      sync.changes,
+      contains(true),
+      reason: 'the backward seek is published as a seek (doSeek: true)',
+    );
+    expect(
+      video.state.position,
+      const Duration(seconds: 100),
+      reason: 'the kick must not yank the player back to the resume target',
+    );
+  });
+
+  test('a resume whose seek lands after the advance window then freezes is '
+      'still re-kicked', () async {
+    // Codex PR #157 review (comment 3445494454): the freeze check fired once at a
+    // fixed delay and returned if the seek was still below the target. A slow seek
+    // that lands AFTER that single check — then freezes at the target — was never
+    // re-examined, and SyncplayClient has already adopted the peer position, so
+    // steady heartbeats need not emit another resume to apply. The watch must keep
+    // looking until the resume advances, proves frozen, or is superseded.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeSeekWait: const Duration(milliseconds: 5),
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    // The resume seek does not move the reported position (emitFromSeek=false),
+    // so the first advance check sees the player still parked BELOW the target.
+    video.emitFromSeek = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    // Let the resume path issue its seek + play (one play so far).
+    await _pumpUntil(
+      () => video.commands.contains('play'),
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // Outlast the first advance window WITHOUT the seek having landed (still 20s).
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    // The slow seek finally lands at the target and the engine freezes there:
+    // playing, position == target, not advancing.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+
+    // A one-shot check (fired and gave up while below the target) misses this; a
+    // persistent watch catches the late freeze and re-kicks (a second play).
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 400),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      greaterThanOrEqualTo(2),
+      reason: 'a seek that lands after the first check then freezes must still '
+          'be re-kicked',
+    );
+  });
 }
