@@ -11,6 +11,7 @@ import '../../core/connect/room_code.dart';
 import '../../core/connect/room_config.dart';
 import '../../core/connect/room_share.dart';
 import '../../core/data/history_entry.dart';
+import '../../core/data/history_mode.dart';
 import '../../core/data/saved_profile.dart';
 import '../../core/data/settings_store.dart';
 import '../../core/data/stores.dart';
@@ -73,6 +74,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   String _primarySoundId = kDefaultPrimarySoundId;
   String _secondarySoundId = kDefaultSecondarySoundId;
   LogLevel _logLevel = LogLevel.verbose;
+  HistoryMode _historyMode = HistoryMode.latestPerRoom;
 
   // Created lazily on the first sound preview so headless tests (and the common
   // case of never previewing) don't spin up a media player needlessly.
@@ -164,11 +166,15 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final level = logLevelFromName(
       await widget.settings.get(kLogLevelSettingKey),
     );
+    final historyMode = historyModeFromName(
+      await widget.settings.get(kHistoryModeSettingKey),
+    );
     if (!mounted) return;
     setState(() {
       _primarySoundId = resolvePrimary(primary).id;
       _secondarySoundId = resolveSecondary(secondary).id;
       _logLevel = level;
+      _historyMode = historyMode;
     });
   }
 
@@ -191,6 +197,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
     setState(() => _logLevel = level);
     appLogInstance?.level = level;
     _persistSetting(kLogLevelSettingKey, level.storageName);
+  }
+
+  void _setHistoryMode(HistoryMode mode) {
+    appLog('settings: history mode=${mode.storageName}');
+    setState(() => _historyMode = mode);
+    _persistSetting(kHistoryModeSettingKey, mode.storageName);
   }
 
   /// Queue a settings write, chaining it onto [_settingsWrites] so [_connect]
@@ -542,6 +554,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
             top: Spacing.md,
             right: Spacing.md,
             child: LobbySettingsButton(
+              historyMode: _historyMode,
+              onHistoryModeChanged: _setHistoryMode,
               currentTheme: widget.currentTheme,
               onThemeChanged: (theme) {
                 appLog('settings: theme=${theme.name}');
@@ -655,6 +669,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       ],
       _ContinueWatching(
         history: widget.history,
+        mode: _historyMode,
         currentUsername: _typedUsername,
         onResume: (entry, {usernameOverride}) => _resumeHistory(
           entry,
@@ -855,11 +870,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
 class _ContinueWatching extends StatelessWidget {
   const _ContinueWatching({
     required this.history,
+    required this.mode,
     required this.currentUsername,
     required this.onResume,
   });
 
   final HistoryStore history;
+  final HistoryMode mode;
   final String currentUsername;
   final void Function(HistoryEntry entry, {String? usernameOverride}) onResume;
 
@@ -867,7 +884,7 @@ class _ContinueWatching extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = context.meow;
     return StreamBuilder<List<HistoryEntry>>(
-      stream: history.watchRecent(),
+      stream: history.watchRecent(mode: mode),
       initialData: const [],
       builder: (context, snap) {
         final recent = snap.data ?? const [];

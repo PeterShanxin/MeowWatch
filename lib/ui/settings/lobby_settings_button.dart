@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/data/history_mode.dart';
 import '../../core/debug/log_level.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_theme.dart';
@@ -20,6 +21,8 @@ import 'settings_panel.dart';
 /// in-room gear.
 class LobbySettingsButton extends StatefulWidget {
   const LobbySettingsButton({
+    required this.historyMode,
+    required this.onHistoryModeChanged,
     required this.currentTheme,
     required this.onThemeChanged,
     required this.primarySoundId,
@@ -33,6 +36,8 @@ class LobbySettingsButton extends StatefulWidget {
     super.key,
   });
 
+  final HistoryMode historyMode;
+  final ValueChanged<HistoryMode> onHistoryModeChanged;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
   final String primarySoundId;
@@ -143,6 +148,8 @@ class _LobbySettingsButtonState extends State<LobbySettingsButton> {
               const SizedBox(height: Spacing.sm),
               Divider(color: m.border, height: Spacing.lg),
               SettingsPanel(
+                historyMode: widget.historyMode,
+                onHistoryModeChanged: widget.onHistoryModeChanged,
                 primarySoundId: widget.primarySoundId,
                 onPrimarySoundChanged: widget.onPrimarySoundChanged,
                 secondarySoundId: widget.secondarySoundId,
