@@ -34,7 +34,6 @@ class VersionBadge extends StatefulWidget {
   static void resetForTest() {
     _VersionBadgeState._checkedThisSession = false;
     _VersionBadgeState._checkInFlight = false;
-    _VersionBadgeState._hasUpdate = false;
     updateAvailable.value = false;
   }
 
@@ -47,7 +46,6 @@ class _VersionBadgeState extends State<VersionBadge> {
   // on the connect screen, which is torn down when the user joins a room).
   static bool _checkedThisSession = false;
   static bool _checkInFlight = false;
-  static bool _hasUpdate = false;
 
   @override
   void initState() {
@@ -69,13 +67,11 @@ class _VersionBadgeState extends State<VersionBadge> {
 
       if (status == UpdateStatus.updateAvailable) {
         // Record the fact unconditionally — even if we've already unmounted,
-        // a later badge mount must still show the dot this session.
-        _hasUpdate = true;
+        // a later badge mount (or the in-room gear footer) must still show the
+        // dot this session. The shared notifier is the single source of truth
+        // for both surfaces, so it survives this badge being torn down.
         updateAvailable.value = true;
-        if (mounted) {
-          setState(() {});
-          _showUpdateToast();
-        }
+        if (mounted) _showUpdateToast();
       }
     } finally {
       _checkInFlight = false;
@@ -120,10 +116,9 @@ class _VersionBadgeState extends State<VersionBadge> {
 
   void _openDialog() {
     if (!mounted) return;
-    // Clear the dot when they open the dialog.
-    if (_hasUpdate) {
-      setState(() => _hasUpdate = false);
-    }
+    // Clear the dot everywhere (badge + in-room gear footer) when they open the
+    // dialog — both read the shared notifier.
+    updateAvailable.value = false;
     showDialog<void>(
       context: context,
       builder: (_) => const UpdateDialog(),
@@ -173,25 +168,34 @@ class _VersionBadgeState extends State<VersionBadge> {
                     letterSpacing: 0.3,
                   ),
                 ),
-                if (_hasUpdate) ...[
-                  const SizedBox(width: Spacing.sm),
-                  Container(
-                    key: const Key('version-badge-update-dot'),
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: _updateDotColor,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: _updateDotColor.withValues(alpha: 0.5),
-                          blurRadius: 4,
-                          spreadRadius: 1,
+                ValueListenableBuilder<bool>(
+                  valueListenable: updateAvailable,
+                  builder: (context, hasUpdate, _) {
+                    if (!hasUpdate) return const SizedBox.shrink();
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(width: Spacing.sm),
+                        Container(
+                          key: const Key('version-badge-update-dot'),
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: _updateDotColor,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: _updateDotColor.withValues(alpha: 0.5),
+                                blurRadius: 4,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
                         ),
                       ],
-                    ),
-                  ),
-                ],
+                    );
+                  },
+                ),
               ],
             ),
           ),

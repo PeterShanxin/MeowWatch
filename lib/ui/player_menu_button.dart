@@ -429,6 +429,9 @@ class _VersionFooter extends StatelessWidget {
     // down as the menu closes.
     final rootContext = Navigator.of(context, rootNavigator: true).context;
     MenuController.maybeOf(context)?.close();
+    // Clear the dot everywhere (footer + connect-screen badge) on open — both
+    // read the shared notifier.
+    updateAvailable.value = false;
     showDialog<void>(
       context: rootContext,
       builder: (_) => const UpdateDialog(),
@@ -485,9 +488,16 @@ class _VersionFooter extends StatelessWidget {
                       key: const Key('player-menu-update-dot'),
                       width: 6,
                       height: 6,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         color: Colors.amber,
                         shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.amber.withValues(alpha: 0.5),
+                            blurRadius: 4,
+                            spreadRadius: 1,
+                          ),
+                        ],
                       ),
                     ),
                   );
