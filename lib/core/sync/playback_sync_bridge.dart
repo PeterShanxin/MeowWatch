@@ -514,8 +514,9 @@ class PlaybackSyncBridge {
   /// the kick is never echoed back to the room as a local change.
   Future<void> _kickStalledResume(Duration target, int seq) async {
     if (_disposed) return;
+    final kickStart = DateTime.now();
     _applyingRemote = true;
-    _remoteApplyUntil = DateTime.now().add(remoteApplyWindow);
+    _remoteApplyUntil = kickStart.add(remoteApplyWindow);
     try {
       // Re-seek to the peer's resume target. By the time the watchdog fires the
       // player is already parked on `target` (the freeze signature), so this is
@@ -552,25 +553,35 @@ class PlaybackSyncBridge {
         return;
       }
       if (playing && delta > remoteSeekThreshold) {
-        // Playback advanced PAST the target on its own — the kick's seek+play
-        // already unfroze it (or it was never truly stuck). This forward progress
-        // is the watchdog's OWN recovery, not a user seek: publishing it with
-        // doSeek would advertise our recovery as a local seek and bounce the peer
-        // back to our frame — the very rewind we are fixing. Leave it to the
-        // ongoing tick stream + `_onLocalState`, which broadcast the advancing
-        // position once the apply guard clears. (Codex comment 3445612966.)
-        return;
+        // Player is ahead of the target. Two very different causes look identical
+        // in a single snapshot, so tell them apart by magnitude:
+        //  - the kick's own seek+play unfroze the engine and natural playback
+        //    crept forward (RECOVERY) — publishing this with doSeek would
+        //    advertise our own recovery as a local seek and bounce the peer back
+        //    to our frame, the very rewind we are fixing (Codex 3445612966); or
+        //  - the user scrubbed FORWARD during the kick (a real SEEK the peer only
+        //    follows via the explicit doSeek path: Codex 3445641016).
+        // Natural playback since the kick began can carry us at most `elapsed`
+        // past the target, so a jump beyond `elapsed + seekDetectThreshold` is a
+        // deliberate forward seek; anything within it is recovery.
+        final elapsed = DateTime.now().difference(kickStart);
+        if (delta <= elapsed + seekDetectThreshold) {
+          // Recovery — leave it to the ongoing tick stream + `_onLocalState`,
+          // which broadcast the advancing position once the apply guard clears.
+          return;
+        }
+        // A real forward seek — fall through to publish it with doSeek.
       }
       // The settled truth is a real local action the kick must not fight: a pause
-      // (a still player that may never re-emit), or a seek BACK below the target
-      // (whose doSeek the apply-window bookkeeping swallowed). `_onLocalState`
-      // suppressed it while the kick held `_applyingRemote`, so publish it here —
-      // the room follows a beat later instead of keeping the stale peer-driven
-      // "playing"/position.
+      // (a still player that may never re-emit), a seek BACK below the target, or
+      // a forward seek past plausible playback — whose doSeek the apply-window
+      // bookkeeping swallowed. `_onLocalState` suppressed it while the kick held
+      // `_applyingRemote`, so publish it here — the room follows a beat later
+      // instead of keeping the stale peer-driven "playing"/position.
       sync.updateLocalState(position: s.position, paused: !playing);
       // A position that moved off the target is a user seek — peers only follow a
-      // backward jump via the explicit doSeek path. A pause still on the target is
-      // a plain play/pause flip.
+      // jump (back OR forward) via the explicit doSeek path. A pause still on the
+      // target is a plain play/pause flip.
       sync.notifyLocalChange(doSeek: !atTarget);
     } finally {
       _applyingRemote = false;

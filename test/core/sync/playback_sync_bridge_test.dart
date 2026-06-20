@@ -2330,11 +2330,12 @@ void main() {
       timeout: const Duration(milliseconds: 200),
     );
 
-    // The kick's seek unfreezes playback, which advances PAST the target.
+    // The kick's seek unfreezes playback, which creeps just past the target —
+    // a small forward advance consistent with natural playback, NOT a seek.
     video.push(
       const PlaybackState(
         status: PlaybackStatus.playing,
-        position: Duration(seconds: 685),
+        position: Duration(milliseconds: 679500),
         duration: Duration(minutes: 10),
         filePath: 'a',
         fileName: 'a',
@@ -2355,7 +2356,9 @@ void main() {
       reason: 'the kick own forward recovery must not be sent as a local seek',
     );
     expect(
-      sync.localUpdates.any((u) => u.position == const Duration(seconds: 685)),
+      sync.localUpdates.any(
+        (u) => u.position == const Duration(milliseconds: 679500),
+      ),
       isFalse,
       reason: 'a forward advance is carried by the normal heartbeat, not '
           'republished by the kick',
@@ -2431,6 +2434,99 @@ void main() {
       greaterThanOrEqualTo(2),
       reason: 'a backward resume seek that lands late then freezes must be '
           're-kicked',
+    );
+  });
+
+  test('a forward local seek during the kick is published to the room',
+      () async {
+    // Codex PR #157 review (comment 3445641016): the mirror of the recovery case.
+    // A forward scrub during the kick is suppressed by `_onLocalState` (the kick
+    // holds `_applyingRemote`); a LARGE jump past the target is a real seek, not
+    // the watchdog's own creep, and the peer only follows a forward jump via the
+    // explicit doSeek path. The kick must publish a forward jump that exceeds
+    // plausible playback since it began (`elapsed + seekDetectThreshold`).
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Frozen resume at 679 → the watchdog arms and fires.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so the forward scrub lands while the kick holds the
+    // remote-apply guard.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    sync.localUpdates.clear();
+    sync.changes.clear();
+
+    // The user scrubs FORWARD to 880s (far past the 679 target), still playing —
+    // a deliberate jump, well beyond anything playback could have produced.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 880),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      sync.localUpdates,
+      isEmpty,
+      reason: 'the seek is suppressed while the kick holds the apply guard',
+    );
+
+    // Release the kick; it settles, sees a jump beyond plausible playback, and
+    // publishes it as a seek so the room follows.
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => sync.localUpdates.isNotEmpty,
+      timeout: const Duration(milliseconds: 200),
+    );
+    expect(
+      sync.localUpdates.any(
+        (u) => u.position == const Duration(seconds: 880) && !u.paused,
+      ),
+      isTrue,
+      reason: 'a large forward seek during the kick must be published to the room',
+    );
+    expect(
+      sync.changes,
+      contains(true),
+      reason: 'a forward seek is published via the explicit doSeek path',
+    );
+    expect(
+      video.state.position,
+      const Duration(seconds: 880),
+      reason: 'the kick must not pull the player back to the resume target',
     );
   });
 }
