@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../chat/chat_signals.dart';
 import 'connection_watchdog.dart';
+import 'peer_stall_tracker.dart';
 import 'peer_state.dart';
 import 'ping_service.dart';
 import 'sync_activity.dart';
@@ -83,6 +84,11 @@ class SyncplayClient extends SyncCore {
   // Latest local playback state for the heartbeat.
   Duration _localPosition = Duration.zero;
   bool _localPaused = true;
+
+  // Tracks whether the peer's player claims `playing` but is not advancing (a
+  // frozen engine). Feeds [decideFollow] so we don't rewind to chase a stuck
+  // peer — the rewind-sawtooth amplifier (the 2026-06-20 field regression).
+  final PeerStallTracker _peerStall = PeerStallTracker();
 
   // Snapshot of the local state from just before the latest update — lets us
   // classify our OWN play/pause/seek for self-notifications (issue #27).
@@ -447,6 +453,13 @@ class SyncplayClient extends SyncCore {
     final ignoringOwnChange =
         _pendingStateChange || (_clientIgnore != 0 && _serverIgnore == 0);
     if (msg.peer != null && !ignoringOwnChange) {
+      // Feed the stall detector the peer's RAW state (the forward-delay offset
+      // below is constant, so it would only add noise to advancement tracking).
+      _peerStall.update(
+        position: msg.peer!.position,
+        paused: msg.peer!.paused,
+        doSeek: msg.peer!.doSeek,
+      );
       // Advance position by the one-way delay if the room is playing.
       final global = msg.peer!.paused
           ? msg.peer!
@@ -463,12 +476,13 @@ class SyncplayClient extends SyncCore {
         localPaused: _localPaused,
         localPosition: _localPosition,
         username: _username,
+        peerStalled: _peerStall.stalled,
       );
       onLog?.call(
         'FOLLOW global(pos=${global.positionSeconds}s paused=${global.paused} '
         'doSeek=${global.doSeek} setBy=${global.setBy}) '
         'local(pos=${_localPosition.inMilliseconds / 1000}s paused=$_localPaused) '
-        '=> apply=${action.shouldApply}',
+        'stalled=${_peerStall.stalled} => apply=${action.shouldApply}',
       );
       if (action.shouldApply) {
         // Surface this as a notification BEFORE we overwrite our local snapshot

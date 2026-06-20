@@ -33,6 +33,7 @@ FollowAction decideFollow({
   required bool localPaused,
   required Duration localPosition,
   required String username,
+  bool peerStalled = false,
   Duration rewindThreshold = SyncplayConstants.rewindThreshold,
 }) {
   final isSelf = global.setBy != null && global.setBy == username;
@@ -67,8 +68,16 @@ FollowAction decideFollow({
   //    ahead" of that phantom 0 and rewind to it, dragging a mid-film session
   //    back to 00:00 — but the setter-less early return above already filters
   //    it out, so no extra guard is needed here.
+  //
+  //    [peerStalled] suppresses this rewind: a peer that claims `playing` while
+  //    frozen (its position not advancing) would otherwise pull us into an
+  //    endless rewind sawtooth — we run ahead of the stuck frame, rewind to it,
+  //    replay, run ahead, rewind again (the 2026-06-20 field regression). Don't
+  //    chase a peer who isn't moving; keep playing and let them catch up. The
+  //    pause-flip and explicit-seek rules above still fire, so a genuine pause
+  //    or seek by that peer is still followed.
   final aheadBy = localPosition - global.position;
-  if (!global.doSeek && aheadBy > rewindThreshold) {
+  if (!global.doSeek && !peerStalled && aheadBy > rewindThreshold) {
     return FollowAction.apply(position: global.position, paused: global.paused);
   }
 
