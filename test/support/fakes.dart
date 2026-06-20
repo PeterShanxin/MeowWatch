@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:meowwatch/core/data/history_collapse.dart';
 import 'package:meowwatch/core/data/history_entry.dart';
 import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
@@ -41,8 +42,13 @@ class FakeHistoryStore implements HistoryStore {
     int limit = 6,
     HistoryMode mode = HistoryMode.everyVideo,
   }) async* {
-    yield List.unmodifiable(recent);
-    yield* _ctrl.stream;
+    // Mirror production: apply the mode collapse, then the limit. Without this
+    // the fake would silently ignore `mode` and hand back unfiltered results,
+    // giving any history-mode widget test a false green.
+    List<HistoryEntry> view() =>
+        collapseHistory(recent, mode).take(limit).toList();
+    yield view();
+    yield* _ctrl.stream.map((_) => view());
   }
 
   @override

@@ -47,4 +47,13 @@ void main() {
     collapseHistory(input, HistoryMode.latestPerRoom);
     expect(input.map((e) => e.id).toList(), [2, 1]);
   });
+
+  test('everyVideo returns a copy that does not alias the input', () {
+    final input = <HistoryEntry>[_e(1), _e(2)];
+    final out = collapseHistory(input, HistoryMode.everyVideo);
+    expect(identical(out, input), isFalse);
+    // Mutating the returned list must not reach back into the caller's input.
+    out.clear();
+    expect(input, hasLength(2));
+  });
 }
