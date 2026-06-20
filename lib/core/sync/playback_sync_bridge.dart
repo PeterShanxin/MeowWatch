@@ -495,15 +495,13 @@ class PlaybackSyncBridge {
         unawaited(_kickStalledResume(target, seq));
         return;
       }
-      // Still parked BELOW the target while playing: the resume seek has not
-      // landed yet, so we cannot tell a frozen resume from a slow-but-healthy
-      // one — keep watching for it to land. A healthy advance past the target, a
-      // local pause, or a seek away from it are all NOT frozen, so stop. (A real
-      // local action here is published by `_onLocalState` normally; this watch
-      // holds no apply guard.)
-      if (s.status == PlaybackStatus.playing &&
-          delta < Duration.zero &&
-          checksLeft > 1) {
+      // Not yet parked ON the target while playing: the resume seek has not landed
+      // yet — a forward resume sits BELOW the target, a backward one ABOVE it, so
+      // re-arm regardless of side (Codex comment 3445612967). Keep watching for it
+      // to land, since a late landing that then freezes must still be caught. A
+      // local pause is a real local action (`_onLocalState` handles it; this watch
+      // holds no apply guard); that, or exhausting the bound, stops the watch.
+      if (s.status == PlaybackStatus.playing && !atTarget && checksLeft > 1) {
         _scheduleAdvanceCheck(target, seq, checksLeft - 1);
       }
     });
@@ -545,20 +543,35 @@ class PlaybackSyncBridge {
       // later) instead of fighting a state the user has left — the minimal unstick
       // hands back to normal sync. (A disposed/superseded kick already returned.)
       final s = video.state;
-      final atTarget = (s.position - target).abs() <= remoteSeekThreshold;
-      final frozenAtTarget = s.status == PlaybackStatus.playing && atTarget;
-      if (!frozenAtTarget) {
-        sync.updateLocalState(
-          position: s.position,
-          paused: s.status != PlaybackStatus.playing,
-        );
-        // A position that moved off the target is a user seek — peers only follow
-        // a backward jump via the explicit doSeek path. A pure pause still parked
-        // on the target is a non-seek play/pause flip.
-        sync.notifyLocalChange(doSeek: !atTarget);
+      final playing = s.status == PlaybackStatus.playing;
+      final delta = s.position - target;
+      final atTarget = delta.abs() <= remoteSeekThreshold;
+      if (playing && atTarget) {
+        // The freeze we came to fix: still parked on the target. Re-assert play.
+        await _waitForCommand(video.play());
         return;
       }
-      await _waitForCommand(video.play());
+      if (playing && delta > remoteSeekThreshold) {
+        // Playback advanced PAST the target on its own — the kick's seek+play
+        // already unfroze it (or it was never truly stuck). This forward progress
+        // is the watchdog's OWN recovery, not a user seek: publishing it with
+        // doSeek would advertise our recovery as a local seek and bounce the peer
+        // back to our frame — the very rewind we are fixing. Leave it to the
+        // ongoing tick stream + `_onLocalState`, which broadcast the advancing
+        // position once the apply guard clears. (Codex comment 3445612966.)
+        return;
+      }
+      // The settled truth is a real local action the kick must not fight: a pause
+      // (a still player that may never re-emit), or a seek BACK below the target
+      // (whose doSeek the apply-window bookkeeping swallowed). `_onLocalState`
+      // suppressed it while the kick held `_applyingRemote`, so publish it here —
+      // the room follows a beat later instead of keeping the stale peer-driven
+      // "playing"/position.
+      sync.updateLocalState(position: s.position, paused: !playing);
+      // A position that moved off the target is a user seek — peers only follow a
+      // backward jump via the explicit doSeek path. A pause still on the target is
+      // a plain play/pause flip.
+      sync.notifyLocalChange(doSeek: !atTarget);
     } finally {
       _applyingRemote = false;
     }

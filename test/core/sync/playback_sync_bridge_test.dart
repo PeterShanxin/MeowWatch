@@ -2283,4 +2283,154 @@ void main() {
           'be re-kicked',
     );
   });
+
+  test('the kick own forward recovery is not reported to the room as a seek',
+      () async {
+    // Codex PR #157 review (comment 3445612966): if the kick's own seek+play
+    // unfreezes playback and it advances PAST the target before the kick reads
+    // the settled state, that forward progress is the watchdog's recovery — not a
+    // user seek. Publishing `notifyLocalChange(doSeek: true)` here would advertise
+    // our own recovery as a local seek and bounce the peer back to our frame (the
+    // rewind we are fixing). A forward advance must NOT be published; the normal
+    // tick stream carries the advancing position once the apply guard clears.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Frozen resume at 679 → the watchdog arms and fires.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so we can stage the recovery while it is in flight.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // The kick's seek unfreezes playback, which advances PAST the target.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 685),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    sync.localUpdates.clear();
+    sync.changes.clear();
+
+    // Release the kick; it settles on a forward-advanced (recovered) player.
+    video.seekGate!.complete();
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+
+    expect(
+      sync.changes,
+      isNot(contains(true)),
+      reason: 'the kick own forward recovery must not be sent as a local seek',
+    );
+    expect(
+      sync.localUpdates.any((u) => u.position == const Duration(seconds: 685)),
+      isFalse,
+      reason: 'a forward advance is carried by the normal heartbeat, not '
+          'republished by the kick',
+    );
+  });
+
+  test('a backward resume seek that lands after the window then freezes is '
+      'still re-kicked', () async {
+    // Codex PR #157 review (comment 3445612967): when the peer resume is a
+    // BACKWARD seek, the player sits ABOVE the target until the seek lands — the
+    // opposite side from a forward resume. The re-arm must not read that stale
+    // ahead-of-target position as an advance and exit; otherwise a slow backward
+    // seek that lands then freezes is missed (SyncplayClient has already adopted
+    // the peer state, so heartbeats won't re-arm us). Re-arm while the target has
+    // not been reached, on either side of it.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeSeekWait: const Duration(milliseconds: 5),
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    // Player is well AHEAD; the backward resume seek is slow to land
+    // (emitFromSeek=false keeps the reported position put at 679).
+    video.emitFromSeek = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Peer resumes BACKWARD to 100s; the seek does not move the position yet.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 100),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await _pumpUntil(
+      () => video.commands.contains('play'),
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // Outlast the first window with the seek still un-landed (position 679, ABOVE
+    // the 100s target).
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    // The slow backward seek finally lands at the target and freezes there.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 100),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 400),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      greaterThanOrEqualTo(2),
+      reason: 'a backward resume seek that lands late then freezes must be '
+          're-kicked',
+    );
+  });
 }
