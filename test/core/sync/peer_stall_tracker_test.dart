@@ -68,6 +68,26 @@ void main() {
           reason: 'a deliberately paused peer is not frozen');
     });
 
+    test('a backward position jump (reload/seek-back) re-baselines', () {
+      // A file reload or a seek-back that skipped the doSeek flag drops the
+      // peer's position far below the baseline — that is a reposition, not a
+      // frozen frame, so it must re-baseline rather than count toward a stall.
+      final tracker = PeerStallTracker(stallTicks: 3);
+      tracker.update(
+          position: const Duration(seconds: 500), paused: false, doSeek: false);
+      tracker.update(
+          position: const Duration(seconds: 0), paused: false, doSeek: false);
+      expect(tracker.stalled, isFalse,
+          reason: 'a backward jump is a reposition, not a stuck frame');
+      // Playing forward from the new baseline (clear > advanceEpsilon steps) keeps
+      // re-baselining, so it never trips the stall.
+      tracker.update(
+          position: const Duration(seconds: 3), paused: false, doSeek: false);
+      tracker.update(
+          position: const Duration(seconds: 6), paused: false, doSeek: false);
+      expect(tracker.stalled, isFalse);
+    });
+
     test('an explicit peer seek resets the stall baseline', () {
       final tracker = PeerStallTracker(stallTicks: 2);
       for (var i = 0; i < 4; i++) {

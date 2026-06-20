@@ -58,8 +58,10 @@ class PeerStallTracker {
       _ticks = 0;
       return;
     }
-    if (position - baseline > advanceEpsilon) {
-      // Genuine forward progress — the peer is playing; re-baseline here.
+    if ((position - baseline).abs() > advanceEpsilon) {
+      // A meaningful MOVE off the baseline — forward progress (the peer is
+      // playing) or a backward jump (a reload/seek-back that skipped doSeek).
+      // Either way it is not a frozen frame, so re-baseline here.
       _reset(position);
       return;
     }
