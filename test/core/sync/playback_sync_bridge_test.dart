@@ -1877,4 +1877,77 @@ void main() {
       reason: 'a kick must not play after the bridge is disposed',
     );
   });
+
+  test('a local pause during the in-flight kick seek is respected', () async {
+    // Codex PR #157 review (comment 3445411229): if the user pauses while the
+    // kick's seek is still awaiting, `_peerStateSeq` is unchanged (it only
+    // tracks PEER states), so the seq guard alone would let the kick play over
+    // the user's pause. The kick must re-read the live player intent — a player
+    // no longer `playing` is not a frozen resume to un-stick — before playing.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 and parks there (frozen) — the watchdog will fire.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so a local pause can land while it is in flight.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // The user pauses locally while the kick's seek is blocked. This updates the
+    // live player state but does NOT bump `_peerStateSeq`.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Release the kick; it must respect the local pause, not play over it.
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 120),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      1,
+      reason: 'a kick must not play over a local pause',
+    );
+    expect(
+      video.state.status,
+      PlaybackStatus.paused,
+      reason: 'the user-requested pause must stand',
+    );
+  });
 }

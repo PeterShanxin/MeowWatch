@@ -469,10 +469,19 @@ class PlaybackSyncBridge {
       // after a newer peer state: one that lands while this seek is in flight
       // issues its own later seek (which wins) and bumps `_peerStateSeq`.
       await _waitForCommand(video.seek(target));
-      // If the bridge was disposed or a newer peer state landed while that seek
-      // was in flight, this kick is stale — do not play over it (and a disposed
-      // bridge's pooled player may already be serving the lobby or next room).
-      if (_disposed || seq != _peerStateSeq) return;
+      // If the bridge was disposed, a newer peer state landed, or the player is
+      // no longer `playing` while that seek was in flight, this kick is stale —
+      // do not play over it. The status check is what respects a LOCAL action: a
+      // user pause/seek during the kick does not bump `_peerStateSeq` (that
+      // tracks peer states only), but it does leave the live player not-playing,
+      // and a player that is not playing is not a frozen resume to un-stick. (A
+      // disposed bridge's pooled player may already be serving the lobby/next
+      // room.)
+      if (_disposed ||
+          seq != _peerStateSeq ||
+          video.state.status != PlaybackStatus.playing) {
+        return;
+      }
       await _waitForCommand(video.play());
     } finally {
       _applyingRemote = false;
