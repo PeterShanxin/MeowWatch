@@ -99,6 +99,23 @@ class _RecordingSyncCore extends SyncCore {
   void pushPeer(PeerPlayState s) => emitPeerState(s);
 }
 
+/// Pump the event loop until [reached] holds or [timeout] elapses.
+///
+/// Watchdog assertions hinge on a `Timer` that fires after a short window; a
+/// fixed `Future.delayed` barely longer than that window flakes when the whole
+/// suite is competing for the CPU and the timer fires late (the re-kick lands
+/// just after the assertion already ran). Polling returns the moment the
+/// expected state is reached, so the test stays fast while tolerating jitter.
+Future<void> _pumpUntil(
+  bool Function() reached, {
+  Duration timeout = const Duration(seconds: 2),
+}) async {
+  final stopwatch = Stopwatch()..start();
+  while (!reached() && stopwatch.elapsed < timeout) {
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+  }
+}
+
 void main() {
   late _FakeVideoCore video;
   late _RecordingSyncCore sync;
@@ -1283,4 +1300,1233 @@ void main() {
       );
     },
   );
+
+  // ── Stalled-resume watchdog (fast pause→seek→resume freeze) ───────────────
+  //
+  // Field bug: a peer fires pause → seek → resume in rapid succession (all in
+  // one ignoringOnTheFly handshake). We apply seek+play, but the engine ends up
+  // reporting `playing` while its position is frozen at the seek target — so the
+  // friend looks stuck and the advancing peer gets rewound. Nothing verified
+  // that playback actually ADVANCED after a remote resume; this watchdog does.
+
+  test(
+    'a remote resume whose playback never advances is re-kicked',
+    () async {
+      await bridge.dispose();
+      bridge = PlaybackSyncBridge(
+        video: video,
+        sync: sync,
+        remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      )..start();
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration(seconds: 20),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+      video.commands.clear();
+
+      // Peer resumes to 679s: we seek + play. The fake reports `playing` at 679s
+      // (status flips) but the position never climbs — the frozen-engine bug.
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 679),
+          paused: false,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(video.commands, <String>['seek:679000ms', 'play']);
+
+      // Playback never advances past the resume target. After the advance
+      // window the bridge re-kicks the stalled resume instead of sitting frozen.
+      // Poll rather than wait a fixed delay: the watchdog timer can fire late
+      // under load, and a fixed wait barely past the window flakes (see the
+      // re-kick race that surfaced when this ran inside the full suite).
+      await _pumpUntil(() => video.commands.length >= 4);
+      expect(
+        video.commands,
+        <String>['seek:679000ms', 'play', 'seek:679000ms', 'play'],
+        reason:
+            'a remote resume that never starts advancing must be re-kicked '
+            'with a fresh seek+play',
+      );
+    },
+  );
+
+  test('a remote resume that begins advancing is not re-kicked', () async {
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(video.commands, <String>['seek:679000ms', 'play']);
+
+    // Playback actually advances past the target — a healthy resume.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 680),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // No kick may follow once playback is genuinely moving.
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    expect(
+      video.commands,
+      <String>['seek:679000ms', 'play'],
+      reason: 'a resume that is advancing normally must not be re-kicked',
+    );
+  });
+
+  test('a remote resume that lands paused is not re-kicked', () async {
+    // A genuine remote PAUSE (not a resume) must never be un-paused by the
+    // watchdog: a paused player that is "not advancing" is correct, not stuck.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 20),
+        paused: true,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(video.commands, <String>['pause']);
+
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    expect(
+      video.commands,
+      <String>['pause'],
+      reason: 'a deliberately paused player must not be kicked into playing',
+    );
+  });
+
+  test('a remote resume on a durationless live stream is not re-kicked', () async {
+    // A confirmed live/direct stream has no duration. The position guard
+    // intentionally pins its reported position (it rejects positive positions
+    // without a duration), so "position not advancing" is normal there, not a
+    // frozen resume. Kicking it would re-issue seek(0)+play on a live URL,
+    // which can jump or stall the stream — so the watchdog must stand down.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration.zero,
+        duration: Duration.zero,
+        filePath: 'live',
+        fileName: 'live',
+      ),
+    );
+    bridge.markSourceOpen('live');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Peer resumes far ahead, so the resume seeks + plays like any other.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    final afterResume = List<String>.from(video.commands);
+
+    // Past the advance window, a durationless stream must NOT be re-kicked.
+    await _pumpUntil(
+      () => video.commands.length > afterResume.length,
+      timeout: const Duration(milliseconds: 200),
+    );
+    expect(
+      video.commands,
+      afterResume,
+      reason: 'a durationless live stream must not trigger the stalled-resume kick',
+    );
+  });
+
+  test('a resume whose seek has not landed is not kicked to the stale position', () async {
+    // The big resume seek is slow to land (e.g. a paused VOD): when the watchdog
+    // fires, the player is still sitting below the target. Nothing is frozen to
+    // un-stick yet, and seeking to the stale current position would yank the
+    // client backwards — so the watchdog stands down and leaves the resume's own
+    // re-seek and peer heartbeats to converge to the target.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeSeekWait: const Duration(milliseconds: 10),
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    // Seeks never move the reported position — the resume target never lands.
+    video.emitFromSeek = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+
+    // No kick: the only play is the resume's own, and nothing seeks to the
+    // stale 20s position.
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 120),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      1,
+      reason: 'a not-yet-landed resume is left to converge, not re-kicked',
+    );
+    expect(
+      video.commands,
+      isNot(contains('seek:20000ms')),
+      reason: 'the watchdog must never seek to the stale current position',
+    );
+  });
+
+  test('a watchdog kick does not override a newer peer pause', () async {
+    // The watchdog fires and the kick begins, but its seek is still in flight
+    // when a newer peer PAUSE arrives. The kick must not finish by playing over
+    // that pause — stale resume kicks cannot override later remote state.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 but never advances — the watchdog will arm.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so we can interleave a newer pause while it is in
+    // flight.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // A newer peer pause arrives and is applied while the kick is blocked.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: true,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(video.state.status, PlaybackStatus.paused);
+
+    // Release the kick; it must abort rather than play over the newer pause.
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 120),
+    );
+    expect(
+      video.state.status,
+      PlaybackStatus.paused,
+      reason: 'a stale resume kick must not undo a newer peer pause',
+    );
+  });
+
+  test(
+    'a watchdog kick does not strand the player on the stale target when a '
+    'newer peer pause targets a different position',
+    () async {
+      // Codex PR #157 review (comment 3445396424): when a newer peer state with
+      // a DIFFERENT position lands while the kick's seek is in flight, the kick
+      // must not leave the player parked on the old resume target. The kick's
+      // seek is issued synchronously at watchdog-fire — before any newer state —
+      // so the newer state's later seek wins by wire order, and the post-seek
+      // seq guard drops the stale play. (The sibling test above pauses at the
+      // same 679s target, so it cannot tell a stranded player from a correct one;
+      // this one pauses at 30s to make the position invariant observable.)
+      await bridge.dispose();
+      bridge = PlaybackSyncBridge(
+        video: video,
+        sync: sync,
+        remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      )..start();
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration(seconds: 20),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+      video.commands.clear();
+
+      // Resume lands at 679 and parks there — the watchdog will fire.
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 679),
+          paused: false,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      // Gate the kick's seek so a newer pause can interleave while it is in
+      // flight.
+      video.seekGate = Completer<void>();
+      await _pumpUntil(
+        () => video.commands.length > 2,
+        timeout: const Duration(milliseconds: 200),
+      );
+
+      // A newer peer pause targets a DIFFERENT position (30s, not the 679s
+      // resume target). It is applied while the kick is blocked, moving the
+      // player to 30s/paused.
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 30),
+          paused: true,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(video.state.position, const Duration(seconds: 30));
+      expect(video.state.status, PlaybackStatus.paused);
+
+      // Release the kick; it must abort, leaving the newer pause untouched —
+      // neither stranding the player back on 679s nor playing over the pause.
+      video.seekGate!.complete();
+      await _pumpUntil(
+        () => video.commands.where((c) => c == 'play').length >= 2,
+        timeout: const Duration(milliseconds: 120),
+      );
+      expect(
+        video.state.position,
+        const Duration(seconds: 30),
+        reason: 'a stale resume kick must not strand the player back on 679s',
+      );
+      expect(
+        video.state.status,
+        PlaybackStatus.paused,
+        reason: 'a stale resume kick must not play over a newer peer pause',
+      );
+    },
+  );
+
+  test('a local seek during the resume window stands the watchdog down', () async {
+    // The watchdog detects a frozen engine by the position staying put. A local
+    // user action moves the position, so it is not a freeze — the watchdog must
+    // not re-seek to the peer target and undo the user's seek.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Peer resumes to 679; it lands and we play, arming the watchdog.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(video.commands, <String>['seek:679000ms', 'play']);
+    video.commands.clear();
+
+    // Before playback advances, the local user seeks back to 20s, still playing.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+
+    // The watchdog must stand down — no re-seek to the peer target.
+    await _pumpUntil(
+      () => video.commands.isNotEmpty,
+      timeout: const Duration(milliseconds: 120),
+    );
+    expect(
+      video.commands,
+      isEmpty,
+      reason: 'a local seek moved the position, so the resume is not frozen',
+    );
+  });
+
+  test('a slow seek that lands mid-window then freezes is still re-kicked', () async {
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeSeekWait: const Duration(milliseconds: 10),
+      remoteResumeAdvanceWait: const Duration(milliseconds: 60),
+    )..start();
+    // The resume seek is slow: it does not move the reported position when the
+    // watchdog is armed (the player still sits at the old spot).
+    video.emitFromSeek = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    // Let the resume path run to its play (one play so far).
+    await _pumpUntil(
+      () => video.commands.contains('play'),
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // The slow seek finally lands at the target, but the engine freezes there:
+    // playing, position == target, not advancing.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+
+    // A landed-then-frozen resume is still frozen: the watchdog must re-kick
+    // (a second play), not treat the late seek's jump as real progress.
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 300),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      greaterThanOrEqualTo(2),
+      reason: 'a seek that lands then freezes at the target is still frozen',
+    );
+  });
+
+  test('a watchdog kick aborts when the bridge is disposed mid-seek', () async {
+    // The user leaves the room after the watchdog fires but while the kick's
+    // seek is still in flight. The bridge is disposed and its VideoCore returns
+    // to the pool; the stale kick must not seek/play that shared player in the
+    // lobby or the next room.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 and parks there — the watchdog will fire.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(video.commands, <String>['seek:679000ms', 'play']);
+
+    // Gate the kick's seek so we can dispose while it is in flight.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // The bridge is disposed while the kick waits on its seek.
+    await bridge.dispose();
+
+    // Release the kick; it must abort rather than play the disposed/pooled player.
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 120),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      1,
+      reason: 'a kick must not play after the bridge is disposed',
+    );
+  });
+
+  test('a persistent local pause during the kick stands it down', () async {
+    // Codex PR #157 review (comment 3445411229): if the user pauses while the
+    // kick's seek is still awaiting, `_peerStateSeq` is unchanged (it only tracks
+    // PEER states), so the seq guard alone would let the kick play over the
+    // user's pause. The kick settles, then stands down on a pause that PERSISTS:
+    // a player no longer `playing` is not a frozen resume to un-stick. (A
+    // transient seek-pause that clears is handled by the sibling test below.)
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 and parks there (frozen) — the watchdog will fire.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so a local pause can land while it is in flight.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // The user pauses locally while the kick's seek is blocked. This updates the
+    // live player state but does NOT bump `_peerStateSeq`.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Release the kick; it must respect the local pause, not play over it.
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 120),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      1,
+      reason: 'a kick must not play over a local pause',
+    );
+    expect(
+      video.state.status,
+      PlaybackStatus.paused,
+      reason: 'the user-requested pause must stand',
+    );
+  });
+
+  test('a transient pause from the kick own seek is not mistaken for a user '
+      'pause', () async {
+    // Codex PR #157 review (comment 3445431801): the kick's own seek landing can
+    // briefly report `paused` (backend fallout) even though no user paused.
+    // Reading status in that instant would abort the unstick and leave the
+    // resume frozen — the original bug. The kick must wait for the truth to
+    // settle: a transient pause clears back to playing, so the unstick proceeds.
+    // (A pause that PERSISTS is the user's — see the sibling test above.)
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 and parks there (frozen) — the watchdog will fire.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so we can stage the transient pause around it.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // The seek landing transiently reports paused — backend fallout, NOT a user
+    // action (it does not bump `_peerStateSeq` and it does not persist).
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Release the kick; it enters the settle wait with status momentarily paused.
+    video.seekGate!.complete();
+    await Future<void>.delayed(Duration.zero);
+
+    // The transient clears: the engine reports playing again within the settle.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+
+    // The unstick must still happen — a transient seek-pause is not a user pause.
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      2,
+      reason: 'a transient seek-pause must not abort the unstick',
+    );
+  });
+
+  test('a persistent local pause during the kick is published to the room',
+      () async {
+    // Codex PR #157 review (comment 3445483184): a local pause landing while the
+    // kick holds `_applyingRemote` is suppressed by `_onLocalState`, and a still
+    // player may never emit another tick — so the room would keep the stale
+    // peer-driven "playing" forever. When the kick stands down on a settled
+    // pause it must publish that pause so the room follows (a beat later).
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 and parks (frozen) — the watchdog arms.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so the local pause lands while the kick holds the
+    // remote-apply guard.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    sync.localUpdates.clear();
+    sync.changes.clear();
+
+    // The user pauses; the tick is suppressed in the moment (`_applyingRemote`).
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      sync.localUpdates,
+      isEmpty,
+      reason: 'the pause is suppressed while the kick holds the apply guard',
+    );
+
+    // Release the kick; it settles, finds a persistent pause, stands down — and
+    // must publish that pause so the room does not keep the stale "playing".
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => sync.localUpdates.any((u) => u.paused),
+      timeout: const Duration(milliseconds: 200),
+    );
+    expect(
+      sync.localUpdates.any((u) => u.paused),
+      isTrue,
+      reason: 'a stood-down kick must publish the local pause to the room',
+    );
+  });
+
+  test('a backward local seek during the kick is published to the room',
+      () async {
+    // Codex PR #157 review (comment 3445494456): a local action during the kick
+    // is suppressed by `_onLocalState` (the kick holds `_applyingRemote`). Round 8
+    // fixed this for a pause; a backward SEEK while still `playing` was still lost
+    // — the settle guard only stood down on `status != playing`, so a playing seek
+    // fell through to `play()`, which re-asserted the target AND never told the
+    // room. The kick must stand down on ANY settled divergence from the target and
+    // publish the true state, sending the seek via `doSeek` so the peer follows.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Resume lands at 679 and parks (frozen) — the watchdog arms.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so the user's backward seek lands while the kick holds
+    // the remote-apply guard.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    sync.localUpdates.clear();
+    sync.changes.clear();
+
+    // The user scrubs backward to 100s, still playing. Suppressed in the moment
+    // (`_applyingRemote` held by the kick).
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 100),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      sync.localUpdates,
+      isEmpty,
+      reason: 'the seek is suppressed while the kick holds the apply guard',
+    );
+
+    // Release the kick; it settles, sees the position moved off the target,
+    // stands down, and publishes the seek so the room follows.
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => sync.localUpdates.isNotEmpty,
+      timeout: const Duration(milliseconds: 200),
+    );
+    expect(
+      sync.localUpdates.any(
+        (u) => u.position == const Duration(seconds: 100) && !u.paused,
+      ),
+      isTrue,
+      reason: 'a stood-down kick must publish the settled local seek to the room',
+    );
+    expect(
+      sync.changes,
+      contains(true),
+      reason: 'the backward seek is published as a seek (doSeek: true)',
+    );
+    expect(
+      video.state.position,
+      const Duration(seconds: 100),
+      reason: 'the kick must not yank the player back to the resume target',
+    );
+  });
+
+  test('a resume whose seek lands after the advance window then freezes is '
+      'still re-kicked', () async {
+    // Codex PR #157 review (comment 3445494454): the freeze check fired once at a
+    // fixed delay and returned if the seek was still below the target. A slow seek
+    // that lands AFTER that single check — then freezes at the target — was never
+    // re-examined, and SyncplayClient has already adopted the peer position, so
+    // steady heartbeats need not emit another resume to apply. The watch must keep
+    // looking until the resume advances, proves frozen, or is superseded.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeSeekWait: const Duration(milliseconds: 5),
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    // The resume seek does not move the reported position (emitFromSeek=false),
+    // so the first advance check sees the player still parked BELOW the target.
+    video.emitFromSeek = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    // Let the resume path issue its seek + play (one play so far).
+    await _pumpUntil(
+      () => video.commands.contains('play'),
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // Outlast the first advance window WITHOUT the seek having landed (still 20s).
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    // The slow seek finally lands at the target and the engine freezes there:
+    // playing, position == target, not advancing.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+
+    // A one-shot check (fired and gave up while below the target) misses this; a
+    // persistent watch catches the late freeze and re-kicks (a second play).
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 400),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      greaterThanOrEqualTo(2),
+      reason: 'a seek that lands after the first check then freezes must still '
+          'be re-kicked',
+    );
+  });
+
+  test('the kick own forward recovery is not reported to the room as a seek',
+      () async {
+    // Codex PR #157 review (comment 3445612966): if the kick's own seek+play
+    // unfreezes playback and it advances PAST the target before the kick reads
+    // the settled state, that forward progress is the watchdog's recovery — not a
+    // user seek. Publishing `notifyLocalChange(doSeek: true)` here would advertise
+    // our own recovery as a local seek and bounce the peer back to our frame (the
+    // rewind we are fixing). A forward advance must NOT be published; the normal
+    // tick stream carries the advancing position once the apply guard clears.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Frozen resume at 679 → the watchdog arms and fires.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so we can stage the recovery while it is in flight.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // The kick's seek unfreezes playback, which creeps just past the target —
+    // a small forward advance consistent with natural playback, NOT a seek.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(milliseconds: 679500),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    sync.localUpdates.clear();
+    sync.changes.clear();
+
+    // Release the kick; it settles on a forward-advanced (recovered) player.
+    video.seekGate!.complete();
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+
+    expect(
+      sync.changes,
+      isNot(contains(true)),
+      reason: 'the kick own forward recovery must not be sent as a local seek',
+    );
+    expect(
+      sync.localUpdates.any(
+        (u) => u.position == const Duration(milliseconds: 679500),
+      ),
+      isFalse,
+      reason: 'a forward advance is carried by the normal heartbeat, not '
+          'republished by the kick',
+    );
+  });
+
+  test('a backward resume seek that lands after the window then freezes is '
+      'still re-kicked', () async {
+    // Codex PR #157 review (comment 3445612967): when the peer resume is a
+    // BACKWARD seek, the player sits ABOVE the target until the seek lands — the
+    // opposite side from a forward resume. The re-arm must not read that stale
+    // ahead-of-target position as an advance and exit; otherwise a slow backward
+    // seek that lands then freezes is missed (SyncplayClient has already adopted
+    // the peer state, so heartbeats won't re-arm us). Re-arm while the target has
+    // not been reached, on either side of it.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeSeekWait: const Duration(milliseconds: 5),
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    // Player is well AHEAD; the backward resume seek is slow to land
+    // (emitFromSeek=false keeps the reported position put at 679).
+    video.emitFromSeek = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 679),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Peer resumes BACKWARD to 100s; the seek does not move the position yet.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 100),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await _pumpUntil(
+      () => video.commands.contains('play'),
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    // Outlast the first window with the seek still un-landed (position 679, ABOVE
+    // the 100s target).
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    // The slow backward seek finally lands at the target and freezes there.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 100),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 400),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      greaterThanOrEqualTo(2),
+      reason: 'a backward resume seek that lands late then freezes must be '
+          're-kicked',
+    );
+  });
+
+  test('a forward local seek during the kick is published to the room',
+      () async {
+    // Codex PR #157 review (comment 3445641016): the mirror of the recovery case.
+    // A forward scrub during the kick is suppressed by `_onLocalState` (the kick
+    // holds `_applyingRemote`); a LARGE jump past the target is a real seek, not
+    // the watchdog's own creep, and the peer only follows a forward jump via the
+    // explicit doSeek path. The kick must publish a forward jump that exceeds
+    // plausible playback since it began (`elapsed + seekDetectThreshold`).
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      remoteResumeSeekWait: const Duration(milliseconds: 40),
+    )..start();
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    // Frozen resume at 679 → the watchdog arms and fires.
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    // Gate the kick's seek so the forward scrub lands while the kick holds the
+    // remote-apply guard.
+    video.seekGate = Completer<void>();
+    await _pumpUntil(
+      () => video.commands.length > 2,
+      timeout: const Duration(milliseconds: 200),
+    );
+
+    sync.localUpdates.clear();
+    sync.changes.clear();
+
+    // The user scrubs FORWARD to 880s (far past the 679 target), still playing —
+    // a deliberate jump, well beyond anything playback could have produced.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 880),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      sync.localUpdates,
+      isEmpty,
+      reason: 'the seek is suppressed while the kick holds the apply guard',
+    );
+
+    // Release the kick; it settles, sees a jump beyond plausible playback, and
+    // publishes it as a seek so the room follows.
+    video.seekGate!.complete();
+    await _pumpUntil(
+      () => sync.localUpdates.isNotEmpty,
+      timeout: const Duration(milliseconds: 200),
+    );
+    expect(
+      sync.localUpdates.any(
+        (u) => u.position == const Duration(seconds: 880) && !u.paused,
+      ),
+      isTrue,
+      reason: 'a large forward seek during the kick must be published to the room',
+    );
+    expect(
+      sync.changes,
+      contains(true),
+      reason: 'a forward seek is published via the explicit doSeek path',
+    );
+    expect(
+      video.state.position,
+      const Duration(seconds: 880),
+      reason: 'the kick must not pull the player back to the resume target',
+    );
+  });
 }
