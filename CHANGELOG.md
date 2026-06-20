@@ -5,6 +5,9 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.31.0-alpha] - 2026-06-20
+- Diagnostic log now captures more when something goes wrong (#156): unexpected crashes and background errors — which previously only printed to a console you can't see in the installed app — are written to the log, so an exported log can explain a freeze or crash. Each run also starts with a short environment header (app version, Windows version, window size, language, where the log file lives, and your theme/log settings), and the moments where the app is waiting to reconnect after a dropped connection are now marked instead of leaving a silent gap.
+
 ## [0.30.0-alpha] - 2026-06-19
 - Connect screen polish: Advanced server, port, and server-password fields now show a small reset icon only after you change them, with a hover tooltip and a quick "Advanced setting updated." confirmation when you leave an edited field. Continue Watching and Saved Rooms now keep their saved identity when you click the main card, and when your typed name differs they offer a clear "Join as <name> this time" action instead of silently overwriting the saved name. (#138)
 - Tightened the new resume-name flow after manual testing: the "Join as <name> this time" row now grows and un-grows more gently instead of snapping the card shape, the name field stays visually stable while entering or leaving a saved room, keeps your typed name when you return, and now has an in-field clear button. Rooms can also be left immediately from the no-video screen without first loading a video.
