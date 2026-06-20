@@ -1617,6 +1617,89 @@ void main() {
     );
   });
 
+  test(
+    'a watchdog kick does not strand the player on the stale target when a '
+    'newer peer pause targets a different position',
+    () async {
+      // Codex PR #157 review (comment 3445396424): when a newer peer state with
+      // a DIFFERENT position lands while the kick's seek is in flight, the kick
+      // must not leave the player parked on the old resume target. The kick's
+      // seek is issued synchronously at watchdog-fire — before any newer state —
+      // so the newer state's later seek wins by wire order, and the post-seek
+      // seq guard drops the stale play. (The sibling test above pauses at the
+      // same 679s target, so it cannot tell a stranded player from a correct one;
+      // this one pauses at 30s to make the position invariant observable.)
+      await bridge.dispose();
+      bridge = PlaybackSyncBridge(
+        video: video,
+        sync: sync,
+        remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      )..start();
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration(seconds: 20),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+      video.commands.clear();
+
+      // Resume lands at 679 and parks there — the watchdog will fire.
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 679),
+          paused: false,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      // Gate the kick's seek so a newer pause can interleave while it is in
+      // flight.
+      video.seekGate = Completer<void>();
+      await _pumpUntil(
+        () => video.commands.length > 2,
+        timeout: const Duration(milliseconds: 200),
+      );
+
+      // A newer peer pause targets a DIFFERENT position (30s, not the 679s
+      // resume target). It is applied while the kick is blocked, moving the
+      // player to 30s/paused.
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 30),
+          paused: true,
+          setBy: 'peer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(video.state.position, const Duration(seconds: 30));
+      expect(video.state.status, PlaybackStatus.paused);
+
+      // Release the kick; it must abort, leaving the newer pause untouched —
+      // neither stranding the player back on 679s nor playing over the pause.
+      video.seekGate!.complete();
+      await _pumpUntil(
+        () => video.commands.where((c) => c == 'play').length >= 2,
+        timeout: const Duration(milliseconds: 120),
+      );
+      expect(
+        video.state.position,
+        const Duration(seconds: 30),
+        reason: 'a stale resume kick must not strand the player back on 679s',
+      );
+      expect(
+        video.state.status,
+        PlaybackStatus.paused,
+        reason: 'a stale resume kick must not play over a newer peer pause',
+      );
+    },
+  );
+
   test('a local seek during the resume window stands the watchdog down', () async {
     // The watchdog detects a frozen engine by the position staying put. A local
     // user action moves the position, so it is not a freeze — the watchdog must

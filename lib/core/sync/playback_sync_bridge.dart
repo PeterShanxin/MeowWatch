@@ -460,13 +460,18 @@ class PlaybackSyncBridge {
     _applyingRemote = true;
     _remoteApplyUntil = DateTime.now().add(remoteApplyWindow);
     try {
-      // Seek to the peer's resume target, not the current position: when the
-      // original seek has not landed yet, the player is still sitting at the
-      // pre-resume spot, and snapshotting that would yank the client backwards.
+      // Re-seek to the peer's resume target. By the time the watchdog fires the
+      // player is already parked on `target` (the freeze signature), so this is
+      // a no-op reposition whose real job is to nudge the frozen demuxer; using
+      // `target` rather than a re-read of the live position keeps it a no-op even
+      // against the threshold slop. Crucially the seek is issued synchronously in
+      // the same task as the watchdog's seq check, so it can never be ordered
+      // after a newer peer state: one that lands while this seek is in flight
+      // issues its own later seek (which wins) and bumps `_peerStateSeq`.
       await _waitForCommand(video.seek(target));
-      // The seek above can await; if the bridge was disposed or a newer peer
-      // state landed meanwhile, this kick is stale — do not play over it (a
-      // disposed bridge's player may already be serving the lobby/next room).
+      // If the bridge was disposed or a newer peer state landed while that seek
+      // was in flight, this kick is stale — do not play over it (and a disposed
+      // bridge's pooled player may already be serving the lobby or next room).
       if (_disposed || seq != _peerStateSeq) return;
       await _waitForCommand(video.play());
     } finally {
