@@ -12,8 +12,10 @@ import 'core/data/drift_stores.dart';
 import 'core/data/settings_store.dart';
 import 'core/debug/app_log.dart';
 import 'core/debug/debug_log.dart';
+import 'core/debug/error_log.dart';
 import 'core/debug/log_archive.dart';
 import 'core/debug/log_level.dart';
+import 'core/debug/startup_env.dart';
 import 'core/theme/meow_theme.dart';
 import 'ui/chat/chat_overlay_layout.dart';
 import 'ui/gallery/design_gallery.dart';
@@ -33,9 +35,19 @@ Future<void> main() async {
   // every `appLog` call simply no-ops, so startup is never blocked.
   await _initAppLog(settings);
 
+  // Route framework + async errors that would otherwise only hit stderr (unseen
+  // in a Release build) into the session log, so a crash/freeze leaves a trace
+  // the exported log can diagnose (#156). Installed right after the log so the
+  // rest of startup and the whole UI run are covered.
+  _installErrorHandlers();
+
   final savedTheme = MeowThemeId.fromName(await settings.get(kThemeSettingKey));
   final (cardW, cardH) =
       parseCardSize(await settings.get(kChatCardSizeSettingKey));
+
+  // Stamp the run with its environment (OS, window, locale, log path, settings)
+  // so environment-specific reports can be confirmed from the log alone (#156).
+  await _logStartupEnv(theme: savedTheme, cardW: cardW, cardH: cardH);
 
   // Lets the apply-on-close handler show its confirm dialog over the live route.
   final navigatorKey = GlobalKey<NavigatorState>();
@@ -90,9 +102,57 @@ Future<void> _initAppLog(SettingsStore settings) async {
       level: level,
     )..start();
     installAppLog(log);
-    appLog('life: app start (version=$appVersion)');
+    // The run header (version + environment) is stamped by [_logStartupEnv]
+    // once the window and settings are available.
   } on Object {
     // No log dir available — diagnostics off, app unaffected.
+  }
+}
+
+/// Forward otherwise-uncaught errors to the session log. [FlutterError.onError]
+/// catches synchronous framework/build errors (still presented to the console
+/// for debug runs); [PlatformDispatcher.onError] catches async errors that
+/// escape a callback. Both lines are URL-redacted and neat-kept (#156). We do
+/// not wrap `runApp` in a guarded zone — these two handlers cover the cases
+/// that matter without risking a binding/zone mismatch.
+void _installErrorHandlers() {
+  final priorOnError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    priorOnError?.call(details); // keep the default console presentation
+    appLog(errorLogLine('flutter', details.exceptionAsString(), details.stack));
+  };
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    appLog(errorLogLine('uncaught', error, stack));
+    return true; // logged; keep the app alive rather than tearing down
+  };
+}
+
+/// Build and log the run's environment header. Best-effort: any failure to read
+/// the window size or platform info simply omits the header — it must never
+/// block or crash startup.
+Future<void> _logStartupEnv({
+  required MeowThemeId theme,
+  required double? cardW,
+  required double? cardH,
+}) async {
+  try {
+    final dispatcher = WidgetsBinding.instance.platformDispatcher;
+    final size = await windowManager.getSize();
+    for (final line in startupEnvLines(
+      version: appVersion,
+      os: Platform.operatingSystemVersion,
+      logPath: appLogInstance?.path ?? '(none)',
+      window: '${size.width.round()}x${size.height.round()}',
+      dpr: dispatcher.implicitView?.devicePixelRatio ?? 1.0,
+      locale: dispatcher.locale.toString(),
+      theme: theme.name,
+      cardSize: '${cardW?.round() ?? '?'}x${cardH?.round() ?? '?'}',
+      logLevel: appLogInstance?.level.storageName ?? LogLevel.off.storageName,
+    )) {
+      appLog(line);
+    }
+  } on Object {
+    // Window/platform info unavailable — header skipped, app unaffected.
   }
 }
 

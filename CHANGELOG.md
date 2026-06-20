@@ -5,8 +5,11 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
-## [0.30.1-alpha] - 2026-06-20
-- Fixed a sync hiccup where pausing and then resuming too quickly could leave your friend's side stuck: their video froze on a single frame while the app reported it as playing, and your side kept rewinding over and over trying to catch up to the frozen spot. MeowWatch now watches whether a resume actually starts moving — if it stalls for a couple of seconds it quietly nudges the player (re-seek and play) to get it going again. It's the automatic version of the pause-wait-a-moment-then-resume trick that used to fix it by hand.
+## [0.31.1-alpha] - 2026-06-20
+- Fixed a sync hiccup where pausing and then resuming too quickly could leave your friend's side stuck: their video froze on a single frame while the app reported it as playing, and your side kept rewinding over and over trying to catch up to the frozen spot. MeowWatch now watches whether a resume actually starts moving — if it stalls it quietly nudges the player (re-seek and play) to get it going again, and if you genuinely paused in that moment it tells your friend so they follow your pause instead of fighting it. It's the automatic version of the pause-wait-a-moment-then-resume trick that used to fix it by hand.
+
+## [0.31.0-alpha] - 2026-06-20
+- Diagnostic log now captures more when something goes wrong (#156): unexpected crashes and background errors — which previously only printed to a console you can't see in the installed app — are written to the log, so an exported log can explain a freeze or crash. Each run also starts with a short environment header (app version, Windows version, window size, language, where the log file lives, and your theme/log settings), and the moments where the app is waiting to reconnect after a dropped connection are now marked instead of leaving a silent gap.
 
 ## [0.30.0-alpha] - 2026-06-19
 - Connect screen polish: Advanced server, port, and server-password fields now show a small reset icon only after you change them, with a hover tooltip and a quick "Advanced setting updated." confirmation when you leave an edited field. Continue Watching and Saved Rooms now keep their saved identity when you click the main card, and when your typed name differs they offer a clear "Join as <name> this time" action instead of silently overwriting the saved name. (#138)

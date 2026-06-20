@@ -31,6 +31,24 @@ void main() {
     expect(client.debugReconnectAttempt, 1);
   });
 
+  test('a scheduled reconnect logs its attempt number and delay', () async {
+    final lines = <String>[];
+    final logged = SyncplayClient(onLog: lines.add);
+    addTearDown(logged.dispose);
+
+    logged.debugSimulateConnectionLost();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      lines,
+      contains(predicate<String>(
+        (l) => l.startsWith('reconnect: attempt 1 in ') && l.endsWith('ms'),
+      )),
+      reason: 'the gap between "connection lost" and the next Hello must be '
+          'visible in the log (#156)',
+    );
+  });
+
   test('repeated drops advance the backoff attempt counter', () async {
     client.debugSimulateConnectionLost();
     client.debugSimulateConnectionLost();

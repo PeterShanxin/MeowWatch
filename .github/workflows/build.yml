@@ -30,6 +30,7 @@ jobs:
     # so analyze+test must run on Windows — on Linux those 4 tests fail.
     # PR / branch / main pushes use hosted `windows-2022`.
     runs-on: windows-2022
+    timeout-minutes: 25 # bound hangs; hosted run normally ~12-15m
     steps:
       - uses: actions/checkout@v6
 
@@ -61,6 +62,10 @@ jobs:
     # skipped steps are evaluated, so a skipped hosted Flutter action can still
     # fail a tag release during action download/setup.
     runs-on: [self-hosted, windows]
+    # Bound runaway hangs: the suite normally finishes in ~5m, but a stuck
+    # flutter_tester otherwise sits until GitHub's 6h default, wedging the
+    # self-hosted runner. See docs/AGENT_GUIDE.md → CI (runner hangs).
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
@@ -98,6 +103,8 @@ jobs:
     # desktop C++ toolchain installed (see docs/AGENT_GUIDE.md → CI). Falls back
     # to nothing if no runner is online — the job queues until one is.
     runs-on: [self-hosted, windows]
+    # Bound runaway hangs/builds: a release build is normally ~18m.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
@@ -197,8 +204,14 @@ jobs:
   release:
     name: Publish R2 Metadata
     needs: [build-windows-x64]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # build-windows-x64 runs via always() because its check-hosted sibling is
+    # skipped on tag pushes. That skip propagates transitively through `needs`, so a
+    # plain `if` here lets the implicit success() gate skip R2 even when the build
+    # succeeded. Guard with always() + an explicit result check (same pattern as
+    # build-windows-x64) so R2 publishes whenever the build is green.
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.build-windows-x64.result == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # bound hangs; R2 publish normally ~3m
     steps:
       - uses: actions/checkout@v6
 
