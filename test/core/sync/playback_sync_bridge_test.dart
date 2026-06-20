@@ -2593,6 +2593,65 @@ void main() {
     },
   );
 
+  test('an already-playing resume that freezes is settled, not force-degraded',
+      () async {
+    // Codex PR #163 (comment 3447291106): when the engine is ALREADY playing and
+    // a peer seek/rewind arrives, the seek emits the only `playing` tick before
+    // the watchdog arms and the follow-up play() is a no-op that emits nothing. A
+    // frozen clock here must be classified by the engine's LIVE `playing` status
+    // (settle: re-assert play), NOT misread as a dropped play and force-degraded
+    // to a republished stand-down.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    // Already playing; play() is a no-op that emits nothing (already playing).
+    video.emitFromPlay = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+    sync.localUpdates.clear();
+
+    // Peer rewinds/seeks to 679 while playing; the seek emits playing@679 and the
+    // engine then freezes there (clock stuck, still reporting playing).
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 400),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      greaterThanOrEqualTo(2),
+      reason: 'a frozen-clock resume is re-asserted (settle), not left stuck',
+    );
+    // Settle re-asserts play and never republishes a stand-down; a force-degrade
+    // would have published a paused:false (playing) stand-down to the room.
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(
+      sync.localUpdates,
+      isEmpty,
+      reason: 'a frozen clock must not be force-degraded into a republished '
+          'stand-down (it is settled by re-asserting play)',
+    );
+  });
+
   test('a force re-kicked resume stops kicking once playback advances', () async {
     await bridge.dispose();
     bridge = PlaybackSyncBridge(
