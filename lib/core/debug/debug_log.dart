@@ -12,9 +12,11 @@ import 'log_level.dart';
 ///   resume-position DB writes) added for the broadened diagnostics in #140.
 ///
 /// Everything else — applied follows, reconnects/drops, errors, log markers, and
-/// the meaningful app events (`video:`/`life:`/`db:`/`update:`/`settings:` —
-/// loads, opens, failures, lifecycle, history outcomes) — is a meaningful event
-/// kept at [LogLevel.neat]. Pure so it can be unit-tested without any I/O.
+/// the meaningful app events (`video:`/`life:`/`db:`/`update:`/`settings:`/
+/// `env:`/`error:`/`reconnect:` — loads, opens, failures, lifecycle, history
+/// outcomes, the startup environment header, uncaught errors, and the gap before
+/// a reconnect) — is a meaningful event kept at [LogLevel.neat]. Pure so it can
+/// be unit-tested without any I/O.
 bool isVerboseOnly(String line) {
   final trimmed = line.trimLeft();
   final isRawTraffic = trimmed.startsWith('<<') || trimmed.startsWith('>>');

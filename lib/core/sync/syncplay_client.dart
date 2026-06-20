@@ -205,6 +205,9 @@ class SyncplayClient extends SyncCore {
     _reconnectTimer?.cancel();
     final delay = reconnectBackoff(attempt: _reconnectAttempt);
     _reconnectAttempt++;
+    // Mark the otherwise-silent gap between "connection lost" and the next
+    // `>> Hello` so a stalled recovery is visible in the log (#156). Neat-kept.
+    onLog?.call('reconnect: attempt $_reconnectAttempt in ${delay.inMilliseconds}ms');
     _reconnectTimer = Timer(delay, () {
       if (_manualDisconnect) return;
       unawaited(_openConnection());
