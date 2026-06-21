@@ -100,6 +100,20 @@ TDD (RED → GREEN → REFACTOR), small commits at verified milestones. Conventi
 
 **Versioning (every behavior-changing PR):** bump the version in lockstep across `pubspec.yaml` (`version:`), `lib/core/app_version.dart` (`appVersion`), and `CHANGELOG.md` (new top `## [<version>] - <date>` entry).
 
+### Changelog writing style
+
+The in-app "What's new" screen renders each version's notes. Write them for the
+end user:
+
+- Lead with an optional `> one-line summary` — it becomes the hero/row headline.
+  Omit it and the app derives one from the first line.
+- Group changes under `### Added`, `### Fixed`, or `### Improved` so the New /
+  Fixed / Improved chips appear. `### Changed` also maps to Improved.
+- Keep internal mechanism ("Future", "single-flight", "robocopy") in the commit
+  message, not the note. Describe what the user sees change.
+- Issue refs `(#NNN)` render as tappable links — leave them in.
+- Supported formatting: `**bold**`, `` `code` ``, bullets, paragraphs.
+
 Semver is `MAJOR.MINOR.PATCH` — **three separate digit slots**, each is the digit *in that position*, NOT "the next number overall":
 - `MAJOR` = **1st** digit — big/breaking change. Bumping it resets MINOR and PATCH to 0 (`0.2.3 → 1.0.0`).
 - `MINOR` = **2nd** digit — new feature. Bumping it resets PATCH to 0 (`0.1.3 → 0.2.0`, **not** `0.1.4`).

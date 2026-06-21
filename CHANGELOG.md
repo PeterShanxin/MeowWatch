@@ -5,6 +5,20 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+> Writing style: see "Changelog writing style" in `docs/AGENT_GUIDE.md`. Write
+> user-facing notes (keep internal mechanism in the commit), use `### Added` /
+> `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
+> summary`.
+
+## [0.33.0-alpha] - 2026-06-21
+> The changelog finally reads like a changelog.
+
+### Added
+- A redesigned **What's new** screen: the newest update sits up top with quick highlights and New / Fixed / Improved tags, while older versions tuck into a tidy list you can open one at a time.
+
+### Improved
+- Release notes are now properly formatted — bold, bullets, and tappable issue links — instead of showing the raw `**` and `###` marks.
+
 ## [0.32.0-alpha] - 2026-06-21
 
 ### Added
