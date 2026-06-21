@@ -2529,4 +2529,232 @@ void main() {
       reason: 'the kick must not pull the player back to the resume target',
     );
   });
+
+  // ── Dropped-play freeze (the 2026-06-20 field regression) ─────────────────
+  //
+  // A fast pause→backseek→resume can leave the reused engine SEEKED but still
+  // PAUSED: the play command is dropped, so the engine never reports `playing`
+  // and never advances. The original watchdog only fired on a player still
+  // claiming `playing`, so this paused freeze sat forever (the friend's video
+  // stuck while the advancing peer rewound in a sawtooth). The bridge must treat
+  // "parked on the resume target, never started playing" as a freeze and force a
+  // fresh seek+play.
+
+  test(
+    'a remote resume that lands paused and never advances is force re-kicked',
+    () async {
+      await bridge.dispose();
+      bridge = PlaybackSyncBridge(
+        video: video,
+        sync: sync,
+        remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+      )..start();
+      // The resume's play is DROPPED: play() is issued but never flips the engine
+      // to playing — it stays paused at the seek frame (the field freeze).
+      video.emitFromPlay = false;
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration(seconds: 20),
+          duration: Duration(minutes: 10),
+          filePath: 'a',
+          fileName: 'a',
+        ),
+      );
+      bridge.markSourceOpen('a');
+      await Future<void>.delayed(Duration.zero);
+      video.commands.clear();
+
+      // Peer resumes to 679: we seek + (dropped) play. The engine stays paused at
+      // 679 — never reports playing, never advances.
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(seconds: 679),
+          paused: false,
+          setBy: 'peer',
+        ),
+      );
+      await _pumpUntil(() => video.commands.contains('play'));
+      expect(video.commands, <String>['seek:679000ms', 'play']);
+
+      // After the advance window the bridge force re-kicks the frozen-paused
+      // resume with a fresh seek+play instead of leaving the friend stuck.
+      await _pumpUntil(
+        () => video.commands.where((c) => c == 'play').length >= 2,
+        timeout: const Duration(milliseconds: 500),
+      );
+      expect(
+        video.commands.where((c) => c == 'play').length,
+        greaterThanOrEqualTo(2),
+        reason:
+            'a resume that lands paused and never advances must be force re-kicked '
+            'with a fresh play (the dropped-play field freeze)',
+      );
+    },
+  );
+
+  test('an already-playing resume that freezes is settled, not force-degraded',
+      () async {
+    // Codex PR #163 (comment 3447291106): when the engine is ALREADY playing and
+    // a peer seek/rewind arrives, the seek emits the only `playing` tick before
+    // the watchdog arms and the follow-up play() is a no-op that emits nothing. A
+    // frozen clock here must be classified by the engine's LIVE `playing` status
+    // (settle: re-assert play), NOT misread as a dropped play and force-degraded
+    // to a republished stand-down.
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    // Already playing; play() is a no-op that emits nothing (already playing).
+    video.emitFromPlay = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+    sync.localUpdates.clear();
+
+    // Peer rewinds/seeks to 679 while playing; the seek emits playing@679 and the
+    // engine then freezes there (clock stuck, still reporting playing).
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 400),
+    );
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      greaterThanOrEqualTo(2),
+      reason: 'a frozen-clock resume is re-asserted (settle), not left stuck',
+    );
+    // Settle re-asserts play and never republishes a stand-down; a force-degrade
+    // would have published a paused:false (playing) stand-down to the room.
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(
+      sync.localUpdates,
+      isEmpty,
+      reason: 'a frozen clock must not be force-degraded into a republished '
+          'stand-down (it is settled by re-asserting play)',
+    );
+  });
+
+  test('a force re-kicked resume stops kicking once playback advances', () async {
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 30),
+    )..start();
+    video.emitFromPlay = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+    // Wait for the first force re-kick (frozen-paused → fresh play).
+    await _pumpUntil(
+      () => video.commands.where((c) => c == 'play').length >= 2,
+      timeout: const Duration(milliseconds: 500),
+    );
+
+    // Playback now genuinely advances past the target — the kick took.
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.playing,
+        position: Duration(seconds: 681),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    final playsAtRecovery = video.commands.where((c) => c == 'play').length;
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    expect(
+      video.commands.where((c) => c == 'play').length,
+      playsAtRecovery,
+      reason: 'once playback advances past the target the watchdog must stop kicking',
+    );
+  });
+
+  test('a resume that can never start is bounded and degrades to paused', () async {
+    // A truly dead engine (force seek+play never takes) must not be re-kicked
+    // forever. After a bounded number of attempts the bridge stands down and
+    // publishes the truthful paused state so the room stops chasing a frozen
+    // "playing" and both sides settle paused (the user can resume by hand).
+    await bridge.dispose();
+    bridge = PlaybackSyncBridge(
+      video: video,
+      sync: sync,
+      remoteResumeAdvanceWait: const Duration(milliseconds: 20),
+    )..start();
+    video.emitFromPlay = false;
+    video.push(
+      const PlaybackState(
+        status: PlaybackStatus.paused,
+        position: Duration(seconds: 20),
+        duration: Duration(minutes: 10),
+        filePath: 'a',
+        fileName: 'a',
+      ),
+    );
+    bridge.markSourceOpen('a');
+    await Future<void>.delayed(Duration.zero);
+    video.commands.clear();
+    sync.localUpdates.clear();
+
+    sync.pushPeer(
+      const PeerPlayState(
+        position: Duration(seconds: 679),
+        paused: false,
+        setBy: 'peer',
+      ),
+    );
+
+    // Let every bounded kick run out.
+    await _pumpUntil(
+      () => sync.localUpdates.any((u) => u.paused),
+      timeout: const Duration(milliseconds: 600),
+    );
+    final plays = video.commands.where((c) => c == 'play').length;
+    expect(
+      plays,
+      lessThanOrEqualTo(6),
+      reason: 'force re-kicks must be bounded, never an infinite play loop',
+    );
+    expect(
+      sync.localUpdates.any((u) => u.paused),
+      isTrue,
+      reason: 'a resume that can never start must degrade to a truthful paused '
+          'state so the room stops chasing it',
+    );
+  });
 }

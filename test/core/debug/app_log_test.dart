@@ -5,6 +5,15 @@ import 'package:meowwatch/core/debug/app_log.dart';
 import 'package:meowwatch/core/debug/debug_log.dart';
 import 'package:meowwatch/core/debug/log_level.dart';
 
+/// A logger whose every call throws — models the field condition where the
+/// process-wide [DebugLog]'s IOSink was in a transient bad state.
+class _ThrowingLog extends DebugLog {
+  _ThrowingLog() : super(File('unused_throwing_log_does_not_open'));
+
+  @override
+  void call(String line) => throw StateError('diagnostic sink in a bad state');
+}
+
 void main() {
   late Directory dir;
 
@@ -48,6 +57,17 @@ void main() {
     final text = logsIn(dir).single.readAsStringSync();
     expect(text, contains('life: kept'));
     expect(text, isNot(contains('life: dropped')));
+  });
+
+  test('appLog never throws into its caller when the sink is in a bad state', () {
+    // The 2026-06-21 field freeze: a DebugLog whose IOSink was in a transient
+    // bad state threw a StateError out of appLog, which escaped a peer-apply
+    // error handler and left the room-sync drain flag stuck — all sync froze.
+    // appLog is best-effort by contract and must swallow ANY failure.
+    installAppLog(_ThrowingLog());
+    expect(() => appLog('trace: play'), returnsNormally);
+    expect(() => appLog('sync bridge: peer-state apply error: boom'),
+        returnsNormally);
   });
 
   test('neat level keeps app events but drops trace lines through appLog', () async {
