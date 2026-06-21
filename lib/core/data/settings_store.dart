@@ -31,6 +31,11 @@ const String kNotifySecondarySoundKey = 'notify_secondary_sound';
 /// `storageName`: `off` / `neat` / `verbose`; absent/unknown → `verbose`).
 const String kLogLevelSettingKey = 'log_level';
 
+/// Key for the persisted continue-watching mode (value = a HistoryMode
+/// `storageName`: `latest_per_room` / `every_video`; absent/unknown →
+/// `latestPerRoom`).
+const String kHistoryModeSettingKey = 'history_mode';
+
 /// Commands-in access to persisted key/value app settings.
 abstract class SettingsStore {
   Future<String?> get(String key);

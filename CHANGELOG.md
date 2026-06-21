@@ -5,6 +5,16 @@ All notable changes to MeowWatch. Newest first. Each version header is
 release pipeline parses this file into `releases/changelog.json` on R2, which the
 in-app updater reads to show what changed.
 
+## [0.32.0-alpha] - 2026-06-21
+
+### Added
+- Continue watching now keeps only the latest video per room by default, with a
+  Settings toggle ("Latest per room" / "Every video") in both the lobby and the
+  in-room gear. Older same-room entries are hidden, not deleted — flip the toggle
+  to bring them all back. (#136)
+- The in-room gear now has a version/updates footer (check version, see what's
+  new, update) — the same as the connect-screen version badge.
+
 ## [0.31.2-alpha] - 2026-06-21
 - Fixed the **real root cause** behind the co-watch freeze the last few updates only partly patched. After a quick pause → jump-back → resume, your side could **stop following your friend entirely** for the rest of the session — they'd keep moving while your video drifted away, yet both apps still thought you were perfectly in sync (so nothing ever corrected it). The culprit turned out to be the diagnostic log: during the rapid burst of pause/seek/resume messages a single log write could fail, and that failure was leaking into the sync engine and **permanently jamming the part that applies your friend's actions to your player**. MeowWatch now treats logging as truly best-effort — a log that fails can never disrupt playback or sync — and makes the apply step crash-proof, so one bad log line can never freeze co-watching again.
 - Fixed the co-watch freeze that could **still** happen after a quick pause → jump-back → resume. Your friend's video would seek to the new spot but never actually start playing — the "play" got dropped entirely — so it sat frozen on a frame while still telling the room it was "playing", and your side kept rewinding over and over to chase the frozen spot. The 0.31.1 safeguard only caught the case where the player *thought* it was playing; this freeze leaves it genuinely **paused**, which slipped straight through. MeowWatch now spots a resume that never starts moving — whether the player claims it's playing or admits it's paused — and forces it to play again (re-seek + play), with a few bounded retries before it gives up and simply tells your friend it's paused so you both settle instead of one side staying stuck. The error that was quietly dropping the play is also no longer swallowed silently, so any recurrence leaves a trace in the log.

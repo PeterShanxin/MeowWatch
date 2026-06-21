@@ -1,4 +1,5 @@
 import 'history_entry.dart';
+import 'history_mode.dart';
 import 'saved_profile.dart';
 
 /// Commands-in / streams-out access to saved connection profiles.
@@ -22,8 +23,14 @@ abstract class ProfileStore {
 
 /// Commands-in / streams-out access to watch history.
 abstract class HistoryStore {
-  /// Live list, most-recently-played first.
-  Stream<List<HistoryEntry>> watchRecent({int limit = 6});
+  /// Live list, most-recently-played first. [mode] selects how same-room
+  /// videos are shown: [HistoryMode.latestPerRoom] hides older same-room
+  /// entries (view filter only — rows stay in storage), [HistoryMode.everyVideo]
+  /// shows them all. The collapse runs before [limit] is applied.
+  Stream<List<HistoryEntry>> watchRecent({
+    int limit = 6,
+    HistoryMode mode = HistoryMode.everyVideo,
+  });
 
   /// Record (or refresh) that [filePath] was opened. Keeps the existing
   /// [lastPositionMs]; updates name/size/duration/room/username and bumps

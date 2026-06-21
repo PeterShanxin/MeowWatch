@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/connect/room_config.dart';
+import 'package:meowwatch/core/data/history_collapse.dart';
 import 'package:meowwatch/core/data/history_entry.dart';
+import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
 import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
@@ -83,9 +85,16 @@ class _FakeHistoryStore implements HistoryStore {
   void emit() => _ctrl.add(List.unmodifiable(recent));
 
   @override
-  Stream<List<HistoryEntry>> watchRecent({int limit = 6}) async* {
-    yield List.unmodifiable(recent);
-    yield* _ctrl.stream;
+  Stream<List<HistoryEntry>> watchRecent({
+    int limit = 6,
+    HistoryMode mode = HistoryMode.everyVideo,
+  }) async* {
+    // Mirror production: collapse the newest-first backing list per [mode],
+    // then take [limit], so the fake honours the same view filter.
+    List<HistoryEntry> view() =>
+        collapseHistory(recent, mode).take(limit).toList();
+    yield view();
+    yield* _ctrl.stream.map((_) => view());
   }
 
   @override
@@ -815,6 +824,32 @@ void main() {
     expect(connected!.username, 'alice');
     expect(connected!.room, 'cozy-fox-42');
     expect(profiles.savedUsernames.single, 'meowPEOW');
+  });
+
+  HistoryEntry historyEntryInRoom(int id, String name, String room) =>
+      HistoryEntry(
+        id: id,
+        filePath: '/$name.mkv',
+        fileName: '$name.mkv',
+        fileSizeBytes: 1,
+        durationMs: 600000,
+        lastPositionMs: 120000,
+        playedAt: DateTime(2026, 5, 29),
+        room: room,
+      );
+
+  testWidgets('Continue watching collapses to latest per room by default', (
+    tester,
+  ) async {
+    // Two files in the same room (newest-first: ep2 then ep1). The default
+    // latestPerRoom mode hides the older same-room entry.
+    history.recent
+      ..add(historyEntryInRoom(2, 'ep2', 'cozy'))
+      ..add(historyEntryInRoom(1, 'ep1', 'cozy'));
+    await pump(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('ep2.mkv'), findsOneWidget);
+    expect(find.text('ep1.mkv'), findsNothing);
   });
 
   testWidgets('Clear all empties continue-watching', (tester) async {

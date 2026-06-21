@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:meowwatch/core/app_version.dart';
+import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/debug/log_level.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
+import 'package:meowwatch/core/update/update_availability.dart';
 import 'package:meowwatch/ui/player_menu_button.dart';
 
 Widget _host(Widget child) => MaterialApp(
@@ -12,6 +15,8 @@ Widget _host(Widget child) => MaterialApp(
 );
 
 PlayerMenuButton _button({
+  HistoryMode historyMode = HistoryMode.latestPerRoom,
+  ValueChanged<HistoryMode>? onHistoryModeChanged,
   String? nowPlaying = 'Bocchi the Rock - 01.mkv',
   ValueChanged<MeowThemeId>? onThemeChanged,
   VoidCallback? onLoadVideo,
@@ -35,6 +40,8 @@ PlayerMenuButton _button({
   ValueChanged<LogLevel>? onLogLevelChanged,
   VoidCallback? onExportLogs,
 }) => PlayerMenuButton(
+  historyMode: historyMode,
+  onHistoryModeChanged: onHistoryModeChanged ?? (_) {},
   roomCode: 'MEOW42',
   nowPlaying: nowPlaying,
   members: members ?? const ['me', 'lin'],
@@ -87,6 +94,10 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  // The footer dot reads a process-wide notifier — keep tests independent.
+  setUp(() => updateAvailable.value = false);
+  tearDown(() => updateAvailable.value = false);
+
   testWidgets('menu is closed until the gear is tapped', (tester) async {
     await tester.pumpWidget(_host(_button()));
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
@@ -360,5 +371,56 @@ void main() {
     // Default is kChatIdleGhostOpacity (0.5) → 50%.
     expect(changed, 0.5);
     expect(find.text('50%'), findsOneWidget);
+  });
+
+  testWidgets('Continue-watching toggle fires onHistoryModeChanged', (
+    tester,
+  ) async {
+    HistoryMode? picked;
+    await tester.pumpWidget(
+      _host(_button(onHistoryModeChanged: (v) => picked = v)),
+    );
+    await _openSettings(tester);
+    await _tap(
+      tester,
+      find.byKey(Key('history-mode-${HistoryMode.everyVideo.storageName}')),
+    );
+    expect(picked, HistoryMode.everyVideo);
+  });
+
+  testWidgets('in-room gear shows a tappable version footer', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_host(_button()));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+    final footer = find.byKey(const Key('player-menu-version'));
+    await tester.ensureVisible(footer);
+    await tester.pumpAndSettle();
+    expect(find.text('v$appVersion'), findsOneWidget);
+  });
+
+  testWidgets('tapping the version footer opens the UpdateDialog',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_host(_button()));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byKey(const Key('player-menu-version')));
+    expect(find.text('MeowWatch Updates'), findsOneWidget);
+  });
+
+  testWidgets('version footer shows the update dot when one is available',
+      (tester) async {
+    updateAvailable.value = true;
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_host(_button()));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+    final dot = find.byKey(const Key('player-menu-update-dot'));
+    await tester.ensureVisible(dot);
+    expect(dot, findsOneWidget);
   });
 }

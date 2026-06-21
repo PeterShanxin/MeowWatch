@@ -11,6 +11,7 @@ import '../core/audio/notify_sounds.dart';
 import '../core/chat/chat_store.dart';
 import '../core/connect/room_config.dart';
 import '../core/connect/room_share.dart';
+import '../core/data/history_mode.dart';
 import '../core/data/settings_store.dart';
 import '../core/data/stores.dart';
 import '../core/debug/app_log.dart';
@@ -96,6 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// export/level controls degrade gracefully.
   DebugLog? get _syncLog => appLogInstance;
   LogLevel _logLevel = LogLevel.verbose;
+  HistoryMode _historyMode = HistoryMode.latestPerRoom;
   late final Player _audioPlayer;
 
   // Notification chime: bundled assets (portable, no dependency on a
@@ -611,6 +613,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _secondarySoundId = resolveSecondary(secondary).id;
       });
     }
+    final historyMode = historyModeFromName(
+      await widget.settings.get(kHistoryModeSettingKey),
+    );
+    if (mounted) setState(() => _historyMode = historyMode);
   }
 
   /// Read the persisted diagnostic-log level into [_logLevel] so the gear menu
@@ -1472,6 +1478,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: IgnorePointer(
                           ignoring: _chatDragging || _isUiIdle,
                           child: PlayerMenuButton(
+                            historyMode: _historyMode,
+                            onHistoryModeChanged: (mode) {
+                              appLog(
+                                'settings: history mode=${mode.storageName}',
+                              );
+                              setState(() => _historyMode = mode);
+                              widget.settings.set(
+                                kHistoryModeSettingKey,
+                                mode.storageName,
+                              );
+                            },
                             // Self-contained share code: bare sentence on the
                             // default server, `room@host[:port]` when the host
                             // is non-default, so copying from the in-room gear

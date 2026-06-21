@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/audio/notify_sounds.dart';
+import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/debug/log_level.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
@@ -12,11 +13,15 @@ Widget _host(Widget child) => MaterialApp(
 );
 
 LobbySettingsButton _button({
+  HistoryMode historyMode = HistoryMode.latestPerRoom,
+  ValueChanged<HistoryMode>? onHistoryModeChanged,
   ValueChanged<MeowThemeId>? onThemeChanged,
   LogLevel logLevel = LogLevel.verbose,
   ValueChanged<LogLevel>? onLogLevelChanged,
   VoidCallback? onExportLogs,
 }) => LobbySettingsButton(
+  historyMode: historyMode,
+  onHistoryModeChanged: onHistoryModeChanged ?? (_) {},
   currentTheme: MeowThemeId.cozy,
   onThemeChanged: onThemeChanged ?? (_) {},
   primarySoundId: kDefaultPrimarySoundId,

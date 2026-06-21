@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/app_version.dart';
+import '../core/data/history_mode.dart';
 import '../core/debug/log_level.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
@@ -11,15 +13,19 @@ import '../core/theme/tokens/motion.dart';
 import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
+import '../core/update/update_availability.dart';
 import 'idle_visibility.dart';
 import 'settings/settings_panel.dart';
 import 'theme/theme_swatches.dart';
+import 'update_dialog.dart';
 
 /// Top-left in-player control: a gear button that opens a small anchored
 /// popover with the room code (copyable), who's in the room, a "Load video"
 /// action, theme swatches, a collapsible Settings section, and "Leave room".
 class PlayerMenuButton extends StatelessWidget {
   const PlayerMenuButton({
+    required this.historyMode,
+    required this.onHistoryModeChanged,
     required this.roomCode,
     required this.nowPlaying,
     required this.members,
@@ -46,6 +52,11 @@ class PlayerMenuButton extends StatelessWidget {
     required this.onExportLogs,
     super.key,
   });
+
+  /// Continue-watching mode + its setter, surfaced in the gear's Settings
+  /// section via [SettingsPanel] — the in-room counterpart to the lobby gear.
+  final HistoryMode historyMode;
+  final ValueChanged<HistoryMode> onHistoryModeChanged;
 
   final String roomCode;
 
@@ -143,6 +154,8 @@ class PlayerMenuButton extends StatelessWidget {
             ),
           ),
           child: _MenuPanel(
+            historyMode: historyMode,
+            onHistoryModeChanged: onHistoryModeChanged,
             roomCode: roomCode,
             nowPlaying: nowPlaying,
             members: members,
@@ -178,6 +191,8 @@ class PlayerMenuButton extends StatelessWidget {
 /// section is expanded for the current open session.
 class _MenuPanel extends StatefulWidget {
   const _MenuPanel({
+    required this.historyMode,
+    required this.onHistoryModeChanged,
     required this.roomCode,
     required this.nowPlaying,
     required this.members,
@@ -204,6 +219,8 @@ class _MenuPanel extends StatefulWidget {
     required this.onExportLogs,
   });
 
+  final HistoryMode historyMode;
+  final ValueChanged<HistoryMode> onHistoryModeChanged;
   final String roomCode;
   final String? nowPlaying;
   final List<String> members;
@@ -365,6 +382,8 @@ class _MenuPanelState extends State<_MenuPanel> {
                           ),
                           const SizedBox(height: Spacing.xs),
                           SettingsPanel(
+                            historyMode: widget.historyMode,
+                            onHistoryModeChanged: widget.onHistoryModeChanged,
                             primarySoundId: widget.primarySoundId,
                             onPrimarySoundChanged: widget.onPrimarySoundChanged,
                             secondarySoundId: widget.secondarySoundId,
@@ -385,6 +404,104 @@ class _MenuPanelState extends State<_MenuPanel> {
                 icon: Icons.arrow_back,
                 text: 'Leave room',
                 onTap: widget.onLeave,
+              ),
+              Divider(color: m.border, height: Spacing.lg),
+              const _VersionFooter(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dim, tappable version line at the bottom of the in-room gear — the in-room
+/// counterpart to the connect screen's [VersionBadge] (there is no badge inside
+/// a room). Opens the same [UpdateDialog] (check version, changelog, update) and
+/// shows the shared "update available" dot when this session's silent check has
+/// found one.
+class _VersionFooter extends StatelessWidget {
+  const _VersionFooter();
+
+  void _open(BuildContext context) {
+    // Capture the root navigator's context BEFORE closing the menu, so the
+    // dialog has a live context even though this footer's own context is torn
+    // down as the menu closes.
+    final rootContext = Navigator.of(context, rootNavigator: true).context;
+    MenuController.maybeOf(context)?.close();
+    // Clear the dot everywhere (footer + connect-screen badge) on open — both
+    // read the shared notifier.
+    updateAvailable.value = false;
+    showDialog<void>(
+      context: rootContext,
+      builder: (_) => const UpdateDialog(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return Tooltip(
+      message: "Updates & what's new",
+      child: InkWell(
+        key: const Key('player-menu-version'),
+        borderRadius: BorderRadius.circular(Radii.md),
+        onTap: () => _open(context),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.sm,
+            vertical: Spacing.sm,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.pets, size: 12, color: m.textDim),
+              const SizedBox(width: Spacing.xs),
+              Text(
+                'v$appVersion',
+                style: TextStyle(
+                  color: m.textDim,
+                  fontSize: TypeScale.caption,
+                  fontWeight: TypeScale.medium,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(width: Spacing.sm),
+              Flexible(
+                child: Text(
+                  "· What's new",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: m.textDim,
+                    fontSize: TypeScale.caption,
+                  ),
+                ),
+              ),
+              ValueListenableBuilder<bool>(
+                valueListenable: updateAvailable,
+                builder: (context, hasUpdate, _) {
+                  if (!hasUpdate) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(left: Spacing.sm),
+                    child: Container(
+                      key: const Key('player-menu-update-dot'),
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: Colors.amber,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.amber.withValues(alpha: 0.5),
+                            blurRadius: 4,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
