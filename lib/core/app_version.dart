@@ -16,3 +16,6 @@ const String appRepo = 'PeterShanxin/MeowWatch';
 /// (e.g. https://releases.meowwatch.app) if the bucket moves to one.
 const String updateBaseUrl =
     'https://pub-6002641cc8a44c128f0684981b511991.r2.dev';
+
+/// Base URL for GitHub issue links rendered in the changelog (e.g. #136).
+const String issueBaseUrl = 'https://github.com/PeterShanxin/MeowWatch/issues';
