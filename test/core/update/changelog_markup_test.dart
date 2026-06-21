@@ -86,5 +86,14 @@ void main() {
       expect(parseChangelogNotes('   \n\n  ').sections, isEmpty);
       expect(parseChangelogNotes('').summary, '');
     });
+
+    test('an overflowing issue-ref digit run never throws and degrades', () {
+      const huge = '#99999999999999999999'; // > 64-bit, cannot int.parse
+      expect(() => parseChangelogNotes('- fixed $huge'), returnsNormally);
+      final spans = parseInline('see $huge done');
+      // Falls back to literal text — no IssueRef, original chars preserved.
+      expect(spans.whereType<IssueRef>(), isEmpty);
+      expect(spansToPlainText(spans), 'see $huge done');
+    });
   });
 }

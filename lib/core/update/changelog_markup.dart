@@ -59,7 +59,15 @@ List<NoteSpan> parseInline(String text) {
     } else if (m.group(2) != null) {
       spans.add(CodeText(m.group(2)!));
     } else {
-      spans.add(IssueRef(int.parse(m.group(3)!)));
+      // tryParse, not parse: a digit run that overflows a 64-bit int must not
+      // throw (the parser is total). Fall back to the literal text so the
+      // original characters are still reproduced.
+      final n = int.tryParse(m.group(3)!);
+      if (n != null) {
+        spans.add(IssueRef(n));
+      } else {
+        spans.add(PlainText(m.group(0)!));
+      }
     }
     index = m.end;
   }
@@ -248,7 +256,10 @@ String _deriveSummary(
       }
     }
   }
-  source = source.replaceAll(_issueStrip, '').trim();
+  source = source
+      .replaceAll(_issueStrip, '')
+      .replaceAll(RegExp(r'\s{2,}'), ' ')
+      .trim();
   final m = _sentenceEnd.firstMatch(source);
   var summary = m != null ? source.substring(0, m.start + 1) : source;
   if (summary.length > 90) summary = '${summary.substring(0, 89).trim()}…';

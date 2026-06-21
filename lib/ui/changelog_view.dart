@@ -110,34 +110,40 @@ class _ChangelogViewState extends State<ChangelogView> {
             ),
           ],
           const SizedBox(height: 4),
-          if (highlights.isEmpty)
-            _bullet(m, [PlainText(p.summary)])
-          else
+          if (highlights.isEmpty) ...[
+            if (p.summary.isNotEmpty) _bullet(m, [PlainText(p.summary)]),
+          ] else
             for (final h in highlights) _bullet(m, h),
-          GestureDetector(
-            onTap: () => setState(() => _heroExpanded = !_heroExpanded),
-            child: Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Full notes',
-                    style: TextStyle(color: m.accent, fontSize: 12.5),
-                  ),
-                  Icon(
-                    _heroExpanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    color: m.accent,
-                    size: 18,
-                  ),
-                ],
+          if (p.sections.isNotEmpty) ...[
+            GestureDetector(
+              onTap: () => setState(() => _heroExpanded = !_heroExpanded),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Full notes',
+                      style: TextStyle(color: m.accent, fontSize: 12.5),
+                    ),
+                    Icon(
+                      _heroExpanded
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                      color: m.accent,
+                      size: 18,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          if (_heroExpanded)
-            ChangelogMarkdown(sections: p.sections, onIssueTap: _onIssueTap),
+            if (_heroExpanded)
+              ChangelogMarkdown(
+                sections: p.sections,
+                onIssueTap: _onIssueTap,
+                showTags: false,
+              ),
+          ],
         ],
       ),
     );
