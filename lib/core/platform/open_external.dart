@@ -1,7 +1,7 @@
 // lib/core/platform/open_external.dart
 import 'dart:io';
 
-import 'package:meta/meta.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 /// Signature for the low-level URL launch. Swapped out in tests so the suite
 /// never spawns a real browser tab.

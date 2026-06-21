@@ -48,7 +48,6 @@ dependencies:
   http: ^1.3.0
   archive: ^4.0.4
   crypto: ^3.0.6
-  meta: ^1.18.0
 
 # path_provider_android 2.3.x pulls jni/jni_flutter, whose Windows native build
 # links the system JDK (ARM64 here) and breaks the x64 Windows build. We only
