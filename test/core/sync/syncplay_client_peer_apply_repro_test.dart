@@ -124,4 +124,56 @@ void main() {
     await bridge.dispose();
     await client.dispose();
   });
+
+  test('a frozen peer stops driving the rewind sawtooth', () async {
+    // Layer 2 end-to-end (the 2026-06-20 field regression). The peer claims
+    // `playing` but is FROZEN at 500s. We keep advancing past it, so every
+    // heartbeat we are >rewindThreshold (4s) ahead — the old rule rewound us to
+    // 500 on EVERY heartbeat, an unwatchable sawtooth. Once the client detects
+    // the peer is stalled it must stop rewinding and let us keep playing.
+    final logs = <String>[];
+    final client = SyncplayClient(onLog: logs.add);
+    client.debugMarkLoggedIn('p2');
+
+    var localSec = 505;
+    for (var i = 0; i < 12; i++) {
+      // We are playing and steadily advancing well ahead of the frozen peer.
+      client.updateLocalState(
+          position: Duration(seconds: localSec), paused: false);
+      client.debugHandleMessage(
+        const StateMessage(
+          peer: PeerPlayState(
+            position: Duration(seconds: 500),
+            paused: false,
+            doSeek: false,
+            setBy: 'p1',
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      localSec += 5;
+    }
+
+    final follow = logs.where((l) => l.startsWith('FOLLOW')).toList();
+    expect(
+      follow.any((l) => l.contains('apply=true')),
+      isTrue,
+      reason: 'the first heartbeats, before the stall is detected, do rewind — '
+          'proving the sawtooth would otherwise run',
+    );
+    expect(
+      follow.last,
+      stringContainsInOrder(['stalled=true', 'apply=false']),
+      reason: 'a peer detected frozen must no longer be chased with a rewind',
+    );
+    final rewinds = follow.where((l) => l.contains('apply=true')).length;
+    expect(
+      rewinds,
+      lessThan(follow.length),
+      reason: 'the rewind must not fire on every heartbeat — the sawtooth stops '
+          'once the peer is stalled',
+    );
+
+    await client.dispose();
+  });
 }

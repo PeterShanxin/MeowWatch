@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../debug/app_log.dart';
 import '../video/playback_state.dart';
 import '../video/video_core.dart';
 import 'peer_state.dart';
@@ -80,6 +81,15 @@ class PlaybackSyncBridge {
   // sequence of the resume that spawned it and bails before it would override a
   // newer peer state that landed while its seek was still in flight.
   int _peerStateSeq = 0;
+
+  // Bounds the force-kicks for a dropped-play freeze (the 2026-06-20 field
+  // regression: the play command is lost and the engine sits PAUSED at the seek
+  // frame). The watchdog reads the engine's live status when it fires — `paused`
+  // at the target means the play was dropped (force a fresh seek+play), `playing`
+  // at the target means a frozen clock (the gentler settle path) — so no history
+  // flag is needed. [_kicksLeft] just stops a truly dead engine from being
+  // force-kicked forever; it degrades to a truthful paused state instead.
+  int _kicksLeft = 0;
   DateTime _remoteApplyUntil = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _remoteSettleUntil = DateTime.fromMillisecondsSinceEpoch(0);
   PeerPlayState? _remoteSettleTarget;
@@ -139,18 +149,38 @@ class PlaybackSyncBridge {
   }
 
   Future<void> _drainPeerStates(PeerPlayState peer) async {
-    var next = peer;
-    while (true) {
-      try {
-        await _onPeerState(next);
-      } catch (_) {
-        // Keep later peer states flowing even if one backend command fails.
+    // EXCEPTION SAFETY IS LOAD-BEARING HERE. `_drainingPeerStates` gates ALL
+    // future peer-state delivery — a state that arrives while it is true just
+    // queues (see [_queuePeerState]). So if this drain ever exits WITHOUT clearing
+    // the flag, the bridge silently stops applying sync for the rest of the
+    // session: the engine drifts free while the room still thinks we are in sync.
+    // That is exactly the 2026-06-21 field freeze — a throwing diagnostic logger
+    // (an IOSink in a transient bad state during a rapid pause/seek/resume burst)
+    // escaped the per-error `appLog` below, unwound this loop, and left the flag
+    // stuck true forever. Two guards make that impossible: the flag is reset in a
+    // `finally` no throw can skip, and the per-error log is itself wrapped so a
+    // failing logger can never abort the drain.
+    try {
+      var next = peer;
+      while (true) {
+        try {
+          await _onPeerState(next);
+        } catch (e, st) {
+          // Keep later peer states flowing even if one backend command fails —
+          // but never SILENTLY: a dropped seek/play here is exactly the
+          // resume-freeze root cause, and swallowing it left the field bug
+          // invisible for months. The log itself must never escape (above).
+          try {
+            appLog('sync bridge: peer-state apply error: $e\n$st');
+          } catch (_) {
+            // A logging failure must not unwind the drain and leak the flag.
+          }
+        }
+        if (_queuedPeerStates.isEmpty) return;
+        next = _queuedPeerStates.removeAt(0);
       }
-      if (_queuedPeerStates.isEmpty) {
-        _drainingPeerStates = false;
-        return;
-      }
-      next = _queuedPeerStates.removeAt(0);
+    } finally {
+      _drainingPeerStates = false;
     }
   }
 
@@ -440,6 +470,19 @@ class PlaybackSyncBridge {
   /// several windows to arrive and reveal a freeze.
   static const int _maxAdvanceChecks = 4;
 
+  /// How many times a never-started resume (the dropped-play freeze) is force
+  /// re-kicked with a fresh seek+play before standing down to a truthful paused
+  /// state. Kept small on purpose: a genuine dropped play recovers on the FIRST
+  /// nudge (this is the engine equivalent of the user's pause-wait-resume
+  /// workaround, which takes in one go once the rapid churn has settled), so two
+  /// attempts is ample for recovery. The cap also bounds the one case the
+  /// paused-at-target shape cannot tell apart from a dropped play — a user who
+  /// pauses within `remoteSeekThreshold` of a peer resume, before the clock
+  /// advances (the same sub-threshold ambiguity tracked in #161). There the force
+  /// re-kick briefly fights the real pause; a small cap keeps that to ~one short
+  /// window before the watchdog stands down and lets the pause propagate.
+  static const int _maxKicks = 2;
+
   /// Arm the stalled-resume watchdog after applying a remote resume. A fast
   /// pause→seek→resume (three peer states inside one handshake) can leave the
   /// reused media_kit/mpv engine reporting `playing` while its clock is frozen
@@ -489,19 +532,32 @@ class PlaybackSyncBridge {
       if (s.duration <= Duration.zero) return;
       final delta = s.position - target;
       final atTarget = delta.abs() <= remoteSeekThreshold;
-      // Still sitting on the resume target while "playing" is the freeze: a full
-      // advance window has passed and the clock has not moved off the seek frame.
-      if (s.status == PlaybackStatus.playing && atTarget) {
-        unawaited(_kickStalledResume(target, seq));
+      // Parked on the resume target and not advancing is the freeze. The engine's
+      // LIVE status when the watchdog fires tells the two shapes apart, with no
+      // history flag: `paused` at the target means the play command was dropped
+      // (the 2026-06-20 field freeze — force a fresh seek+play), `playing` at the
+      // target means a frozen clock (the gentler settle path).
+      if (atTarget) {
+        final droppedPlay = s.status != PlaybackStatus.playing;
+        // Exhausted the bounded force-kicks and the engine is STILL paused at the
+        // target — and this check is a full advance window after the last play, so
+        // a late recovery would already have shown as advancement above. Only now
+        // stand down to a truthful paused state so the room stops chasing a frozen
+        // "playing" (Codex 3447272582).
+        if (droppedPlay && _kicksLeft <= 0) {
+          sync.updateLocalState(position: s.position, paused: true);
+          sync.notifyLocalChange(doSeek: false);
+          return;
+        }
+        unawaited(_kickStalledResume(target, seq, droppedPlay));
         return;
       }
-      // Not yet parked ON the target while playing: the resume seek has not landed
-      // yet — a forward resume sits BELOW the target, a backward one ABOVE it, so
-      // re-arm regardless of side (Codex comment 3445612967). Keep watching for it
-      // to land, since a late landing that then freezes must still be caught. A
-      // local pause is a real local action (`_onLocalState` handles it; this watch
-      // holds no apply guard); that, or exhausting the bound, stops the watch.
-      if (s.status == PlaybackStatus.playing && !atTarget && checksLeft > 1) {
+      // Off the target: the resume seek has not landed yet — a forward resume sits
+      // BELOW the target, a backward one ABOVE it — or playback has genuinely
+      // advanced past it. Re-arm regardless of side and of play/pause (Codex
+      // comment 3445612967), bounded, so a late landing that then freezes is still
+      // caught while healthy playback simply exhausts the bound without a kick.
+      if (checksLeft > 1) {
         _scheduleAdvanceCheck(target, seq, checksLeft - 1);
       }
     });
@@ -512,7 +568,7 @@ class PlaybackSyncBridge {
   /// settled (this is the engine equivalent of the user's pause-wait-resume
   /// workaround), so the fresh play takes. Runs inside the remote-apply guard so
   /// the kick is never echoed back to the room as a local change.
-  Future<void> _kickStalledResume(Duration target, int seq) async {
+  Future<void> _kickStalledResume(Duration target, int seq, bool droppedPlay) async {
     if (_disposed) return;
     final kickStart = DateTime.now();
     _applyingRemote = true;
@@ -528,6 +584,29 @@ class PlaybackSyncBridge {
       // issues its own later seek (which wins) and bumps `_peerStateSeq`.
       await _waitForCommand(video.seek(target));
       if (_disposed || seq != _peerStateSeq) return;
+
+      if (droppedPlay) {
+        // The engine was PAUSED at the target when the watchdog fired — the play
+        // command was dropped and the resume never took (the field freeze). There
+        // is no real local action to respect, so FORCE the play. Bounded by
+        // [_kicksLeft]: always re-arm to confirm it actually advances now; once the
+        // attempts run out, the watchdog check stands down to a truthful paused
+        // state so the room stops chasing a frozen "playing".
+        await _waitForCommand(video.play());
+        if (_disposed || seq != _peerStateSeq) return;
+        _kicksLeft -= 1;
+        // Always re-arm — even after the LAST attempt — so the play has a full
+        // advance window to prove it worked before we ever stand down. The next
+        // watchdog check publishes the paused fallback only if it STILL sees no
+        // advancement (Codex 3447272582); a recovery that starts late shows up as
+        // advancement there and is left to normal sync.
+        _watchResumeAdvances(target, seq);
+        return;
+      }
+
+      // The engine was PLAYING at the target — a frozen clock, or a real local
+      // action the user took during the resume. This settle path resolves the
+      // resume and never re-arms.
       // Don't judge intent in the instant after our own seek: that seek can
       // transiently report `paused` (backend fallout), which must not be mistaken
       // for a real pause. Wait for the truth to settle — a transient clears back
@@ -620,18 +699,27 @@ class PlaybackSyncBridge {
 
       Future<void>? pauseDone;
       if (!peer.paused) {
+        // Arm the advance watchdog FIRST, before the fragile seek-wait/play. The
+        // field freeze dropped the play command BEFORE the watchdog was armed
+        // (the old arming sat AFTER play()), leaving the resume with no recovery
+        // at all. Arming up front guarantees a frozen resume is always re-kicked,
+        // however the play is lost. Reset the per-resume force-kick budget too.
+        _kicksLeft = _maxKicks;
+        _watchResumeAdvances(peer.position, seq);
         var landedBeforePlay = true;
         if (shouldSeek) {
-          landedBeforePlay = await _waitForPosition(peer.position);
+          // Best-effort wait for the seek to land; never let it skip the play.
+          try {
+            landedBeforePlay = await _waitForPosition(peer.position);
+          } catch (_) {
+            landedBeforePlay = false;
+          }
         }
         await _waitForCommand(video.play());
         if (shouldSeek && !landedBeforePlay) {
           _seekWhenPlaying(peer.position);
         }
         seekDone = null;
-        // Verify playback actually starts moving; re-kick if the engine freezes
-        // at the seek frame (the fast pause→seek→resume bug).
-        _watchResumeAdvances(peer.position, seq);
       } else {
         pauseDone = video.pause();
         // A deliberate pause is not a stalled resume — stand the watchdog down.

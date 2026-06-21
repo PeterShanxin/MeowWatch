@@ -125,5 +125,37 @@ void main() {
       );
       expect(action.shouldApply, isFalse);
     });
+
+    test('does not rewind to chase a stalled (frozen) peer', () {
+      // Layer 2 — the rewind amplifier. A peer that claims `playing` but whose
+      // position is frozen (a stuck engine) must NOT pull us into the rewind
+      // sawtooth: we run >threshold ahead, rewind to the stuck spot, replay, get
+      // ahead again, rewind again — forever. When the peer is flagged stalled,
+      // the drift-rewind rule stands down and we keep playing smoothly instead.
+      final action = decideFollow(
+        global: const PeerPlayState(
+            position: Duration(seconds: 500), paused: false, setBy: 'lin'),
+        localPaused: false,
+        localPosition: const Duration(seconds: 510), // 10s ahead of the stuck peer
+        username: 'me',
+        peerStalled: true,
+      );
+      expect(action.shouldApply, isFalse,
+          reason: 'do not rewind to chase a frozen, non-advancing peer');
+    });
+
+    test('still rewinds when far ahead of a normally-advancing peer', () {
+      // The stall guard must not disable healthy drift correction: with the peer
+      // advancing (peerStalled=false) we still rewind when genuinely ahead.
+      final action = decideFollow(
+        global: const PeerPlayState(
+            position: Duration(seconds: 500), paused: false, setBy: 'lin'),
+        localPaused: false,
+        localPosition: const Duration(seconds: 510),
+        username: 'me',
+      );
+      expect(action.shouldApply, isTrue);
+      expect(action.position, const Duration(seconds: 500));
+    });
   });
 }
