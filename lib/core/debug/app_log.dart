@@ -29,4 +29,17 @@ void installAppLog(DebugLog? log) => _appLog = log;
 
 /// Forward one best-effort diagnostic line to the active session log. No-op when
 /// no log is installed.
-void appLog(String line) => _appLog?.call(line);
+///
+/// Crash-proof by contract: logging must NEVER throw into its caller. A
+/// [DebugLog] whose sink is in a transient bad state could otherwise abort the
+/// very code path that logged — it once escaped a peer-apply error handler and
+/// left the room-sync drain flag stuck, freezing all sync (the 2026-06-21 field
+/// freeze). Any failure here is swallowed; a dropped diagnostic line is always
+/// preferable to disrupting playback or sync.
+void appLog(String line) {
+  try {
+    _appLog?.call(line);
+  } catch (_) {
+    // Best-effort: never let a diagnostic failure surface to the caller.
+  }
+}

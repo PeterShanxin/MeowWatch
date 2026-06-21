@@ -149,23 +149,38 @@ class PlaybackSyncBridge {
   }
 
   Future<void> _drainPeerStates(PeerPlayState peer) async {
-    var next = peer;
-    while (true) {
-      try {
-        await _onPeerState(next);
-      } catch (e, st) {
-        // Keep later peer states flowing even if one backend command fails — but
-        // never SILENTLY: a dropped seek/play here is exactly the resume-freeze
-        // root cause, and swallowing it left the field bug invisible for months.
-        // The resume path arms its advance watchdog BEFORE the fragile commands,
-        // so recovery still happens; this trace just makes a recurrence findable.
-        appLog('sync bridge: peer-state apply error: $e\n$st');
+    // EXCEPTION SAFETY IS LOAD-BEARING HERE. `_drainingPeerStates` gates ALL
+    // future peer-state delivery — a state that arrives while it is true just
+    // queues (see [_queuePeerState]). So if this drain ever exits WITHOUT clearing
+    // the flag, the bridge silently stops applying sync for the rest of the
+    // session: the engine drifts free while the room still thinks we are in sync.
+    // That is exactly the 2026-06-21 field freeze — a throwing diagnostic logger
+    // (an IOSink in a transient bad state during a rapid pause/seek/resume burst)
+    // escaped the per-error `appLog` below, unwound this loop, and left the flag
+    // stuck true forever. Two guards make that impossible: the flag is reset in a
+    // `finally` no throw can skip, and the per-error log is itself wrapped so a
+    // failing logger can never abort the drain.
+    try {
+      var next = peer;
+      while (true) {
+        try {
+          await _onPeerState(next);
+        } catch (e, st) {
+          // Keep later peer states flowing even if one backend command fails —
+          // but never SILENTLY: a dropped seek/play here is exactly the
+          // resume-freeze root cause, and swallowing it left the field bug
+          // invisible for months. The log itself must never escape (above).
+          try {
+            appLog('sync bridge: peer-state apply error: $e\n$st');
+          } catch (_) {
+            // A logging failure must not unwind the drain and leak the flag.
+          }
+        }
+        if (_queuedPeerStates.isEmpty) return;
+        next = _queuedPeerStates.removeAt(0);
       }
-      if (_queuedPeerStates.isEmpty) {
-        _drainingPeerStates = false;
-        return;
-      }
-      next = _queuedPeerStates.removeAt(0);
+    } finally {
+      _drainingPeerStates = false;
     }
   }
 

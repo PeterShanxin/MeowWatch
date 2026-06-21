@@ -174,8 +174,12 @@ class DebugLog {
       // (#140 review). Queued (not a bare `sink.flush()`) so it never overlaps
       // another flush. The frequent firehose stays buffered to keep this cheap.
       if (!isVerboseOnly(line)) unawaited(_queueFlush(sink));
-    } on FileSystemException {
-      // Drop the line rather than disrupt playback.
+    } catch (_) {
+      // Drop the line rather than disrupt playback — on ANY error, not only
+      // FileSystemException. An IOSink in a transient bad state (e.g. mid-flush
+      // during a burst) can throw StateError; letting that escape once unwound a
+      // caller mid-operation and froze room sync (the 2026-06-21 field freeze).
+      // Logging is best-effort and must never crash or stall playback/sync.
     }
   }
 
