@@ -51,8 +51,8 @@ void main() {
 
     expect(find.text("You're up to date!"), findsOneWidget);
     expect(find.text("What's new"), findsOneWidget);
-    expect(find.text('- shiny thing'), findsOneWidget);
-    expect(find.text('- older thing'), findsOneWidget);
+    expect(find.text('shiny thing', findRichText: true), findsOneWidget);
+    expect(find.text('older thing'), findsOneWidget); // older entry's summary row
   });
 
   testWidgets('up-to-date with no changelog hides the "What\'s new" section',
