@@ -1,6 +1,7 @@
 // test/ui/changelog_view_test.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:meowwatch/core/platform/open_external.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/core/update/update_service.dart';
@@ -50,5 +51,31 @@ void main() {
     await tester.pumpWidget(host(const []));
     expect(find.byType(ChangelogView), findsOneWidget);
     expect(find.textContaining('WHAT'), findsNothing);
+  });
+
+  group('hero issue refs are tappable without expanding Full notes', () {
+    final launched = <String>[];
+    setUp(() {
+      launched.clear();
+      debugUrlLauncherOverride = (url) async => launched.add(url);
+    });
+    tearDown(() => debugUrlLauncherOverride = null);
+
+    testWidgets('tapping a hero highlight #ref opens the issue', (tester) async {
+      await tester.pumpWidget(host(const [
+        ChangelogEntry(
+          version: '0.33.0-alpha',
+          date: '2026-06-21',
+          notes: '### Added\n- a shiny thing (#136)',
+        ),
+      ]));
+
+      // The ref shows in the hero highlight itself — no "Full notes" expand.
+      expect(find.text('#136'), findsOneWidget);
+      await tester.tap(find.text('#136'));
+      await tester.pump();
+
+      expect(launched, ['https://github.com/PeterShanxin/MeowWatch/issues/136']);
+    });
   });
 }

@@ -140,6 +140,7 @@ const Map<String, ChangelogTag> _tagByHeading = {
 
 final RegExp _heading = RegExp(r'^###\s+(.+)$');
 final RegExp _bullet = RegExp(r'^[-*]\s+(.+)$');
+final RegExp _leadingSpace = RegExp(r'^[ \t]');
 final RegExp _issueStrip = RegExp(r'\s*\(?#\d+\)?');
 final RegExp _sentenceEnd = RegExp(r'[.!?](\s|$)');
 
@@ -203,6 +204,16 @@ ParsedNotes parseChangelogNotes(String notes) {
     if (b != null) {
       flushPara();
       (bullets ??= <String>[]).add(b.group(1)!.trim());
+      continue;
+    }
+    // An indented, non-bullet line while a bullet list is open is a wrapped
+    // continuation of the last bullet — CHANGELOG bullets wrap at ~80 cols with
+    // a 2-space hanging indent (e.g. the 0.32.0 entry). Fold it back into that
+    // item instead of flushing the list and starting a paragraph, which would
+    // truncate the derived summary to the first physical line and split the
+    // continuation out of the full notes.
+    if (bullets != null && bullets!.isNotEmpty && _leadingSpace.hasMatch(raw)) {
+      bullets![bullets!.length - 1] = '${bullets!.last} $trimmed';
       continue;
     }
     flushBullets();

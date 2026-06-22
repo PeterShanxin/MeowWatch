@@ -175,7 +175,17 @@ class _ChangelogViewState extends State<ChangelogView> {
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                       CodeText(:final text) => TextSpan(text: text),
-                      IssueRef(:final number) => TextSpan(text: '#$number'),
+                      IssueRef(:final number) => WidgetSpan(
+                          alignment: PlaceholderAlignment.baseline,
+                          baseline: TextBaseline.alphabetic,
+                          child: GestureDetector(
+                            onTap: () => _onIssueTap(number),
+                            child: Text(
+                              '#$number',
+                              style: TextStyle(color: m.accent, fontSize: 12.5),
+                            ),
+                          ),
+                        ),
                     },
                 ],
                 style: TextStyle(color: m.textPrimary, fontSize: 13, height: 1.5),

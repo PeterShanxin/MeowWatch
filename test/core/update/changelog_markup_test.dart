@@ -81,6 +81,32 @@ void main() {
       expect(p.summary.endsWith('…'), isTrue);
     });
 
+    test('a wrapped bullet folds indented continuation lines into one item', () {
+      // Mirrors the real 0.32.0 entry: a bullet wrapping over several physical
+      // lines with a 2-space hanging indent. Must stay ONE bullet, not split
+      // into a truncated bullet + a stray paragraph.
+      final p = parseChangelogNotes('''
+### Added
+- Continue watching now keeps only the latest video per room by default, with a
+  Settings toggle in both the lobby and the in-room gear. (#136)
+- Second bullet.
+''');
+      expect(p.highlights, hasLength(2));
+      expect(
+        spansToPlainText(p.highlights.first),
+        'Continue watching now keeps only the latest video per room by default, '
+        'with a Settings toggle in both the lobby and the in-room gear. (#136)',
+      );
+      // No paragraph block leaked from the continuation.
+      final blocks = p.sections.single.blocks;
+      expect(blocks, hasLength(1));
+      expect(blocks.single, isA<BulletList>());
+      // Summary reaches into the continuation (the bug truncated it at the first
+      // physical line, ending "…with a" with no "Settings").
+      expect(p.summary, contains('Settings'));
+      expect(p.summary.endsWith('with a'), isFalse);
+    });
+
     test('empty and whitespace input never throw', () {
       expect(parseChangelogNotes('').sections, isEmpty);
       expect(parseChangelogNotes('   \n\n  ').sections, isEmpty);
