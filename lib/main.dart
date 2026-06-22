@@ -32,6 +32,8 @@ Future<void> main() async {
 
   final db = await openAppDatabase();
   final settings = DriftSettingsStore(db);
+  final profiles = DriftProfileStore(db);
+  final history = DriftHistoryStore(db);
 
   // Open the process-wide diagnostic log before any UI runs so it captures the
   // whole app run — lobby, every room, video, updates — not just one room's
@@ -65,10 +67,21 @@ Future<void> main() async {
   final storedLastSeen = await settings.get(kLastSeenVersionKey);
   final backdoor = Platform.environment['MEOWWATCH_WHATS_NEW'];
   final forced = backdoor != null && backdoor.isNotEmpty;
+  // No recorded version means either a fresh install or an existing user
+  // upgrading from a build before this key existed. Only the latter should see
+  // the modal that ships the feature, so distinguish them by whether the DB
+  // already holds the user's data (saved profiles or watch history).
+  final hasPriorInstall = storedLastSeen == null &&
+      ((await profiles.watchProfiles().first).isNotEmpty ||
+          (await history.watchRecent(limit: 1).first).isNotEmpty);
   final effectiveLastSeen =
       (forced && backdoor != '1') ? backdoor : storedLastSeen;
-  final showWhatsNew =
-      shouldShowWhatsNew(lastSeen: storedLastSeen, current: appVersion) || forced;
+  final showWhatsNew = shouldShowWhatsNew(
+        lastSeen: storedLastSeen,
+        current: appVersion,
+        hasPriorInstall: hasPriorInstall,
+      ) ||
+      forced;
   if (storedLastSeen != appVersion) {
     unawaited(settings.set(kLastSeenVersionKey, appVersion));
   }
@@ -80,8 +93,8 @@ Future<void> main() async {
   final navigatorKey = GlobalKey<NavigatorState>();
 
   runApp(MeowWatchApp(
-    profiles: DriftProfileStore(db),
-    history: DriftHistoryStore(db),
+    profiles: profiles,
+    history: history,
     settings: settings,
     initialTheme: savedTheme,
     initialCardWidthPx: cardW,
