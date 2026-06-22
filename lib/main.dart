@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -17,6 +18,9 @@ import 'core/debug/log_archive.dart';
 import 'core/debug/log_level.dart';
 import 'core/debug/startup_env.dart';
 import 'core/theme/meow_theme.dart';
+import 'core/update/changelog_file.dart';
+import 'core/update/update_service.dart';
+import 'core/update/whats_new_gate.dart';
 import 'ui/chat/chat_overlay_layout.dart';
 import 'ui/gallery/design_gallery.dart';
 import 'ui/window_close_handler.dart';
@@ -49,6 +53,19 @@ Future<void> main() async {
   // so environment-specific reports can be confirmed from the log alone (#156).
   await _logStartupEnv(theme: savedTheme, cardW: cardW, cardH: cardH);
 
+  // One-time post-update "what's new" modal: show when the recorded last-seen
+  // version differs from this build (the user updated), or when forced via the
+  // MEOWWATCH_WHATS_NEW backdoor (mirrors the gallery door). Record the current
+  // version every launch so the modal fires at most once per bump.
+  final lastSeen = await settings.get(kLastSeenVersionKey);
+  final showWhatsNew =
+      shouldShowWhatsNew(lastSeen: lastSeen, current: appVersion) ||
+          Platform.environment['MEOWWATCH_WHATS_NEW'] == '1';
+  if (lastSeen != appVersion) {
+    unawaited(settings.set(kLastSeenVersionKey, appVersion));
+  }
+  final whatsNewEntry = showWhatsNew ? await _loadCurrentChangelogEntry() : null;
+
   // Lets the apply-on-close handler show its confirm dialog over the live route.
   final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -60,6 +77,8 @@ Future<void> main() async {
     initialCardWidthPx: cardW,
     initialCardHeightPx: cardH,
     navigatorKey: navigatorKey,
+    showWhatsNew: showWhatsNew,
+    whatsNewEntry: whatsNewEntry,
   ));
 
   // Intercept the window-close button so a downloaded update can be applied on
@@ -80,6 +99,20 @@ Future<void> main() async {
         MaterialPageRoute<void>(builder: (_) => const DesignGallery()),
       );
     });
+  }
+}
+
+/// Load the just-installed version's entry from the bundled `CHANGELOG.md`, so
+/// the post-update modal shows its highlights instantly and offline — no
+/// dependence on R2 having published this version's notes yet. Returns null on
+/// any failure (asset missing, version not found), in which case the modal is
+/// simply skipped.
+Future<ChangelogEntry?> _loadCurrentChangelogEntry() async {
+  try {
+    final md = await rootBundle.loadString('CHANGELOG.md');
+    return entryForVersion(parseChangelogFile(md), appVersion);
+  } catch (_) {
+    return null;
   }
 }
 

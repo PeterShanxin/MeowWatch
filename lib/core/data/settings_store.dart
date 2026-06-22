@@ -36,6 +36,11 @@ const String kLogLevelSettingKey = 'log_level';
 /// `latestPerRoom`).
 const String kHistoryModeSettingKey = 'history_mode';
 
+/// Key for the last app version the user has seen (value = an [appVersion]
+/// string). Drives the one-time post-update "what's new" modal: absent → fresh
+/// install (no modal); differs from the current version → the user updated.
+const String kLastSeenVersionKey = 'last_seen_version';
+
 /// Commands-in access to persisted key/value app settings.
 abstract class SettingsStore {
   Future<String?> get(String key);

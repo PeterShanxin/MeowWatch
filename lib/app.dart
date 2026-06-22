@@ -5,8 +5,10 @@ import 'core/data/settings_store.dart';
 import 'core/data/stores.dart';
 import 'core/theme/meow_context.dart';
 import 'core/theme/meow_theme.dart';
+import 'core/update/update_service.dart';
 import 'ui/connect/connect_screen.dart';
 import 'ui/home_screen.dart';
+import 'ui/whats_new_dialog.dart';
 
 class MeowWatchApp extends StatefulWidget {
   const MeowWatchApp({
@@ -17,6 +19,8 @@ class MeowWatchApp extends StatefulWidget {
     this.initialCardWidthPx,
     this.initialCardHeightPx,
     this.navigatorKey,
+    this.showWhatsNew = false,
+    this.whatsNewEntry,
     super.key,
   });
 
@@ -31,12 +35,38 @@ class MeowWatchApp extends StatefulWidget {
   /// dialog over the live route (#62). Null in tests.
   final GlobalKey<NavigatorState>? navigatorKey;
 
+  /// When true (and [whatsNewEntry] is non-null), the post-update "what's new"
+  /// modal is shown once after the first frame. Decided in `main` from the
+  /// persisted last-seen version (see [shouldShowWhatsNew]).
+  final bool showWhatsNew;
+
+  /// The just-installed version's changelog entry to show in that modal.
+  final ChangelogEntry? whatsNewEntry;
+
   @override
   State<MeowWatchApp> createState() => _MeowWatchAppState();
 }
 
 class _MeowWatchAppState extends State<MeowWatchApp> {
   late MeowThemeId _theme = widget.initialTheme;
+
+  /// Reuse the caller's navigator key when given (so the close handler shares
+  /// it); otherwise make our own so the post-update modal still has a navigator
+  /// context to show over (e.g. in tests).
+  late final GlobalKey<NavigatorState> _navKey =
+      widget.navigatorKey ?? GlobalKey<NavigatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    final entry = widget.whatsNewEntry;
+    if (widget.showWhatsNew && entry != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final context = _navKey.currentContext;
+        if (context != null) WhatsNewDialog.show(context, entry);
+      });
+    }
+  }
 
   void _setTheme(MeowThemeId id) {
     if (id == _theme) return;
@@ -49,7 +79,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'MeowWatch',
-      navigatorKey: widget.navigatorKey,
+      navigatorKey: _navKey,
       debugShowCheckedModeBanner: false,
       theme: themeDataFor(_theme),
       home: Builder(
