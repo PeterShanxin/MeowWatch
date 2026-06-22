@@ -22,6 +22,16 @@ void main() {
   double rowHeight(WidgetTester tester, String id) =>
       tester.getSize(find.byKey(ValueKey<Object>(id))).height;
 
+  // The row's content opacity (closest Opacity ancestor of its text) — the
+  // cascade now lives here, not in the height.
+  double rowOpacity(WidgetTester tester, String id) => tester
+      .widget<Opacity>(
+        find
+            .ancestor(of: find.text(id), matching: find.byType(Opacity))
+            .first,
+      )
+      .opacity;
+
   testWidgets('first build is static — all rows fully present', (tester) async {
     await tester.pumpWidget(host([row('a'), row('b'), row('c')]));
     await tester.pumpAndSettle();
@@ -47,14 +57,22 @@ void main() {
     expect(rowHeight(tester, 'b'), lessThan(2));
     expect(rowHeight(tester, 'c'), lessThan(2));
 
-    // c sits below b, so its staggered entrance lags b's.
     await tester.pump(const Duration(milliseconds: 80));
-    expect(rowHeight(tester, 'b'), greaterThan(rowHeight(tester, 'c')));
+    // Heights open on one shared timeline (no staircase), so the list's total
+    // height grows evenly and the surrounding layout glides — b and c are the
+    // same height mid-flight, both partway open.
+    expect(rowHeight(tester, 'b'), closeTo(rowHeight(tester, 'c'), 0.5));
+    expect(rowHeight(tester, 'b'), greaterThan(0));
+    expect(rowHeight(tester, 'b'), lessThan(40));
+    // The cascade lives in the content: c sits below b, so its fade-in lags.
+    expect(rowOpacity(tester, 'b'), greaterThan(rowOpacity(tester, 'c')));
 
     // Everything settles fully open.
     await tester.pump(const Duration(seconds: 1));
     expect(rowHeight(tester, 'b'), 40);
     expect(rowHeight(tester, 'c'), 40);
+    expect(rowOpacity(tester, 'b'), 1);
+    expect(rowOpacity(tester, 'c'), 1);
     expect(tester.takeException(), isNull);
   });
 

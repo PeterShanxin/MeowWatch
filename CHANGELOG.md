@@ -10,7 +10,7 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
-## [0.34.0-alpha] - 2026-06-22
+## [0.34.0-alpha] - 2026-06-23
 > Continue watching glides instead of snapping.
 
 ### Improved: Smoother Continue watching

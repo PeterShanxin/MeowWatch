@@ -20,10 +20,14 @@ class ReflowChild {
 ///
 /// This is the Flutter port of the design-system Motion study's variant C.
 /// `AnimatedSwitcher` can't reorder, so each row is keyed by [ReflowChild.id]
-/// and animated independently: arrivals/departures drive a [SizeTransition], and
-/// the surrounding [Column] reflows survivors as those heights change — no
-/// explicit per-survivor transform needed, since here rows only shift vertically
-/// (they never cross each other).
+/// and animated independently.
+///
+/// Two timelines per row keep the motion smooth:
+///  * **Height** animates on a single shared duration ([glideDuration]) with no
+///    stagger, so the list's *total* height grows/shrinks as one even tween and
+///    the surrounding layout glides instead of lurching in steps.
+///  * **Content** (fade + scale + rise) is staggered top-to-bottom, so the
+///    visible ripple still reads as a cascade.
 ///
 /// The very first build is static — only later [children] changes animate — so
 /// opening a screen doesn't cascade every time.
@@ -32,7 +36,8 @@ class StaggeredReflowList extends StatefulWidget {
     super.key,
     required this.children,
     this.stagger = Motion.stagger,
-    this.enterDuration = Motion.slow,
+    this.glideDuration = Motion.base,
+    this.enterDuration = Motion.base,
     this.exitDuration = Motion.base,
     this.curve = Motion.standard,
     this.crossAxisAlignment = CrossAxisAlignment.stretch,
@@ -40,9 +45,15 @@ class StaggeredReflowList extends StatefulWidget {
 
   final List<ReflowChild> children;
 
-  /// Per-row delay applied top-to-bottom so arrivals ripple instead of popping
-  /// in together.
+  /// Per-row content delay applied top-to-bottom so arrivals ripple instead of
+  /// popping in together. Does not affect the height glide.
   final Duration stagger;
+
+  /// How long the list's height takes to settle — shared by every row so the
+  /// total height moves as one smooth tween.
+  final Duration glideDuration;
+
+  /// How long a row's fade/scale-in takes (the stagger lead is added on top).
   final Duration enterDuration;
   final Duration exitDuration;
   final Curve curve;
@@ -58,14 +69,22 @@ class _Slot {
   _Slot({
     required this.id,
     required this.child,
-    required this.controller,
-    required this.animation,
+    required this.height,
+    required this.content,
+    required this.heightCurve,
+    required this.contentCurve,
   });
 
   final Object id;
   Widget child;
-  final AnimationController controller;
-  final CurvedAnimation animation;
+
+  /// Layout timeline (shared duration, no stagger) → smooth aggregate height.
+  final AnimationController height;
+
+  /// Visual timeline (staggered) → the fade/scale/rise ripple.
+  final AnimationController content;
+  final CurvedAnimation heightCurve;
+  final CurvedAnimation contentCurve;
   bool leaving = false;
 }
 
@@ -91,51 +110,60 @@ class _StaggeredReflowListState extends State<StaggeredReflowList>
   @override
   void dispose() {
     for (final s in _slots) {
-      s.animation.dispose();
-      s.controller.dispose();
+      s.heightCurve.dispose();
+      s.contentCurve.dispose();
+      s.height.dispose();
+      s.content.dispose();
     }
     super.dispose();
   }
 
-  /// Build a row's controller + curve. [staggerIndex] bakes the cascade delay
-  /// into the entrance as a leading [Interval] on the curve, so the whole
-  /// animation is driven by the controller clock alone (deterministic, no
-  /// timers): lower rows hold at 0 for `staggerIndex * stagger` before easing
-  /// open. The exit ignores that lead-in ([reverseCurve]) so departures collapse
-  /// promptly.
+  /// Build a row's two controllers + curves. Height runs over [glideDuration]
+  /// for every row (so the list height settles as one even tween). Content runs
+  /// over `enterDuration + staggerIndex * stagger`, with the lead-in expressed
+  /// as a leading [Interval] on the curve — controller-driven, so it is
+  /// deterministic with no timers. The exit ignores the lead ([reverseCurve]).
   _Slot _createSlot(
     Object id,
     Widget child, {
     required double value,
     int staggerIndex = 0,
   }) {
-    final delay = widget.stagger * staggerIndex;
-    final enterTotal = widget.enterDuration + delay;
-    final controller = AnimationController(
+    final height = AnimationController(
       vsync: this,
-      duration: enterTotal,
+      duration: widget.glideDuration,
       reverseDuration: widget.exitDuration,
       value: value,
     );
-    final lead = enterTotal.inMicroseconds == 0
-        ? 0.0
-        : delay.inMicroseconds / enterTotal.inMicroseconds;
-    final animation = CurvedAnimation(
-      parent: controller,
-      curve: Interval(lead, 1, curve: widget.curve),
-      reverseCurve: widget.curve,
+    final delay = widget.stagger * staggerIndex;
+    final contentTotal = widget.enterDuration + delay;
+    final content = AnimationController(
+      vsync: this,
+      duration: contentTotal,
+      reverseDuration: widget.exitDuration,
+      value: value,
     );
+    final lead = contentTotal.inMicroseconds == 0
+        ? 0.0
+        : delay.inMicroseconds / contentTotal.inMicroseconds;
     return _Slot(
       id: id,
       child: child,
-      controller: controller,
-      animation: animation,
+      height: height,
+      content: content,
+      heightCurve: CurvedAnimation(parent: height, curve: widget.curve),
+      contentCurve: CurvedAnimation(
+        parent: content,
+        curve: Interval(lead, 1, curve: widget.curve),
+        reverseCurve: widget.curve,
+      ),
     );
   }
 
   /// Diff [next] against the mounted rows: refresh survivors, schedule arrivals
-  /// (staggered) and departures (collapse), then re-sort so leavers stay where
-  /// they were while survivors/arrivals take the new order.
+  /// (staggered content, shared height) and departures (collapse), then re-sort
+  /// so leavers stay where they were while survivors/arrivals take the new
+  /// order.
   void _sync(List<ReflowChild> next) {
     final nextIds = <Object>[for (final c in next) c.id];
     final nextSet = nextIds.toSet();
@@ -151,22 +179,25 @@ class _StaggeredReflowListState extends State<StaggeredReflowList>
           // It was on its way out but reappeared before finishing — reverse the
           // exit back to fully present.
           existing.leaving = false;
-          existing.controller.forward();
+          existing.height.forward();
+          existing.content.forward();
         }
       } else {
         // staggerIndex is the row's position in the new list, so rows lower down
-        // open slightly later and the list ripples top-to-bottom.
+        // ripple their content in slightly later.
         final slot = _createSlot(c.id, c.child, value: 0, staggerIndex: i);
         _slots.add(slot);
         byId[c.id] = slot;
-        slot.controller.forward();
+        slot.height.forward();
+        slot.content.forward();
       }
     }
 
     for (final s in oldOrder) {
       if (!nextSet.contains(s.id) && !s.leaving) {
         s.leaving = true;
-        s.controller.reverse().then((_) => _onExitDone(s));
+        s.content.reverse();
+        s.height.reverse().then((_) => _onExitDone(s));
       }
     }
 
@@ -177,12 +208,13 @@ class _StaggeredReflowListState extends State<StaggeredReflowList>
   void _onExitDone(_Slot slot) {
     // Only finalize a row that is still leaving and actually finished collapsing
     // — a revived or interrupted exit is handled elsewhere.
-    if (!slot.leaving ||
-        slot.controller.status != AnimationStatus.dismissed) {
+    if (!slot.leaving || slot.height.status != AnimationStatus.dismissed) {
       return;
     }
-    slot.animation.dispose();
-    slot.controller.dispose();
+    slot.heightCurve.dispose();
+    slot.contentCurve.dispose();
+    slot.height.dispose();
+    slot.content.dispose();
     if (mounted) {
       setState(() => _slots.remove(slot));
     } else {
@@ -225,25 +257,25 @@ class _StaggeredReflowListState extends State<StaggeredReflowList>
   Widget _buildSlot(_Slot slot) {
     return SizeTransition(
       key: ValueKey(slot.id),
-      sizeFactor: slot.animation,
+      sizeFactor: slot.heightCurve,
       alignment: Alignment.topCenter, // collapse toward the top edge
-      child: FadeTransition(
-        opacity: slot.animation,
-        child: AnimatedBuilder(
-          animation: slot.animation,
-          builder: (context, child) {
-            final t = slot.animation.value;
-            return Transform.translate(
+      child: AnimatedBuilder(
+        animation: slot.contentCurve,
+        builder: (context, child) {
+          final t = slot.contentCurve.value.clamp(0.0, 1.0);
+          return Opacity(
+            opacity: t,
+            child: Transform.translate(
               offset: Offset(0, (1 - t) * 8),
               child: Transform.scale(
                 scale: 0.97 + 0.03 * t,
                 alignment: Alignment.topCenter,
                 child: child,
               ),
-            );
-          },
-          child: slot.child,
-        ),
+            ),
+          );
+        },
+        child: slot.child,
       ),
     );
   }

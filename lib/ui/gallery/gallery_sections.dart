@@ -286,12 +286,31 @@ class OpacitySpecimen extends StatelessWidget {
   }
 }
 
+/// The motion design system, live: durations race so 120 vs 320ms is legible,
+/// easings race so the acceleration slope is legible (each with its curve
+/// thumbnail), and the raw token chips name them. Drives the real [Motion]
+/// tokens + Flutter [Curves], so editing a token moves these.
 class MotionSpecimen extends StatelessWidget {
   const MotionSpecimen({super.key});
+
+  // Easing racers share one duration so only the *slope* differs between them.
+  // Demo timing only (not a shipped token) — long enough that the curve reads.
+  static const Duration _easingRace = Duration(milliseconds: 720);
+
   @override
   Widget build(BuildContext context) {
     final t = context.meowText;
     final c = context.meow;
+
+    Widget subhead(String text) => Text(
+          text.toUpperCase(),
+          style: t.caption.copyWith(
+            color: c.textPrimary,
+            letterSpacing: 1.5,
+            fontWeight: TypeScale.semibold,
+          ),
+        );
+
     Widget chip(String text) => Container(
           padding: const EdgeInsets.symmetric(
               horizontal: Spacing.md, vertical: Spacing.sm),
@@ -302,15 +321,234 @@ class MotionSpecimen extends StatelessWidget {
           ),
           child: Text(text, style: t.caption.copyWith(color: c.textPrimary)),
         );
-    return Wrap(spacing: Spacing.md, runSpacing: Spacing.md, children: [
-      chip('fast · ${Motion.fast.inMilliseconds}ms'),
-      chip('base · ${Motion.base.inMilliseconds}ms'),
-      chip('slow · ${Motion.slow.inMilliseconds}ms'),
-      chip('stagger · ${Motion.stagger.inMilliseconds}ms'),
-      chip('standard · easeOutCubic'),
-      chip('symmetric · easeInOut'),
-    ]);
+
+    Widget durationLeading(String label) => Text(
+          label,
+          style: t.caption.copyWith(color: c.textDim),
+        );
+
+    Widget easingLeading(Curve curve, String name, String bezier) => Row(
+          children: [
+            _EasingCurveThumb(curve: curve),
+            const SizedBox(width: Spacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(name,
+                      style: TextStyle(
+                          color: c.textPrimary,
+                          fontWeight: TypeScale.semibold)),
+                  Text(bezier,
+                      style: t.caption.copyWith(color: c.textDim)),
+                ],
+              ),
+            ),
+          ],
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        subhead('Durations'),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
+          duration: Motion.fast,
+          curve: Motion.standard,
+          leading: durationLeading('fast · ${Motion.fast.inMilliseconds}ms'),
+        ),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
+          duration: Motion.base,
+          curve: Motion.standard,
+          leading: durationLeading('base · ${Motion.base.inMilliseconds}ms'),
+        ),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
+          duration: Motion.slow,
+          curve: Motion.standard,
+          leading: durationLeading('slow · ${Motion.slow.inMilliseconds}ms'),
+        ),
+        const SizedBox(height: Spacing.xl),
+        subhead('Easings'),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
+          duration: _easingRace,
+          curve: Motion.standard,
+          leadingWidth: 168,
+          leading: easingLeading(
+              Motion.standard, 'easeOutCubic', '(.215, .61, .355, 1)'),
+        ),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
+          duration: _easingRace,
+          curve: Motion.symmetric,
+          leadingWidth: 168,
+          leading:
+              easingLeading(Motion.symmetric, 'easeInOut', '(.42, 0, .58, 1)'),
+        ),
+        const SizedBox(height: Spacing.xl),
+        Wrap(spacing: Spacing.md, runSpacing: Spacing.md, children: [
+          chip('fast · ${Motion.fast.inMilliseconds}ms'),
+          chip('base · ${Motion.base.inMilliseconds}ms'),
+          chip('slow · ${Motion.slow.inMilliseconds}ms'),
+          chip('stagger · ${Motion.stagger.inMilliseconds}ms'),
+          chip('standard · easeOutCubic'),
+          chip('symmetric · easeInOut'),
+        ]),
+      ],
+    );
   }
+}
+
+/// A dot looping back and forth along a rail over [duration] with [curve] — so a
+/// duration token's speed (or an easing's slope) is visible at a glance.
+class _MotionRacer extends StatefulWidget {
+  const _MotionRacer({
+    required this.duration,
+    required this.curve,
+    required this.leading,
+    this.leadingWidth = 120,
+  });
+
+  final Duration duration;
+  final Curve curve;
+  final Widget leading;
+  final double leadingWidth;
+
+  @override
+  State<_MotionRacer> createState() => _MotionRacerState();
+}
+
+class _MotionRacerState extends State<_MotionRacer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller =
+      AnimationController(vsync: this, duration: widget.duration)
+        ..repeat(reverse: true);
+  late final Animation<double> _t =
+      CurvedAnimation(parent: _controller, curve: widget.curve);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    const dot = 14.0;
+    return Row(
+      children: [
+        SizedBox(width: widget.leadingWidth, child: widget.leading),
+        const SizedBox(width: Spacing.lg),
+        Expanded(
+          child: SizedBox(
+            height: 16,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 7,
+                  height: 3,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: c.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                AnimatedBuilder(
+                  animation: _t,
+                  builder: (context, child) => Align(
+                    alignment: Alignment(_t.value * 2 - 1, 0),
+                    child: child,
+                  ),
+                  child: Container(
+                    width: dot,
+                    height: dot,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: c.accent,
+                      boxShadow: [
+                        BoxShadow(
+                          color: c.accent.withValues(alpha: Opacities.pressed),
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A small framed plot of an easing [curve] (progress vs time), sampled from the
+/// real Flutter [Curve] so the thumbnail always matches what ships.
+class _EasingCurveThumb extends StatelessWidget {
+  const _EasingCurveThumb({required this.curve});
+
+  final Curve curve;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    return Container(
+      width: 46,
+      height: 40,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(Radii.xs),
+        border: Border.all(color: c.border),
+      ),
+      child: CustomPaint(
+        painter: _EasingCurvePainter(curve: curve, color: c.accent),
+      ),
+    );
+  }
+}
+
+class _EasingCurvePainter extends CustomPainter {
+  _EasingCurvePainter({required this.curve, required this.color});
+
+  final Curve curve;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const inset = 6.0;
+    final w = size.width - inset * 2;
+    final h = size.height - inset * 2;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+    final path = Path();
+    const steps = 24;
+    for (var i = 0; i <= steps; i++) {
+      final x = i / steps;
+      final y = curve.transform(x);
+      final px = inset + x * w;
+      final py = inset + (1 - y) * h; // y grows upward
+      if (i == 0) {
+        path.moveTo(px, py);
+      } else {
+        path.lineTo(px, py);
+      }
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_EasingCurvePainter old) =>
+      old.curve != curve || old.color != color;
 }
 
 /// Live demo of the staggered-cascade list reflow (Motion study variant C).
@@ -651,7 +889,8 @@ List<Widget> gallerySections() => const [
       ),
       GallerySection(
         title: 'Motion',
-        description: 'Durations + easings shared by every transition.',
+        description: 'The shared timing and easing every transition draws from. '
+            'Looping live so the difference is legible.',
         child: MotionSpecimen(),
       ),
       GallerySection(
