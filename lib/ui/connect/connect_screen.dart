@@ -28,6 +28,7 @@ import '../../core/theme/tokens/spacing.dart';
 import '../../core/theme/tokens/type_scale.dart';
 import '../../core/video/video_url.dart';
 import '../settings/lobby_settings_button.dart';
+import '../staggered_reflow_list.dart';
 import '../version_badge.dart';
 import 'history_format.dart';
 
@@ -921,16 +922,28 @@ class _ContinueWatching extends StatelessWidget {
               ],
             ),
             const SizedBox(height: Spacing.xs),
-            ...recent.map(
-              (e) => _HistoryCard(
-                entry: e,
-                currentUsername: currentUsername,
-                onResume: () => onResume(e),
-                onResumeWithCurrentName: currentUsername.isEmpty
-                    ? null
-                    : () => onResume(e, usernameOverride: currentUsername),
-                onDelete: () => history.delete(e.id),
-              ),
+            // Toggling Latest-per-room ⇄ Every-video (or recording/removing a
+            // file) adds, removes and reorders these cards. The staggered
+            // cascade glides survivors and ripples arrivals in instead of
+            // hard-swapping the list. Keyed by row id so it can tell a card that
+            // moved from one that left while a new one arrived.
+            StaggeredReflowList(
+              children: [
+                for (final e in recent)
+                  ReflowChild(
+                    id: e.id,
+                    child: _HistoryCard(
+                      entry: e,
+                      currentUsername: currentUsername,
+                      onResume: () => onResume(e),
+                      onResumeWithCurrentName: currentUsername.isEmpty
+                          ? null
+                          : () =>
+                              onResume(e, usernameOverride: currentUsername),
+                      onDelete: () => history.delete(e.id),
+                    ),
+                  ),
+              ],
             ),
           ],
         );

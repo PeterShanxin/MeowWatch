@@ -15,4 +15,9 @@ void main() {
     expect(Motion.standard, Curves.easeOutCubic);
     expect(Motion.symmetric, Curves.easeInOut);
   });
+
+  test('stagger is the per-item cascade delay, shorter than fast', () {
+    expect(Motion.stagger, const Duration(milliseconds: 55));
+    expect(Motion.stagger < Motion.fast, isTrue);
+  });
 }

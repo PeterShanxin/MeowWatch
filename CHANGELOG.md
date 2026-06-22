@@ -10,6 +10,12 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.34.0-alpha] - 2026-06-23
+> Continue watching glides instead of snapping.
+
+### Improved: Smoother Continue watching
+- Switching **Latest per room ⇄ Every video** now animates: the cards that stay glide to their new spot while the newly-shown ones ripple in one after another, top to bottom — instead of the whole list snapping to its new shape.
+
 ## [0.33.0-alpha] - 2026-06-21
 > The changelog finally reads like a changelog.
 
