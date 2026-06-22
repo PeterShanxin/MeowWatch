@@ -57,15 +57,23 @@ Future<void> main() async {
   // version differs from this build (the user updated), or when forced via the
   // MEOWWATCH_WHATS_NEW backdoor (mirrors the gallery door). Record the current
   // version every launch so the modal fires at most once per bump.
-  final lastSeen = await settings.get(kLastSeenVersionKey);
+  //
+  // Backdoor values: '1' forces the modal using the real last-seen version; any
+  // other non-empty value (e.g. '0.28.0-alpha') is treated as a pretend
+  // last-seen, so the multi-version catch-up can be demoed/tested on any install
+  // without an actual update history.
+  final storedLastSeen = await settings.get(kLastSeenVersionKey);
+  final backdoor = Platform.environment['MEOWWATCH_WHATS_NEW'];
+  final forced = backdoor != null && backdoor.isNotEmpty;
+  final effectiveLastSeen =
+      (forced && backdoor != '1') ? backdoor : storedLastSeen;
   final showWhatsNew =
-      shouldShowWhatsNew(lastSeen: lastSeen, current: appVersion) ||
-          Platform.environment['MEOWWATCH_WHATS_NEW'] == '1';
-  if (lastSeen != appVersion) {
+      shouldShowWhatsNew(lastSeen: storedLastSeen, current: appVersion) || forced;
+  if (storedLastSeen != appVersion) {
     unawaited(settings.set(kLastSeenVersionKey, appVersion));
   }
   final whatsNewEntries = showWhatsNew
-      ? await _loadWhatsNewEntries(lastSeen)
+      ? await _loadWhatsNewEntries(effectiveLastSeen)
       : const <ChangelogEntry>[];
 
   // Lets the apply-on-close handler show its confirm dialog over the live route.
