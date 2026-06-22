@@ -254,9 +254,24 @@ class _ChangelogViewState extends State<ChangelogView> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      // Same category chips as the hero, so the collapsed list
+                      // is scannable without opening each row. Only versions
+                      // with `### Added/Fixed/Improved` sections have tags;
+                      // older free-form entries simply show none.
+                      if (p.tags.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              for (final t in p.tags) ChangelogTagChip(tag: t),
+                            ],
+                          ),
+                        ),
                       if (p.summary.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.only(top: 2),
+                          padding: const EdgeInsets.only(top: 4),
                           child: Text(
                             p.summary,
                             maxLines: 1,

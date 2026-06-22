@@ -47,6 +47,26 @@ void main() {
     );
   });
 
+  testWidgets('collapsed earlier row shows its category chips (not just hero)',
+      (tester) async {
+    await tester.pumpWidget(host(const [
+      ChangelogEntry(
+        version: '0.33.0-alpha',
+        date: '2026-06-21',
+        notes: '### Added\n- newest thing',
+      ),
+      ChangelogEntry(
+        version: '0.32.0-alpha',
+        date: '2026-06-20',
+        notes: '### Fixed\n- an old bug',
+      ),
+    ]));
+    // The older row's "Fixed" chip is visible while still collapsed, alongside
+    // the hero's "New" chip — categories are scannable without expanding.
+    expect(find.text('Fixed'), findsOneWidget);
+    expect(find.text('New'), findsOneWidget); // hero chip
+  });
+
   testWidgets('empty entries renders nothing', (tester) async {
     await tester.pumpWidget(host(const []));
     expect(find.byType(ChangelogView), findsOneWidget);
