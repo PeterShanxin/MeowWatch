@@ -89,4 +89,8 @@ class FakeSettingsStore implements SettingsStore {
 
   @override
   Future<void> set(String key, String value) async => _map[key] = value;
+
+  @override
+  Future<bool> hasAnySettings() async =>
+      _map.keys.any((k) => k != kLastSeenVersionKey);
 }

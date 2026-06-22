@@ -45,4 +45,10 @@ const String kLastSeenVersionKey = 'last_seen_version';
 abstract class SettingsStore {
   Future<String?> get(String key);
   Future<void> set(String key, String value);
+
+  /// Whether any user-persisted setting exists, ignoring the app-written
+  /// [kLastSeenVersionKey]. Lets startup tell an existing install (the user has
+  /// changed a setting before) apart from a fresh one when no version has been
+  /// recorded yet — so the post-update modal still reaches settings-only users.
+  Future<bool> hasAnySettings();
 }

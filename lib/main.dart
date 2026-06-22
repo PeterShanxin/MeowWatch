@@ -70,9 +70,11 @@ Future<void> main() async {
   // No recorded version means either a fresh install or an existing user
   // upgrading from a build before this key existed. Only the latter should see
   // the modal that ships the feature, so distinguish them by whether the DB
-  // already holds the user's data (saved profiles or watch history).
+  // already holds the user's data — saved profiles, watch history, or any
+  // changed setting (a settings-only user counts as an existing install too).
   final hasPriorInstall = storedLastSeen == null &&
-      ((await profiles.watchProfiles().first).isNotEmpty ||
+      (await settings.hasAnySettings() ||
+          (await profiles.watchProfiles().first).isNotEmpty ||
           (await history.watchRecent(limit: 1).first).isNotEmpty);
   final effectiveLastSeen =
       (forced && backdoor != '1') ? backdoor : storedLastSeen;

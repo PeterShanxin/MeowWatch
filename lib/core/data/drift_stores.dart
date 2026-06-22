@@ -204,4 +204,13 @@ class DriftSettingsStore implements SettingsStore {
           SettingsCompanion.insert(key: key, value: value),
         );
   }
+
+  @override
+  Future<bool> hasAnySettings() async {
+    final row = await (_db.select(_db.settings)
+          ..where((t) => t.key.equals(kLastSeenVersionKey).not())
+          ..limit(1))
+        .getSingleOrNull();
+    return row != null;
+  }
 }
