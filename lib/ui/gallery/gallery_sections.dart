@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../core/data/history_collapse.dart';
+import '../../core/data/history_entry.dart';
+import '../../core/data/history_mode.dart';
 import '../../core/sync/peer_state.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
+import '../../core/theme/meow_theme.dart';
 import '../../core/theme/tokens/icon_sizes.dart';
 import '../../core/theme/tokens/motion.dart';
 import '../../core/theme/tokens/opacities.dart';
@@ -11,7 +15,9 @@ import '../../core/theme/tokens/shadows.dart';
 import '../../core/theme/tokens/spacing.dart';
 import '../../core/theme/tokens/type_scale.dart';
 import '../chat/chat_bubble.dart';
+import '../connect/history_format.dart';
 import '../empty_state.dart';
+import '../staggered_reflow_list.dart';
 
 /// 8-digit ARGB hex for a token swatch label, e.g. `#FF1A1410`.
 String _hex(Color c) =>
@@ -300,9 +306,237 @@ class MotionSpecimen extends StatelessWidget {
       chip('fast · ${Motion.fast.inMilliseconds}ms'),
       chip('base · ${Motion.base.inMilliseconds}ms'),
       chip('slow · ${Motion.slow.inMilliseconds}ms'),
+      chip('stagger · ${Motion.stagger.inMilliseconds}ms'),
       chip('standard · easeOutCubic'),
       chip('symmetric · easeInOut'),
     ]);
+  }
+}
+
+/// Live demo of the staggered-cascade list reflow (Motion study variant C).
+/// Toggling the presentation adds, removes and reorders cards; survivors glide
+/// and arrivals ripple in top-to-bottom instead of the list hard-swapping.
+/// Drives the *real* [collapseHistory] logic over fixed sample rows.
+class MotionReflowSpecimen extends StatefulWidget {
+  const MotionReflowSpecimen({super.key});
+
+  @override
+  State<MotionReflowSpecimen> createState() => _MotionReflowSpecimenState();
+}
+
+class _MotionReflowSpecimenState extends State<MotionReflowSpecimen> {
+  HistoryMode _mode = HistoryMode.latestPerRoom;
+
+  // Fixed clock + rows (gallery convention: deterministic, never DateTime.now).
+  static final DateTime _now = DateTime(2026, 1, 7, 21, 0);
+  static final List<HistoryEntry> _entries = [
+    _demo(1, 'The Bear — S03E08', 'sleepy-otter', 'lin', 2850000, 1122000,
+        1503238553, 2),
+    _demo(2, 'The Bear — S03E07', 'sleepy-otter', 'lin', 2850000, 2650000,
+        1503238553, 24),
+    _demo(3, 'Dune: Part Two', 'cosmic-cat', 'mochi', 9960000, 6120000,
+        4402341478, 48),
+    _demo(4, 'Spirited Away', 'cosmic-cat', 'mochi', 7440000, 1931000,
+        2362232012, 72),
+    _demo(5, 'Frieren — S01E12', 'ghibli-night', 'you', 1440000, 663000,
+        754974720, 120),
+    _demo(6, 'Frieren — S01E11', 'ghibli-night', 'you', 1440000, 1420000,
+        734003200, 144),
+  ];
+
+  static HistoryEntry _demo(int id, String title, String room, String user,
+          int durationMs, int positionMs, int sizeBytes, int hoursAgo) =>
+      HistoryEntry(
+        id: id,
+        filePath: '/$title',
+        fileName: title,
+        fileSizeBytes: sizeBytes,
+        durationMs: durationMs,
+        lastPositionMs: positionMs,
+        playedAt: _now.subtract(Duration(hours: hoursAgo)),
+        room: room,
+        username: user,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = collapseHistory(_entries, _mode);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _ReflowToggle(
+          mode: _mode,
+          onChanged: (m) => setState(() => _mode = m),
+        ),
+        const SizedBox(height: Spacing.md),
+        StaggeredReflowList(
+          children: [
+            for (final e in visible)
+              ReflowChild(id: e.id, child: _ReflowDemoCard(entry: e, now: _now)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Two-option segmented control with a sliding pill — mirrors the lobby's
+/// Latest-per-room ⇄ Every-video switch, animated over the motion tokens.
+class _ReflowToggle extends StatelessWidget {
+  const _ReflowToggle({required this.mode, required this.onChanged});
+
+  final HistoryMode mode;
+  final ValueChanged<HistoryMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    final t = context.meowText;
+    final isEvery = mode == HistoryMode.everyVideo;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: c.border),
+      ),
+      child: SizedBox(
+        height: 44,
+        child: Stack(
+          children: [
+            AnimatedAlign(
+              duration: Motion.base,
+              curve: Motion.standard,
+              alignment: isEvery ? Alignment.centerRight : Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: 0.5,
+                heightFactor: 1,
+                child: Container(
+                  margin: const EdgeInsets.all(Spacing.xxs),
+                  decoration: BoxDecoration(
+                    color: c.accent.withValues(alpha: Opacities.hover),
+                    borderRadius: BorderRadius.circular(Radii.sm),
+                    border: Border.all(color: c.accent),
+                  ),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                _segment('Latest per room', !isEvery, HistoryMode.latestPerRoom,
+                    c, t),
+                _segment('Every video', isEvery, HistoryMode.everyVideo, c, t),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _segment(String label, bool selected, HistoryMode value, MeowColors c,
+      MeowTextStyles t) {
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Radii.sm),
+        onTap: () => onChanged(value),
+        child: Center(
+          child: AnimatedDefaultTextStyle(
+            duration: Motion.base,
+            curve: Motion.standard,
+            style: t.label.copyWith(
+              color: selected ? c.accent : c.textDim,
+              fontWeight: selected ? TypeScale.semibold : TypeScale.regular,
+            ),
+            child: Text(label),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Read-only twin of the lobby's Continue-watching card, for the gallery demo.
+class _ReflowDemoCard extends StatelessWidget {
+  const _ReflowDemoCard({required this.entry, required this.now});
+
+  final HistoryEntry entry;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    final t = context.meowText;
+    final frac = progressFraction(entry);
+    final roomLine = historyRoomLine(entry);
+    return Card(
+      color: c.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Radii.md),
+        side: BorderSide(color: c.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.play_circle, color: c.accent),
+            const SizedBox(width: Spacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    entry.fileName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: c.textPrimary),
+                  ),
+                  const SizedBox(height: Spacing.xxs),
+                  Text(
+                    historySubtitle(entry, now),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.body.copyWith(color: c.textDim),
+                  ),
+                  if (roomLine != null) ...[
+                    const SizedBox(height: Spacing.xxs),
+                    Row(
+                      children: [
+                        Icon(Icons.groups, size: 12, color: c.accent),
+                        const SizedBox(width: Spacing.xs),
+                        Flexible(
+                          child: Text(
+                            roomLine,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.body.copyWith(color: c.accent),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (frac != null) ...[
+                    const SizedBox(height: Spacing.sm),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(Radii.xs),
+                      child: LinearProgressIndicator(
+                        value: frac,
+                        minHeight: 4,
+                        backgroundColor: c.border,
+                        valueColor: AlwaysStoppedAnimation<Color>(c.accent),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: Spacing.sm),
+            Icon(Icons.close, color: c.textDim, size: IconSizes.md),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -419,6 +653,14 @@ List<Widget> gallerySections() => const [
         title: 'Motion',
         description: 'Durations + easings shared by every transition.',
         child: MotionSpecimen(),
+      ),
+      GallerySection(
+        title: 'Motion · list reflow',
+        description:
+            'Toggling Latest per room ⇄ Every video adds, removes and reorders '
+            'cards. The staggered cascade glides survivors and ripples arrivals '
+            'in top-to-bottom instead of hard-swapping the list.',
+        child: MotionReflowSpecimen(),
       ),
       GallerySection(
         title: 'Shadow',
