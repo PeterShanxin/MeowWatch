@@ -36,8 +36,11 @@ class StaggeredReflowList extends StatefulWidget {
     super.key,
     required this.children,
     this.stagger = Motion.stagger,
-    this.glideDuration = Motion.base,
-    this.enterDuration = Motion.base,
+    // Reflow settle timings. 300ms glide/enter is the industry norm for an
+    // in-place list regroup (Material "medium", Apple's default, and the
+    // handoff design's own move duration); leaving collapses a touch quicker.
+    this.glideDuration = const Duration(milliseconds: 300),
+    this.enterDuration = const Duration(milliseconds: 300),
     this.exitDuration = Motion.base,
     this.curve = Motion.standard,
     this.crossAxisAlignment = CrossAxisAlignment.stretch,
