@@ -53,6 +53,55 @@ void main() {
     expect(find.textContaining('WHAT'), findsNothing);
   });
 
+  group('"Full notes" only appears when it reveals more than the highlights',
+      () {
+    testWidgets('short version (≤3 bullets, no prose) → no expander',
+        (tester) async {
+      await tester.pumpWidget(host(const [
+        ChangelogEntry(
+          version: '0.33.0-alpha',
+          date: '2026-06-21',
+          notes: '### Added\n- one\n- two\n\n### Improved\n- three',
+        ),
+      ]));
+      // All three bullets are the highlights; nothing more to expand.
+      expect(find.text('Full notes'), findsNothing);
+    });
+
+    testWidgets('more than 3 bullets → expander reveals the extras',
+        (tester) async {
+      await tester.pumpWidget(host(const [
+        ChangelogEntry(
+          version: '0.33.0-alpha',
+          date: '2026-06-21',
+          notes: '### Added\n- one\n- two\n- three\n- four\n- five',
+        ),
+      ]));
+      expect(find.text('Full notes'), findsOneWidget);
+      // The 4th bullet is hidden until expanded.
+      expect(find.text('four', findRichText: true), findsNothing);
+      await tester.tap(find.text('Full notes'));
+      await tester.pumpAndSettle();
+      expect(find.text('four', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('a paragraph (prose not in highlights) → expander appears',
+        (tester) async {
+      await tester.pumpWidget(host(const [
+        ChangelogEntry(
+          version: '0.33.0-alpha',
+          date: '2026-06-21',
+          notes: '### Fixed\n- a bug\n\nSome extra prose detail.',
+        ),
+      ]));
+      expect(find.text('Full notes'), findsOneWidget);
+      await tester.tap(find.text('Full notes'));
+      await tester.pumpAndSettle();
+      expect(find.text('Some extra prose detail.', findRichText: true),
+          findsOneWidget);
+    });
+  });
+
   group('hero issue refs are tappable without expanding Full notes', () {
     final launched = <String>[];
     setUp(() {

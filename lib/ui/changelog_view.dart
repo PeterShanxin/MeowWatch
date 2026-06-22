@@ -70,6 +70,13 @@ class _ChangelogViewState extends State<ChangelogView> {
 
   Widget _hero(MeowColors m, ChangelogEntry e, ParsedNotes p) {
     final highlights = p.highlights.take(3).toList();
+    // "Full notes" only earns its place when it reveals something the hero
+    // highlights don't already show — extra bullets beyond the shown few, or
+    // paragraph text (headings are rendered as the tag chips above). Without
+    // this, a short version (≤3 bullets, no prose) made the expander repeat the
+    // exact same bullets.
+    final hasMore = p.highlights.length > highlights.length ||
+        p.sections.any((s) => s.blocks.any((b) => b is Paragraph));
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -114,7 +121,7 @@ class _ChangelogViewState extends State<ChangelogView> {
             if (p.summary.isNotEmpty) _bullet(m, [PlainText(p.summary)]),
           ] else
             for (final h in highlights) _bullet(m, h),
-          if (p.sections.isNotEmpty) ...[
+          if (hasMore) ...[
             GestureDetector(
               onTap: () => setState(() => _heroExpanded = !_heroExpanded),
               child: Padding(
