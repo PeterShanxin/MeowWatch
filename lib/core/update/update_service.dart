@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import '../app_version.dart';
 import '../debug/app_log.dart';
 import '../debug/log_redact.dart';
+import 'semver.dart';
 
 /// Metadata about an available update.
 class UpdateInfo {
@@ -420,37 +421,7 @@ class UpdateService extends ChangeNotifier {
   ///
   /// Handles pre-release tags by stripping them for the numeric comparison
   /// and then comparing the tag strings if the numeric parts are equal.
-  bool _isNewer(String remote, String local) {
-    final rParts = _parseSemver(remote);
-    final lParts = _parseSemver(local);
-
-    for (var i = 0; i < 3; i++) {
-      if (rParts.$1[i] > lParts.$1[i]) return true;
-      if (rParts.$1[i] < lParts.$1[i]) return false;
-    }
-
-    // Numeric parts equal — compare pre-release: no pre-release > any pre-release.
-    if (rParts.$2 == null && lParts.$2 != null) return true;
-    if (rParts.$2 != null && lParts.$2 == null) return false;
-    if (rParts.$2 != null && lParts.$2 != null) {
-      return rParts.$2!.compareTo(lParts.$2!) > 0;
-    }
-    return false; // Exactly equal.
-  }
-
-  /// Parse "0.1.0-alpha" → ([0, 1, 0], "alpha").
-  (List<int>, String?) _parseSemver(String v) {
-    // Strip leading 'v' if present.
-    final s = v.startsWith('v') ? v.substring(1) : v;
-    final dashIdx = s.indexOf('-');
-    final numPart = dashIdx >= 0 ? s.substring(0, dashIdx) : s;
-    final prePart = dashIdx >= 0 ? s.substring(dashIdx + 1) : null;
-    final nums = numPart.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-    while (nums.length < 3) {
-      nums.add(0);
-    }
-    return (nums, prePart);
-  }
+  bool _isNewer(String remote, String local) => isVersionNewer(remote, local);
 
   @override
   void dispose() {

@@ -104,6 +104,28 @@ TDD (RED → GREEN → REFACTOR), small commits at verified milestones. Conventi
 
 **Versioning (every behavior-changing PR):** bump the version in lockstep across `pubspec.yaml` (`version:`), `lib/core/app_version.dart` (`appVersion`), and `CHANGELOG.md` (new top `## [<version>] - <date>` entry).
 
+### Changelog writing style
+
+The in-app "What's new" screen renders each version's notes. Write them for the
+end user:
+
+- Lead with an optional `> one-line summary` — it becomes the hero/row headline.
+  Omit it and the app derives one from the first line.
+- Group changes under `### Added`, `### Fixed`, or `### Improved` so the New /
+  Fixed / Improved chips appear. `### Changed` also maps to Improved.
+- For a punchier chip, append a short custom label: `### Improved: Better
+  changelog` renders an amber-bolt chip reading "Better changelog" (the word
+  before the `:` still picks the category + color; the rest is the label). A
+  bare `### Improved` falls back to the generic "Improved".
+- A version with no `###` sections (older free-form entries) still gets one chip
+  inferred from its version number: a patch (`0.31.2`) shows **Fixed**, a minor
+  or major (`0.32.0`, `1.0.0`) shows **New**. Add explicit `###` sections when
+  the inference would be wrong (e.g. a patch that's really an improvement).
+- Keep internal mechanism ("Future", "single-flight", "robocopy") in the commit
+  message, not the note. Describe what the user sees change.
+- Issue refs `(#NNN)` render as tappable links — leave them in.
+- Supported formatting: `**bold**`, `` `code` ``, bullets, paragraphs.
+
 Semver is `MAJOR.MINOR.PATCH` — **three separate digit slots**, each is the digit *in that position*, NOT "the next number overall":
 - `MAJOR` = **1st** digit — big/breaking change. Bumping it resets MINOR and PATCH to 0 (`0.2.3 → 1.0.0`).
 - `MINOR` = **2nd** digit — new feature. Bumping it resets PATCH to 0 (`0.1.3 → 0.2.0`, **not** `0.1.4`).
@@ -114,7 +136,7 @@ So a `feat:` PR is a MINOR bump = 2nd digit + reset 3rd to 0. A `fix:` PR is a P
 Keep the `-alpha` suffix until we move off alpha. CI parses `CHANGELOG.md` → `releases/changelog.json` on R2, which the in-app updater reads — so the three files drifting out of sync breaks the updater's "what changed" view.
 
 **Release flow (the user finds this sequence helpful — follow it for every release):**
-1. Land work on a feature/fix branch → open a PR to `main`. Don't push `v*` tags from the branch.
+1. Land the work on a feature/fix branch and get it **locally green** (analyze + test). **If the change has visible/UX surface, do an early local look BEFORE opening the PR:** build the Release and open it so the user can inspect/test while iteration is still cheap — no PR, bots, or gates involved yet — and fold in their feedback (possibly several rounds). Once the user is happy with the look (or for non-visual changes, right away), **open a PR to `main`.** Don't push `v*` tags from the branch. This is the *early* checkpoint; step 3's manual test is the *final* one on the shippable commit — two distinct looks.
 2. Wait for the automatic **Copilot review**, then run the `address-pr-review` skill: fix or reject each comment with a real reason, reply, resolve the threads, push.
 3. If a manual test is warranted (visible behavior change), **request it only once the automated gates are clear** — bot reviews resolved/satisfied **and** CI green — never while a review or CI run is still pending. A new commit re-opens the gate, so a test exercised on a not-yet-final commit gets invalidated by the next change; the human's hands-on time is the scarce resource, so spend it once, on the version that will actually ship. (Building the Release artifact ahead of time is fine — just don't ask them to *exercise* it until the gates are clear.) Pure edge-case/defensive fixes with unit coverage don't need a manual test — say so. If the user already confirmed a manual test but later review/CI feedback requires any app-behavior patch, stop after CI/reviews clear, build/open the updated Release app again, and get a fresh manual confirmation before merging/tagging. Docs/comment/CI-only follow-ups do not invalidate an already-confirmed manual app test; say that explicitly.
 4. Wait for **CI green** (the `Analyze & Test` check — the PR gate, now required by branch protection on `main`; runs free on the self-hosted runner, so **start the runner** if its `check-self-hosted` job is queued, or add the `ci-hosted` label to run on hosted Windows instead). The full `Windows x64` build does **not** run on PRs; it runs only on the tag push. Then **merge** the PR to `main` (merge commit). _(If hosted Actions is ever unavailable — included minutes and the Actions budget cap both spent — use the local verification gate from "When hosted Actions is unavailable" above instead of waiting on this check.)_

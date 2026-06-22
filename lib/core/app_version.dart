@@ -1,7 +1,7 @@
 /// Single source of truth for the app version and update configuration.
 ///
 /// Keep [appVersion] in sync with the `version:` field in pubspec.yaml.
-const String appVersion = '0.32.0-alpha';
+const String appVersion = '0.33.0-alpha';
 
 /// GitHub repository (owner/name) — used for release page links.
 const String appRepo = 'PeterShanxin/MeowWatch';
@@ -16,3 +16,6 @@ const String appRepo = 'PeterShanxin/MeowWatch';
 /// (e.g. https://releases.meowwatch.app) if the bucket moves to one.
 const String updateBaseUrl =
     'https://pub-6002641cc8a44c128f0684981b511991.r2.dev';
+
+/// Base URL for GitHub issue links rendered in the changelog (e.g. #136).
+const String issueBaseUrl = 'https://github.com/PeterShanxin/MeowWatch/issues';

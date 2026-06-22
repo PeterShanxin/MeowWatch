@@ -58,6 +58,9 @@ class _FakeSettingsStore implements SettingsStore {
 
   @override
   Future<void> set(String key, String value) async => _map[key] = value;
+
+  @override
+  Future<bool> hasAnySettings() async => _map.isNotEmpty;
 }
 
 /// Settings store whose writes block on a caller-controlled gate, to test that
@@ -76,6 +79,9 @@ class _GatedSettingsStore implements SettingsStore {
     await _gate;
     map[key] = value;
   }
+
+  @override
+  Future<bool> hasAnySettings() async => map.isNotEmpty;
 }
 
 class _FakeHistoryStore implements HistoryStore {

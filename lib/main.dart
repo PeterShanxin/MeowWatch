@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -17,6 +18,9 @@ import 'core/debug/log_archive.dart';
 import 'core/debug/log_level.dart';
 import 'core/debug/startup_env.dart';
 import 'core/theme/meow_theme.dart';
+import 'core/update/changelog_file.dart';
+import 'core/update/update_service.dart';
+import 'core/update/whats_new_gate.dart';
 import 'ui/chat/chat_overlay_layout.dart';
 import 'ui/gallery/design_gallery.dart';
 import 'ui/window_close_handler.dart';
@@ -28,6 +32,8 @@ Future<void> main() async {
 
   final db = await openAppDatabase();
   final settings = DriftSettingsStore(db);
+  final profiles = DriftProfileStore(db);
+  final history = DriftHistoryStore(db);
 
   // Open the process-wide diagnostic log before any UI runs so it captures the
   // whole app run — lobby, every room, video, updates — not just one room's
@@ -49,17 +55,55 @@ Future<void> main() async {
   // so environment-specific reports can be confirmed from the log alone (#156).
   await _logStartupEnv(theme: savedTheme, cardW: cardW, cardH: cardH);
 
+  // One-time post-update "what's new" modal: show when the recorded last-seen
+  // version differs from this build (the user updated), or when forced via the
+  // MEOWWATCH_WHATS_NEW backdoor (mirrors the gallery door). Record the current
+  // version every launch so the modal fires at most once per bump.
+  //
+  // Backdoor values: '1' forces the modal using the real last-seen version; any
+  // other non-empty value (e.g. '0.28.0-alpha') is treated as a pretend
+  // last-seen, so the multi-version catch-up can be demoed/tested on any install
+  // without an actual update history.
+  final storedLastSeen = await settings.get(kLastSeenVersionKey);
+  final backdoor = Platform.environment['MEOWWATCH_WHATS_NEW'];
+  final forced = backdoor != null && backdoor.isNotEmpty;
+  // No recorded version means either a fresh install or an existing user
+  // upgrading from a build before this key existed. Only the latter should see
+  // the modal that ships the feature, so distinguish them by whether the DB
+  // already holds the user's data — saved profiles, watch history, or any
+  // changed setting (a settings-only user counts as an existing install too).
+  final hasPriorInstall = storedLastSeen == null &&
+      (await settings.hasAnySettings() ||
+          (await profiles.watchProfiles().first).isNotEmpty ||
+          (await history.watchRecent(limit: 1).first).isNotEmpty);
+  final effectiveLastSeen =
+      (forced && backdoor != '1') ? backdoor : storedLastSeen;
+  final showWhatsNew = shouldShowWhatsNew(
+        lastSeen: storedLastSeen,
+        current: appVersion,
+        hasPriorInstall: hasPriorInstall,
+      ) ||
+      forced;
+  if (storedLastSeen != appVersion) {
+    unawaited(settings.set(kLastSeenVersionKey, appVersion));
+  }
+  final whatsNewEntries = showWhatsNew
+      ? await _loadWhatsNewEntries(effectiveLastSeen)
+      : const <ChangelogEntry>[];
+
   // Lets the apply-on-close handler show its confirm dialog over the live route.
   final navigatorKey = GlobalKey<NavigatorState>();
 
   runApp(MeowWatchApp(
-    profiles: DriftProfileStore(db),
-    history: DriftHistoryStore(db),
+    profiles: profiles,
+    history: history,
     settings: settings,
     initialTheme: savedTheme,
     initialCardWidthPx: cardW,
     initialCardHeightPx: cardH,
     navigatorKey: navigatorKey,
+    showWhatsNew: showWhatsNew,
+    whatsNewEntries: whatsNewEntries,
   ));
 
   // Intercept the window-close button so a downloaded update can be applied on
@@ -80,6 +124,24 @@ Future<void> main() async {
         MaterialPageRoute<void>(builder: (_) => const DesignGallery()),
       );
     });
+  }
+}
+
+/// Load every version installed since [lastSeen] (up to this build) from the
+/// bundled `CHANGELOG.md`, so the post-update modal shows the full catch-up
+/// instantly and offline — no dependence on R2 having published these notes
+/// yet. Returns an empty list on any failure (asset missing, no entries), in
+/// which case the modal is simply skipped.
+Future<List<ChangelogEntry>> _loadWhatsNewEntries(String? lastSeen) async {
+  try {
+    final md = await rootBundle.loadString('CHANGELOG.md');
+    return entriesForWhatsNew(
+      parseChangelogFile(md),
+      lastSeen: lastSeen,
+      current: appVersion,
+    );
+  } catch (_) {
+    return const <ChangelogEntry>[];
   }
 }
 

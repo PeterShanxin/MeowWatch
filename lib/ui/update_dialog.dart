@@ -7,6 +7,7 @@ import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 import '../core/update/update_service.dart';
+import 'changelog_view.dart';
 
 /// Modal dialog for checking, downloading, and applying updates.
 ///
@@ -160,7 +161,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 ),
               ),
               const SizedBox(height: Spacing.sm),
-              _changelogPanel(m),
+              ChangelogView(entries: _service.changelog),
             ],
           ],
         );
@@ -178,7 +179,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
             ),
             if (_service.changelog.isNotEmpty) ...[
               const SizedBox(height: Spacing.md),
-              _changelogPanel(m),
+              ChangelogView(entries: _service.changelog),
             ] else if (info.releaseNotes.isNotEmpty) ...[
               const SizedBox(height: Spacing.md),
               Container(
@@ -270,52 +271,6 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ],
         );
     }
-  }
-
-  /// Scrollable list of changelog entries (newest first). Shared by the
-  /// update-available and up-to-date phases.
-  Widget _changelogPanel(dynamic m) {
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxHeight: 220),
-      padding: const EdgeInsets.all(Spacing.md),
-      decoration: BoxDecoration(
-        color: (m.background as Color).withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(Radii.sm),
-        border: Border.all(color: (m.border as Color).withValues(alpha: 0.5)),
-      ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        itemCount: _service.changelog.length,
-        separatorBuilder: (_, _) => Divider(
-          height: Spacing.lg,
-          color: (m.border as Color).withValues(alpha: 0.4),
-        ),
-        itemBuilder: (context, i) {
-          final e = _service.changelog[i];
-          final header =
-              e.date.isEmpty ? 'v${e.version}' : 'v${e.version} · ${e.date}';
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                header,
-                style: TextStyle(
-                  color: m.textPrimary as Color,
-                  fontSize: TypeScale.body,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: Spacing.xs),
-              Text(
-                e.notes,
-                style: TextStyle(color: m.textDim as Color, fontSize: TypeScale.body),
-              ),
-            ],
-          );
-        },
-      ),
-    );
   }
 
   Widget _statusRow({
