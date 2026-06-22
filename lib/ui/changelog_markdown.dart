@@ -31,7 +31,7 @@ class ChangelogMarkdown extends StatelessWidget {
         if (showTags) {
           children.add(Padding(
             padding: const EdgeInsets.only(top: 8, bottom: 4),
-            child: ChangelogTagChip(tag: s.tag!),
+            child: ChangelogTagChip(tag: s.tag!, label: s.chipLabel),
           ));
         }
       } else if (s.title != null) {
@@ -126,8 +126,11 @@ class ChangelogMarkdown extends StatelessWidget {
 /// A small pill for a changelog category. Colors are fixed (theme-independent)
 /// so the three categories stay distinct on every dark theme.
 class ChangelogTagChip extends StatelessWidget {
-  const ChangelogTagChip({super.key, required this.tag});
+  const ChangelogTagChip({super.key, required this.tag, this.label});
   final ChangelogTag tag;
+
+  /// Short custom text; when null the chip shows the category word [tag.label].
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +147,7 @@ class ChangelogTagChip extends StatelessWidget {
           Icon(style.icon, size: 12, color: style.fg),
           const SizedBox(width: 4),
           Text(
-            tag.label,
+            label ?? tag.label,
             style: TextStyle(
               color: style.fg,
               fontSize: 11,

@@ -109,6 +109,14 @@ end user:
   Omit it and the app derives one from the first line.
 - Group changes under `### Added`, `### Fixed`, or `### Improved` so the New /
   Fixed / Improved chips appear. `### Changed` also maps to Improved.
+- For a punchier chip, append a short custom label: `### Improved: Better
+  changelog` renders an amber-bolt chip reading "Better changelog" (the word
+  before the `:` still picks the category + color; the rest is the label). A
+  bare `### Improved` falls back to the generic "Improved".
+- A version with no `###` sections (older free-form entries) still gets one chip
+  inferred from its version number: a patch (`0.31.2`) shows **Fixed**, a minor
+  or major (`0.32.0`, `1.0.0`) shows **New**. Add explicit `###` sections when
+  the inference would be wrong (e.g. a patch that's really an improvement).
 - Keep internal mechanism ("Future", "single-flight", "robocopy") in the commit
   message, not the note. Describe what the user sees change.
 - Issue refs `(#NNN)` render as tappable links — leave them in.

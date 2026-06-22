@@ -49,7 +49,10 @@ void main() {
 ### Fixed
 - a bug
 ''');
-      expect(p.tags, [ChangelogTag.added, ChangelogTag.fixed]);
+      expect(p.chips, const [
+        ChangelogChip(ChangelogTag.added),
+        ChangelogChip(ChangelogTag.fixed),
+      ]);
       expect(p.highlights, hasLength(3));
       expect(spansToPlainText(p.highlights.first), 'first thing (#136)');
       expect(p.sections, hasLength(2));
@@ -70,7 +73,7 @@ void main() {
 
     test('flat paragraph entry (no headings) still parses', () {
       final p = parseChangelogNotes('Fixed a freeze that could happen on resume.');
-      expect(p.tags, isEmpty);
+      expect(p.chips, isEmpty);
       expect(p.highlights, isEmpty);
       expect(p.summary, 'Fixed a freeze that could happen on resume.');
       expect(p.sections, hasLength(1));
@@ -122,6 +125,70 @@ void main() {
       // Falls back to literal text — no IssueRef, original chars preserved.
       expect(spans.whereType<IssueRef>(), isEmpty);
       expect(spansToPlainText(spans), 'see $huge done');
+    });
+  });
+
+  group('descriptive chip labels', () {
+    test('a bare ### heading yields a chip with no custom label', () {
+      final p = parseChangelogNotes('### Fixed\n- a bug');
+      expect(p.chips, const [ChangelogChip(ChangelogTag.fixed)]);
+      expect(p.chips.single.label, isNull);
+      expect(p.chips.single.text, 'Fixed'); // falls back to the category word
+      expect(p.sections.single.chipLabel, isNull);
+    });
+
+    test('### Improved: <label> keeps the category but adds a custom label', () {
+      final p = parseChangelogNotes('### Improved: Better changelog\n- prettier');
+      expect(p.chips, const [
+        ChangelogChip(ChangelogTag.improved, 'Better changelog'),
+      ]);
+      expect(p.chips.single.text, 'Better changelog');
+      expect(p.sections.single.tag, ChangelogTag.improved);
+      expect(p.sections.single.chipLabel, 'Better changelog');
+    });
+
+    test('a non-category heading produces no chip but keeps its title', () {
+      final p = parseChangelogNotes('### Notes\n- something');
+      expect(p.chips, isEmpty);
+      expect(p.sections.single.tag, isNull);
+      expect(p.sections.single.title, 'Notes');
+    });
+
+    test('repeated bare headings dedupe; distinct labels each keep a chip', () {
+      final p = parseChangelogNotes(
+        '### Fixed\n- a\n\n### Fixed\n- b\n\n### Fixed: edge case\n- c',
+      );
+      expect(p.chips, const [
+        ChangelogChip(ChangelogTag.fixed),
+        ChangelogChip(ChangelogTag.fixed, 'edge case'),
+      ]);
+    });
+  });
+
+  group('inferChipsFromVersion', () {
+    test('a patch release (non-zero 3rd digit) infers Fixed', () {
+      expect(inferChipsFromVersion('0.31.2-alpha'),
+          const [ChangelogChip(ChangelogTag.fixed)]);
+      expect(inferChipsFromVersion('1.4.7'),
+          const [ChangelogChip(ChangelogTag.fixed)]);
+    });
+
+    test('a minor or major release (zero 3rd digit) infers New', () {
+      expect(inferChipsFromVersion('0.32.0-alpha'),
+          const [ChangelogChip(ChangelogTag.added)]);
+      expect(inferChipsFromVersion('1.0.0'),
+          const [ChangelogChip(ChangelogTag.added)]);
+    });
+
+    test('a two-part version (no patch) infers New', () {
+      expect(inferChipsFromVersion('0.32'),
+          const [ChangelogChip(ChangelogTag.added)]);
+    });
+
+    test('an unparseable version yields no chip (never throws)', () {
+      expect(inferChipsFromVersion('nightly'), isEmpty);
+      expect(inferChipsFromVersion(''), isEmpty);
+      expect(() => inferChipsFromVersion('???'), returnsNormally);
     });
   });
 }

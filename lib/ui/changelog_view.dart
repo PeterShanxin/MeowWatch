@@ -27,6 +27,12 @@ class _ChangelogViewState extends State<ChangelogView> {
 
   void _onIssueTap(int n) => openExternalUrl('$issueBaseUrl/$n');
 
+  /// Category chips to show: the entry's authored chips, or — when it has none
+  /// (a free-form entry with no `### Added/Fixed/Improved` sections) — one
+  /// inferred from its version (patch → Fixed, minor/major → New).
+  List<ChangelogChip> _chipsFor(ChangelogEntry e, ParsedNotes p) =>
+      p.chips.isNotEmpty ? p.chips : inferChipsFromVersion(e.version);
+
   @override
   Widget build(BuildContext context) {
     if (widget.entries.isEmpty) return const SizedBox.shrink();
@@ -69,6 +75,7 @@ class _ChangelogViewState extends State<ChangelogView> {
   }
 
   Widget _hero(MeowColors m, ChangelogEntry e, ParsedNotes p) {
+    final chips = _chipsFor(e, p);
     final highlights = p.highlights.take(3).toList();
     // "Full notes" only earns its place when it reveals something the hero
     // highlights don't already show — extra bullets beyond the shown few, or
@@ -123,12 +130,15 @@ class _ChangelogViewState extends State<ChangelogView> {
               ),
             ),
           ],
-          if (p.tags.isNotEmpty) ...[
+          if (chips.isNotEmpty) ...[
             const SizedBox(height: 8),
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: [for (final t in p.tags) ChangelogTagChip(tag: t)],
+              children: [
+                for (final c in chips)
+                  ChangelogTagChip(tag: c.tag, label: c.label),
+              ],
             ),
           ],
           const SizedBox(height: 4),
@@ -222,6 +232,7 @@ class _ChangelogViewState extends State<ChangelogView> {
 
   Widget _earlierRow(MeowColors m, int i, ChangelogEntry e, ParsedNotes p) {
     final open = _expanded.contains(i);
+    final chips = _chipsFor(e, p);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -258,14 +269,15 @@ class _ChangelogViewState extends State<ChangelogView> {
                       // is scannable without opening each row. Only versions
                       // with `### Added/Fixed/Improved` sections have tags;
                       // older free-form entries simply show none.
-                      if (p.tags.isNotEmpty)
+                      if (chips.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 5),
                           child: Wrap(
                             spacing: 6,
                             runSpacing: 4,
                             children: [
-                              for (final t in p.tags) ChangelogTagChip(tag: t),
+                              for (final c in chips)
+                                ChangelogTagChip(tag: c.tag, label: c.label),
                             ],
                           ),
                         ),

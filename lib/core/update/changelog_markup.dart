@@ -20,6 +20,26 @@ extension ChangelogTagLabel on ChangelogTag {
       };
 }
 
+/// A category chip to display: [tag] drives the color + icon, optional [label]
+/// is short custom text. Authored as `### Improved: Better release notes` — the
+/// word before the colon picks the category, the rest becomes the label. With
+/// no custom label the chip falls back to the category word ([text]).
+class ChangelogChip {
+  const ChangelogChip(this.tag, [this.label]);
+  final ChangelogTag tag;
+  final String? label;
+
+  /// Rendered text: the custom label when present, else the category word.
+  String get text => label ?? tag.label;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChangelogChip && other.tag == tag && other.label == label;
+
+  @override
+  int get hashCode => Object.hash(tag, label);
+}
+
 /// One inline run of formatted text.
 sealed class NoteSpan {
   const NoteSpan();
@@ -111,9 +131,18 @@ class BulletList extends NoteBlock {
 
 /// A section, optionally introduced by a `### Heading`.
 class NoteSection {
-  const NoteSection({this.tag, this.title, required this.blocks});
+  const NoteSection({
+    this.tag,
+    this.title,
+    this.chipLabel,
+    required this.blocks,
+  });
   final ChangelogTag? tag;
   final String? title;
+
+  /// Short custom chip label from a `### Improved: <label>` heading; null when
+  /// the heading is a bare `### Improved` (the chip then shows the tag word).
+  final String? chipLabel;
   final List<NoteBlock> blocks;
 }
 
@@ -122,7 +151,7 @@ class ParsedNotes {
   const ParsedNotes({
     required this.summary,
     required this.hasHeadline,
-    required this.tags,
+    required this.chips,
     required this.highlights,
     required this.sections,
   });
@@ -133,7 +162,11 @@ class ParsedNotes {
   /// hero shows an explicit headline above the highlights; a derived summary is
   /// not rendered separately (it would just repeat the first bullet).
   final bool hasHeadline;
-  final List<ChangelogTag> tags;
+
+  /// Category chips for this entry, in document order (deduplicated). Empty when
+  /// the entry has no `### Added/Fixed/Improved` sections — the view then infers
+  /// one from the version via [inferChipsFromVersion].
+  final List<ChangelogChip> chips;
   final List<List<NoteSpan>> highlights;
   final List<NoteSection> sections;
 }
@@ -150,6 +183,36 @@ final RegExp _bullet = RegExp(r'^[-*]\s+(.+)$');
 final RegExp _leadingSpace = RegExp(r'^[ \t]');
 final RegExp _issueStrip = RegExp(r'\s*\(?#\d+\)?');
 final RegExp _sentenceEnd = RegExp(r'[.!?](\s|$)');
+final RegExp _verSplit = RegExp(r'[-+]');
+
+/// Split a `### Heading` into its category tag and optional custom chip label.
+/// `Fixed` → (fixed, null); `Improved: Better notes` → (improved, 'Better
+/// notes'); a non-category heading like `Notes` → (null, null).
+(ChangelogTag?, String?) _parseHeading(String heading) {
+  final sep = heading.indexOf(':');
+  final word = (sep >= 0 ? heading.substring(0, sep) : heading).trim();
+  final tag = _tagByHeading[word.toLowerCase()];
+  if (tag == null) return (null, null);
+  final rest = sep >= 0 ? heading.substring(sep + 1).trim() : '';
+  return (tag, rest.isEmpty ? null : rest);
+}
+
+/// When an entry has no authored category sections, infer one chip from its
+/// version number: a patch release (non-zero 3rd digit, e.g. `0.31.2`) is a
+/// fix; a minor or major release (`0.32.0`, `1.0.0`) is new. Returns empty for
+/// a version with no parseable `major.minor`. Total — never throws.
+List<ChangelogChip> inferChipsFromVersion(String version) {
+  final parts = version.split(_verSplit).first.split('.');
+  if (parts.length < 2 ||
+      int.tryParse(parts[0]) == null ||
+      int.tryParse(parts[1]) == null) {
+    return const [];
+  }
+  final patch = parts.length >= 3 ? int.tryParse(parts[2]) : 0;
+  return (patch != null && patch > 0)
+      ? const [ChangelogChip(ChangelogTag.fixed)]
+      : const [ChangelogChip(ChangelogTag.added)];
+}
 
 /// Parse one entry's raw markdown `notes` into a render-ready [ParsedNotes].
 /// Total: never throws.
@@ -160,6 +223,7 @@ ParsedNotes parseChangelogNotes(String notes) {
 
   ChangelogTag? curTag;
   String? curTitle;
+  String? curChipLabel;
   var curBlocks = <NoteBlock>[];
   var para = <String>[];
   List<String>? bullets;
@@ -182,10 +246,16 @@ ParsedNotes parseChangelogNotes(String notes) {
     flushBullets();
     flushPara();
     if (curTag != null || curTitle != null || curBlocks.isNotEmpty) {
-      sections.add(NoteSection(tag: curTag, title: curTitle, blocks: curBlocks));
+      sections.add(NoteSection(
+        tag: curTag,
+        title: curTitle,
+        chipLabel: curChipLabel,
+        blocks: curBlocks,
+      ));
     }
     curTag = null;
     curTitle = null;
+    curChipLabel = null;
     curBlocks = <NoteBlock>[];
   }
 
@@ -204,7 +274,9 @@ ParsedNotes parseChangelogNotes(String notes) {
     if (h != null) {
       flushSection();
       curTitle = h.group(1)!.trim();
-      curTag = _tagByHeading[curTitle!.toLowerCase()];
+      final (tag, chipLabel) = _parseHeading(curTitle!);
+      curTag = tag;
+      curChipLabel = chipLabel;
       continue;
     }
     final b = _bullet.firstMatch(trimmed);
@@ -228,13 +300,15 @@ ParsedNotes parseChangelogNotes(String notes) {
   }
   flushSection();
 
-  final tags = <ChangelogTag>[];
-  for (final t in const [
-    ChangelogTag.added,
-    ChangelogTag.fixed,
-    ChangelogTag.improved,
-  ]) {
-    if (sections.any((s) => s.tag == t)) tags.add(t);
+  // Chips in document order (matching reading order), deduplicated by
+  // (tag, label) so a repeated bare `### Fixed` collapses to one chip while two
+  // distinctly-labeled sections each keep theirs.
+  final chips = <ChangelogChip>[];
+  final seenChips = <ChangelogChip>{};
+  for (final s in sections) {
+    if (s.tag == null) continue;
+    final chip = ChangelogChip(s.tag!, s.chipLabel);
+    if (seenChips.add(chip)) chips.add(chip);
   }
 
   final highlights = <List<NoteSpan>>[];
@@ -251,7 +325,7 @@ ParsedNotes parseChangelogNotes(String notes) {
   return ParsedNotes(
     summary: summary,
     hasHeadline: hasHeadline,
-    tags: tags,
+    chips: chips,
     highlights: highlights,
     sections: sections,
   );

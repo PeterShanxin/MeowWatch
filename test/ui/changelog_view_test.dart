@@ -19,22 +19,57 @@ void main() {
     notes: '### Added\n- a shiny hero thing',
   );
   const older = ChangelogEntry(
-    version: '0.32.0-alpha',
+    version: '0.31.2-alpha', // a patch → infers a Fixed chip (no ### headings)
     date: '2026-06-20',
     notes: '- an older summary line. with more detail.',
   );
 
-  testWidgets('hero shows newest highlight + tag; older row shows summary only',
+  testWidgets(
+      'hero shows authored chip; older free-form row infers one from its version',
       (tester) async {
     await tester.pumpWidget(host(const [newest, older]));
 
-    // Hero highlight (rendered) + New chip.
+    // Hero highlight + its authored New chip.
     expect(find.text('a shiny hero thing', findRichText: true), findsOneWidget);
     expect(find.text('New'), findsOneWidget);
+    // The older entry has no ### headings, so its chip is inferred from the
+    // version: 0.31.2 is a patch → Fixed.
+    expect(find.text('Fixed'), findsOneWidget);
     // Earlier row summary is visible…
     expect(find.text('an older summary line.'), findsOneWidget);
     // …but the older entry's full detail is collapsed (only the summary shows).
     expect(find.text('with more detail.', findRichText: true), findsNothing);
+  });
+
+  testWidgets('hero renders a descriptive chip label, not the bare category',
+      (tester) async {
+    await tester.pumpWidget(host(const [
+      ChangelogEntry(
+        version: '0.33.0-alpha',
+        date: '2026-06-21',
+        notes: '### Improved: Better changelog\n- prettier notes',
+      ),
+    ]));
+    expect(find.text('Better changelog'), findsOneWidget); // custom label
+    expect(find.text('Improved'), findsNothing); // not the generic word
+  });
+
+  testWidgets('a minor free-form earlier row infers a New chip', (tester) async {
+    await tester.pumpWidget(host(const [
+      ChangelogEntry(
+        version: '0.34.0-alpha',
+        date: '2026-06-22',
+        notes: '### Fixed\n- newest',
+      ),
+      ChangelogEntry(
+        version: '0.32.0-alpha', // minor, free-form → infers New
+        date: '2026-06-20',
+        notes: '- a feature with no headings.',
+      ),
+    ]));
+    // Hero authored Fixed + earlier inferred New.
+    expect(find.text('Fixed'), findsOneWidget);
+    expect(find.text('New'), findsOneWidget);
   });
 
   testWidgets('tapping an older row expands its rendered notes', (tester) async {

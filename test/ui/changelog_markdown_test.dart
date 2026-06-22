@@ -21,6 +21,16 @@ void main() {
     expect(find.text('a shiny thing', findRichText: true), findsOneWidget);
   });
 
+  testWidgets('a ### Heading: <label> renders the custom chip label',
+      (tester) async {
+    final parsed = parseChangelogNotes('### Fixed: sync freeze\n- the gory bits');
+    await tester.pumpWidget(host(
+      ChangelogMarkdown(sections: parsed.sections, onIssueTap: (_) {}),
+    ));
+    expect(find.text('sync freeze'), findsOneWidget); // custom label
+    expect(find.text('Fixed'), findsNothing); // not the bare category word
+  });
+
   testWidgets('showTags: false hides chips', (tester) async {
     final parsed = parseChangelogNotes('### Fixed\n- a bug');
     await tester.pumpWidget(host(ChangelogMarkdown(

@@ -13,11 +13,11 @@ in-app updater reads to show what changed.
 ## [0.33.0-alpha] - 2026-06-21
 > The changelog finally reads like a changelog.
 
-### Added
-- A redesigned **What's new** screen: the newest update sits up top with quick highlights and New / Fixed / Improved tags, while older versions tuck into a tidy list you can open one at a time.
+### Added: Post-update catch-up
 - A friendly **What's new** popup the first time you open MeowWatch after an update — it catches you up on **everything new since the version you last ran** (so if you skipped a few updates, you see them all), then dismisses for good until the next update.
 
-### Improved
+### Improved: Clearer release notes
+- A redesigned **What's new** screen: the newest update sits up top with quick highlights and category tags, while older versions tuck into a tidy list you can open one at a time. Each version shows a chip — a descriptive one when the note names it (like these), otherwise New for a feature or Fixed for a patch.
 - Release notes are now properly formatted — bold, bullets, and tappable issue links — instead of showing the raw `**` and `###` marks.
 
 ## [0.32.0-alpha] - 2026-06-21
