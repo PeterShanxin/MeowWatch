@@ -121,11 +121,18 @@ class NoteSection {
 class ParsedNotes {
   const ParsedNotes({
     required this.summary,
+    required this.hasHeadline,
     required this.tags,
     required this.highlights,
     required this.sections,
   });
   final String summary;
+
+  /// True when [summary] came from an explicit leading `> summary` line (the
+  /// authored headline) rather than being derived from the first bullet. The
+  /// hero shows an explicit headline above the highlights; a derived summary is
+  /// not rendered separately (it would just repeat the first bullet).
+  final bool hasHeadline;
   final List<ChangelogTag> tags;
   final List<List<NoteSpan>> highlights;
   final List<NoteSection> sections;
@@ -237,12 +244,13 @@ ParsedNotes parseChangelogNotes(String notes) {
     }
   }
 
-  final summary = (summaryOverride != null && summaryOverride.isNotEmpty)
-      ? summaryOverride
-      : _deriveSummary(sections, highlights);
+  final hasHeadline = summaryOverride != null && summaryOverride.isNotEmpty;
+  final summary =
+      hasHeadline ? summaryOverride : _deriveSummary(sections, highlights);
 
   return ParsedNotes(
     summary: summary,
+    hasHeadline: hasHeadline,
     tags: tags,
     highlights: highlights,
     sections: sections,

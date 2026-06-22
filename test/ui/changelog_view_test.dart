@@ -53,6 +53,42 @@ void main() {
     expect(find.textContaining('WHAT'), findsNothing);
   });
 
+  group('hero renders the authored > summary as a headline', () {
+    testWidgets('explicit headline shows above the highlights', (tester) async {
+      await tester.pumpWidget(host(const [
+        ChangelogEntry(
+          version: '0.33.0-alpha',
+          date: '2026-06-21',
+          notes: '> The changelog finally reads like a changelog.\n\n'
+              '### Added\n- a shiny thing',
+        ),
+      ]));
+      // Headline AND the bullet both visible (headline is not a bullet).
+      expect(
+        find.text('The changelog finally reads like a changelog.'),
+        findsOneWidget,
+      );
+      expect(find.text('a shiny thing', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('a derived summary is NOT shown as a separate headline',
+        (tester) async {
+      await tester.pumpWidget(host(const [
+        ChangelogEntry(
+          version: '0.33.0-alpha',
+          date: '2026-06-21',
+          notes: '### Added\n- the only bullet here.',
+        ),
+      ]));
+      // Renders exactly once (as the bullet). A duplicate headline would make
+      // this two — proving the derived summary isn't echoed above the bullets.
+      expect(
+        find.text('the only bullet here.', findRichText: true),
+        findsOneWidget,
+      );
+    });
+  });
+
   group('"Full notes" only appears when it reveals more than the highlights',
       () {
     testWidgets('short version (≤3 bullets, no prose) → no expander',

@@ -108,6 +108,21 @@ class _ChangelogViewState extends State<ChangelogView> {
               ),
             ],
           ),
+          // The authored `> summary` is the hero headline (writing convention).
+          // Only an explicit headline is shown here; a derived summary would
+          // just repeat the first bullet below.
+          if (p.hasHeadline && p.summary.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              p.summary,
+              style: TextStyle(
+                color: m.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
+            ),
+          ],
           if (p.tags.isNotEmpty) ...[
             const SizedBox(height: 8),
             Wrap(
@@ -118,7 +133,8 @@ class _ChangelogViewState extends State<ChangelogView> {
           ],
           const SizedBox(height: 4),
           if (highlights.isEmpty) ...[
-            if (p.summary.isNotEmpty) _bullet(m, [PlainText(p.summary)]),
+            if (!p.hasHeadline && p.summary.isNotEmpty)
+              _bullet(m, [PlainText(p.summary)]),
           ] else
             for (final h in highlights) _bullet(m, h),
           if (hasMore) ...[

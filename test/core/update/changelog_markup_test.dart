@@ -56,14 +56,16 @@ void main() {
       expect(p.sections.first.tag, ChangelogTag.added);
     });
 
-    test('explicit > summary wins over derivation', () {
+    test('explicit > summary wins over derivation and sets hasHeadline', () {
       final p = parseChangelogNotes('> The headline.\n\n### Added\n- something');
       expect(p.summary, 'The headline.');
+      expect(p.hasHeadline, isTrue);
     });
 
     test('derived summary = first sentence of first bullet, refs stripped', () {
       final p = parseChangelogNotes('- Keeps the latest video per room. More text. (#136)');
       expect(p.summary, 'Keeps the latest video per room.');
+      expect(p.hasHeadline, isFalse); // derived, not an authored headline
     });
 
     test('flat paragraph entry (no headings) still parses', () {
