@@ -13,14 +13,23 @@ void main() {
     date: '2026-06-21',
     notes: '### Added\n- a shiny hero thing',
   );
+  const older = ChangelogEntry(
+    version: '0.32.0-alpha',
+    date: '2026-06-20',
+    notes: '- an older catch-up line.',
+  );
 
-  Widget app({required bool show, ChangelogEntry? entry}) => MeowWatchApp(
+  Widget app({
+    required bool show,
+    List<ChangelogEntry> entries = const [entry],
+  }) =>
+      MeowWatchApp(
         profiles: FakeProfileStore(),
         history: FakeHistoryStore(),
         settings: FakeSettingsStore(),
         initialTheme: MeowThemeId.cozy,
         showWhatsNew: show,
-        whatsNewEntry: entry,
+        whatsNewEntries: entries,
       );
 
   // Fixed pumps, not pumpAndSettle: the lobby has looping animations that never
@@ -34,21 +43,32 @@ void main() {
 
   testWidgets('shows the post-update modal after first frame when enabled',
       (tester) async {
-    await tester.pumpWidget(app(show: true, entry: entry));
+    await tester.pumpWidget(app(show: true));
     await settleDialog(tester);
     expect(find.byType(WhatsNewDialog), findsOneWidget);
     expect(find.text('a shiny hero thing', findRichText: true), findsOneWidget);
   });
 
+  testWidgets('catch-up modal lists every version since last seen',
+      (tester) async {
+    await tester.pumpWidget(app(show: true, entries: const [entry, older]));
+    await settleDialog(tester);
+    expect(find.byType(WhatsNewDialog), findsOneWidget);
+    // Newest is the hero; the older one tucks into "Earlier updates".
+    expect(find.text('a shiny hero thing', findRichText: true), findsOneWidget);
+    expect(find.text('EARLIER UPDATES'), findsOneWidget);
+    expect(find.textContaining('v0.32.0-alpha'), findsOneWidget);
+  });
+
   testWidgets('does not show the modal when disabled', (tester) async {
-    await tester.pumpWidget(app(show: false, entry: entry));
+    await tester.pumpWidget(app(show: false));
     await settleDialog(tester);
     expect(find.byType(WhatsNewDialog), findsNothing);
   });
 
-  testWidgets('does not show when enabled but no entry resolved',
+  testWidgets('does not show when enabled but no entries resolved',
       (tester) async {
-    await tester.pumpWidget(app(show: true, entry: null));
+    await tester.pumpWidget(app(show: true, entries: const []));
     await settleDialog(tester);
     expect(find.byType(WhatsNewDialog), findsNothing);
   });

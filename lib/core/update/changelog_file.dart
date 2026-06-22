@@ -1,5 +1,6 @@
 import 'dart:convert' show LineSplitter;
 
+import 'semver.dart';
 import 'update_service.dart' show ChangelogEntry;
 
 /// Matches a version header line: `## [0.33.0-alpha] - 2026-06-21`.
@@ -55,4 +56,33 @@ ChangelogEntry? entryForVersion(
     if (e.version.trim() == want) return e;
   }
   return null;
+}
+
+/// The entries to show in the post-update catch-up modal: every version newer
+/// than [lastSeen] up to and including [current], in the file's newest-first
+/// order. So a user 10 versions behind sees all 10 (newest as the hero, the
+/// rest in the collapsible "Earlier updates").
+///
+/// Falls back to just the [current] entry when [lastSeen] is null/blank or no
+/// entry is strictly newer than it (e.g. the `MEOWWATCH_WHATS_NEW` backdoor on
+/// a fresh install, where there is no real "since"). Entries newer than
+/// [current] (should not occur — [current] is the file's top) are excluded so
+/// the modal never previews a version the user does not have. Returns an empty
+/// list only when even [current] is absent. Total — never throws.
+List<ChangelogEntry> entriesForWhatsNew(
+  List<ChangelogEntry> entries, {
+  required String? lastSeen,
+  required String current,
+}) {
+  final prev = lastSeen?.trim();
+  if (prev != null && prev.isNotEmpty) {
+    final span = entries
+        .where((e) =>
+            isVersionNewer(e.version, prev) &&
+            !isVersionNewer(e.version, current))
+        .toList();
+    if (span.isNotEmpty) return span;
+  }
+  final cur = entryForVersion(entries, current);
+  return cur != null ? [cur] : const <ChangelogEntry>[];
 }

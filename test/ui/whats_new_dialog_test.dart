@@ -11,14 +11,19 @@ void main() {
     date: '2026-06-21',
     notes: '### Added\n- a shiny hero thing',
   );
+  const older = ChangelogEntry(
+    version: '0.32.0-alpha',
+    date: '2026-06-20',
+    notes: '- an older catch-up line.',
+  );
 
-  Widget host() => MaterialApp(
+  Widget host(List<ChangelogEntry> entries) => MaterialApp(
         theme: themeDataFor(MeowThemeId.cozy),
         home: Scaffold(
           body: Builder(
             builder: (context) => Center(
               child: ElevatedButton(
-                onPressed: () => WhatsNewDialog.show(context, entry),
+                onPressed: () => WhatsNewDialog.show(context, entries),
                 child: const Text('open'),
               ),
             ),
@@ -28,7 +33,7 @@ void main() {
 
   testWidgets('shows the just-installed highlight, a tag chip, and Got it',
       (tester) async {
-    await tester.pumpWidget(host());
+    await tester.pumpWidget(host(const [entry]));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
@@ -38,8 +43,19 @@ void main() {
     expect(find.text('Got it'), findsOneWidget);
   });
 
+  testWidgets('multiple versions: newest is hero, rest under Earlier updates',
+      (tester) async {
+    await tester.pumpWidget(host(const [entry, older]));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('a shiny hero thing', findRichText: true), findsOneWidget);
+    expect(find.text('EARLIER UPDATES'), findsOneWidget);
+    expect(find.textContaining('v0.32.0-alpha'), findsOneWidget);
+  });
+
   testWidgets('Got it dismisses the modal', (tester) async {
-    await tester.pumpWidget(host());
+    await tester.pumpWidget(host(const [entry]));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
     expect(find.byType(WhatsNewDialog), findsOneWidget);

@@ -9,21 +9,22 @@ import '../core/update/update_service.dart';
 import 'changelog_view.dart';
 
 /// One-time, dismissable modal shown on the first launch after an update. It
-/// presents the just-installed version's highlights using the same hero card as
-/// the updater's "What's new" panel (via [ChangelogView] with a single entry),
-/// so there is one consistent presentation and no duplicate layout code.
+/// presents every version installed since the user last opened the app —
+/// newest as the hero, older ones in a collapsible list — using the same
+/// [ChangelogView] as the updater's "What's new" panel, so there is one
+/// consistent presentation and no duplicate layout code.
 class WhatsNewDialog extends StatelessWidget {
-  const WhatsNewDialog({super.key, required this.entry});
+  const WhatsNewDialog({super.key, required this.entries});
 
-  /// The just-installed version's changelog entry.
-  final ChangelogEntry entry;
+  /// The versions installed since last launch, newest first (at least one).
+  final List<ChangelogEntry> entries;
 
   /// Show the modal over [context]. Barrier-dismissable; completes on dismiss.
-  static Future<void> show(BuildContext context, ChangelogEntry entry) {
+  static Future<void> show(BuildContext context, List<ChangelogEntry> entries) {
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
-      builder: (_) => WhatsNewDialog(entry: entry),
+      builder: (_) => WhatsNewDialog(entries: entries),
     );
   }
 
@@ -68,7 +69,7 @@ class WhatsNewDialog extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: Spacing.md),
-              ChangelogView(entries: [entry]),
+              ChangelogView(entries: entries),
               const SizedBox(height: Spacing.lg),
               Align(
                 alignment: Alignment.centerRight,

@@ -20,7 +20,7 @@ class MeowWatchApp extends StatefulWidget {
     this.initialCardHeightPx,
     this.navigatorKey,
     this.showWhatsNew = false,
-    this.whatsNewEntry,
+    this.whatsNewEntries = const <ChangelogEntry>[],
     super.key,
   });
 
@@ -35,13 +35,14 @@ class MeowWatchApp extends StatefulWidget {
   /// dialog over the live route (#62). Null in tests.
   final GlobalKey<NavigatorState>? navigatorKey;
 
-  /// When true (and [whatsNewEntry] is non-null), the post-update "what's new"
-  /// modal is shown once after the first frame. Decided in `main` from the
+  /// When true (and [whatsNewEntries] is non-empty), the post-update "what's
+  /// new" modal is shown once after the first frame. Decided in `main` from the
   /// persisted last-seen version (see [shouldShowWhatsNew]).
   final bool showWhatsNew;
 
-  /// The just-installed version's changelog entry to show in that modal.
-  final ChangelogEntry? whatsNewEntry;
+  /// Every version installed since the user last opened the app, newest first,
+  /// to show in that modal (hero + collapsible "Earlier updates").
+  final List<ChangelogEntry> whatsNewEntries;
 
   @override
   State<MeowWatchApp> createState() => _MeowWatchAppState();
@@ -59,11 +60,11 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
   @override
   void initState() {
     super.initState();
-    final entry = widget.whatsNewEntry;
-    if (widget.showWhatsNew && entry != null) {
+    final entries = widget.whatsNewEntries;
+    if (widget.showWhatsNew && entries.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final context = _navKey.currentContext;
-        if (context != null) WhatsNewDialog.show(context, entry);
+        if (context != null) WhatsNewDialog.show(context, entries);
       });
     }
   }

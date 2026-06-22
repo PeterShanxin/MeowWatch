@@ -15,7 +15,7 @@ in-app updater reads to show what changed.
 
 ### Added
 - A redesigned **What's new** screen: the newest update sits up top with quick highlights and New / Fixed / Improved tags, while older versions tuck into a tidy list you can open one at a time.
-- A friendly **What's new** popup the first time you open MeowWatch after an update — see what changed at a glance, then dismiss it (it won't show again until the next update).
+- A friendly **What's new** popup the first time you open MeowWatch after an update — it catches you up on **everything new since the version you last ran** (so if you skipped a few updates, you see them all), then dismisses for good until the next update.
 
 ### Improved
 - Release notes are now properly formatted — bold, bullets, and tappable issue links — instead of showing the raw `**` and `###` marks.

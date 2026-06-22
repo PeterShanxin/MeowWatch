@@ -44,4 +44,67 @@ Intro paragraph that must be ignored.
       expect(parseChangelogFile('just prose\nno headers'), isEmpty);
     });
   });
+
+  group('entriesForWhatsNew', () {
+    const many = '''
+## [0.33.0-alpha] - 2026-06-21
+- newest
+
+## [0.32.0-alpha] - 2026-06-20
+- middle
+
+## [0.31.0-alpha] - 2026-06-19
+- oldest
+''';
+
+    test('returns every version newer than lastSeen, newest first', () {
+      final got = entriesForWhatsNew(
+        parseChangelogFile(many),
+        lastSeen: '0.31.0-alpha',
+        current: '0.33.0-alpha',
+      );
+      expect(got.map((e) => e.version), ['0.33.0-alpha', '0.32.0-alpha']);
+    });
+
+    test('one version behind → just that version', () {
+      final got = entriesForWhatsNew(
+        parseChangelogFile(many),
+        lastSeen: '0.32.0-alpha',
+        current: '0.33.0-alpha',
+      );
+      expect(got.map((e) => e.version), ['0.33.0-alpha']);
+    });
+
+    test('caps at current — never previews a version the user lacks', () {
+      final got = entriesForWhatsNew(
+        parseChangelogFile(many),
+        lastSeen: '0.31.0-alpha',
+        current: '0.32.0-alpha', // running an older build than the file's top
+      );
+      expect(got.map((e) => e.version), ['0.32.0-alpha']);
+    });
+
+    test('null/blank lastSeen falls back to just the current entry', () {
+      final entries = parseChangelogFile(many);
+      expect(
+        entriesForWhatsNew(entries, lastSeen: null, current: '0.33.0-alpha')
+            .map((e) => e.version),
+        ['0.33.0-alpha'],
+      );
+      expect(
+        entriesForWhatsNew(entries, lastSeen: '  ', current: '0.33.0-alpha')
+            .map((e) => e.version),
+        ['0.33.0-alpha'],
+      );
+    });
+
+    test('current absent and no span → empty list (modal skipped)', () {
+      final got = entriesForWhatsNew(
+        parseChangelogFile(many),
+        lastSeen: '9.9.9',
+        current: '9.9.9',
+      );
+      expect(got, isEmpty);
+    });
+  });
 }

@@ -64,7 +64,9 @@ Future<void> main() async {
   if (lastSeen != appVersion) {
     unawaited(settings.set(kLastSeenVersionKey, appVersion));
   }
-  final whatsNewEntry = showWhatsNew ? await _loadCurrentChangelogEntry() : null;
+  final whatsNewEntries = showWhatsNew
+      ? await _loadWhatsNewEntries(lastSeen)
+      : const <ChangelogEntry>[];
 
   // Lets the apply-on-close handler show its confirm dialog over the live route.
   final navigatorKey = GlobalKey<NavigatorState>();
@@ -78,7 +80,7 @@ Future<void> main() async {
     initialCardHeightPx: cardH,
     navigatorKey: navigatorKey,
     showWhatsNew: showWhatsNew,
-    whatsNewEntry: whatsNewEntry,
+    whatsNewEntries: whatsNewEntries,
   ));
 
   // Intercept the window-close button so a downloaded update can be applied on
@@ -102,17 +104,21 @@ Future<void> main() async {
   }
 }
 
-/// Load the just-installed version's entry from the bundled `CHANGELOG.md`, so
-/// the post-update modal shows its highlights instantly and offline — no
-/// dependence on R2 having published this version's notes yet. Returns null on
-/// any failure (asset missing, version not found), in which case the modal is
-/// simply skipped.
-Future<ChangelogEntry?> _loadCurrentChangelogEntry() async {
+/// Load every version installed since [lastSeen] (up to this build) from the
+/// bundled `CHANGELOG.md`, so the post-update modal shows the full catch-up
+/// instantly and offline — no dependence on R2 having published these notes
+/// yet. Returns an empty list on any failure (asset missing, no entries), in
+/// which case the modal is simply skipped.
+Future<List<ChangelogEntry>> _loadWhatsNewEntries(String? lastSeen) async {
   try {
     final md = await rootBundle.loadString('CHANGELOG.md');
-    return entryForVersion(parseChangelogFile(md), appVersion);
+    return entriesForWhatsNew(
+      parseChangelogFile(md),
+      lastSeen: lastSeen,
+      current: appVersion,
+    );
   } catch (_) {
-    return null;
+    return const <ChangelogEntry>[];
   }
 }
 
