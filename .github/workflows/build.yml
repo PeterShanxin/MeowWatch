@@ -6,6 +6,10 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+    # `labeled` lets the `ci-hosted` label trigger a fresh run (the on-demand
+    # GitHub-hosted fallback). Adding `types` overrides the default set, so the
+    # defaults (opened/synchronize/reopened) must be listed explicitly.
+    types: [opened, synchronize, reopened, labeled]
     paths-ignore:
       - '**.md'
 
@@ -20,47 +24,28 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
-  # ── Fast gate: analyze + test (every PR / main push / tag) ─────────
-  check-hosted:
-    name: Analyze & Test
-    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-    # The suite is NOT cross-platform: it has Windows-path assertions
-    # (test/core/video/video_url_test.dart expects a C:\... path to basename) and
-    # Windows-rendered golden images (test/ui/chat/chat_overlay_golden_test.dart),
-    # so analyze+test must run on Windows — on Linux those 4 tests fail.
-    # PR / branch / main pushes use hosted `windows-2022`.
-    runs-on: windows-2022
-    timeout-minutes: 25 # bound hangs; hosted run normally ~12-15m
-    steps:
-      - uses: actions/checkout@v6
+  # ── PR gate: analyze + test ───────────────────────────────────────────
+  # Default runner is our free self-hosted Windows PC, so addressing review
+  # feedback push-after-push costs ZERO GitHub-hosted minutes. A PR only burns
+  # paid minutes when you deliberately add the `ci-hosted` label (e.g. the
+  # runner is offline and you don't want to wait). Whichever path runs, its
+  # result is funnelled into the single `gate` job below, which is the one
+  # stable required check (`Build / Analyze & Test`) for branch protection.
+  #
+  # The suite is NOT cross-platform — `test/core/video/video_url_test.dart`
+  # asserts on Windows paths (`C:\…` → basename) and
+  # `test/ui/chat/chat_overlay_golden_test.dart` uses Windows-rendered goldens —
+  # so on Linux 4 tests fail; both paths below must run on Windows.
 
-      # Hosted runners (PR / main / branch) download Flutter fresh.
-      - name: Setup Flutter (hosted)
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true # caches both the Flutter SDK and pub dependencies
-
-      - name: Install dependencies
-        shell: pwsh
-        run: flutter pub get
-
-      - name: Analyze
-        shell: pwsh
-        run: flutter analyze
-
-      - name: Run tests
-        shell: pwsh
-        run: flutter test
-
+  # Default (free): self-hosted Windows. Runs for every PR / branch / main / tag
+  # push UNLESS the `ci-hosted` label is on the PR. Keep this job free of
+  # hosted-only composite actions: self-hosted runners prepare composite action
+  # dependencies before skipped steps are evaluated, so a `subosito/flutter-action`
+  # step here would try to set up (and fail) even when skipped — that's why the
+  # hosted fallback is a separate job, not an `if`-guarded step in this one.
   check-self-hosted:
-    name: Analyze & Test (tag)
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-    # Tag pushes use the self-hosted runner so releases remain independent of
-    # hosted Windows availability. Keep this job free of hosted-only composite
-    # actions: self-hosted runners prepare composite action dependencies before
-    # skipped steps are evaluated, so a skipped hosted Flutter action can still
-    # fail a tag release during action download/setup.
+    name: Analyze & Test (self-hosted)
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'ci-hosted') }}
     runs-on: [self-hosted, windows]
     # Bound runaway hangs: the suite normally finishes in ~5m, but a stuck
     # flutter_tester otherwise sits until GitHub's 6h default, wedging the
@@ -91,6 +76,67 @@ jobs:
       - name: Run tests
         shell: pwsh
         run: flutter test
+
+  # On-demand fallback (paid, 2× Windows): hosted `windows-2022`. Runs ONLY when
+  # a PR carries the `ci-hosted` label — use it when the self-hosted runner is
+  # offline and you'd rather spend minutes than wait for it to come online.
+  check-hosted:
+    name: Analyze & Test (hosted fallback)
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'ci-hosted') }}
+    runs-on: windows-2022
+    timeout-minutes: 25 # bound hangs; hosted run normally ~12-15m
+    steps:
+      - uses: actions/checkout@v6
+
+      # Hosted runners download Flutter fresh.
+      - name: Setup Flutter (hosted)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true # caches both the Flutter SDK and pub dependencies
+
+      - name: Install dependencies
+        shell: pwsh
+        run: flutter pub get
+
+      - name: Analyze
+        shell: pwsh
+        run: flutter analyze
+
+      - name: Run tests
+        shell: pwsh
+        run: flutter test
+
+  # Required check (the merge gate). A cheap hosted-Linux referee that passes
+  # iff whichever check actually ran went green. Branch protection should
+  # require THIS context — `Build / Analyze & Test` — and nothing else, so a
+  # single name covers both the self-hosted and hosted-fallback paths.
+  #
+  # Why hosted Linux and not self-hosted: when the self-hosted runner is OFFLINE
+  # and no label is set, `check-self-hosted` stays queued (never terminal), so
+  # this gate stays pending and the PR stays blocked — i.e. "wait until the
+  # runner is online". The gate itself must run on an always-available runner to
+  # be able to report once a path finishes; running it self-hosted would make it
+  # queue too. PR-only — plain pushes and tags don't gate-merge.
+  gate:
+    name: Analyze & Test
+    needs: [check-self-hosted, check-hosted]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require a green Analyze & Test
+        shell: bash
+        run: |
+          sh='${{ needs.check-self-hosted.result }}'
+          ho='${{ needs.check-hosted.result }}'
+          echo "self-hosted=$sh  hosted=$ho"
+          if [ "$sh" = "success" ] || [ "$ho" = "success" ]; then
+            echo "Analyze & Test passed."
+            exit 0
+          fi
+          echo "::error::No green Analyze & Test run (self-hosted=$sh, hosted=$ho). If the self-hosted runner is offline, add the 'ci-hosted' label to run on GitHub-hosted."
+          exit 1
 
   # ── Build Windows x64 (tag pushes only — release builds anyway) ────
   build-windows-x64:
