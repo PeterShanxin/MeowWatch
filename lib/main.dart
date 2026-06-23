@@ -84,8 +84,13 @@ Future<void> main() async {
         hasPriorInstall: hasPriorInstall,
       ) ||
       forced;
-  if (storedLastSeen != appVersion) {
-    unawaited(settings.set(kLastSeenVersionKey, appVersion));
+  // Record the version as a high-water mark: only ever advance it forward, so
+  // an older build sharing this machine's data store can't drag it back down
+  // and re-fire the modal on the next launch of the newer build.
+  final toPersist =
+      lastSeenToPersist(stored: storedLastSeen, current: appVersion);
+  if (toPersist != null) {
+    unawaited(settings.set(kLastSeenVersionKey, toPersist));
   }
   final whatsNewEntries = showWhatsNew
       ? await _loadWhatsNewEntries(effectiveLastSeen)

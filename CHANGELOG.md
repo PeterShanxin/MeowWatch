@@ -10,6 +10,12 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.34.1-alpha] - 2026-06-23
+> What's new greets you on a real update — and only then.
+
+### Fixed: What's new stays put
+- The **What's new** popup now appears only when you genuinely move up to a newer version, and never again on an unchanged relaunch (or after running an older build). It also no longer treats a step *back* to an earlier version as something new.
+
 ## [0.34.0-alpha] - 2026-06-23
 > Continue watching glides instead of snapping.
 

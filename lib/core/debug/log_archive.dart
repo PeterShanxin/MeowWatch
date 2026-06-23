@@ -2,13 +2,16 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+
+import '../data/app_support_dir.dart';
 
 /// Stable per-user directory the rotating diagnostic logs live in
 /// (`<app-support>/logs`). Both the in-room logger and the lobby export resolve
-/// it through here, so the path is defined in exactly one place.
+/// it through here, so the path is defined in exactly one place. Honors the
+/// [kDataDirEnvVar] override (via [resolveAppSupportDir]) so a dev/test build's
+/// logs do not mingle with a production copy's on the same machine.
 Future<Directory> resolveAppLogsDir() async {
-  final support = await getApplicationSupportDirectory();
+  final support = await resolveAppSupportDir();
   return Directory(p.join(support.path, 'logs'));
 }
 
