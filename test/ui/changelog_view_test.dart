@@ -82,6 +82,36 @@ void main() {
     );
   });
 
+  testWidgets('expanded earlier row shows its chip once, not duplicated',
+      (tester) async {
+    await tester.pumpWidget(host(const [
+      ChangelogEntry(
+        version: '0.34.1-alpha',
+        date: '2026-06-23',
+        notes: '### Fixed: Modal fix\n- the hero detail',
+      ),
+      ChangelogEntry(
+        version: '0.34.0-alpha',
+        date: '2026-06-22',
+        // Explicit headline so the collapsed summary line ("Glide it smoother.")
+        // differs from the body bullet ("the row detail") — keeps this test
+        // about the chip, not about summary/bullet overlap.
+        notes: '> Glide it smoother.\n\n### Improved: Glide reflow\n'
+            '- the row detail',
+      ),
+    ]));
+    // The row chip is in its collapsed header.
+    expect(find.text('Glide reflow'), findsOneWidget);
+    // Expanding must reveal the body bullet WITHOUT re-printing the chip — the
+    // expanded section heading is suppressed (the chip already sits in the row
+    // header), so the label stays at exactly one.
+    await tester.tap(find.text('Glide reflow'));
+    await tester.pumpAndSettle();
+    expect(find.text('the row detail', findRichText: true), findsOneWidget);
+    expect(find.text('Glide reflow'), findsOneWidget);
+    expect(find.text('Modal fix'), findsOneWidget); // hero chip unaffected
+  });
+
   testWidgets('collapsed earlier row shows its category chips (not just hero)',
       (tester) async {
     await tester.pumpWidget(host(const [

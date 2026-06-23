@@ -15,6 +15,7 @@ in-app updater reads to show what changed.
 
 ### Fixed: What's new stays put
 - The **What's new** popup now appears only when you genuinely move up to a newer version, and never again on an unchanged relaunch (or after running an older build). It also no longer treats a step *back* to an earlier version as something new.
+- Expanding an earlier update in the list no longer prints its category tag twice.
 
 ## [0.34.0-alpha] - 2026-06-23
 > Continue watching glides instead of snapping.
