@@ -306,9 +306,14 @@ class _ChangelogViewState extends State<ChangelogView> {
         if (open)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
+            // Suppress the section tag headings here: the row's chip already
+            // sits in the collapsed header above, so re-printing it in the
+            // expanded body just duplicates it (matches the hero, which also
+            // passes showTags: false).
             child: ChangelogMarkdown(
               sections: p.sections,
               onIssueTap: _onIssueTap,
+              showTags: false,
             ),
           ),
       ],

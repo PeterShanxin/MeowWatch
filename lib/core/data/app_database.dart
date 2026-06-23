@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+
+import 'app_support_dir.dart';
 
 part 'app_database.g.dart';
 
@@ -71,9 +72,11 @@ class AppDatabase extends _$AppDatabase {
 }
 
 /// Opens the on-disk database under the app's support directory
-/// (Windows: %APPDATA%\<org>\meowwatch\meowwatch.db or similar).
+/// (Windows: %APPDATA%\<org>\meowwatch\meowwatch.db or similar), or under the
+/// [kDataDirEnvVar] override when set, so a dev/test build can keep its data
+/// separate from a production copy on the same machine.
 Future<AppDatabase> openAppDatabase() async {
-  final dir = await getApplicationSupportDirectory();
+  final dir = await resolveAppSupportDir();
   final file = File(p.join(dir.path, 'meowwatch.db'));
   return AppDatabase(NativeDatabase.createInBackground(file));
 }
