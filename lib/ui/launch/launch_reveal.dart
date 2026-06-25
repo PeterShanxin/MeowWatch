@@ -56,14 +56,16 @@ class _LaunchRevealState extends State<LaunchReveal>
     _c = AnimationController(vsync: this, duration: Motion.reveal);
   }
 
-  // Timeline intervals over [Motion.reveal] (800ms).
-  static const _washIn = Interval(0.0, 0.25, curve: Motion.emphasized);
-  static const _markIn = Interval(0.15, 0.55, curve: Motion.springy);
-  static const _wordIn = Interval(0.15, 0.55, curve: Motion.emphasized);
-  static const _tipIn = Interval(0.45, 0.65, curve: Motion.emphasized);
+  // Timeline intervals over [Motion.reveal] (1200ms). The logo is fully in by
+  // ~0.50 and the dissolve doesn't start until 0.80, so the settled lockup
+  // lingers (~360ms) before the lobby rises in — it never feels rushed.
+  static const _washIn = Interval(0.0, 0.18, curve: Motion.emphasized);
+  static const _markIn = Interval(0.12, 0.46, curve: Motion.springy);
+  static const _wordIn = Interval(0.16, 0.50, curve: Motion.emphasized);
+  static const _tipIn = Interval(0.42, 0.58, curve: Motion.emphasized);
   static const _dissolve =
-      Interval(0.70, 1.0, curve: Motion.emphasizedAccelerate);
-  static const _lobbyRise = Interval(0.70, 1.0, curve: Motion.emphasized);
+      Interval(0.80, 1.0, curve: Motion.emphasizedAccelerate);
+  static const _lobbyRise = Interval(0.76, 1.0, curve: Motion.emphasized);
 
   @override
   void didChangeDependencies() {

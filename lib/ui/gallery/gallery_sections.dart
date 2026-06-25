@@ -883,30 +883,93 @@ class _MotionRevealSpecimenState extends State<MotionRevealSpecimen> {
 }
 
 /// Full-screen replay of the real [LaunchReveal] over a placeholder lobby, so
-/// the splash can be reviewed in the gallery exactly as it ships.
-class _FullRevealReplay extends StatelessWidget {
+/// the splash can be reviewed in the gallery exactly as it ships. A back button
+/// is always present (the preview is never a dead end) and a Replay button
+/// appears once the reveal has settled.
+class _FullRevealReplay extends StatefulWidget {
   const _FullRevealReplay({required this.reduceMotion});
 
   final bool reduceMotion;
 
   @override
+  State<_FullRevealReplay> createState() => _FullRevealReplayState();
+}
+
+class _FullRevealReplayState extends State<_FullRevealReplay> {
+  int _key = 0; // bump to re-run the reveal
+  bool _settled = false;
+
+  @override
   Widget build(BuildContext context) {
     final c = context.meow;
+    final t = context.meowText;
     return ReduceMotionScope(
-      reduceMotion: reduceMotion,
+      reduceMotion: widget.reduceMotion,
       child: Scaffold(
         backgroundColor: c.background,
-        body: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: c.backgroundGradient,
-            color: c.backgroundGradient == null ? c.background : null,
-          ),
-          child: LaunchReveal(
-            onComplete: () {},
-            child: Center(
-              child: Text('Lobby', style: context.meowText.display),
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: c.backgroundGradient,
+                  color: c.backgroundGradient == null ? c.background : null,
+                ),
+                child: LaunchReveal(
+                  key: ValueKey('full-reveal-$_key'),
+                  onComplete: () {
+                    if (mounted) setState(() => _settled = true);
+                  },
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Lobby', style: t.display),
+                        const SizedBox(height: Spacing.sm),
+                        Text(
+                          'Preview only — this is where the real lobby '
+                          'rises in.',
+                          style: t.body.copyWith(color: c.textDim),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
+            // Always on top of the splash, so the preview is never a dead end.
+            Positioned(
+              top: Spacing.md,
+              left: Spacing.md,
+              child: SafeArea(
+                child: IconButton(
+                  tooltip: 'Back',
+                  icon: Icon(Icons.arrow_back, color: c.textPrimary),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              ),
+            ),
+            if (_settled)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: Spacing.xxl,
+                child: Center(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: c.accent,
+                      foregroundColor: c.background,
+                    ),
+                    onPressed: () => setState(() {
+                      _settled = false;
+                      _key++;
+                    }),
+                    icon: const Icon(Icons.replay),
+                    label: const Text('Replay'),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

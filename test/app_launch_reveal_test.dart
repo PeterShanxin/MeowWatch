@@ -30,7 +30,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.byKey(const Key('launch-reveal-splash')), findsOneWidget);
     // Let it settle so the test tears down cleanly.
-    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 1300));
     expect(find.byKey(const Key('launch-reveal-splash')), findsNothing);
   });
 
@@ -41,7 +41,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.byType(WhatsNewDialog), findsNothing);
     // After the reveal completes, the modal appears.
-    await tester.pump(const Duration(milliseconds: 900)); // reveal completes
+    await tester.pump(const Duration(milliseconds: 1300)); // reveal completes
     await tester.pump(); // onComplete → showDialog
     await tester.pump(const Duration(milliseconds: 350)); // route transition
     expect(find.byType(WhatsNewDialog), findsOneWidget);

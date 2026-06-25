@@ -13,7 +13,7 @@ abstract final class Motion {
 
   /// The cold-start launch reveal's total timeline. The longest token, used
   /// nowhere else — the splash wash → wordmark → dissolve all fit inside it.
-  static const Duration reveal = Duration(milliseconds: 800);
+  static const Duration reveal = Duration(milliseconds: 1200);
 
   static const Curve standard = Curves.easeOutCubic;
   static const Curve symmetric = Curves.easeInOut;

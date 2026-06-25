@@ -35,7 +35,7 @@ void main() {
     expect(completed, 0);
 
     // After the full timeline: splash gone, child present, completed once.
-    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 1300));
     expect(find.byKey(_splash), findsNothing);
     expect(find.text('LOBBY'), findsOneWidget);
     expect(completed, 1);
