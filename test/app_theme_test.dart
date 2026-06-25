@@ -13,6 +13,7 @@ void main() {
       history: FakeHistoryStore(),
       settings: settings,
       initialTheme: MeowThemeId.noir,
+      showLaunchReveal: false,
     ));
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(app.theme!.extension<MeowColors>(), MeowColors.noir);

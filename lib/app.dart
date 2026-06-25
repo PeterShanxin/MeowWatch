@@ -8,6 +8,7 @@ import 'core/theme/meow_theme.dart';
 import 'core/update/update_service.dart';
 import 'ui/connect/connect_screen.dart';
 import 'ui/home_screen.dart';
+import 'ui/launch/launch_reveal.dart';
 import 'ui/whats_new_dialog.dart';
 
 class MeowWatchApp extends StatefulWidget {
@@ -21,6 +22,7 @@ class MeowWatchApp extends StatefulWidget {
     this.navigatorKey,
     this.showWhatsNew = false,
     this.whatsNewEntries = const <ChangelogEntry>[],
+    this.showLaunchReveal = true,
     super.key,
   });
 
@@ -44,6 +46,10 @@ class MeowWatchApp extends StatefulWidget {
   /// to show in that modal (hero + collapsible "Earlier updates").
   final List<ChangelogEntry> whatsNewEntries;
 
+  /// Whether to play the cold-start launch reveal over the lobby. True in
+  /// production; false in tests that drive the lobby / What's-new directly.
+  final bool showLaunchReveal;
+
   @override
   State<MeowWatchApp> createState() => _MeowWatchAppState();
 }
@@ -57,16 +63,20 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
   late final GlobalKey<NavigatorState> _navKey =
       widget.navigatorKey ?? GlobalKey<NavigatorState>();
 
-  @override
-  void initState() {
-    super.initState();
+  bool _whatsNewShown = false;
+
+  /// Show the post-update "What's new" modal — but only once the launch reveal
+  /// has settled, so it no longer pops over the animation (it used to fire from
+  /// initState, on top of the splash). Called by [LaunchReveal.onComplete],
+  /// which fires after the reveal (or, when the reveal is disabled / reduce
+  /// motion is on, after the first frame).
+  void _onRevealComplete() {
+    if (_whatsNewShown) return;
+    _whatsNewShown = true;
     final entries = widget.whatsNewEntries;
-    if (widget.showWhatsNew && entries.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final context = _navKey.currentContext;
-        if (context != null) WhatsNewDialog.show(context, entries);
-      });
-    }
+    if (!widget.showWhatsNew || entries.isEmpty) return;
+    final context = _navKey.currentContext;
+    if (context != null) WhatsNewDialog.show(context, entries);
   }
 
   void _setTheme(MeowThemeId id) {
@@ -84,22 +94,26 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
       debugShowCheckedModeBanner: false,
       theme: themeDataFor(_theme),
       home: Builder(
-        builder: (context) => ConnectScreen(
-          profiles: widget.profiles,
-          history: widget.history,
-          settings: widget.settings,
-          currentTheme: _theme,
-          onThemeChanged: _setTheme,
-          onConnect: (RoomConfig config) => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => HomeScreen(
-                config: config,
-                history: widget.history,
-                settings: widget.settings,
-                initialWidthPx: widget.initialCardWidthPx,
-                initialHeightPx: widget.initialCardHeightPx,
-                currentTheme: _theme,
-                onThemeChanged: _setTheme,
+        builder: (context) => LaunchReveal(
+          enabled: widget.showLaunchReveal,
+          onComplete: _onRevealComplete,
+          child: ConnectScreen(
+            profiles: widget.profiles,
+            history: widget.history,
+            settings: widget.settings,
+            currentTheme: _theme,
+            onThemeChanged: _setTheme,
+            onConnect: (RoomConfig config) => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => HomeScreen(
+                  config: config,
+                  history: widget.history,
+                  settings: widget.settings,
+                  initialWidthPx: widget.initialCardWidthPx,
+                  initialHeightPx: widget.initialCardHeightPx,
+                  currentTheme: _theme,
+                  onThemeChanged: _setTheme,
+                ),
               ),
             ),
           ),
