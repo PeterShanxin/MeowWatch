@@ -14,6 +14,8 @@ import '../../core/theme/tokens/radii.dart';
 import '../../core/theme/tokens/shadows.dart';
 import '../../core/theme/tokens/spacing.dart';
 import '../../core/theme/tokens/type_scale.dart';
+import '../brand/meow_logo.dart';
+import '../brand/meow_logo_mark.dart';
 import '../chat/chat_bubble.dart';
 import '../connect/history_format.dart';
 import '../empty_state.dart';
@@ -853,8 +855,87 @@ class ComponentZoo extends StatelessWidget {
   }
 }
 
+/// The brand mark at three sizes, plus the horizontal and stacked lockups, live
+/// over the active theme — so a theme switch retints the logo here too.
+class BrandSpecimen extends StatelessWidget {
+  const BrandSpecimen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    final t = context.meowText;
+
+    Widget label(String s) => Text(
+          s.toUpperCase(),
+          style: t.caption.copyWith(
+            color: c.textPrimary,
+            letterSpacing: 1.5,
+            fontWeight: TypeScale.semibold,
+          ),
+        );
+
+    // Each specimen is a labelled tile, centred over its content; the row
+    // spreads them across the card's full width — first flush left, last flush
+    // right — and centres them vertically against the tallest tile.
+    Widget tile(String name, Widget content) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            label(name),
+            const SizedBox(height: Spacing.lg),
+            content,
+          ],
+        );
+
+    // double.infinity width forces the Wrap to take the card's full width;
+    // without it the Wrap shrinks to its content and spaceBetween has no room
+    // to spread the tiles to both edges.
+    return SizedBox(
+      width: double.infinity,
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: Spacing.xxl,
+        children: [
+          tile(
+            'Mark',
+            const Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                MeowLogoMark(size: 32),
+                SizedBox(width: Spacing.xl),
+                MeowLogoMark(size: 48),
+                SizedBox(width: Spacing.xl),
+                MeowLogoMark(size: 72),
+              ],
+            ),
+          ),
+          tile('Horizontal lockup', const MeowLogo(markSize: 52, fontSize: 28)),
+          tile(
+            'Stacked',
+            const MeowLogo(
+              markSize: 56,
+              fontSize: 26,
+              axis: Axis.vertical,
+              gap: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The sections in display order. Used by the gallery screen.
 List<Widget> gallerySections() => const [
+      GallerySection(
+        title: 'Brand',
+        description:
+            'The Neon Nine mark + Sora wordmark, tinted live to the active '
+            'theme. Mark is pure vector; "Watch" + glow take the accent.',
+        child: BrandSpecimen(),
+      ),
       GallerySection(
         title: 'Color',
         description:

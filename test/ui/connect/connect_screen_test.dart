@@ -11,6 +11,7 @@ import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
+import 'package:meowwatch/ui/brand/meow_logo.dart';
 import 'package:meowwatch/ui/connect/connect_screen.dart';
 import 'package:meowwatch/ui/version_badge.dart';
 
@@ -170,6 +171,12 @@ void main() {
     // ConnectScreen embeds a VersionBadge whose silent update check uses
     // process-wide statics; reset so these tests stay order-independent.
     VersionBadge.resetForTest();
+  });
+
+  testWidgets('lobby header shows the MeowLogo lockup', (tester) async {
+    await pump(tester);
+    expect(find.byType(MeowLogo), findsOneWidget);
+    expect(find.text('MeowWatch'), findsOneWidget);
   });
 
   testWidgets('renders a saved profile card', (tester) async {

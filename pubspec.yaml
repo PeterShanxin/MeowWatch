@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.34.1-alpha+1
+version: 0.35.0-alpha+1
 
 environment:
   sdk: ^3.12.0
@@ -73,6 +73,17 @@ dev_dependencies:
   drift_dev: ^2.33.0
   build_runner: ^2.15.0
 
+  # Bakes windows/runner/resources/app_icon.ico from the brand mark. Run
+  # `dart run flutter_launcher_icons` after regenerating assets/brand/
+  # app_icon_source.png (see test/tools/app_icon_source_test.dart).
+  flutter_launcher_icons: ^0.14.1
+
+flutter_launcher_icons:
+  windows:
+    generate: true
+    image_path: assets/brand/app_icon_source.png
+    icon_size: 256
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -86,9 +97,15 @@ flutter:
 
   assets:
     - assets/sounds/
+    - assets/fonts/
     # Bundled so the post-update "what's new" modal can read the just-installed
     # version's notes locally (offline, no R2 round-trip).
     - CHANGELOG.md
+
+  fonts:
+    - family: Sora
+      fonts:
+        - asset: assets/fonts/Sora.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

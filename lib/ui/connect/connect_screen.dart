@@ -27,6 +27,7 @@ import '../../core/theme/tokens/radii.dart';
 import '../../core/theme/tokens/spacing.dart';
 import '../../core/theme/tokens/type_scale.dart';
 import '../../core/video/video_url.dart';
+import '../brand/meow_logo.dart';
 import '../settings/lobby_settings_button.dart';
 import '../staggered_reflow_list.dart';
 import '../version_badge.dart';
@@ -588,12 +589,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   List<Widget> _formColumn() {
     final m = context.meow;
     return [
-      Text(
-        'MeowWatch',
-        style: context.meowText.display.copyWith(
-          fontWeight: TypeScale.semibold,
-        ),
-      ),
+      const MeowLogo(markSize: 52, fontSize: 30, markLeading: false),
       const SizedBox(height: Spacing.xs),
       Text(
         'Watch together, in sync.',

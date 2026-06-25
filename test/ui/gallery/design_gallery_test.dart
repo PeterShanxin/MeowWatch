@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
+import 'package:meowwatch/ui/brand/meow_logo.dart';
 import 'package:meowwatch/ui/gallery/design_gallery.dart';
 
 void main() {
@@ -9,12 +10,22 @@ void main() {
   // ListView is lazy, so the bottom "Components" section must be scrolled into
   // view before it exists in the element tree.
 
+  testWidgets('gallery includes the Brand specimen', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: DesignGallery()));
+    // Brand leads the list, so it's on screen without scrolling. Never
+    // pumpAndSettle here (IdleMascot animates forever); pump a fixed duration.
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('BRAND'), findsOneWidget);
+    expect(find.byType(MeowLogo), findsWidgets);
+  });
+
   testWidgets('gallery renders the hero and its sections', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: DesignGallery()));
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Design System'), findsOneWidget); // hero
-    expect(find.text('COLOR'), findsOneWidget); // first section
+    expect(find.text('BRAND'), findsOneWidget); // first section
 
     // Scroll down in steps to build the lazy "Components" section (the list is
     // tall; one big drag can over/under-shoot, so step until it appears).
