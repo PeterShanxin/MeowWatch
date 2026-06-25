@@ -41,6 +41,14 @@ class _RevealInState extends State<RevealIn>
     vsync: this,
     duration: widget.duration,
   );
+  // Built once and disposed with the state. A CurvedAnimation attaches a status
+  // listener to its parent controller, so rebuilding it on every build() (e.g.
+  // a theme change while the reveal is mounted) would leak listeners and retain
+  // the old curves on _c until the whole widget disposes.
+  late final CurvedAnimation _curve = CurvedAnimation(
+    parent: _c,
+    curve: widget.overshoot ? Motion.springy : Motion.emphasized,
+  );
   bool _kicked = false;
 
   @override
@@ -61,20 +69,17 @@ class _RevealInState extends State<RevealIn>
 
   @override
   void dispose() {
+    _curve.dispose();
     _c.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final curve = CurvedAnimation(
-      parent: _c,
-      curve: widget.overshoot ? Motion.springy : Motion.emphasized,
-    );
     return AnimatedBuilder(
-      animation: curve,
+      animation: _curve,
       builder: (context, child) {
-        final t = curve.value;
+        final t = _curve.value;
         return Opacity(
           // Opacity must stay in [0,1] even when springy overshoots past 1.
           opacity: t.clamp(0.0, 1.0),
