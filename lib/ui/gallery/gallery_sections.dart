@@ -920,18 +920,35 @@ class _FullRevealReplayState extends State<_FullRevealReplay> {
                   onComplete: () {
                     if (mounted) setState(() => _settled = true);
                   },
+                  // A faux lobby so the content-rise reads as real content
+                  // settling in, not a lone line of text slowly fading.
                   child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('Lobby', style: t.display),
-                        const SizedBox(height: Spacing.sm),
-                        Text(
-                          'Preview only — this is where the real lobby '
-                          'rises in.',
-                          style: t.body.copyWith(color: c.textDim),
-                        ),
-                      ],
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 360),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text('Welcome back', style: t.heading),
+                          const SizedBox(height: Spacing.xs),
+                          Text(
+                            'Preview — the real lobby rises in here.',
+                            style: t.body.copyWith(color: c.textDim),
+                          ),
+                          const SizedBox(height: Spacing.lg),
+                          for (var i = 0; i < 2; i++) ...[
+                            Container(
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: c.surface,
+                                borderRadius: BorderRadius.circular(Radii.md),
+                                border: Border.all(color: c.border),
+                              ),
+                            ),
+                            const SizedBox(height: Spacing.sm),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

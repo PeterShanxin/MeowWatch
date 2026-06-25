@@ -182,26 +182,32 @@ class _LaunchRevealState extends State<LaunchReveal>
               )
             : gradient,
       ),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Mark — settles in with the springy character beat.
-            _phase(_markIn, child: const MeowLogoMark(size: 88)),
-            const SizedBox(height: Spacing.lg),
-            // Wordmark — eases in just behind the mark.
-            _phase(_wordIn, child: const MeowWordmark(fontSize: 34)),
-            const SizedBox(height: Spacing.xxl),
-            // Tip — fades in late so it never competes with the hero beat.
-            _phase(
-              _tipIn,
-              rise: 6,
-              child: Text(
-                widget.tip ?? kLaunchTips.first,
-                style: TextStyle(color: m.textDim, fontSize: 13),
+      // A transparent Material so the splash text renders normally — the
+      // overlay is a Stack sibling of the lobby's Scaffold, so without this its
+      // Text widgets fall back to the debug yellow-underline default style.
+      child: Material(
+        type: MaterialType.transparency,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Mark — settles in with the springy character beat.
+              _phase(_markIn, child: const MeowLogoMark(size: 88)),
+              const SizedBox(height: Spacing.lg),
+              // Wordmark — eases in just behind the mark.
+              _phase(_wordIn, child: const MeowWordmark(fontSize: 34)),
+              const SizedBox(height: Spacing.xxl),
+              // Tip — fades in late so it never competes with the hero beat.
+              _phase(
+                _tipIn,
+                rise: 6,
+                child: Text(
+                  widget.tip ?? kLaunchTips.first,
+                  style: TextStyle(color: m.textDim, fontSize: 13),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
