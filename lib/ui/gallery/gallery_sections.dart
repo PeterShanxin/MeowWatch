@@ -879,9 +879,9 @@ class BrandSpecimen extends StatelessWidget {
       children: [
         label('Mark'),
         const SizedBox(height: Spacing.md),
-        Row(
+        const Row(
           crossAxisAlignment: CrossAxisAlignment.end,
-          children: const [
+          children: [
             MeowLogoMark(size: 32),
             SizedBox(width: Spacing.xl),
             MeowLogoMark(size: 48),
