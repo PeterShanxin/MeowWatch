@@ -86,9 +86,15 @@ flutter:
 
   assets:
     - assets/sounds/
+    - assets/fonts/
     # Bundled so the post-update "what's new" modal can read the just-installed
     # version's notes locally (offline, no R2 round-trip).
     - CHANGELOG.md
+
+  fonts:
+    - family: Sora
+      fonts:
+        - asset: assets/fonts/Sora.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:
