@@ -14,6 +14,8 @@ import '../../core/theme/tokens/radii.dart';
 import '../../core/theme/tokens/shadows.dart';
 import '../../core/theme/tokens/spacing.dart';
 import '../../core/theme/tokens/type_scale.dart';
+import '../brand/meow_logo.dart';
+import '../brand/meow_logo_mark.dart';
 import '../chat/chat_bubble.dart';
 import '../connect/history_format.dart';
 import '../empty_state.dart';
@@ -853,8 +855,62 @@ class ComponentZoo extends StatelessWidget {
   }
 }
 
+/// The brand mark at three sizes, plus the horizontal and stacked lockups, live
+/// over the active theme — so a theme switch retints the logo here too.
+class BrandSpecimen extends StatelessWidget {
+  const BrandSpecimen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    final t = context.meowText;
+
+    Widget label(String s) => Text(
+          s.toUpperCase(),
+          style: t.caption.copyWith(
+            color: c.textPrimary,
+            letterSpacing: 1.5,
+            fontWeight: TypeScale.semibold,
+          ),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        label('Mark'),
+        const SizedBox(height: Spacing.md),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: const [
+            MeowLogoMark(size: 32),
+            SizedBox(width: Spacing.xl),
+            MeowLogoMark(size: 48),
+            SizedBox(width: Spacing.xl),
+            MeowLogoMark(size: 72),
+          ],
+        ),
+        const SizedBox(height: Spacing.xl),
+        label('Horizontal lockup'),
+        const SizedBox(height: Spacing.md),
+        const MeowLogo(markSize: 40, fontSize: 28),
+        const SizedBox(height: Spacing.xl),
+        label('Stacked'),
+        const SizedBox(height: Spacing.md),
+        const MeowLogo(markSize: 56, fontSize: 26, axis: Axis.vertical, gap: 12),
+      ],
+    );
+  }
+}
+
 /// The sections in display order. Used by the gallery screen.
 List<Widget> gallerySections() => const [
+      GallerySection(
+        title: 'Brand',
+        description:
+            'The Neon Nine mark + Sora wordmark, tinted live to the active '
+            'theme. Mark is pure vector; "Watch" + glow take the accent.',
+        child: BrandSpecimen(),
+      ),
       GallerySection(
         title: 'Color',
         description:
