@@ -589,7 +589,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   List<Widget> _formColumn() {
     final m = context.meow;
     return [
-      const MeowLogo(markSize: 40, fontSize: 30),
+      const MeowLogo(markSize: 52, fontSize: 30, markLeading: false),
       const SizedBox(height: Spacing.xs),
       Text(
         'Watch together, in sync.',

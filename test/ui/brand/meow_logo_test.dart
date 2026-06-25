@@ -18,6 +18,29 @@ void main() {
     expect(find.byType(Row), findsWidgets);
   });
 
+  testWidgets('MeowLogo leads with the mark by default', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: themeDataFor(MeowThemeId.cozy),
+      home: const Scaffold(body: Center(child: MeowLogo())),
+    ));
+    final row = tester.widget<Row>(find.byType(Row).first);
+    expect(row.children.first, isA<MeowLogoMark>());
+    expect(row.children.last, isA<MeowWordmark>());
+  });
+
+  testWidgets('MeowLogo trails the mark when markLeading is false',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: themeDataFor(MeowThemeId.cozy),
+      home: const Scaffold(
+        body: Center(child: MeowLogo(markLeading: false)),
+      ),
+    ));
+    final row = tester.widget<Row>(find.byType(Row).first);
+    expect(row.children.first, isA<MeowWordmark>());
+    expect(row.children.last, isA<MeowLogoMark>());
+  });
+
   testWidgets('MeowLogo stacks vertically when axis is vertical',
       (tester) async {
     await tester.pumpWidget(MaterialApp(

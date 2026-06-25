@@ -874,30 +874,55 @@ class BrandSpecimen extends StatelessWidget {
           ),
         );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        label('Mark'),
-        const SizedBox(height: Spacing.md),
-        const Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+    // Each specimen is a labelled tile, centred over its content; the row
+    // spreads them across the card's full width — first flush left, last flush
+    // right — and centres them vertically against the tallest tile.
+    Widget tile(String name, Widget content) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            MeowLogoMark(size: 32),
-            SizedBox(width: Spacing.xl),
-            MeowLogoMark(size: 48),
-            SizedBox(width: Spacing.xl),
-            MeowLogoMark(size: 72),
+            label(name),
+            const SizedBox(height: Spacing.lg),
+            content,
           ],
-        ),
-        const SizedBox(height: Spacing.xl),
-        label('Horizontal lockup'),
-        const SizedBox(height: Spacing.md),
-        const MeowLogo(markSize: 40, fontSize: 28),
-        const SizedBox(height: Spacing.xl),
-        label('Stacked'),
-        const SizedBox(height: Spacing.md),
-        const MeowLogo(markSize: 56, fontSize: 26, axis: Axis.vertical, gap: 12),
-      ],
+        );
+
+    // double.infinity width forces the Wrap to take the card's full width;
+    // without it the Wrap shrinks to its content and spaceBetween has no room
+    // to spread the tiles to both edges.
+    return SizedBox(
+      width: double.infinity,
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: Spacing.xxl,
+        children: [
+          tile(
+            'Mark',
+            const Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                MeowLogoMark(size: 32),
+                SizedBox(width: Spacing.xl),
+                MeowLogoMark(size: 48),
+                SizedBox(width: Spacing.xl),
+                MeowLogoMark(size: 72),
+              ],
+            ),
+          ),
+          tile('Horizontal lockup', const MeowLogo(markSize: 52, fontSize: 28)),
+          tile(
+            'Stacked',
+            const MeowLogo(
+              markSize: 56,
+              fontSize: 26,
+              axis: Axis.vertical,
+              gap: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
