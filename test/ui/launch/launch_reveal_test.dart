@@ -6,6 +6,28 @@ import 'package:meowwatch/ui/launch/launch_reveal.dart';
 
 const _splash = Key('launch-reveal-splash');
 
+/// A stand-in lobby that counts how many times its State is created, so a test
+/// can prove the reveal reparents (not rebuilds) the lobby when it settles.
+class _LobbyProbe extends StatefulWidget {
+  const _LobbyProbe();
+
+  static int initCount = 0;
+
+  @override
+  State<_LobbyProbe> createState() => _LobbyProbeState();
+}
+
+class _LobbyProbeState extends State<_LobbyProbe> {
+  @override
+  void initState() {
+    super.initState();
+    _LobbyProbe.initCount++;
+  }
+
+  @override
+  Widget build(BuildContext context) => const Text('LOBBY');
+}
+
 Widget _host(
   Widget reveal, {
   bool reduceMotion = false,
@@ -39,6 +61,28 @@ void main() {
     expect(find.byKey(_splash), findsNothing);
     expect(find.text('LOBBY'), findsOneWidget);
     expect(completed, 1);
+  });
+
+  testWidgets('preserves the lobby state across the settle (no rebuild flash)',
+      (tester) async {
+    _LobbyProbe.initCount = 0;
+    await tester.pumpWidget(_host(
+      LaunchReveal(
+        onComplete: () {},
+        child: const _LobbyProbe(),
+      ),
+    ));
+    // The lobby is mounted underneath the splash exactly once during the reveal.
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_LobbyProbe.initCount, 1);
+
+    // After the reveal settles the splash is removed, but the lobby element is
+    // reparented (stable GlobalKey) rather than torn down and rebuilt — so its
+    // State survives and initState must NOT run a second time. A rebuild here is
+    // what made ConnectScreen's streams reset to empty and flash a mini lobby.
+    await tester.pump(const Duration(milliseconds: 1300));
+    expect(find.byKey(_splash), findsNothing);
+    expect(_LobbyProbe.initCount, 1);
   });
 
   testWidgets('any tap skips straight to the settled lobby', (tester) async {

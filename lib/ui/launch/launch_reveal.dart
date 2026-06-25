@@ -47,6 +47,12 @@ class _LaunchRevealState extends State<LaunchReveal>
   // dispose() and throw "ancestor lookup is unsafe".
   late final AnimationController _c;
   final FocusNode _skipFocus = FocusNode(debugLabel: 'launch-reveal-skip');
+  // A stable key for the lobby so it keeps its element (and State) when the
+  // reveal settles. Without it, `build` swaps a Stack-wrapped child for the raw
+  // child — a structural change that tears down and rebuilds the lobby, resetting
+  // its StreamBuilders to empty and flashing a half-laid-out "mini" lobby for a
+  // frame. With the key, Flutter reparents the same element instead.
+  final GlobalKey _lobbyKey = GlobalKey(debugLabel: 'launch-reveal-lobby');
   bool _started = false;
   bool _done = false;
 
@@ -113,7 +119,10 @@ class _LaunchRevealState extends State<LaunchReveal>
 
   @override
   Widget build(BuildContext context) {
-    if (_done) return widget.child;
+    // Same KeyedSubtree instance in both branches so the lobby element is
+    // reparented (State preserved) when `_done` flips, not rebuilt.
+    final lobby = KeyedSubtree(key: _lobbyKey, child: widget.child);
+    if (_done) return lobby;
     final m = context.meow;
     return Stack(
       fit: StackFit.expand,
@@ -131,7 +140,7 @@ class _LaunchRevealState extends State<LaunchReveal>
               ),
             );
           },
-          child: widget.child,
+          child: lobby,
         ),
         // The splash overlay: tap/key anywhere skips.
         Positioned.fill(
