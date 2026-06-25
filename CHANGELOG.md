@@ -10,6 +10,15 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.35.0-alpha] - 2026-06-25
+
+> MeowWatch has a real logo now.
+
+### Added
+- A proper **MeowWatch logo** — a glowing cat mark + wordmark that recolors
+  itself to match your theme. It greets you on the lobby screen, and lives in
+  the design gallery alongside the other tokens.
+
 ## [0.34.1-alpha] - 2026-06-23
 > What's new greets you on a real update — and only then.
 
