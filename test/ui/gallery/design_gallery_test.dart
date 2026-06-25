@@ -39,6 +39,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('gallery includes the launch-reveal motion section',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: DesignGallery()));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The section is lazy; step-scroll until its title is built.
+    final scrollable = find.byType(Scrollable).first;
+    for (var i = 0;
+        i < 30 && find.text('MOTION · REVEAL').evaluate().isEmpty;
+        i++) {
+      await tester.drag(scrollable, const Offset(0, -400));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('MOTION · REVEAL'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('switching theme does not throw', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: DesignGallery()));
     await tester.pump(const Duration(milliseconds: 300));

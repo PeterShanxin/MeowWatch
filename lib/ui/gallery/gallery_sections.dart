@@ -7,6 +7,7 @@ import '../../core/sync/peer_state.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
 import '../../core/theme/meow_theme.dart';
+import '../../core/theme/reduce_motion.dart';
 import '../../core/theme/tokens/icon_sizes.dart';
 import '../../core/theme/tokens/motion.dart';
 import '../../core/theme/tokens/opacities.dart';
@@ -19,6 +20,9 @@ import '../brand/meow_logo_mark.dart';
 import '../chat/chat_bubble.dart';
 import '../connect/history_format.dart';
 import '../empty_state.dart';
+import '../launch/launch_reveal.dart';
+import '../launch/launch_tips.dart';
+import '../motion/reveal_in.dart';
 import '../staggered_reflow_list.dart';
 
 /// 8-digit ARGB hex for a token swatch label, e.g. `#FF1A1410`.
@@ -396,8 +400,12 @@ class MotionSpecimen extends StatelessWidget {
           chip('base · ${Motion.base.inMilliseconds}ms'),
           chip('slow · ${Motion.slow.inMilliseconds}ms'),
           chip('stagger · ${Motion.stagger.inMilliseconds}ms'),
+          chip('reveal · ${Motion.reveal.inMilliseconds}ms'),
           chip('standard · easeOutCubic'),
           chip('symmetric · easeInOut'),
+          chip('emphasized · easeInOutCubicEmphasized'),
+          chip('emphasizedAccelerate · (.3, 0, .8, .15)'),
+          chip('springy · (.34, 1.26, .64, 1)'),
         ]),
       ],
     );
@@ -780,6 +788,131 @@ class _ReflowDemoCard extends StatelessWidget {
   }
 }
 
+/// The launch-reveal motion, live: a [RevealIn] demo you can replay, a
+/// reduce-motion preview toggle that forces the degraded (instant) form, and a
+/// "Play full launch reveal" button that runs the real [LaunchReveal] over a
+/// placeholder lobby. The replay tile lets the splash live in the design system.
+class MotionRevealSpecimen extends StatefulWidget {
+  const MotionRevealSpecimen({super.key});
+
+  @override
+  State<MotionRevealSpecimen> createState() => _MotionRevealSpecimenState();
+}
+
+class _MotionRevealSpecimenState extends State<MotionRevealSpecimen> {
+  bool _reduceMotion = false;
+  int _replayKey = 0; // bump to remount the RevealIn demo
+
+  void _playFullReveal() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _FullRevealReplay(reduceMotion: _reduceMotion),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    final t = context.meowText;
+    return ReduceMotionScope(
+      reduceMotion: _reduceMotion,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('Reduce motion',
+                  style: t.body.copyWith(color: c.textPrimary)),
+              const SizedBox(width: Spacing.md),
+              Switch(
+                value: _reduceMotion,
+                activeThumbColor: c.accent,
+                onChanged: (v) => setState(() {
+                  _reduceMotion = v;
+                  _replayKey++;
+                }),
+              ),
+            ],
+          ),
+          const SizedBox(height: Spacing.md),
+          // RevealIn demo — remounts on replay so the fade+rise replays.
+          Container(
+            padding: const EdgeInsets.all(Spacing.lg),
+            decoration: BoxDecoration(
+              color: c.background,
+              borderRadius: BorderRadius.circular(Radii.md),
+              border: Border.all(color: c.border),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                RevealIn(
+                  key: ValueKey('reveal-in-$_replayKey-$_reduceMotion'),
+                  overshoot: true,
+                  child:
+                      Text('RevealIn', style: t.title.copyWith(color: c.accent)),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _replayKey++),
+                  style: TextButton.styleFrom(foregroundColor: c.accent),
+                  child: const Text('Replay'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+          FilledButton.icon(
+            onPressed: _playFullReveal,
+            style: FilledButton.styleFrom(
+              backgroundColor: c.accent,
+              foregroundColor: c.background,
+            ),
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Play full launch reveal'),
+          ),
+          const SizedBox(height: Spacing.sm),
+          Text(
+            'Tip shown: “${kLaunchTips.first}”',
+            style: t.caption.copyWith(color: c.textDim),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-screen replay of the real [LaunchReveal] over a placeholder lobby, so
+/// the splash can be reviewed in the gallery exactly as it ships.
+class _FullRevealReplay extends StatelessWidget {
+  const _FullRevealReplay({required this.reduceMotion});
+
+  final bool reduceMotion;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    return ReduceMotionScope(
+      reduceMotion: reduceMotion,
+      child: Scaffold(
+        backgroundColor: c.background,
+        body: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: c.backgroundGradient,
+            color: c.backgroundGradient == null ? c.background : null,
+          ),
+          child: LaunchReveal(
+            onComplete: () {},
+            child: Center(
+              child: Text('Lobby', style: context.meowText.display),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ShadowSpecimen extends StatelessWidget {
   const ShadowSpecimen({super.key});
   @override
@@ -981,6 +1114,14 @@ List<Widget> gallerySections() => const [
             'cards. The staggered cascade glides survivors and ripples arrivals '
             'in top-to-bottom instead of hard-swapping the list.',
         child: MotionReflowSpecimen(),
+      ),
+      GallerySection(
+        title: 'Motion · reveal',
+        description:
+            'The cold-start launch reveal + its RevealIn primitive. Toggle '
+            'reduce motion to preview the instant, degraded form; replay the '
+            'full splash to review it as it ships.',
+        child: MotionRevealSpecimen(),
       ),
       GallerySection(
         title: 'Shadow',
