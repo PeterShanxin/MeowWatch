@@ -56,10 +56,17 @@ class _LaunchRevealState extends State<LaunchReveal>
   bool _started = false;
   bool _done = false;
 
+  // The one line shown under the wordmark this launch. Chosen once here — not in
+  // build — so it stays put across the many per-frame rebuilds of the splash. An
+  // explicit [LaunchReveal.tip] wins; otherwise we rotate the pool by a per-run
+  // seed so successive launches show different nudges.
+  late final String _tip;
+
   @override
   void initState() {
     super.initState();
     _c = AnimationController(vsync: this, duration: Motion.reveal);
+    _tip = widget.tip ?? launchTip(DateTime.now().microsecondsSinceEpoch);
   }
 
   // Timeline intervals over [Motion.reveal] (1200ms). The logo is fully in by
@@ -211,7 +218,7 @@ class _LaunchRevealState extends State<LaunchReveal>
                 _tipIn,
                 rise: 6,
                 child: Text(
-                  widget.tip ?? kLaunchTips.first,
+                  _tip,
                   style: TextStyle(color: m.textDim, fontSize: 13),
                 ),
               ),

@@ -103,6 +103,20 @@ void main() {
     expect(completed, 1);
   });
 
+  testWidgets('shows the given tip under the wordmark', (tester) async {
+    await tester.pumpWidget(_host(
+      LaunchReveal(
+        onComplete: () {},
+        tip: 'a custom hint',
+        child: const Text('LOBBY'),
+      ),
+    ));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('a custom hint'), findsOneWidget);
+    // Settle so the controller finishes and the test tears down cleanly.
+    await tester.pump(const Duration(milliseconds: 1300));
+  });
+
   testWidgets('reduce motion shows the lobby immediately, no splash',
       (tester) async {
     var completed = 0;

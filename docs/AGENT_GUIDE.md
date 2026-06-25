@@ -118,6 +118,13 @@ never block input (skippable on any click/key); it's the reason the post-update
 "What's new" modal fires from the reveal's `onComplete`, not before. The in-app
 Settings reduce-motion toggle is planned for the Lobby motion phase.
 
+The reveal shows one rotating tip under the wordmark, drawn from `kLaunchTips`
+in `lib/ui/launch/launch_tips.dart` (the reveal picks one per launch by a
+per-run seed). **When you add a user-facing keystroke, gesture, or feature
+worth surfacing, add a one-line tip there** — keep it true of the shipping app
+and short enough to sit on one row (the test enforces this). Nothing else to
+wire; the bigger pool is picked up automatically.
+
 ### Changelog writing style
 
 The in-app "What's new" screen renders each version's notes. Write them for the
