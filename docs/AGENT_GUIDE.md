@@ -106,6 +106,18 @@ TDD (RED → GREEN → REFACTOR), small commits at verified milestones. Conventi
 
 **Versioning (every behavior-changing PR):** bump the version in lockstep across `pubspec.yaml` (`version:`), `lib/core/app_version.dart` (`appVersion`), and `CHANGELOG.md` (new top `## [<version>] - <date>` entry).
 
+### Motion
+
+Timing + easing live in `lib/core/theme/tokens/motion.dart` (`Motion.*`). New
+work draws from these tokens, never ad-hoc durations. Honor reduce motion via
+`context.reduceMotion` (`lib/core/theme/reduce_motion.dart`) — it's true when
+the OS "reduce animations" setting is on; every motion primitive (`RevealIn` in
+`lib/ui/motion/`, `LaunchReveal` in `lib/ui/launch/`) degrades to an instant
+present when it is. The cold-start `LaunchReveal` overlays the lobby and must
+never block input (skippable on any click/key); it's the reason the post-update
+"What's new" modal fires from the reveal's `onComplete`, not before. The in-app
+Settings reduce-motion toggle is planned for the Lobby motion phase.
+
 ### Changelog writing style
 
 The in-app "What's new" screen renders each version's notes. Write them for the
