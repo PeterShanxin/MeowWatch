@@ -22,7 +22,7 @@ void main() {
   });
 
   test('reveal is the launch-only duration, the longest token', () {
-    expect(Motion.reveal, const Duration(milliseconds: 1200));
+    expect(Motion.reveal, const Duration(milliseconds: 2800));
     expect(Motion.slow < Motion.reveal, isTrue);
   });
 

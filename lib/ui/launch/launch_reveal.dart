@@ -69,16 +69,18 @@ class _LaunchRevealState extends State<LaunchReveal>
     _tip = widget.tip ?? launchTip(DateTime.now().microsecondsSinceEpoch);
   }
 
-  // Timeline intervals over [Motion.reveal] (1200ms). The logo is fully in by
-  // ~0.50 and the dissolve doesn't start until 0.80, so the settled lockup
-  // lingers (~360ms) before the lobby rises in — it never feels rushed.
-  static const _washIn = Interval(0.0, 0.18, curve: Motion.emphasized);
-  static const _markIn = Interval(0.12, 0.46, curve: Motion.springy);
-  static const _wordIn = Interval(0.16, 0.50, curve: Motion.emphasized);
-  static const _tipIn = Interval(0.42, 0.58, curve: Motion.emphasized);
+  // Timeline intervals over [Motion.reveal] (2800ms). The lockup assembles
+  // mark-then-word, the tip lands by ~0.48 (~1.3s), then everything HOLDS
+  // through a readable dwell until the dissolve begins at 0.80 (~2.24s) — so the
+  // tip sits fully still for ~0.9s before it starts to fade. The mark enters on
+  // the springy curve with a scale overshoot; the word eases in just behind it.
+  static const _washIn = Interval(0.0, 0.11, curve: Motion.emphasized);
+  static const _markIn = Interval(0.07, 0.33, curve: Motion.springy);
+  static const _wordIn = Interval(0.15, 0.40, curve: Motion.emphasized);
+  static const _tipIn = Interval(0.34, 0.48, curve: Motion.emphasized);
   static const _dissolve =
       Interval(0.80, 1.0, curve: Motion.emphasizedAccelerate);
-  static const _lobbyRise = Interval(0.76, 1.0, curve: Motion.emphasized);
+  static const _lobbyRise = Interval(0.78, 1.0, curve: Motion.emphasized);
 
   @override
   void didChangeDependencies() {
@@ -165,10 +167,15 @@ class _LaunchRevealState extends State<LaunchReveal>
                 animation: _c,
                 builder: (context, _) {
                   final wash = _washIn.transform(_c.value);
-                  final dissolve = 1 - _dissolve.transform(_c.value);
+                  final exit = _dissolve.transform(_c.value); // 0 → 1 leaving
                   return Opacity(
-                    opacity: dissolve.clamp(0.0, 1.0), // splash fades out
-                    child: _splash(m, wash),
+                    opacity: (1 - exit).clamp(0.0, 1.0), // splash fades out
+                    child: Transform.scale(
+                      // A gentle lift as it dissolves — the lockup floats up and
+                      // away rather than just dropping its opacity.
+                      scale: 1 + exit * 0.04,
+                      child: _splash(m, wash),
+                    ),
                   );
                 },
               ),
@@ -207,11 +214,23 @@ class _LaunchRevealState extends State<LaunchReveal>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Mark — settles in with the springy character beat.
-              _phase(_markIn, child: const MeowLogoMark(size: 88)),
+              // Mark — settles in with the springy character beat: scales up
+              // from 0.82 with a slight overshoot past full size, then settles.
+              _phase(
+                _markIn,
+                scaleFrom: 0.82,
+                rise: 16,
+                child: const MeowLogoMark(size: 88),
+              ),
               const SizedBox(height: Spacing.lg),
-              // Wordmark — eases in just behind the mark.
-              _phase(_wordIn, child: const MeowWordmark(fontSize: 34)),
+              // Wordmark — eases in just behind the mark with a gentle scale, so
+              // the lockup assembles with a little depth instead of flat-fading.
+              _phase(
+                _wordIn,
+                scaleFrom: 0.94,
+                rise: 12,
+                child: const MeowWordmark(fontSize: 34),
+              ),
               const SizedBox(height: Spacing.xxl),
               // Tip — fades in late so it never competes with the hero beat.
               _phase(
@@ -229,14 +248,25 @@ class _LaunchRevealState extends State<LaunchReveal>
     );
   }
 
-  /// Fade + small rise of one splash element, driven by its [interval].
-  Widget _phase(Interval interval, {required Widget child, double rise = 12}) {
+  /// Fade + small rise (and optional scale) of one splash element, driven by its
+  /// [interval]. With [scaleFrom] < 1 the element grows into place; on the
+  /// springy curve `t` overshoots past 1 mid-flight, so the scale pops slightly
+  /// past full size before settling — the lively "character" beat.
+  Widget _phase(
+    Interval interval, {
+    required Widget child,
+    double rise = 12,
+    double scaleFrom = 1.0,
+  }) {
     final t = interval.transform(_c.value);
     return Opacity(
       opacity: t.clamp(0.0, 1.0),
-      child: Transform.translate(
-        offset: Offset(0, (1 - t) * rise),
-        child: child,
+      child: Transform.scale(
+        scale: scaleFrom + (1 - scaleFrom) * t,
+        child: Transform.translate(
+          offset: Offset(0, (1 - t) * rise),
+          child: child,
+        ),
       ),
     );
   }

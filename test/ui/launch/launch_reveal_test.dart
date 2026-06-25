@@ -57,7 +57,7 @@ void main() {
     expect(completed, 0);
 
     // After the full timeline: splash gone, child present, completed once.
-    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pump(const Duration(milliseconds: 2900));
     expect(find.byKey(_splash), findsNothing);
     expect(find.text('LOBBY'), findsOneWidget);
     expect(completed, 1);
@@ -80,7 +80,7 @@ void main() {
     // reparented (stable GlobalKey) rather than torn down and rebuilt — so its
     // State survives and initState must NOT run a second time. A rebuild here is
     // what made ConnectScreen's streams reset to empty and flash a mini lobby.
-    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pump(const Duration(milliseconds: 2900));
     expect(find.byKey(_splash), findsNothing);
     expect(_LobbyProbe.initCount, 1);
   });
@@ -114,7 +114,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text('a custom hint'), findsOneWidget);
     // Settle so the controller finishes and the test tears down cleanly.
-    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pump(const Duration(milliseconds: 2900));
   });
 
   testWidgets('reduce motion shows the lobby immediately, no splash',

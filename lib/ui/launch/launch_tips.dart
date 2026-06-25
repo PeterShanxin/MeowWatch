@@ -10,7 +10,7 @@ const List<String> kLaunchTips = <String>[
   'No account needed — just a name and a code.',
   'Your spot is saved — pick up where you left off.',
   'Find themes and sounds in the gear, top-right.',
-  'Chat rides along in a tab beside the video.',
+  'Press Tab to show or hide chat.',
   'MeowWatch keeps itself up to date.',
 ];
 

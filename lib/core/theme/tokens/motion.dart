@@ -12,8 +12,11 @@ abstract final class Motion {
   static const Duration stagger = Duration(milliseconds: 55);
 
   /// The cold-start launch reveal's total timeline. The longest token, used
-  /// nowhere else — the splash wash → wordmark → dissolve all fit inside it.
-  static const Duration reveal = Duration(milliseconds: 1200);
+  /// nowhere else — the splash wash → mark → wordmark → a readable dwell →
+  /// dissolve all fit inside it. Long enough that the late tip line holds still
+  /// for ~0.9s before anything fades, so it's actually readable (it's skippable
+  /// on any click/key, so the length never traps an impatient user).
+  static const Duration reveal = Duration(milliseconds: 2800);
 
   static const Curve standard = Curves.easeOutCubic;
   static const Curve symmetric = Curves.easeInOut;
