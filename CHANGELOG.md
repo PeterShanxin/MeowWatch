@@ -10,13 +10,14 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
-## [0.36.0-alpha] - 2026-06-25
+## [0.36.0-alpha] - 2026-06-26
 
 > MeowWatch greets you with a real launch now.
 
 ### Added
-- A cold-start **launch reveal**: the theme washes in, the logo settles, and
-  the lobby rises in behind it. Click or press any key to skip it.
+- A cold-start **launch reveal**: the logo settles in over the theme colours,
+  holds for a beat, then zooms and dissolves away to hand off to the lobby. A
+  short tip rotates underneath each launch. Click or press any key to skip it.
 - A **Reduce motion** path: when your system has "reduce animations" on,
   MeowWatch shows the lobby instantly with no splash.
 
