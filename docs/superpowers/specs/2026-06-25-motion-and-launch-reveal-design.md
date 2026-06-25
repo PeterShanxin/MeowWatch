@@ -25,14 +25,17 @@ nothing ever makes the user wait just to watch an animation.
 - **Launch concept:** theme gradient *wash* + animated *wordmark*, which
   dissolves as the lobby content *rises in* behind it.
 - **Logo:** the app has no real logo today (just the stock Flutter icon). We
-  design one first. Pipeline: I provide a logo-design prompt → user picks →
-  `pixel2motion` produces a clean layered logo + a browser motion preview to
-  approve → the shipped animation is **rebuilt natively** in Flutter.
-- **Why native rebuild, not the exported clip:** (1) it follows the user's
-  chosen theme palette — a pre-baked clip is frozen in one color set;
-  (2) it stays crisp at any window size — raster blurs when scaled;
-  (3) it adds ~zero startup cost — no video decode at frame one, which matters
-  because this app's most fragile moment is launch.
+  design one first. **Chosen: direction "04 · Neon Nine"** via a **Claude Design
+  handoff** (not pixel2motion — the handoff already ships clean vector geometry,
+  so there is nothing to vectorize). See Appendix B for the extracted spec.
+- **The mark is simple enough to draw in code** (7 primitives, all
+  `currentColor`) — so it ships as a Flutter `CustomPainter`, with **no
+  `flutter_svg` dependency and no image assets** for the mark itself. It tints to
+  the live theme accent automatically.
+- **Why native, not a pre-baked clip:** (1) it follows the user's chosen theme
+  palette — a frozen clip can't; (2) it stays crisp at any window size — raster
+  blurs; (3) ~zero startup cost — no decode at frame one, which matters because
+  this app's most fragile moment is launch.
 - **Order of work:** logo + launch reveal first, then everything else.
 
 ## Goals
@@ -127,23 +130,24 @@ Each primitive reads `reduceMotion` and degrades to an instant/fade form.
 
 ## Section B — Launch reveal + logo (the headline)
 
-### Step 1 — Design the logo (user-driven)
+### Step 1 — Design the logo (done)
 
-I hand the user a ready-to-paste logo-design prompt (see Appendix A): a
-paw-based **mark** + a **"MeowWatch" wordmark**, in ~3 directions, dark-friendly
-and vector-friendly. The user generates options and picks one.
+The user explored directions in Claude Design and chose **"04 · Neon Nine"**: a
+sleek rounded-square cat with cat-eye slits and a soft glow, wordmark set in
+**Sora**. The handoff bundle (HTML/CSS prototype) is the source of truth; the
+extracted geometry, colors, and type are recorded in **Appendix B**. (Appendix A
+— the original generation prompt — is superseded, kept for history.)
 
-### Step 2 — pixel2motion
+### Step 2 — Recreate as code (no asset/dependency)
 
-Run `pixel2motion` on the picked logo. We use:
-- its **clean layered logo** (mark / wordmark as separately addressable pieces)
-  as the shipped asset, and
-- its **browser motion preview** as the shared "yes, that's the feel" reference.
+The Neon Nine mark is 7 vector primitives, all `currentColor`. We recreate it
+**pixel-faithfully as a Flutter `CustomPainter`** (`MeowLogoMark`) rather than
+importing SVG — simpler, lighter, and it tints to `MeowColors.accent` for free.
+The wordmark is a `Text` with two spans (Sora 600) + an accent glow shadow.
+No `flutter_svg`, no image assets for the mark. The only new asset is the **Sora
+font** (bundled TTFs), used for the brand wordmark only.
 
-(Its SVG/CSS/GIF output is a *web* format and a *reference* — it is not embedded
-in the app.)
-
-### Step 3 — Native rebuild (theme-aware)
+### Step 3 — Native reveal (theme-aware)
 
 Built in Flutter to match the approved feel:
 
@@ -181,9 +185,15 @@ Built in Flutter to match the approved feel:
 
 ### Assets pipeline (new)
 
-- Add an `assets/brand/` folder + pubspec `assets:` entry.
-- Add `flutter_svg` (or commit to a hand-drawn path) — decided at build time
-  based on the chosen mark's complexity.
+- **Mark + wordmark:** pure code (`CustomPainter` + `Text`). No image assets, no
+  `flutter_svg`.
+- **Font:** bundle **Sora** (weights 500/600/700) under `assets/fonts/`, declared
+  as font family `Sora` in pubspec; used for the brand wordmark only (not body
+  text). Offline-safe (no runtime Google Fonts fetch).
+- **Windows launcher icon:** regenerate `windows/runner/resources/app_icon.ico`
+  from the mark on a rounded-tile background (offline, one-off). Which theme tile
+  the static icon uses (Aurora vs the app's default) is a small open choice for
+  the plan.
 
 ---
 
@@ -291,7 +301,56 @@ are user-visible (mostly minor bumps). Keep `-alpha`.
 
 ---
 
-## Appendix A — Logo design prompt (ready to paste)
+## Appendix B — Neon Nine, extracted spec (source of truth)
+
+From the Claude Design handoff (`MeowWatch Logo Set.dc.html`, direction 04 =
+the `aurora` `LogoMark` variant). Coordinates are in a **64×64 viewBox**; every
+shape is `currentColor` so the whole mark tints to one color.
+
+**Mark (`MeowLogoMark`):**
+
+| Part | Shape | Stroke |
+|------|-------|--------|
+| Left ear | polygon `(19,17) (22,6) (32,15)` | 2.6, round join/cap, no fill |
+| Right ear | polygon `(45,17) (42,6) (32,15)` | 2.6, round join/cap, no fill |
+| Head | rounded rect `x13 y15 w38 h38 r14` | 2.6, no fill |
+| Left eye | line `(25,30)→(25,38)` | 3.2, round cap |
+| Right eye | line `(39,30)→(39,38)` | 3.2, round cap |
+| Nose | circle `cx32 cy42 r1.7` | filled |
+
+Stroke widths are in viewBox units — scale them with the render size
+(`w = size/64 * token`).
+
+**Wordmark:**
+
+- Font **Sora**, weight **600**, letter-spacing ~`0.01em`, single line.
+- `"Meow"` in `MeowColors.textPrimary` (the light role) + `"Watch"` in
+  `MeowColors.accent`.
+- Soft glow: a text shadow in `accent` (~50% alpha), blur ≈ 14 (scale gently
+  with font size).
+- Sizes by context (from the mocks): horizontal lockup ~24, stacked ~25, lobby
+  header ~17.
+
+**Colors — pull from live `MeowColors`, do not hardcode.** The mark = `accent`,
+"Watch" = `accent`, "Meow" = `textPrimary`, glow = `accent`. The handoff's literal
+hexes (for the static Windows icon / cross-checking the themes) were:
+
+| Theme | accent | light text | tile background |
+|-------|--------|-----------|-----------------|
+| Cozy | `#D4A574` | `#F5E6D3` | `#1A1410` |
+| Cinema Noir | `#D4AF37` | `#ECECEC` | `#000000` |
+| Glass Aurora | `#7DF9C2` | `#F0F4FF` | gradient `#2A1B4D → #1E3A5F → #0E3A4A` |
+
+If these differ from the app's actual theme tokens, the **live tokens win** —
+the brand should match whatever the running theme defines.
+
+**App-icon tile (for reference):** rounded square, corner radius ≈ `0.227 ×
+size`, mark ≈ `0.587 × size`, centered.
+
+## Appendix A — Logo design prompt (superseded; kept for history)
+
+*Not used — the user designed in Claude Design instead and picked Neon Nine
+(Appendix B). Retained only as a record of the original brief.*
 
 > Design a logo for **MeowWatch**, a cozy desktop app for watching videos in
 > perfect sync with a friend (co-watching) and chatting over a floating overlay.
