@@ -80,7 +80,7 @@ class _LaunchRevealState extends State<LaunchReveal>
   static const _tipIn = Interval(0.34, 0.48, curve: Motion.emphasized);
   static const _dissolve =
       Interval(0.80, 1.0, curve: Motion.emphasizedAccelerate);
-  static const _lobbyRise = Interval(0.78, 1.0, curve: Motion.emphasized);
+  static const _lobbyIn = Interval(0.78, 1.0, curve: Motion.emphasized);
 
   @override
   void didChangeDependencies() {
@@ -136,18 +136,17 @@ class _LaunchRevealState extends State<LaunchReveal>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // The lobby underneath, rising + fading in during the dissolve.
+        // The lobby underneath, fading in during the dissolve. Opacity ONLY —
+        // no translate. Sliding a full screen of text by a fractional offset
+        // each frame makes its raster snap to the pixel grid differently per
+        // frame, which reads as a shimmer/shake. The "rise" feeling instead
+        // comes from the splash on top lifting away to expose the lobby, so the
+        // lobby itself never moves.
         AnimatedBuilder(
           animation: _c,
           builder: (context, child) {
-            final t = _lobbyRise.transform(_c.value);
-            return Opacity(
-              opacity: t.clamp(0.0, 1.0),
-              child: Transform.translate(
-                offset: Offset(0, (1 - t) * 16),
-                child: child,
-              ),
-            );
+            final t = _lobbyIn.transform(_c.value);
+            return Opacity(opacity: t.clamp(0.0, 1.0), child: child);
           },
           child: lobby,
         ),
