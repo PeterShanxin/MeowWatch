@@ -71,16 +71,20 @@ class _LaunchRevealState extends State<LaunchReveal>
 
   // Timeline intervals over [Motion.reveal] (2800ms). The lockup assembles
   // mark-then-word, the tip lands by ~0.48 (~1.3s), then everything HOLDS
-  // through a readable dwell until the dissolve begins at 0.80 (~2.24s) — so the
-  // tip sits fully still for ~0.9s before it starts to fade. The mark enters on
+  // through a readable dwell until the splash dissolves off at 0.80 (~2.24s) —
+  // so the tip sits fully still for ~0.9s before it fades. The mark enters on
   // the springy curve with a scale overshoot; the word eases in just behind it.
-  static const _washIn = Interval(0.0, 0.11, curve: Motion.emphasized);
+  // The lobby is never animated, so it has no interval here.
   static const _markIn = Interval(0.07, 0.33, curve: Motion.springy);
   static const _wordIn = Interval(0.15, 0.40, curve: Motion.emphasized);
   static const _tipIn = Interval(0.34, 0.48, curve: Motion.emphasized);
-  static const _dissolve =
-      Interval(0.80, 1.0, curve: Motion.emphasizedAccelerate);
-  static const _lobbyIn = Interval(0.78, 1.0, curve: Motion.emphasized);
+  // Exit (after the dwell): scale AND opacity ride the SAME linear interval, so
+  // the lockup grows large and fades out together — a parallel zoom-out dissolve
+  // (like an app-launch dismiss), not "grow, then fade". The scrim's colour
+  // starts fading partway through, so the lobby is already blooming in behind
+  // the still-enlarging, still-fading logo — one continuous handoff.
+  static const _logoExit = Interval(0.80, 1.0, curve: Curves.linear);
+  static const _scrimOut = Interval(0.84, 1.0, curve: Motion.emphasized);
 
   @override
   void didChangeDependencies() {
@@ -136,20 +140,12 @@ class _LaunchRevealState extends State<LaunchReveal>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // The lobby underneath, fading in during the dissolve. Opacity ONLY —
-        // no translate. Sliding a full screen of text by a fractional offset
-        // each frame makes its raster snap to the pixel grid differently per
-        // frame, which reads as a shimmer/shake. The "rise" feeling instead
-        // comes from the splash on top lifting away to expose the lobby, so the
-        // lobby itself never moves.
-        AnimatedBuilder(
-          animation: _c,
-          builder: (context, child) {
-            final t = _lobbyIn.transform(_c.value);
-            return Opacity(opacity: t.clamp(0.0, 1.0), child: child);
-          },
-          child: lobby,
-        ),
+        // The lobby sits fully painted underneath the WHOLE time, cached as a
+        // single layer by RepaintBoundary. The exit composites over that ready
+        // bitmap instead of repainting the real ConnectScreen every frame — the
+        // first-run jank came from the heavy lobby being recomposited mid-reveal
+        // (which is why the lighter gallery lobby, same widget, never shook).
+        RepaintBoundary(child: lobby),
         // The splash overlay: tap/key anywhere skips.
         Positioned.fill(
           child: Focus(
@@ -164,19 +160,7 @@ class _LaunchRevealState extends State<LaunchReveal>
               onTap: _skip,
               child: AnimatedBuilder(
                 animation: _c,
-                builder: (context, _) {
-                  final wash = _washIn.transform(_c.value);
-                  final exit = _dissolve.transform(_c.value); // 0 → 1 leaving
-                  return Opacity(
-                    opacity: (1 - exit).clamp(0.0, 1.0), // splash fades out
-                    child: Transform.scale(
-                      // A gentle lift as it dissolves — the lockup floats up and
-                      // away rather than just dropping its opacity.
-                      scale: 1 + exit * 0.04,
-                      child: _splash(m, wash),
-                    ),
-                  );
-                },
+                builder: (context, _) => _exitOverlay(m),
               ),
             ),
           ),
@@ -185,63 +169,91 @@ class _LaunchRevealState extends State<LaunchReveal>
     );
   }
 
-  Widget _splash(MeowColors m, double wash) {
+  /// The splash over the lobby: a solid themed scrim with the logo lockup
+  /// centred on it. On exit the lockup eases larger + fades, then the scrim's
+  /// colour fades to uncover the (cached, static) lobby. Nothing wraps the lobby
+  /// in Opacity, and the scrim fades via its colour's alpha — no saveLayer over
+  /// the heavy subtree — so the reveal stays within frame budget.
+  Widget _exitOverlay(MeowColors m) {
+    final exit = _logoExit.transform(_c.value);
+    final scrimOut = _scrimOut.transform(_c.value);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _scrim(m, 1 - scrimOut),
+        Opacity(
+          // Grows large WHILE it fades — the two locked to one progress value.
+          opacity: (1 - exit).clamp(0.0, 1.0),
+          child: Transform.scale(
+            scale: 1 + exit * 0.5, // up to 1.5× as it simultaneously dissolves
+            child: _lockup(m),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The full-bleed themed background, painted at [alpha]. Opaque while the logo
+  /// is on screen; its alpha fades to 0 to reveal the lobby. Fading a colour's
+  /// alpha (not an Opacity widget) avoids a saveLayer over the lobby.
+  Widget _scrim(MeowColors m, double alpha) {
+    final a = alpha.clamp(0.0, 1.0);
     final gradient = m.backgroundGradient;
     return DecoratedBox(
       key: const Key('launch-reveal-splash'),
       decoration: BoxDecoration(
-        color: gradient == null
-            ? Color.lerp(m.background.withValues(alpha: 0), m.background, wash)
-            : null,
+        color: gradient == null ? m.background.withValues(alpha: a) : null,
         gradient: gradient is LinearGradient
             ? LinearGradient(
                 begin: gradient.begin,
                 end: gradient.end,
                 colors: [
-                  for (final col in gradient.colors)
-                    Color.lerp(col.withValues(alpha: 0), col, wash)!,
+                  for (final col in gradient.colors) col.withValues(alpha: a),
                 ],
               )
             : gradient,
       ),
-      // A transparent Material so the splash text renders normally — the
-      // overlay is a Stack sibling of the lobby's Scaffold, so without this its
-      // Text widgets fall back to the debug yellow-underline default style.
-      child: Material(
-        type: MaterialType.transparency,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Mark — settles in with the springy character beat: scales up
-              // from 0.82 with a slight overshoot past full size, then settles.
-              _phase(
-                _markIn,
-                scaleFrom: 0.82,
-                rise: 16,
-                child: const MeowLogoMark(size: 88),
+    );
+  }
+
+  /// The centred logo lockup: mark, wordmark, tip — each easing in on the
+  /// entrance intervals. A transparent Material so its Text renders normally
+  /// (the overlay is a Stack sibling of the lobby's Scaffold).
+  Widget _lockup(MeowColors m) {
+    return Material(
+      type: MaterialType.transparency,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Mark — settles in with the springy character beat: scales up from
+            // 0.82 with a slight overshoot past full size, then settles.
+            _phase(
+              _markIn,
+              scaleFrom: 0.82,
+              rise: 16,
+              child: const MeowLogoMark(size: 88),
+            ),
+            const SizedBox(height: Spacing.lg),
+            // Wordmark — eases in just behind the mark with a gentle scale, so
+            // the lockup assembles with a little depth instead of flat-fading.
+            _phase(
+              _wordIn,
+              scaleFrom: 0.94,
+              rise: 12,
+              child: const MeowWordmark(fontSize: 34),
+            ),
+            const SizedBox(height: Spacing.xxl),
+            // Tip — fades in late so it never competes with the hero beat.
+            _phase(
+              _tipIn,
+              rise: 6,
+              child: Text(
+                _tip,
+                style: TextStyle(color: m.textDim, fontSize: 13),
               ),
-              const SizedBox(height: Spacing.lg),
-              // Wordmark — eases in just behind the mark with a gentle scale, so
-              // the lockup assembles with a little depth instead of flat-fading.
-              _phase(
-                _wordIn,
-                scaleFrom: 0.94,
-                rise: 12,
-                child: const MeowWordmark(fontSize: 34),
-              ),
-              const SizedBox(height: Spacing.xxl),
-              // Tip — fades in late so it never competes with the hero beat.
-              _phase(
-                _tipIn,
-                rise: 6,
-                child: Text(
-                  _tip,
-                  style: TextStyle(color: m.textDim, fontSize: 13),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
