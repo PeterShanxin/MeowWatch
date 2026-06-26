@@ -28,4 +28,18 @@ void main() {
     expect(find.byKey(const Key('launch-reveal-splash')), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 900)); // settle for teardown
   });
+
+  testWidgets('reduce motion makes the theme swap instant', (tester) async {
+    await tester.pumpWidget(app(reduceMotion: true));
+    final mApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(mApp.themeAnimationDuration, Duration.zero);
+  });
+
+  testWidgets('with motion on, the theme swap keeps the default tween',
+      (tester) async {
+    await tester.pumpWidget(app(reduceMotion: false));
+    final mApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(mApp.themeAnimationDuration, kThemeAnimationDuration);
+    await tester.pump(const Duration(milliseconds: 900)); // settle reveal
+  });
 }

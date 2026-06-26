@@ -6,6 +6,7 @@ import 'core/data/stores.dart';
 import 'core/theme/meow_context.dart';
 import 'core/theme/meow_theme.dart';
 import 'core/theme/reduce_motion.dart';
+import 'core/theme/tokens/motion.dart';
 import 'core/update/update_service.dart';
 import 'ui/connect/connect_screen.dart';
 import 'ui/home_screen.dart';
@@ -111,6 +112,9 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
       navigatorKey: _navKey,
       debugShowCheckedModeBanner: false,
       theme: themeDataFor(_theme),
+      themeAnimationDuration:
+          _reduceMotion ? Duration.zero : kThemeAnimationDuration,
+      themeAnimationCurve: Motion.emphasized,
       builder: (context, child) => ReduceMotionScope(
         reduceMotion: _reduceMotion,
         child: child!,
