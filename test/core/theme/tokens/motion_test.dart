@@ -20,4 +20,15 @@ void main() {
     expect(Motion.stagger, const Duration(milliseconds: 55));
     expect(Motion.stagger < Motion.fast, isTrue);
   });
+
+  test('reveal is the launch-only duration, the longest token', () {
+    expect(Motion.reveal, const Duration(milliseconds: 2800));
+    expect(Motion.slow < Motion.reveal, isTrue);
+  });
+
+  test('the hero/character easings are the agreed cubics', () {
+    expect(Motion.emphasized, Curves.easeInOutCubicEmphasized);
+    expect(Motion.emphasizedAccelerate, const Cubic(0.3, 0.0, 0.8, 0.15));
+    expect(Motion.springy, const Cubic(0.34, 1.26, 0.64, 1.0));
+  });
 }

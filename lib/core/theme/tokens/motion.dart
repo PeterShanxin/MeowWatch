@@ -11,6 +11,26 @@ abstract final class Motion {
   /// rippling motion rather than a sequence of separate animations.
   static const Duration stagger = Duration(milliseconds: 55);
 
+  /// The cold-start launch reveal's total timeline. The longest token, used
+  /// nowhere else — the splash wash → mark → wordmark → a readable dwell →
+  /// dissolve all fit inside it. Long enough that the late tip line holds still
+  /// for ~0.9s before anything fades, so it's actually readable (it's skippable
+  /// on any click/key, so the length never traps an impatient user).
+  static const Duration reveal = Duration(milliseconds: 2800);
+
   static const Curve standard = Curves.easeOutCubic;
   static const Curve symmetric = Curves.easeInOut;
+
+  /// Material 3 "emphasized" — the hero enter for big, expressive moves
+  /// (the launch reveal, panels). Slow-in/slow-out with a confident middle.
+  static const Curve emphasized = Curves.easeInOutCubicEmphasized;
+
+  /// The hero *exit* counterpart: starts quick, eases out — used when a hero
+  /// element leaves (the reveal's wash dissolving away).
+  static const Curve emphasizedAccelerate = Cubic(0.3, 0.0, 0.8, 0.15);
+
+  /// The single "character" curve: a mild overshoot that settles. Used sparingly
+  /// for the one playful beat (the mark settling in). Deliberately gentle, not
+  /// elastic.
+  static const Curve springy = Cubic(0.34, 1.26, 0.64, 1.0);
 }

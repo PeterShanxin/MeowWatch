@@ -28,6 +28,7 @@ void main() {
         history: FakeHistoryStore(),
         settings: FakeSettingsStore(),
         initialTheme: MeowThemeId.cozy,
+        showLaunchReveal: false,
         showWhatsNew: show,
         whatsNewEntries: entries,
       );
