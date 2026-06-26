@@ -5,6 +5,7 @@ import 'core/data/settings_store.dart';
 import 'core/data/stores.dart';
 import 'core/theme/meow_context.dart';
 import 'core/theme/meow_theme.dart';
+import 'core/theme/reduce_motion.dart';
 import 'core/update/update_service.dart';
 import 'ui/connect/connect_screen.dart';
 import 'ui/home_screen.dart';
@@ -17,6 +18,7 @@ class MeowWatchApp extends StatefulWidget {
     required this.history,
     required this.settings,
     required this.initialTheme,
+    this.initialReduceMotion = false,
     this.initialCardWidthPx,
     this.initialCardHeightPx,
     this.navigatorKey,
@@ -30,6 +32,11 @@ class MeowWatchApp extends StatefulWidget {
   final HistoryStore history;
   final SettingsStore settings;
   final MeowThemeId initialTheme;
+
+  /// Whether app motion starts reduced (the persisted in-app switch). The OS
+  /// "reduce animations" setting forces the same independently of this.
+  final bool initialReduceMotion;
+
   final double? initialCardWidthPx;
   final double? initialCardHeightPx;
 
@@ -56,6 +63,7 @@ class MeowWatchApp extends StatefulWidget {
 
 class _MeowWatchAppState extends State<MeowWatchApp> {
   late MeowThemeId _theme = widget.initialTheme;
+  late bool _reduceMotion = widget.initialReduceMotion;
 
   /// Reuse the caller's navigator key when given (so the close handler shares
   /// it); otherwise make our own so the post-update modal still has a navigator
@@ -86,6 +94,15 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
     widget.settings.set(kThemeSettingKey, id.name);
   }
 
+  // Referenced by both settings gears as of Task 2 (next commit).
+  // ignore: unused_element
+  void _setReduceMotion(bool value) {
+    if (value == _reduceMotion) return;
+    setState(() => _reduceMotion = value);
+    // Fire-and-forget persistence; UI already updated.
+    widget.settings.set(kReduceMotionSettingKey, value ? 'true' : 'false');
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -93,6 +110,10 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
       navigatorKey: _navKey,
       debugShowCheckedModeBanner: false,
       theme: themeDataFor(_theme),
+      builder: (context, child) => ReduceMotionScope(
+        reduceMotion: _reduceMotion,
+        child: child!,
+      ),
       home: Builder(
         builder: (context) => LaunchReveal(
           enabled: widget.showLaunchReveal,
