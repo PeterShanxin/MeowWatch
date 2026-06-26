@@ -134,6 +134,26 @@ class _HomeScreenState extends State<HomeScreen> {
   /// can't be detected from `prev` alone (issue #92).
   bool _wasReconnecting = false;
 
+  /// Our own dropped sessions' names → when each was latched. A reconnect that
+  /// comes back under a different wire identity ("meowPEOW" → "meowPEOW_") means
+  /// the server wouldn't hand our prior name back, because that just-dropped
+  /// session still holds it as a ghost. Each such ghost is recorded here and
+  /// consumed on its [PresenceKind.left] so the departure isn't announced as a
+  /// peer "lost connection" — the name was ours (#93 field report).
+  ///
+  /// A map, not a single slot: a burst of chained reconnects (drop → reconnect →
+  /// drop → reconnect before the first ghost is reaped) can leave several of our
+  /// own names lingering at once, and each must be silenced. Entries are pruned
+  /// by the reconnect window — a ghost's `left` is only silenced if it lands
+  /// within that window of being latched, bounding the residual case where a
+  /// real peer grabbed our just-freed name during the blip (#93 ambiguity).
+  final Map<String, DateTime> _pendingGhosts = <String, DateTime>{};
+
+  /// The server-assigned wire name from our most recent *connected* state. Lets
+  /// the next reconnect tell whether the server handed our prior name back (no
+  /// ghost) or moved us off it because our own dropped session still holds it.
+  String? _lastConnectedUsername;
+
   /// Peers who sent a [LeavingSignal] before their [PresenceKind.left] event;
   /// consumed once on departure to determine clean vs. connection-drop wording.
   final Set<String> _cleanlyLeaving = <String>{};
@@ -369,6 +389,10 @@ class _HomeScreenState extends State<HomeScreen> {
             _peers.clear();
             _departedAt.clear();
             _cleanlyLeaving.clear();
+            // NB: do NOT clear _pendingGhosts here. A fresh drop is exactly when
+            // a chained reconnect adds another of our own ghosts; discarding the
+            // earlier ones would leak their `left` as a peer "lost connection".
+            // They are pruned by the reconnect-window expiry instead (#93).
             // Drop the cached peer files too, so they are rebuilt
             // deterministically from the post-reconnect roster rather than
             // masking a stale value (#93). _peerNoVideoHint is gated on
@@ -396,12 +420,37 @@ class _HomeScreenState extends State<HomeScreen> {
       )) {
         _wasReconnecting = false;
         _chat.addSystem(reconnectedToRoomMessage);
+        // If the server wouldn't hand our prior wire name back on this
+        // reconnect, our just-dropped session is lingering as a ghost on it and
+        // will shortly be reaped — record it so its departure is silenced, not
+        // read as a peer "lost connection" (#93 field report). Uses the prior
+        // assigned name (_lastConnectedUsername), set below for the next pass.
+        final now = DateTime.now();
+        // Prune expired ghosts first so the map can't grow without bound when a
+        // ghost is never reaped (no `left` ever arrives).
+        _pendingGhosts.removeWhere(
+          (_, at) => !isPeerReconnect(departedAt: at, now: now),
+        );
+        final ghost = ownGhostNameOnReconnect(
+          reconnected: true,
+          previousAssignedName: _lastConnectedUsername,
+          assignedName: s.username,
+        );
+        if (ghost != null) _pendingGhosts[ghost] = now;
       }
       // A deliberate leave or fatal error ends the reconnect attempt — drop the
-      // latch so a later fresh connect isn't mistaken for a reconnect.
+      // latch so a later fresh connect isn't mistaken for a reconnect, and clear
+      // pending ghosts (we're leaving this room; they're moot).
       if (s.status == SyncConnectionStatus.disconnected ||
           s.status == SyncConnectionStatus.error) {
         _wasReconnecting = false;
+        _pendingGhosts.clear();
+      }
+      // Remember the wire name we connected under, so the next reconnect can
+      // tell a server-forced rename (our ghost holds the old name) from getting
+      // the same name back. Updated after the arm above, which reads the prior.
+      if (s.status == SyncConnectionStatus.connected) {
+        _lastConnectedUsername = s.username;
       }
       _prevSyncStatus = s.status;
       if (s.status == SyncConnectionStatus.connected &&
@@ -414,6 +463,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _leavingSub = _chat.leaving.listen((name) => _cleanlyLeaving.add(name));
     _presenceSub = _sync.presence.listen((e) {
       if (!mounted) return;
+      // Our own lingering ghost (a post-reconnect roster entry under a name the
+      // server renamed us off) must never be treated as a peer — otherwise it
+      // enters _peers and its eventual `left` flips sync health, auto-pausing us
+      // for our own old session (#93). Skip its *join* outright; its `left` is
+      // consumed silently in the departure handler below to clear the latch.
+      if (e.kind == PresenceKind.joined && _isOwnGhost(e.username)) return;
       setState(() {
         if (e.kind == PresenceKind.joined) {
           final isNew = _peers.add(e.username);
@@ -438,26 +493,41 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         } else {
           _peers.remove(e.username);
-          _lastPeerLeft = e.username;
           _peerFiles = _peerFiles.remove(e.username);
           // The "load a video to join" prompt is stale once they've left (#60).
           _joinPrompt = null;
-          final clean = _cleanlyLeaving.remove(e.username);
-          // Only a *drop* makes a quick return read as "reconnected"; a
-          // deliberate leave that comes back is a fresh "joined", not a network
-          // blip recovering (#92 follow-up).
-          if (clean) {
+          // Our own lingering ghost from a server-forced rename, but only if its
+          // `left` lands within the reconnect window — a much later departure of
+          // the same name is a real peer that grabbed it, not our ghost (#93).
+          final isOwnGhost = _isOwnGhost(e.username);
+          // Consume the latch (whether or not in-window) so a stale ghost can't
+          // keep shadowing this name.
+          _pendingGhosts.remove(e.username);
+          if (isOwnGhost) {
+            // The ghost was skipped at join, so it was never in _peers and the
+            // _evaluateSyncHealth() below sees no change. Just clear its
+            // bookkeeping and stay silent — the name was ours (#93).
             _departedAt.remove(e.username);
+            _cleanlyLeaving.remove(e.username);
           } else {
-            _departedAt[e.username] = DateTime.now();
+            _lastPeerLeft = e.username;
+            final clean = _cleanlyLeaving.remove(e.username);
+            // Only a *drop* makes a quick return read as "reconnected"; a
+            // deliberate leave that comes back is a fresh "joined", not a network
+            // blip recovering (#92 follow-up).
+            if (clean) {
+              _departedAt.remove(e.username);
+            } else {
+              _departedAt[e.username] = DateTime.now();
+            }
+            final banner = clean
+                ? '👋 ${e.username} left'
+                : '📵 ${e.username} lost connection';
+            _showTransientNotice(banner);
+            _chat.addSystem(
+              peerDepartureMessage(username: e.username, clean: clean),
+            );
           }
-          final banner = clean
-              ? '👋 ${e.username} left'
-              : '📵 ${e.username} lost connection';
-          _showTransientNotice(banner);
-          _chat.addSystem(
-            peerDepartureMessage(username: e.username, clean: clean),
-          );
         }
         _evaluateSyncHealth();
       });
@@ -860,6 +930,15 @@ class _HomeScreenState extends State<HomeScreen> {
     connected: _syncStatus == SyncConnectionStatus.connected,
     hasPeer: _peers.isNotEmpty,
   ).healthy;
+
+  /// True when [name] is one of our own pending ghosts still inside the
+  /// reconnect window — a post-reconnect roster/`left` event for our just-renamed
+  /// prior session, not a real peer (#93). Non-consuming; the departure handler
+  /// removes the entry from [_pendingGhosts] when the `left` actually fires.
+  bool _isOwnGhost(String name) {
+    final at = _pendingGhosts[name];
+    return at != null && isPeerReconnect(departedAt: at, now: DateTime.now());
+  }
 
   /// Recompute sync health and (after a debounce) auto-pause on a sustained
   /// healthy -> unhealthy drop. Call inside setState after [_syncStatus] /

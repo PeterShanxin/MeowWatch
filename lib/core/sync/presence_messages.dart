@@ -44,6 +44,42 @@ bool isReconnectSuccess({
 }) =>
     wasReconnecting && next == SyncConnectionStatus.connected;
 
+/// The name of our own lingering ghost session to silence on its imminent
+/// departure, or null if there is none.
+///
+/// The ghost is simply **the name we held before the drop** when the server
+/// won't hand it back on [reconnected] login: we requested it again, but
+/// [assignedName] came back different ("meowPEOW" → "meowPEOW_") because our own
+/// just-dropped session is still occupying [previousAssignedName] and is about
+/// to be reaped. Its `left` event would otherwise surface as a peer "lost
+/// connection." — but the name was ours moments ago, which confused users (#93
+/// field report).
+///
+/// Keying on [previousAssignedName] (not the chosen name) is what keeps this
+/// safe — and is the answer to the #93 reconnect-window ambiguity. A bare suffix
+/// is not enough: a *real namesake* who owns the chosen name also forces a
+/// suffix, but in that case the server hands us back the **same** suffixed name
+/// we already carried ([assignedName] == [previousAssignedName]), so we return
+/// null and the namesake's departure still shows. We only ever name our own
+/// prior identity, never a peer's. It also handles compounding suffixes: if we
+/// were "meowPEOW_" and reconnect as "meowPEOW", the orphaned "meowPEOW_" is the
+/// ghost. (The one residual — a real peer grabs our exact freed name during the
+/// blip — is bounded at the call site by a recency window.)
+///
+/// This only silences the one departure line; it never hides a peer's presence
+/// or file.
+String? ownGhostNameOnReconnect({
+  required bool reconnected,
+  required String? previousAssignedName,
+  required String? assignedName,
+}) =>
+    (reconnected &&
+            assignedName != null &&
+            previousAssignedName != null &&
+            assignedName != previousAssignedName)
+        ? previousAssignedName
+        : null;
+
 /// True when [departedAt] is non-null and falls within [window] of [now],
 /// meaning a peer's departure is recent enough to be treated as a reconnect
 /// rather than a fresh join.
