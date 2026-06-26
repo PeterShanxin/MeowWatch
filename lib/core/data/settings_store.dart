@@ -36,11 +36,6 @@ const String kLogLevelSettingKey = 'log_level';
 /// `latestPerRoom`).
 const String kHistoryModeSettingKey = 'history_mode';
 
-/// Key for the persisted in-app "reduce motion" choice (value = "true"/"false",
-/// absent/default → "false"). When on, every app motion degrades to an instant
-/// present; the OS "reduce animations" setting forces the same independently.
-const String kReduceMotionSettingKey = 'reduce_motion';
-
 /// Key for the last app version the user has seen (value = an [appVersion]
 /// string). Drives the one-time post-update "what's new" modal: absent → fresh
 /// install (no modal); differs from the current version → the user updated.

@@ -115,14 +115,13 @@ the OS "reduce animations" setting is on; every motion primitive (`RevealIn` in
 `lib/ui/motion/`, `LaunchReveal` in `lib/ui/launch/`) degrades to an instant
 present when it is. The cold-start `LaunchReveal` overlays the lobby and must
 never block input (skippable on any click/key); it's the reason the post-update
-"What's new" modal fires from the reveal's `onComplete`, not before. The in-app
-**Reduce motion** setting (lobby + in-room gear, key `kReduceMotionSettingKey`)
-flips `context.reduceMotion` app-wide via a `ReduceMotionScope` injected in
-`MaterialApp.builder`; the OS "reduce animations" setting forces the same
-independently. Lobby motion primitives draw from the same tokens: `fadeUpRoute`
-(`lib/ui/motion/fade_up_route.dart`) is the rise+fade room push, and
-`StaggeredReveal` (`lib/ui/motion/staggered_reveal.dart`) is the cold-start card
-cascade — both go instant under reduce motion.
+"What's new" modal fires from the reveal's `onComplete`, not before. Reduce
+motion is driven solely by the OS "reduce animations" accessibility setting (read
+via `context.reduceMotion`) — there is no in-app toggle. Lobby motion primitives
+draw from the `Motion.*` tokens: `fadeUpRoute` (`lib/ui/motion/fade_up_route.dart`)
+is the rise+fade room push, and `StaggeredReveal`
+(`lib/ui/motion/staggered_reveal.dart`) is the cold-start card cascade (both lobby
+columns ripple in together) — both go instant under reduce motion.
 
 The reveal shows one rotating tip under the wordmark, drawn from `kLaunchTips`
 in `lib/ui/launch/launch_tips.dart` (the reveal picks one per launch by a

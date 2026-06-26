@@ -21,8 +21,6 @@ class SettingsPanel extends StatelessWidget {
   const SettingsPanel({
     required this.historyMode,
     required this.onHistoryModeChanged,
-    this.reduceMotion = false,
-    this.onReduceMotionChanged,
     required this.primarySoundId,
     required this.onPrimarySoundChanged,
     required this.secondarySoundId,
@@ -36,8 +34,6 @@ class SettingsPanel extends StatelessWidget {
 
   final HistoryMode historyMode;
   final ValueChanged<HistoryMode> onHistoryModeChanged;
-  final bool reduceMotion;
-  final ValueChanged<bool>? onReduceMotionChanged;
   final String primarySoundId;
   final ValueChanged<String> onPrimarySoundChanged;
   final String secondarySoundId;
@@ -54,11 +50,6 @@ class SettingsPanel extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ReduceMotionControl(
-          value: reduceMotion,
-          onChanged: onReduceMotionChanged ?? (_) {},
-        ),
-        Divider(color: m.border, height: Spacing.lg),
         HistoryModeControl(
           value: historyMode,
           onChanged: onHistoryModeChanged,
@@ -232,64 +223,6 @@ class HistoryModeControl extends StatelessWidget {
                     ),
                   ),
                 ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Two-way On/Off control for the in-app "reduce motion" setting, shown as a
-/// labelled segmented row matching [HistoryModeControl]. Picking a segment fires
-/// [onChanged]. Public so it can be unit-tested directly.
-class ReduceMotionControl extends StatelessWidget {
-  const ReduceMotionControl({
-    required this.value,
-    required this.onChanged,
-    super.key,
-  });
-
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final m = context.meow;
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Spacing.sm,
-        vertical: Spacing.sm,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Reduce motion',
-            style: TextStyle(color: m.textDim, fontSize: TypeScale.body),
-          ),
-          const SizedBox(height: Spacing.sm),
-          Row(
-            children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: Spacing.xs),
-                  child: _LogLevelSegment(
-                    key: const Key('reduce-motion-off'),
-                    text: 'Off',
-                    selected: !value,
-                    onTap: () => onChanged(false),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: _LogLevelSegment(
-                  key: const Key('reduce-motion-on'),
-                  text: 'On',
-                  selected: value,
-                  onTap: () => onChanged(true),
-                ),
-              ),
             ],
           ),
         ],

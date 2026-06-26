@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// Carries the app-level "reduce motion" preference down the tree. When on,
-/// motion primitives degrade to an instant present (no rise, no overshoot).
-/// Set app-wide from the in-app Settings "Reduce motion" toggle (via a scope in
-/// `MaterialApp.builder`), and also by the design gallery's preview toggle.
+/// Forces "reduce motion" on for a subtree, so motion primitives degrade to an
+/// instant present (no rise, no overshoot). There is no in-app toggle: in normal
+/// use reduce motion comes from the OS "reduce animations" accessibility setting
+/// (read via [ReduceMotionContext.reduceMotion]). This scope exists to force the
+/// degraded form regardless of the OS — used by tests.
 class ReduceMotionScope extends InheritedWidget {
   const ReduceMotionScope({
     required this.reduceMotion,

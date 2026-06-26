@@ -27,8 +27,6 @@ class PlayerMenuButton extends StatelessWidget {
   const PlayerMenuButton({
     required this.historyMode,
     required this.onHistoryModeChanged,
-    this.reduceMotion = false,
-    this.onReduceMotionChanged,
     required this.roomCode,
     required this.nowPlaying,
     required this.members,
@@ -60,11 +58,6 @@ class PlayerMenuButton extends StatelessWidget {
   /// section via [SettingsPanel] — the in-room counterpart to the lobby gear.
   final HistoryMode historyMode;
   final ValueChanged<HistoryMode> onHistoryModeChanged;
-
-  /// In-app "reduce motion" setting + its setter, surfaced in the gear's
-  /// Settings section so it can be toggled from inside a room too.
-  final bool reduceMotion;
-  final ValueChanged<bool>? onReduceMotionChanged;
 
   final String roomCode;
 
@@ -166,8 +159,6 @@ class PlayerMenuButton extends StatelessWidget {
           child: _MenuPanel(
             historyMode: historyMode,
             onHistoryModeChanged: onHistoryModeChanged,
-            reduceMotion: reduceMotion,
-            onReduceMotionChanged: onReduceMotionChanged,
             roomCode: roomCode,
             nowPlaying: nowPlaying,
             members: members,
@@ -205,8 +196,6 @@ class _MenuPanel extends StatefulWidget {
   const _MenuPanel({
     required this.historyMode,
     required this.onHistoryModeChanged,
-    this.reduceMotion = false,
-    this.onReduceMotionChanged,
     required this.roomCode,
     required this.nowPlaying,
     required this.members,
@@ -235,8 +224,6 @@ class _MenuPanel extends StatefulWidget {
 
   final HistoryMode historyMode;
   final ValueChanged<HistoryMode> onHistoryModeChanged;
-  final bool reduceMotion;
-  final ValueChanged<bool>? onReduceMotionChanged;
   final String roomCode;
   final String? nowPlaying;
   final List<String> members;
@@ -400,8 +387,6 @@ class _MenuPanelState extends State<_MenuPanel> {
                           SettingsPanel(
                             historyMode: widget.historyMode,
                             onHistoryModeChanged: widget.onHistoryModeChanged,
-                            reduceMotion: widget.reduceMotion,
-                            onReduceMotionChanged: widget.onReduceMotionChanged,
                             primarySoundId: widget.primarySoundId,
                             onPrimarySoundChanged: widget.onPrimarySoundChanged,
                             secondarySoundId: widget.secondarySoundId,

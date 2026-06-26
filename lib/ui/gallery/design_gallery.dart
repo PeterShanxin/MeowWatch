@@ -4,6 +4,8 @@ import '../../core/app_version.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
 import '../../core/theme/meow_theme.dart';
+import '../../core/theme/reduce_motion.dart';
+import '../../core/theme/tokens/motion.dart';
 import '../../core/theme/tokens/radii.dart';
 import '../../core/theme/tokens/spacing.dart';
 import 'gallery_sections.dart';
@@ -25,57 +27,69 @@ class _DesignGalleryState extends State<DesignGallery> {
 
   @override
   Widget build(BuildContext context) {
-    return Theme(
+    // Cross-fade the whole gallery between themes (MeowColors.lerp), matching
+    // the app's theme melt; instant under reduce motion.
+    return AnimatedTheme(
       data: themeDataFor(_id),
-      child: Builder(builder: (context) {
-        final c = context.meow;
-        final t = context.meowText;
-        return Scaffold(
-          backgroundColor: c.background,
-          body: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: c.backgroundGradient,
-              color: c.backgroundGradient == null ? c.background : null,
-            ),
-            child: SafeArea(
-              child: Column(
-                children: [
-                  _TopBar(
-                    selected: _id,
-                    onSelect: (id) => setState(() => _id = id),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 900),
-                        child: ListView(
-                          padding: const EdgeInsets.fromLTRB(
-                              Spacing.xl, Spacing.lg, Spacing.xl, Spacing.xxxl),
-                          children: [
-                            // Hero
-                            Text('Design System', style: t.display),
-                            const SizedBox(height: Spacing.xs),
-                            Text(
-                              'MeowWatch’s visual language — one source of truth for '
-                              'colour, type, space, shape, and motion.',
-                              style: t.body.copyWith(color: c.textDim),
+      duration: context.reduceMotion ? Duration.zero : Motion.slow,
+      curve: Motion.emphasized,
+      child: Builder(
+        builder: (context) {
+          final c = context.meow;
+          final t = context.meowText;
+          return Scaffold(
+            backgroundColor: c.background,
+            body: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: c.backgroundGradient,
+                color: c.backgroundGradient == null ? c.background : null,
+              ),
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    _TopBar(
+                      selected: _id,
+                      onSelect: (id) => setState(() => _id = id),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 900),
+                          child: ListView(
+                            padding: const EdgeInsets.fromLTRB(
+                              Spacing.xl,
+                              Spacing.lg,
+                              Spacing.xl,
+                              Spacing.xxxl,
                             ),
-                            const SizedBox(height: Spacing.xs),
-                            Text('v$appVersion · ${_id.label}',
-                                style: t.caption.copyWith(color: c.textDim)),
-                            const SizedBox(height: Spacing.xl),
-                            ...gallerySections(),
-                          ],
+                            children: [
+                              // Hero
+                              Text('Design System', style: t.display),
+                              const SizedBox(height: Spacing.xs),
+                              Text(
+                                'MeowWatch’s visual language — one source of truth for '
+                                'colour, type, space, shape, and motion.',
+                                style: t.body.copyWith(color: c.textDim),
+                              ),
+                              const SizedBox(height: Spacing.xs),
+                              Text(
+                                'v$appVersion · ${_id.label}',
+                                style: t.caption.copyWith(color: c.textDim),
+                              ),
+                              const SizedBox(height: Spacing.xl),
+                              ...gallerySections(),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      }),
+          );
+        },
+      ),
     );
   }
 }
@@ -93,7 +107,9 @@ class _TopBar extends StatelessWidget {
     final t = context.meowText;
     return Padding(
       padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.lg, vertical: Spacing.md),
+        horizontal: Spacing.lg,
+        vertical: Spacing.md,
+      ),
       child: Row(
         children: [
           IconButton(
@@ -148,7 +164,9 @@ class _ThemePill extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(
-              horizontal: Spacing.lg, vertical: Spacing.sm),
+            horizontal: Spacing.lg,
+            vertical: Spacing.sm,
+          ),
           child: Text(
             label,
             style: styles.label.copyWith(

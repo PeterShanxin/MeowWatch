@@ -48,8 +48,6 @@ Future<void> main() async {
   _installErrorHandlers();
 
   final savedTheme = MeowThemeId.fromName(await settings.get(kThemeSettingKey));
-  final reduceMotion =
-      (await settings.get(kReduceMotionSettingKey)) == 'true';
   final (cardW, cardH) =
       parseCardSize(await settings.get(kChatCardSizeSettingKey));
 
@@ -106,7 +104,6 @@ Future<void> main() async {
     history: history,
     settings: settings,
     initialTheme: savedTheme,
-    initialReduceMotion: reduceMotion,
     initialCardWidthPx: cardW,
     initialCardHeightPx: cardH,
     navigatorKey: navigatorKey,

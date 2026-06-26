@@ -42,8 +42,6 @@ class ConnectScreen extends StatefulWidget {
     required this.currentTheme,
     required this.onThemeChanged,
     required this.onConnect,
-    this.reduceMotion = false,
-    this.onReduceMotionChanged,
     this.playLobbyEntrance = false,
     this.holdLobbyHidden = false,
     super.key,
@@ -55,8 +53,6 @@ class ConnectScreen extends StatefulWidget {
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
   final Future<void> Function(RoomConfig config) onConnect;
-  final bool reduceMotion;
-  final ValueChanged<bool>? onReduceMotionChanged;
 
   /// Cold-start card cascade signals, driven by the launch reveal completing.
   /// [playLobbyEntrance] starts the one-shot ripple; [holdLobbyHidden] keeps the
@@ -577,8 +573,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
             child: LobbySettingsButton(
               historyMode: _historyMode,
               onHistoryModeChanged: _setHistoryMode,
-              reduceMotion: widget.reduceMotion,
-              onReduceMotionChanged: widget.onReduceMotionChanged,
               currentTheme: widget.currentTheme,
               onThemeChanged: (theme) {
                 appLog('settings: theme=${theme.name}');
