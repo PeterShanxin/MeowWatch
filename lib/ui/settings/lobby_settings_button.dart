@@ -23,6 +23,8 @@ class LobbySettingsButton extends StatefulWidget {
   const LobbySettingsButton({
     required this.historyMode,
     required this.onHistoryModeChanged,
+    this.reduceMotion = false,
+    this.onReduceMotionChanged,
     required this.currentTheme,
     required this.onThemeChanged,
     required this.primarySoundId,
@@ -38,6 +40,8 @@ class LobbySettingsButton extends StatefulWidget {
 
   final HistoryMode historyMode;
   final ValueChanged<HistoryMode> onHistoryModeChanged;
+  final bool reduceMotion;
+  final ValueChanged<bool>? onReduceMotionChanged;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
   final String primarySoundId;
@@ -150,6 +154,8 @@ class _LobbySettingsButtonState extends State<LobbySettingsButton> {
               SettingsPanel(
                 historyMode: widget.historyMode,
                 onHistoryModeChanged: widget.onHistoryModeChanged,
+                reduceMotion: widget.reduceMotion,
+                onReduceMotionChanged: widget.onReduceMotionChanged,
                 primarySoundId: widget.primarySoundId,
                 onPrimarySoundChanged: widget.onPrimarySoundChanged,
                 secondarySoundId: widget.secondarySoundId,

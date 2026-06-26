@@ -94,8 +94,6 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
     widget.settings.set(kThemeSettingKey, id.name);
   }
 
-  // Referenced by both settings gears as of Task 2 (next commit).
-  // ignore: unused_element
   void _setReduceMotion(bool value) {
     if (value == _reduceMotion) return;
     setState(() => _reduceMotion = value);
@@ -124,6 +122,8 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             settings: widget.settings,
             currentTheme: _theme,
             onThemeChanged: _setTheme,
+            reduceMotion: _reduceMotion,
+            onReduceMotionChanged: _setReduceMotion,
             onConnect: (RoomConfig config) => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => HomeScreen(
@@ -134,6 +134,8 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
                   initialHeightPx: widget.initialCardHeightPx,
                   currentTheme: _theme,
                   onThemeChanged: _setTheme,
+                  reduceMotion: _reduceMotion,
+                  onReduceMotionChanged: _setReduceMotion,
                 ),
               ),
             ),

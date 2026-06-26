@@ -67,6 +67,8 @@ class HomeScreen extends StatefulWidget {
     required this.settings,
     required this.currentTheme,
     required this.onThemeChanged,
+    this.reduceMotion = false,
+    this.onReduceMotionChanged,
     this.initialWidthPx,
     this.initialHeightPx,
     super.key,
@@ -79,6 +81,8 @@ class HomeScreen extends StatefulWidget {
   final double? initialHeightPx;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
+  final bool reduceMotion;
+  final ValueChanged<bool>? onReduceMotionChanged;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -1568,6 +1572,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 mode.storageName,
                               );
                             },
+                            reduceMotion: widget.reduceMotion,
+                            onReduceMotionChanged: widget.onReduceMotionChanged,
                             // Self-contained share code: bare sentence on the
                             // default server, `room@host[:port]` when the host
                             // is non-default, so copying from the in-room gear

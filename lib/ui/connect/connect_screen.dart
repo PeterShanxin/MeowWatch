@@ -41,6 +41,8 @@ class ConnectScreen extends StatefulWidget {
     required this.currentTheme,
     required this.onThemeChanged,
     required this.onConnect,
+    this.reduceMotion = false,
+    this.onReduceMotionChanged,
     super.key,
   });
 
@@ -50,6 +52,8 @@ class ConnectScreen extends StatefulWidget {
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
   final Future<void> Function(RoomConfig config) onConnect;
+  final bool reduceMotion;
+  final ValueChanged<bool>? onReduceMotionChanged;
 
   @override
   State<ConnectScreen> createState() => _ConnectScreenState();
@@ -558,6 +562,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
             child: LobbySettingsButton(
               historyMode: _historyMode,
               onHistoryModeChanged: _setHistoryMode,
+              reduceMotion: widget.reduceMotion,
+              onReduceMotionChanged: widget.onReduceMotionChanged,
               currentTheme: widget.currentTheme,
               onThemeChanged: (theme) {
                 appLog('settings: theme=${theme.name}');
