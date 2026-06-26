@@ -73,6 +73,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
       widget.navigatorKey ?? GlobalKey<NavigatorState>();
 
   bool _whatsNewShown = false;
+  bool _revealSettled = false;
 
   /// Show the post-update "What's new" modal — but only once the launch reveal
   /// has settled, so it no longer pops over the animation (it used to fire from
@@ -80,6 +81,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
   /// which fires after the reveal (or, when the reveal is disabled / reduce
   /// motion is on, after the first frame).
   void _onRevealComplete() {
+    if (!_revealSettled) setState(() => _revealSettled = true);
     if (_whatsNewShown) return;
     _whatsNewShown = true;
     final entries = widget.whatsNewEntries;
@@ -125,6 +127,8 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             onThemeChanged: _setTheme,
             reduceMotion: _reduceMotion,
             onReduceMotionChanged: _setReduceMotion,
+            playLibraryEntrance: widget.showLaunchReveal && _revealSettled,
+            holdLibraryHidden: widget.showLaunchReveal && !_revealSettled,
             onConnect: (RoomConfig config) => Navigator.of(context).push(
               fadeUpRoute<void>(
                 reduceMotion: context.reduceMotion,

@@ -28,6 +28,7 @@ import '../../core/theme/tokens/spacing.dart';
 import '../../core/theme/tokens/type_scale.dart';
 import '../../core/video/video_url.dart';
 import '../brand/meow_logo.dart';
+import '../motion/staggered_reveal.dart';
 import '../settings/lobby_settings_button.dart';
 import '../staggered_reflow_list.dart';
 import '../version_badge.dart';
@@ -43,6 +44,8 @@ class ConnectScreen extends StatefulWidget {
     required this.onConnect,
     this.reduceMotion = false,
     this.onReduceMotionChanged,
+    this.playLibraryEntrance = false,
+    this.holdLibraryHidden = false,
     super.key,
   });
 
@@ -54,6 +57,12 @@ class ConnectScreen extends StatefulWidget {
   final Future<void> Function(RoomConfig config) onConnect;
   final bool reduceMotion;
   final ValueChanged<bool>? onReduceMotionChanged;
+
+  /// Cold-start card cascade signals, driven by the launch reveal completing.
+  /// [playLibraryEntrance] starts the one-shot ripple; [holdLibraryHidden] keeps
+  /// the library invisible until then so it doesn't flash during the reveal.
+  final bool playLibraryEntrance;
+  final bool holdLibraryHidden;
 
   @override
   State<ConnectScreen> createState() => _ConnectScreenState();
@@ -520,9 +529,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                         ),
                                         const SizedBox(width: 40),
                                         Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.stretch,
+                                          child: StaggeredReveal(
+                                            play: widget.playLibraryEntrance,
+                                            holdHidden:
+                                                widget.holdLibraryHidden,
                                             children: _libraryColumn(
                                               savedProfiles,
                                               mostRecent,
@@ -536,9 +546,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                           CrossAxisAlignment.stretch,
                                       children: [
                                         ..._formColumn(),
-                                        ..._libraryColumn(
-                                          savedProfiles,
-                                          mostRecent,
+                                        StaggeredReveal(
+                                          play: widget.playLibraryEntrance,
+                                          holdHidden: widget.holdLibraryHidden,
+                                          children: _libraryColumn(
+                                            savedProfiles,
+                                            mostRecent,
+                                          ),
                                         ),
                                         const SizedBox(height: Spacing.lg),
                                         _advancedSection(),
