@@ -10,6 +10,7 @@ import 'core/update/update_service.dart';
 import 'ui/connect/connect_screen.dart';
 import 'ui/home_screen.dart';
 import 'ui/launch/launch_reveal.dart';
+import 'ui/motion/fade_up_route.dart';
 import 'ui/whats_new_dialog.dart';
 
 class MeowWatchApp extends StatefulWidget {
@@ -125,8 +126,9 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             reduceMotion: _reduceMotion,
             onReduceMotionChanged: _setReduceMotion,
             onConnect: (RoomConfig config) => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => HomeScreen(
+              fadeUpRoute<void>(
+                reduceMotion: context.reduceMotion,
+                page: HomeScreen(
                   config: config,
                   history: widget.history,
                   settings: widget.settings,
