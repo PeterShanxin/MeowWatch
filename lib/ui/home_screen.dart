@@ -134,18 +134,20 @@ class _HomeScreenState extends State<HomeScreen> {
   /// can't be detected from `prev` alone (issue #92).
   bool _wasReconnecting = false;
 
-  /// Our own dropped session's name, latched when a reconnect comes back under a
-  /// different wire identity ("meowPEOW" → "meowPEOW_") — the server wouldn't
-  /// hand our prior name back because that just-dropped session still holds it
-  /// as a ghost. Consumed once on that ghost's [PresenceKind.left] so its
-  /// departure isn't announced as a peer "lost connection"; the name was ours
-  /// (#93 field report). Null when no such ghost is pending.
-  String? _pendingGhostName;
-
-  /// When [_pendingGhostName] was latched. The ghost is silenced only if its
-  /// `left` lands within the reconnect window — bounding the residual case where
-  /// a real peer grabbed our just-freed name during the blip (#93 ambiguity).
-  DateTime? _pendingGhostAt;
+  /// Our own dropped sessions' names → when each was latched. A reconnect that
+  /// comes back under a different wire identity ("meowPEOW" → "meowPEOW_") means
+  /// the server wouldn't hand our prior name back, because that just-dropped
+  /// session still holds it as a ghost. Each such ghost is recorded here and
+  /// consumed on its [PresenceKind.left] so the departure isn't announced as a
+  /// peer "lost connection" — the name was ours (#93 field report).
+  ///
+  /// A map, not a single slot: a burst of chained reconnects (drop → reconnect →
+  /// drop → reconnect before the first ghost is reaped) can leave several of our
+  /// own names lingering at once, and each must be silenced. Entries are pruned
+  /// by the reconnect window — a ghost's `left` is only silenced if it lands
+  /// within that window of being latched, bounding the residual case where a
+  /// real peer grabbed our just-freed name during the blip (#93 ambiguity).
+  final Map<String, DateTime> _pendingGhosts = <String, DateTime>{};
 
   /// The server-assigned wire name from our most recent *connected* state. Lets
   /// the next reconnect tell whether the server handed our prior name back (no
@@ -387,9 +389,10 @@ class _HomeScreenState extends State<HomeScreen> {
             _peers.clear();
             _departedAt.clear();
             _cleanlyLeaving.clear();
-            // A fresh drop invalidates any pending ghost from a prior reconnect.
-            _pendingGhostName = null;
-            _pendingGhostAt = null;
+            // NB: do NOT clear _pendingGhosts here. A fresh drop is exactly when
+            // a chained reconnect adds another of our own ghosts; discarding the
+            // earlier ones would leak their `left` as a peer "lost connection".
+            // They are pruned by the reconnect-window expiry instead (#93).
             // Drop the cached peer files too, so they are rebuilt
             // deterministically from the post-reconnect roster rather than
             // masking a stale value (#93). _peerNoVideoHint is gated on
@@ -419,21 +422,29 @@ class _HomeScreenState extends State<HomeScreen> {
         _chat.addSystem(reconnectedToRoomMessage);
         // If the server wouldn't hand our prior wire name back on this
         // reconnect, our just-dropped session is lingering as a ghost on it and
-        // will shortly be reaped — latch it so its departure is silenced, not
+        // will shortly be reaped — record it so its departure is silenced, not
         // read as a peer "lost connection" (#93 field report). Uses the prior
         // assigned name (_lastConnectedUsername), set below for the next pass.
-        _pendingGhostName = ownGhostNameOnReconnect(
+        final now = DateTime.now();
+        // Prune expired ghosts first so the map can't grow without bound when a
+        // ghost is never reaped (no `left` ever arrives).
+        _pendingGhosts.removeWhere(
+          (_, at) => !isPeerReconnect(departedAt: at, now: now),
+        );
+        final ghost = ownGhostNameOnReconnect(
           reconnected: true,
           previousAssignedName: _lastConnectedUsername,
           assignedName: s.username,
         );
-        _pendingGhostAt = _pendingGhostName == null ? null : DateTime.now();
+        if (ghost != null) _pendingGhosts[ghost] = now;
       }
       // A deliberate leave or fatal error ends the reconnect attempt — drop the
-      // latch so a later fresh connect isn't mistaken for a reconnect.
+      // latch so a later fresh connect isn't mistaken for a reconnect, and clear
+      // pending ghosts (we're leaving this room; they're moot).
       if (s.status == SyncConnectionStatus.disconnected ||
           s.status == SyncConnectionStatus.error) {
         _wasReconnecting = false;
+        _pendingGhosts.clear();
       }
       // Remember the wire name we connected under, so the next reconnect can
       // tell a server-forced rename (our ghost holds the old name) from getting
@@ -482,14 +493,11 @@ class _HomeScreenState extends State<HomeScreen> {
           // Our own lingering ghost from a server-forced rename, but only if its
           // `left` lands within the reconnect window — a much later departure of
           // the same name is a real peer that grabbed it, not our ghost (#93).
-          final isOwnGhost = e.username == _pendingGhostName &&
-              isPeerReconnect(departedAt: _pendingGhostAt, now: DateTime.now());
-          if (e.username == _pendingGhostName) {
-            // One-shot: consume the latch whether or not it was in-window, so a
-            // stale latch can't keep shadowing this name.
-            _pendingGhostName = null;
-            _pendingGhostAt = null;
-          }
+          final ghostAt = _pendingGhosts.remove(e.username);
+          // Removing above consumes the entry whether or not it was in-window, so
+          // a stale ghost can't keep shadowing this name.
+          final isOwnGhost =
+              ghostAt != null && isPeerReconnect(departedAt: ghostAt, now: DateTime.now());
           if (isOwnGhost) {
             // Clean up the ghost's membership but stay silent. Announcing it as
             // a peer "lost connection" confused users — the name was ours (#93).
