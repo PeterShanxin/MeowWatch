@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
@@ -21,6 +22,7 @@ import 'core/theme/meow_theme.dart';
 import 'core/update/changelog_file.dart';
 import 'core/update/update_service.dart';
 import 'core/update/whats_new_gate.dart';
+import 'core/video/video_engine_pool.dart';
 import 'ui/chat/chat_overlay_layout.dart';
 import 'ui/gallery/design_gallery.dart';
 import 'ui/window_close_handler.dart';
@@ -120,6 +122,18 @@ Future<void> main() async {
   // from raising itself, so it lands behind other windows. Run after the first
   // frame so the native window exists.
   WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(bringToFront()));
+
+  // Warm the heavyweight libmpv engines while the lobby sits idle, so the first
+  // room entry reuses them instead of paying their cold start inside HomeScreen's
+  // first build — which lands mid fade-up transition and stutters it (later
+  // entries, engines already warm, glide). Idle priority defers this until the
+  // launch reveal + lobby cascade have settled, so the spin-up hitch falls on a
+  // static screen. If the user reaches a room before idle fires, HomeScreen's
+  // lazy creation simply takes over — no worse than before.
+  unawaited(SchedulerBinding.instance.scheduleTask(
+    VideoEnginePool.instance.warmUp,
+    Priority.idle,
+  ));
 
   // Backup door to the hidden design gallery (the primary entry is a long-press
   // on the version badge). Lets us open it on a real install without the badge.

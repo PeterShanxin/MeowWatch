@@ -42,4 +42,17 @@ class VideoEnginePool {
   /// The shared notification-sound engine. Reused across rooms; emptied via
   /// [Player.stop] on leave, never disposed.
   Player get audioPlayer => _audioPlayer ??= Player();
+
+  /// Eagerly spin up both engines so the *first* room entry reuses warm ones,
+  /// keeping that first lobby→room push as smooth as every later one. The libmpv
+  /// engines are GPU/driver-heavy to create; left lazy, that cost lands inside
+  /// [HomeScreen]'s first build — mid fade-up transition — and stutters it, while
+  /// later entries (engines already warm) glide. Call once the lobby is idle (see
+  /// `main`) so the spin-up hitch lands on a static screen, never during an
+  /// animation. Safe to call repeatedly; only the first call does work. Opens no
+  /// media — the engines just sit idle until a room borrows them.
+  void warmUp() {
+    videoCore;
+    audioPlayer;
+  }
 }
