@@ -47,22 +47,37 @@ bool isReconnectSuccess({
 /// The name of our own lingering ghost session to silence on its imminent
 /// departure, or null if there is none.
 ///
-/// When a [reconnected] login comes back with an [assignedName] the server
-/// suffixed away from our [chosenName] ("meowPEOW" → "meowPEOW_"), our *prior*
-/// dropped session is still holding the clean name and is about to be reaped.
-/// Its `left` event would otherwise surface as a peer "lost connection." — but
-/// the name is our own, which confused users (#93 field report). We only treat
-/// the clean name as a ghost on a *reconnect* with an *actual* suffix: on a
-/// first connect a suffix means a genuinely different namesake, whose departure
-/// must still show. This only silences the one departure line; it never hides a
-/// peer's presence or file.
+/// The ghost is simply **the name we held before the drop** when the server
+/// won't hand it back on [reconnected] login: we requested it again, but
+/// [assignedName] came back different ("meowPEOW" → "meowPEOW_") because our own
+/// just-dropped session is still occupying [previousAssignedName] and is about
+/// to be reaped. Its `left` event would otherwise surface as a peer "lost
+/// connection." — but the name was ours moments ago, which confused users (#93
+/// field report).
+///
+/// Keying on [previousAssignedName] (not the chosen name) is what keeps this
+/// safe — and is the answer to the #93 reconnect-window ambiguity. A bare suffix
+/// is not enough: a *real namesake* who owns the chosen name also forces a
+/// suffix, but in that case the server hands us back the **same** suffixed name
+/// we already carried ([assignedName] == [previousAssignedName]), so we return
+/// null and the namesake's departure still shows. We only ever name our own
+/// prior identity, never a peer's. It also handles compounding suffixes: if we
+/// were "meowPEOW_" and reconnect as "meowPEOW", the orphaned "meowPEOW_" is the
+/// ghost. (The one residual — a real peer grabs our exact freed name during the
+/// blip — is bounded at the call site by a recency window.)
+///
+/// This only silences the one departure line; it never hides a peer's presence
+/// or file.
 String? ownGhostNameOnReconnect({
   required bool reconnected,
-  required String chosenName,
+  required String? previousAssignedName,
   required String? assignedName,
 }) =>
-    (reconnected && assignedName != null && assignedName != chosenName)
-        ? chosenName
+    (reconnected &&
+            assignedName != null &&
+            previousAssignedName != null &&
+            assignedName != previousAssignedName)
+        ? previousAssignedName
         : null;
 
 /// True when [departedAt] is non-null and falls within [window] of [now],

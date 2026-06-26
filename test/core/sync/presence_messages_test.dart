@@ -131,25 +131,26 @@ void main() {
   });
 
   group('ownGhostNameOnReconnect', () {
-    test('reconnect with a server suffix → our chosen name is the ghost', () {
-      // We asked for "meowPEOW"; the server handed back "meowPEOW_" because our
-      // own dropped session still held the clean name. That lingering ghost is
-      // about to be reaped — its departure must not read as a peer drop.
+    test('reconnect: prior name not handed back → it is our ghost', () {
+      // We held "meowPEOW" before the drop; this reconnect handed back
+      // "meowPEOW_" because our own dropped session still occupies "meowPEOW".
+      // That lingering ghost is about to be reaped — its departure must not read
+      // as a peer drop.
       expect(
         ownGhostNameOnReconnect(
           reconnected: true,
-          chosenName: 'meowPEOW',
+          previousAssignedName: 'meowPEOW',
           assignedName: 'meowPEOW_',
         ),
         'meowPEOW',
       );
     });
 
-    test('reconnect with no suffix (name was free) → no ghost', () {
+    test('reconnect: prior name handed back (was free) → no ghost', () {
       expect(
         ownGhostNameOnReconnect(
           reconnected: true,
-          chosenName: 'meowPEOW',
+          previousAssignedName: 'meowPEOW',
           assignedName: 'meowPEOW',
         ),
         isNull,
@@ -160,24 +161,55 @@ void main() {
       expect(
         ownGhostNameOnReconnect(
           reconnected: true,
-          chosenName: 'meowPEOW',
+          previousAssignedName: 'meowPEOW',
           assignedName: null,
         ),
         isNull,
       );
     });
 
-    test('first connect with a suffix is a real namesake, not our ghost', () {
-      // No prior session of ours exists on a first connect, so a suffix means a
+    test('first connect (no prior name) → no ghost', () {
+      // A first connect has no prior session of ours, so a suffix means a
       // genuinely different user already holds the name. Forwarding their
       // departure is correct (#93) — never suppress it.
       expect(
         ownGhostNameOnReconnect(
           reconnected: false,
-          chosenName: 'meowPEOW',
+          previousAssignedName: null,
           assignedName: 'meowPEOW_',
         ),
         isNull,
+      );
+    });
+
+    test('reconnect: real namesake hands back our same suffixed name → no '
+        'ghost', () {
+      // A real peer owns "meow", so the server suffixed us to "meow_" on the
+      // first connect and hands "meow_" back on reconnect too. Keying on the
+      // prior assigned name means we never name "meow" (the peer) — suppressing
+      // its departure would hide a real friend leaving (Codex P2, the #93
+      // reconnect-window ambiguity).
+      expect(
+        ownGhostNameOnReconnect(
+          reconnected: true,
+          previousAssignedName: 'meow_',
+          assignedName: 'meow_',
+        ),
+        isNull,
+      );
+    });
+
+    test('reconnect: compounding suffix orphans the prior suffixed name', () {
+      // We were "meowPEOW_"; the original "meowPEOW" ghost got reaped, so this
+      // reconnect reclaims the clean "meowPEOW" while our just-dropped
+      // "meowPEOW_" session lingers. The ghost is that prior suffixed name.
+      expect(
+        ownGhostNameOnReconnect(
+          reconnected: true,
+          previousAssignedName: 'meowPEOW_',
+          assignedName: 'meowPEOW',
+        ),
+        'meowPEOW_',
       );
     });
   });
