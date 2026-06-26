@@ -95,17 +95,31 @@ once per cold start.
   plays the cascade once. Because the reveal is cold-start-only and `onComplete`
   fires once, there is no re-cascade on room return — no re-entry detection
   needed.
-- **Mechanism:** a small one-shot staggered-entrance helper built from the
-  Phase 1 `RevealIn`, in a new `lib/ui/motion/staggered_reveal.dart`. The ripple
-  reads **card-by-card, top-to-bottom**: each lobby card widget (each Saved-rooms
-  card and each Continue-watching card) is wrapped in a one-shot `RevealIn` whose
-  `delay` increases with the card's position. It plays its fade+rise once when the
-  entrance signal arrives, then is inert. Wrapping the individual card *widgets*
-  (not the list) means `StaggeredReflowList` keeps owning continue-watching's
-  reflow untouched: during the entrance the already-settled reflow list is static
-  (its first build is static by design) while the per-card `RevealIn`s supply the
-  ripple; after entrance the `RevealIn`s are full-present pass-throughs and later
-  data changes reflow exactly as today.
+- **Mechanism:** a small one-shot staggered-entrance helper, `StaggeredReveal`,
+  in a new `lib/ui/motion/staggered_reveal.dart`, built from the Phase 1
+  `RevealIn`. It wraps the lobby's **library column items** (the "Saved rooms"
+  label + each saved-room card, then the "Continue watching" block as one item)
+  and ripples them in **top-to-bottom**, each item one `RevealIn` whose `delay`
+  increases with its position. The **form column** (brand, name, buttons) is not
+  cascaded — it rises with the launch reveal as one block, as today.
+- **Held hidden through the reveal, so the cascade is a clean *second* beat.**
+  While the reveal is still playing, the library items are held invisible (zero
+  opacity, holding their layout) — so as the splash dissolves you see the risen
+  form over an empty library area, then the items cascade in once the splash is
+  gone. This avoids the items flashing visible during the dissolve and then
+  re-animating.
+- **`StaggeredReflowList` is untouched.** The cascade wraps the Continue-watching
+  block from the *outside* as a single entrance item; its internal reflow
+  (add/remove/reorder on data change) keeps working exactly as today. After the
+  one-shot entrance the `RevealIn`s are full-present pass-throughs.
+- **Signal:** the helper takes two booleans from `ConnectScreen`, fed from
+  `MeowWatchApp`: `play` (start the cascade — true once the reveal has settled
+  *and* a reveal actually played) and `holdHidden` (a reveal is mid-play — keep
+  items invisible until `play`). On cold start the launch reveal's one-shot
+  `onComplete` flips `MeowWatchApp`'s reveal-settled flag, which flips `play`.
+  Because the reveal is cold-start-only and the flags gate on
+  `showLaunchReveal`, there is no cascade on room return (`play` stays false
+  there) and none in tests/headless (reveal disabled).
 - **Reduce motion:** `RevealIn` already degrades to an instant full-present, so
   the cascade is simply absent when reduce motion is on — cards are there
   immediately.
@@ -135,9 +149,11 @@ once per cold start.
 
 - **Theme cross-fade:** confirm the `AnimatedTheme` + `MeowColors.lerp` tween is
   visible in each theme pair when building the early look. Add the reduce-motion
-  path: when `context.reduceMotion` is on, the swap is instant (no perceived
-  fade). Tuning the tween's duration/curve is optional and only if the default
-  linear 200 ms reads poorly.
+  path the clean way: set `MaterialApp.themeAnimationDuration` to `Duration.zero`
+  when the in-app Reduce-motion setting is on (else the framework default
+  `kThemeAnimationDuration`) — an instant swap, no extra widgets or rebuilds.
+  (This honors the in-app switch; the OS-only reduce-animations case keeps the
+  mild 200 ms color fade, which is a color cross-fade, not movement.)
 - **Settings gear:** change the open animation's curve from `Motion.standard` to
   `Motion.emphasized`; when reduce motion is on, show the panel with no
   fade/slide (instant).
