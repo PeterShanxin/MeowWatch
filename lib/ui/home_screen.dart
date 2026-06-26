@@ -463,6 +463,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _leavingSub = _chat.leaving.listen((name) => _cleanlyLeaving.add(name));
     _presenceSub = _sync.presence.listen((e) {
       if (!mounted) return;
+      // Our own lingering ghost (a post-reconnect roster entry under a name the
+      // server renamed us off) must never be treated as a peer — otherwise it
+      // enters _peers and its eventual `left` flips sync health, auto-pausing us
+      // for our own old session (#93). Skip its *join* outright; its `left` is
+      // consumed silently in the departure handler below to clear the latch.
+      if (e.kind == PresenceKind.joined && _isOwnGhost(e.username)) return;
       setState(() {
         if (e.kind == PresenceKind.joined) {
           final isNew = _peers.add(e.username);
@@ -493,14 +499,14 @@ class _HomeScreenState extends State<HomeScreen> {
           // Our own lingering ghost from a server-forced rename, but only if its
           // `left` lands within the reconnect window — a much later departure of
           // the same name is a real peer that grabbed it, not our ghost (#93).
-          final ghostAt = _pendingGhosts.remove(e.username);
-          // Removing above consumes the entry whether or not it was in-window, so
-          // a stale ghost can't keep shadowing this name.
-          final isOwnGhost =
-              ghostAt != null && isPeerReconnect(departedAt: ghostAt, now: DateTime.now());
+          final isOwnGhost = _isOwnGhost(e.username);
+          // Consume the latch (whether or not in-window) so a stale ghost can't
+          // keep shadowing this name.
+          _pendingGhosts.remove(e.username);
           if (isOwnGhost) {
-            // Clean up the ghost's membership but stay silent. Announcing it as
-            // a peer "lost connection" confused users — the name was ours (#93).
+            // The ghost was skipped at join, so it was never in _peers and the
+            // _evaluateSyncHealth() below sees no change. Just clear its
+            // bookkeeping and stay silent — the name was ours (#93).
             _departedAt.remove(e.username);
             _cleanlyLeaving.remove(e.username);
           } else {
@@ -924,6 +930,15 @@ class _HomeScreenState extends State<HomeScreen> {
     connected: _syncStatus == SyncConnectionStatus.connected,
     hasPeer: _peers.isNotEmpty,
   ).healthy;
+
+  /// True when [name] is one of our own pending ghosts still inside the
+  /// reconnect window — a post-reconnect roster/`left` event for our just-renamed
+  /// prior session, not a real peer (#93). Non-consuming; the departure handler
+  /// removes the entry from [_pendingGhosts] when the `left` actually fires.
+  bool _isOwnGhost(String name) {
+    final at = _pendingGhosts[name];
+    return at != null && isPeerReconnect(departedAt: at, now: DateTime.now());
+  }
 
   /// Recompute sync health and (after a debounce) auto-pause on a sustained
   /// healthy -> unhealthy drop. Call inside setState after [_syncStatus] /
