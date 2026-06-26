@@ -10,6 +10,16 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.36.1-alpha] - 2026-06-26
+
+> No more phantom "lost connection" under your own name after a reconnect.
+
+### Fixed
+- When your connection blipped and recovered, the room could briefly announce
+  **your own name "lost connection"** — that was just your previous session
+  being tidied up, not a real drop. MeowWatch now recognizes it as itself and
+  stays quiet, so a reconnect reads only as "Reconnected to room."
+
 ## [0.36.0-alpha] - 2026-06-26
 
 > MeowWatch greets you with a real launch now.

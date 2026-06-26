@@ -130,6 +130,58 @@ void main() {
     });
   });
 
+  group('ownGhostNameOnReconnect', () {
+    test('reconnect with a server suffix → our chosen name is the ghost', () {
+      // We asked for "meowPEOW"; the server handed back "meowPEOW_" because our
+      // own dropped session still held the clean name. That lingering ghost is
+      // about to be reaped — its departure must not read as a peer drop.
+      expect(
+        ownGhostNameOnReconnect(
+          reconnected: true,
+          chosenName: 'meowPEOW',
+          assignedName: 'meowPEOW_',
+        ),
+        'meowPEOW',
+      );
+    });
+
+    test('reconnect with no suffix (name was free) → no ghost', () {
+      expect(
+        ownGhostNameOnReconnect(
+          reconnected: true,
+          chosenName: 'meowPEOW',
+          assignedName: 'meowPEOW',
+        ),
+        isNull,
+      );
+    });
+
+    test('reconnect with no assigned name → no ghost', () {
+      expect(
+        ownGhostNameOnReconnect(
+          reconnected: true,
+          chosenName: 'meowPEOW',
+          assignedName: null,
+        ),
+        isNull,
+      );
+    });
+
+    test('first connect with a suffix is a real namesake, not our ghost', () {
+      // No prior session of ours exists on a first connect, so a suffix means a
+      // genuinely different user already holds the name. Forwarding their
+      // departure is correct (#93) — never suppress it.
+      expect(
+        ownGhostNameOnReconnect(
+          reconnected: false,
+          chosenName: 'meowPEOW',
+          assignedName: 'meowPEOW_',
+        ),
+        isNull,
+      );
+    });
+  });
+
   group('isPeerReconnect', () {
     final now = DateTime(2026, 6, 7, 12, 0, 0);
 

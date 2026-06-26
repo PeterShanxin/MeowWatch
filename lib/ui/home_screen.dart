@@ -134,6 +134,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// can't be detected from `prev` alone (issue #92).
   bool _wasReconnecting = false;
 
+  /// Our own dropped session's name, latched when a reconnect comes back under a
+  /// server-suffixed identity ("meowPEOW" → "meowPEOW_") — our prior login still
+  /// holds the clean name as a ghost. Consumed once on that ghost's
+  /// [PresenceKind.left] so its departure isn't announced as a peer "lost
+  /// connection"; the name is our own (#93 field report). Null when no such
+  /// ghost is pending.
+  String? _pendingGhostName;
+
   /// Peers who sent a [LeavingSignal] before their [PresenceKind.left] event;
   /// consumed once on departure to determine clean vs. connection-drop wording.
   final Set<String> _cleanlyLeaving = <String>{};
@@ -369,6 +377,8 @@ class _HomeScreenState extends State<HomeScreen> {
             _peers.clear();
             _departedAt.clear();
             _cleanlyLeaving.clear();
+            // A fresh drop invalidates any pending ghost from a prior reconnect.
+            _pendingGhostName = null;
             // Drop the cached peer files too, so they are rebuilt
             // deterministically from the post-reconnect roster rather than
             // masking a stale value (#93). _peerNoVideoHint is gated on
@@ -396,6 +406,15 @@ class _HomeScreenState extends State<HomeScreen> {
       )) {
         _wasReconnecting = false;
         _chat.addSystem(reconnectedToRoomMessage);
+        // If this reconnect came back under a server-suffixed name, our prior
+        // session is lingering as a ghost on the clean name and will shortly be
+        // reaped — latch it so its departure is silenced, not read as a peer
+        // "lost connection" (#93 field report). s.username is the wire identity.
+        _pendingGhostName = ownGhostNameOnReconnect(
+          reconnected: true,
+          chosenName: widget.config.username,
+          assignedName: s.username,
+        );
       }
       // A deliberate leave or fatal error ends the reconnect attempt — drop the
       // latch so a later fresh connect isn't mistaken for a reconnect.
@@ -438,26 +457,35 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         } else {
           _peers.remove(e.username);
-          _lastPeerLeft = e.username;
           _peerFiles = _peerFiles.remove(e.username);
           // The "load a video to join" prompt is stale once they've left (#60).
           _joinPrompt = null;
-          final clean = _cleanlyLeaving.remove(e.username);
-          // Only a *drop* makes a quick return read as "reconnected"; a
-          // deliberate leave that comes back is a fresh "joined", not a network
-          // blip recovering (#92 follow-up).
-          if (clean) {
+          if (e.username == _pendingGhostName) {
+            // Our own lingering ghost from a suffixed reconnect: clean up its
+            // membership but stay silent. Announcing it as a peer "lost
+            // connection" confused users — the name is our own (#93). One-shot.
+            _pendingGhostName = null;
             _departedAt.remove(e.username);
+            _cleanlyLeaving.remove(e.username);
           } else {
-            _departedAt[e.username] = DateTime.now();
+            _lastPeerLeft = e.username;
+            final clean = _cleanlyLeaving.remove(e.username);
+            // Only a *drop* makes a quick return read as "reconnected"; a
+            // deliberate leave that comes back is a fresh "joined", not a network
+            // blip recovering (#92 follow-up).
+            if (clean) {
+              _departedAt.remove(e.username);
+            } else {
+              _departedAt[e.username] = DateTime.now();
+            }
+            final banner = clean
+                ? '👋 ${e.username} left'
+                : '📵 ${e.username} lost connection';
+            _showTransientNotice(banner);
+            _chat.addSystem(
+              peerDepartureMessage(username: e.username, clean: clean),
+            );
           }
-          final banner = clean
-              ? '👋 ${e.username} left'
-              : '📵 ${e.username} lost connection';
-          _showTransientNotice(banner);
-          _chat.addSystem(
-            peerDepartureMessage(username: e.username, clean: clean),
-          );
         }
         _evaluateSyncHealth();
       });

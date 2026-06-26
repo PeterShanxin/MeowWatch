@@ -44,6 +44,27 @@ bool isReconnectSuccess({
 }) =>
     wasReconnecting && next == SyncConnectionStatus.connected;
 
+/// The name of our own lingering ghost session to silence on its imminent
+/// departure, or null if there is none.
+///
+/// When a [reconnected] login comes back with an [assignedName] the server
+/// suffixed away from our [chosenName] ("meowPEOW" → "meowPEOW_"), our *prior*
+/// dropped session is still holding the clean name and is about to be reaped.
+/// Its `left` event would otherwise surface as a peer "lost connection." — but
+/// the name is our own, which confused users (#93 field report). We only treat
+/// the clean name as a ghost on a *reconnect* with an *actual* suffix: on a
+/// first connect a suffix means a genuinely different namesake, whose departure
+/// must still show. This only silences the one departure line; it never hides a
+/// peer's presence or file.
+String? ownGhostNameOnReconnect({
+  required bool reconnected,
+  required String chosenName,
+  required String? assignedName,
+}) =>
+    (reconnected && assignedName != null && assignedName != chosenName)
+        ? chosenName
+        : null;
+
 /// True when [departedAt] is non-null and falls within [window] of [now],
 /// meaning a peer's departure is recent enough to be treated as a reconnect
 /// rather than a fresh join.
