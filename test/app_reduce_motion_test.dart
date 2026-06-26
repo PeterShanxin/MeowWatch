@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/app.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
+import 'package:meowwatch/core/theme/tokens/motion.dart';
 
 import 'support/fakes.dart';
 
@@ -35,11 +36,11 @@ void main() {
     expect(mApp.themeAnimationDuration, Duration.zero);
   });
 
-  testWidgets('with motion on, the theme swap keeps the default tween',
+  testWidgets('with motion on, the theme swap melts over the slow tween',
       (tester) async {
     await tester.pumpWidget(app(reduceMotion: false));
     final mApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
-    expect(mApp.themeAnimationDuration, kThemeAnimationDuration);
+    expect(mApp.themeAnimationDuration, Motion.slow);
     await tester.pump(const Duration(milliseconds: 900)); // settle reveal
   });
 }

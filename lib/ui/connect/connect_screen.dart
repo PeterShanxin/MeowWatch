@@ -44,8 +44,8 @@ class ConnectScreen extends StatefulWidget {
     required this.onConnect,
     this.reduceMotion = false,
     this.onReduceMotionChanged,
-    this.playLibraryEntrance = false,
-    this.holdLibraryHidden = false,
+    this.playLobbyEntrance = false,
+    this.holdLobbyHidden = false,
     super.key,
   });
 
@@ -59,10 +59,12 @@ class ConnectScreen extends StatefulWidget {
   final ValueChanged<bool>? onReduceMotionChanged;
 
   /// Cold-start card cascade signals, driven by the launch reveal completing.
-  /// [playLibraryEntrance] starts the one-shot ripple; [holdLibraryHidden] keeps
-  /// the library invisible until then so it doesn't flash during the reveal.
-  final bool playLibraryEntrance;
-  final bool holdLibraryHidden;
+  /// [playLobbyEntrance] starts the one-shot ripple; [holdLobbyHidden] keeps the
+  /// lobby content invisible until then so it doesn't flash during the reveal.
+  /// Both lobby columns share these so they ripple in together (in parallel),
+  /// not one-then-the-other.
+  final bool playLobbyEntrance;
+  final bool holdLobbyHidden;
 
   @override
   State<ConnectScreen> createState() => _ConnectScreenState();
@@ -514,10 +516,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
+                                        // Both columns share the same entrance
+                                        // signals, so they ripple in together
+                                        // (in parallel) once the splash clears —
+                                        // not left-then-right.
                                         Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.stretch,
+                                          child: StaggeredReveal(
+                                            play: widget.playLobbyEntrance,
+                                            holdHidden: widget.holdLobbyHidden,
                                             children: [
                                               ..._formColumn(),
                                               const SizedBox(
@@ -530,9 +536,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                         const SizedBox(width: 40),
                                         Expanded(
                                           child: StaggeredReveal(
-                                            play: widget.playLibraryEntrance,
-                                            holdHidden:
-                                                widget.holdLibraryHidden,
+                                            play: widget.playLobbyEntrance,
+                                            holdHidden: widget.holdLobbyHidden,
                                             children: _libraryColumn(
                                               savedProfiles,
                                               mostRecent,
@@ -541,18 +546,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                         ),
                                       ],
                                     )
-                                  : Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
+                                  : StaggeredReveal(
+                                      play: widget.playLobbyEntrance,
+                                      holdHidden: widget.holdLobbyHidden,
                                       children: [
                                         ..._formColumn(),
-                                        StaggeredReveal(
-                                          play: widget.playLibraryEntrance,
-                                          holdHidden: widget.holdLibraryHidden,
-                                          children: _libraryColumn(
-                                            savedProfiles,
-                                            mostRecent,
-                                          ),
+                                        ..._libraryColumn(
+                                          savedProfiles,
+                                          mostRecent,
                                         ),
                                         const SizedBox(height: Spacing.lg),
                                         _advancedSection(),

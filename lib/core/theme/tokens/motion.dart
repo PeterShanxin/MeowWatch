@@ -6,6 +6,12 @@ abstract final class Motion {
   static const Duration base = Duration(milliseconds: 200);
   static const Duration slow = Duration(milliseconds: 320);
 
+  /// A longer, expressive entrance/transition — the cold-start lobby card
+  /// cascade and the room push. Slower than [slow] so the rise reads as a
+  /// graceful, premium move rather than a snap (Material 3 "emphasized"
+  /// large-transition range). Reduce motion drops it to an instant.
+  static const Duration expressive = Duration(milliseconds: 440);
+
   /// Per-item delay when a list cascades items in one after another (the
   /// "Continue watching" staggered reflow). Small enough to read as one
   /// rippling motion rather than a sequence of separate animations.

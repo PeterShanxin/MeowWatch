@@ -18,8 +18,8 @@ class StaggeredReveal extends StatefulWidget {
     required this.children,
     this.holdHidden = false,
     this.stagger = Motion.stagger,
-    this.itemDuration = Motion.base,
-    this.offset = 12,
+    this.itemDuration = Motion.expressive,
+    this.offset = 20,
     this.crossAxisAlignment = CrossAxisAlignment.stretch,
     super.key,
   });

@@ -14,7 +14,7 @@ PageRouteBuilder<T> fadeUpRoute<T>({
   required bool reduceMotion,
 }) {
   return PageRouteBuilder<T>(
-    transitionDuration: reduceMotion ? Duration.zero : Motion.slow,
+    transitionDuration: reduceMotion ? Duration.zero : Motion.expressive,
     reverseTransitionDuration: reduceMotion ? Duration.zero : Motion.base,
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -24,7 +24,7 @@ PageRouteBuilder<T> fadeUpRoute<T>({
         opacity: t,
         child: SlideTransition(
           position: Tween<Offset>(
-            begin: const Offset(0, 0.04),
+            begin: const Offset(0, 0.05),
             end: Offset.zero,
           ).animate(t),
           child: child,

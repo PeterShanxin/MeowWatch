@@ -112,8 +112,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
       navigatorKey: _navKey,
       debugShowCheckedModeBanner: false,
       theme: themeDataFor(_theme),
-      themeAnimationDuration:
-          _reduceMotion ? Duration.zero : kThemeAnimationDuration,
+      themeAnimationDuration: _reduceMotion ? Duration.zero : Motion.slow,
       themeAnimationCurve: Motion.emphasized,
       builder: (context, child) => ReduceMotionScope(
         reduceMotion: _reduceMotion,
@@ -131,8 +130,8 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             onThemeChanged: _setTheme,
             reduceMotion: _reduceMotion,
             onReduceMotionChanged: _setReduceMotion,
-            playLibraryEntrance: widget.showLaunchReveal && _revealSettled,
-            holdLibraryHidden: widget.showLaunchReveal && !_revealSettled,
+            playLobbyEntrance: widget.showLaunchReveal && _revealSettled,
+            holdLobbyHidden: widget.showLaunchReveal && !_revealSettled,
             onConnect: (RoomConfig config) => Navigator.of(context).push(
               fadeUpRoute<void>(
                 reduceMotion: context.reduceMotion,
