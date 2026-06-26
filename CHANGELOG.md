@@ -10,6 +10,22 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.37.0-alpha] - 2026-06-26
+
+> The lobby comes alive — and a Reduce motion switch for when you'd rather it didn't.
+
+### Added
+- A **Reduce motion** setting in the gear menu (lobby and in-room). Turn it on
+  and every animation drops to an instant — no splash, no slides, no cascades.
+  MeowWatch also follows your system "reduce animations" setting automatically.
+
+### Improved
+- The lobby's saved rooms and continue-watching cards now **ripple in** when the
+  app opens, just after the welcome.
+- Opening a room now **rises and fades in** instead of snapping, and reverses as
+  you leave.
+- The settings menu opens with a smoother curve.
+
 ## [0.36.1-alpha] - 2026-06-26
 
 > No more phantom "lost connection" under your own name after a reconnect.
