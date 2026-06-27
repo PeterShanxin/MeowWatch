@@ -7,7 +7,6 @@ import '../../core/sync/peer_state.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
 import '../../core/theme/meow_theme.dart';
-import '../../core/theme/reduce_motion.dart';
 import '../../core/theme/tokens/icon_sizes.dart';
 import '../../core/theme/tokens/motion.dart';
 import '../../core/theme/tokens/opacities.dart';
@@ -175,13 +174,18 @@ class TypeSpecimen extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 110,
-                  child: Text('${rows[i].$1} ${rows[i].$2}',
-                      style: t.caption.copyWith(color: c.textDim)),
+                  child: Text(
+                    '${rows[i].$1} ${rows[i].$2}',
+                    style: t.caption.copyWith(color: c.textDim),
+                  ),
                 ),
                 const SizedBox(width: Spacing.lg),
                 Expanded(
-                  child: Text('The quick brown fox',
-                      style: rows[i].$3, overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    'The quick brown fox',
+                    style: rows[i].$3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -197,24 +201,32 @@ class RadiusSpecimen extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.meow;
     final steps = <(String, double)>[
-      ('xs', Radii.xs), ('sm', Radii.sm), ('md', Radii.md),
-      ('lg', Radii.lg), ('xl', Radii.xl), ('pill', Radii.pill),
+      ('xs', Radii.xs),
+      ('sm', Radii.sm),
+      ('md', Radii.md),
+      ('lg', Radii.lg),
+      ('xl', Radii.xl),
+      ('pill', Radii.pill),
     ];
-    return Wrap(spacing: Spacing.lg, runSpacing: Spacing.lg, children: [
-      for (final (name, r) in steps)
-        _Swatch(
-          name: '$name · ${r.toInt()}',
-          tile: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: c.myBubble,
-              border: Border.all(color: c.accent),
-              borderRadius: BorderRadius.circular(r),
+    return Wrap(
+      spacing: Spacing.lg,
+      runSpacing: Spacing.lg,
+      children: [
+        for (final (name, r) in steps)
+          _Swatch(
+            name: '$name · ${r.toInt()}',
+            tile: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: c.myBubble,
+                border: Border.all(color: c.accent),
+                borderRadius: BorderRadius.circular(r),
+              ),
             ),
           ),
-        ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -224,8 +236,14 @@ class SpacingSpecimen extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.meow;
     const steps = <double>[
-      Spacing.xxs, Spacing.xs, Spacing.sm, Spacing.md,
-      Spacing.lg, Spacing.xl, Spacing.xxl, Spacing.xxxl,
+      Spacing.xxs,
+      Spacing.xs,
+      Spacing.sm,
+      Spacing.md,
+      Spacing.lg,
+      Spacing.xl,
+      Spacing.xxl,
+      Spacing.xxxl,
     ];
     return Wrap(
       spacing: Spacing.lg,
@@ -248,20 +266,31 @@ class IconSpecimen extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.meow;
     final steps = <(String, double)>[
-      ('16', IconSizes.sm), ('20', IconSizes.md), ('24', IconSizes.lg), ('32', IconSizes.xl),
+      ('16', IconSizes.sm),
+      ('20', IconSizes.md),
+      ('24', IconSizes.lg),
+      ('32', IconSizes.xl),
     ];
-    return Wrap(spacing: Spacing.xl, runSpacing: Spacing.md, crossAxisAlignment: WrapCrossAlignment.end, children: [
-      for (final (name, s) in steps)
-        _Swatch(name: name, tile: Icon(Icons.pets, size: s, color: c.accent)),
-      const _Swatch(
-        name: 'react · 20',
-        tile: Text('🐾', style: TextStyle(fontSize: Glyphs.react)),
-      ),
-      const _Swatch(
-        name: 'burst · 34',
-        tile: Text('🐾', style: TextStyle(fontSize: Glyphs.burst)),
-      ),
-    ]);
+    return Wrap(
+      spacing: Spacing.xl,
+      runSpacing: Spacing.md,
+      crossAxisAlignment: WrapCrossAlignment.end,
+      children: [
+        for (final (name, s) in steps)
+          _Swatch(
+            name: name,
+            tile: Icon(Icons.pets, size: s, color: c.accent),
+          ),
+        const _Swatch(
+          name: 'react · 20',
+          tile: Text('🐾', style: TextStyle(fontSize: Glyphs.react)),
+        ),
+        const _Swatch(
+          name: 'burst · 34',
+          tile: Text('🐾', style: TextStyle(fontSize: Glyphs.burst)),
+        ),
+      ],
+    );
   }
 }
 
@@ -271,24 +300,31 @@ class OpacitySpecimen extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.meow;
     final steps = <(String, double)>[
-      ('dim', Opacities.dim), ('scrim', Opacities.scrim),
-      ('disabled', Opacities.disabled), ('pressed', Opacities.pressed), ('hover', Opacities.hover),
+      ('dim', Opacities.dim),
+      ('scrim', Opacities.scrim),
+      ('disabled', Opacities.disabled),
+      ('pressed', Opacities.pressed),
+      ('hover', Opacities.hover),
     ];
-    return Wrap(spacing: Spacing.lg, runSpacing: Spacing.lg, children: [
-      for (final (name, a) in steps)
-        _Swatch(
-          name: name,
-          sub: a.toStringAsFixed(2),
-          tile: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: c.accent.withValues(alpha: a),
-              borderRadius: BorderRadius.circular(Radii.md),
+    return Wrap(
+      spacing: Spacing.lg,
+      runSpacing: Spacing.lg,
+      children: [
+        for (final (name, a) in steps)
+          _Swatch(
+            name: name,
+            sub: a.toStringAsFixed(2),
+            tile: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: c.accent.withValues(alpha: a),
+                borderRadius: BorderRadius.circular(Radii.md),
+              ),
             ),
           ),
-        ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -309,50 +345,52 @@ class MotionSpecimen extends StatelessWidget {
     final c = context.meow;
 
     Widget subhead(String text) => Text(
-          text.toUpperCase(),
-          style: t.caption.copyWith(
-            color: c.textPrimary,
-            letterSpacing: 1.5,
-            fontWeight: TypeScale.semibold,
-          ),
-        );
+      text.toUpperCase(),
+      style: t.caption.copyWith(
+        color: c.textPrimary,
+        letterSpacing: 1.5,
+        fontWeight: TypeScale.semibold,
+      ),
+    );
 
     Widget chip(String text) => Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: Spacing.md, vertical: Spacing.sm),
-          decoration: BoxDecoration(
-            color: c.myBubble,
-            borderRadius: BorderRadius.circular(Radii.sm),
-            border: Border.all(color: c.border),
-          ),
-          child: Text(text, style: t.caption.copyWith(color: c.textPrimary)),
-        );
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.md,
+        vertical: Spacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: c.myBubble,
+        borderRadius: BorderRadius.circular(Radii.sm),
+        border: Border.all(color: c.border),
+      ),
+      child: Text(text, style: t.caption.copyWith(color: c.textPrimary)),
+    );
 
-    Widget durationLeading(String label) => Text(
-          label,
-          style: t.caption.copyWith(color: c.textDim),
-        );
+    Widget durationLeading(String label) =>
+        Text(label, style: t.caption.copyWith(color: c.textDim));
 
     Widget easingLeading(Curve curve, String name, String bezier) => Row(
-          children: [
-            _EasingCurveThumb(curve: curve),
-            const SizedBox(width: Spacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(name,
-                      style: TextStyle(
-                          color: c.textPrimary,
-                          fontWeight: TypeScale.semibold)),
-                  Text(bezier,
-                      style: t.caption.copyWith(color: c.textDim)),
-                ],
+      children: [
+        _EasingCurveThumb(curve: curve),
+        const SizedBox(width: Spacing.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                name,
+                style: TextStyle(
+                  color: c.textPrimary,
+                  fontWeight: TypeScale.semibold,
+                ),
               ),
-            ),
-          ],
-        );
+              Text(bezier, style: t.caption.copyWith(color: c.textDim)),
+            ],
+          ),
+        ),
+      ],
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -384,29 +422,39 @@ class MotionSpecimen extends StatelessWidget {
           curve: Motion.standard,
           leadingWidth: 168,
           leading: easingLeading(
-              Motion.standard, 'easeOutCubic', '(.215, .61, .355, 1)'),
+            Motion.standard,
+            'easeOutCubic',
+            '(.215, .61, .355, 1)',
+          ),
         ),
         const SizedBox(height: Spacing.md),
         _MotionRacer(
           duration: _easingRace,
           curve: Motion.symmetric,
           leadingWidth: 168,
-          leading:
-              easingLeading(Motion.symmetric, 'easeInOut', '(.42, 0, .58, 1)'),
+          leading: easingLeading(
+            Motion.symmetric,
+            'easeInOut',
+            '(.42, 0, .58, 1)',
+          ),
         ),
         const SizedBox(height: Spacing.xl),
-        Wrap(spacing: Spacing.md, runSpacing: Spacing.md, children: [
-          chip('fast · ${Motion.fast.inMilliseconds}ms'),
-          chip('base · ${Motion.base.inMilliseconds}ms'),
-          chip('slow · ${Motion.slow.inMilliseconds}ms'),
-          chip('stagger · ${Motion.stagger.inMilliseconds}ms'),
-          chip('reveal · ${Motion.reveal.inMilliseconds}ms'),
-          chip('standard · easeOutCubic'),
-          chip('symmetric · easeInOut'),
-          chip('emphasized · easeInOutCubicEmphasized'),
-          chip('emphasizedAccelerate · (.3, 0, .8, .15)'),
-          chip('springy · (.34, 1.26, .64, 1)'),
-        ]),
+        Wrap(
+          spacing: Spacing.md,
+          runSpacing: Spacing.md,
+          children: [
+            chip('fast · ${Motion.fast.inMilliseconds}ms'),
+            chip('base · ${Motion.base.inMilliseconds}ms'),
+            chip('slow · ${Motion.slow.inMilliseconds}ms'),
+            chip('stagger · ${Motion.stagger.inMilliseconds}ms'),
+            chip('reveal · ${Motion.reveal.inMilliseconds}ms'),
+            chip('standard · easeOutCubic'),
+            chip('symmetric · easeInOut'),
+            chip('emphasized · easeInOutCubicEmphasized'),
+            chip('emphasizedAccelerate · (.3, 0, .8, .15)'),
+            chip('springy · (.34, 1.26, .64, 1)'),
+          ],
+        ),
       ],
     );
   }
@@ -433,11 +481,14 @@ class _MotionRacer extends StatefulWidget {
 
 class _MotionRacerState extends State<_MotionRacer>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller =
-      AnimationController(vsync: this, duration: widget.duration)
-        ..repeat(reverse: true);
-  late final Animation<double> _t =
-      CurvedAnimation(parent: _controller, curve: widget.curve);
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+  )..repeat(reverse: true);
+  late final Animation<double> _t = CurvedAnimation(
+    parent: _controller,
+    curve: widget.curve,
+  );
 
   @override
   void dispose() {
@@ -578,33 +629,88 @@ class _MotionReflowSpecimenState extends State<MotionReflowSpecimen> {
   // Fixed clock + rows (gallery convention: deterministic, never DateTime.now).
   static final DateTime _now = DateTime(2026, 1, 7, 21, 0);
   static final List<HistoryEntry> _entries = [
-    _demo(1, 'The Bear — S03E08', 'sleepy-otter', 'lin', 2850000, 1122000,
-        1503238553, 2),
-    _demo(2, 'The Bear — S03E07', 'sleepy-otter', 'lin', 2850000, 2650000,
-        1503238553, 24),
-    _demo(3, 'Dune: Part Two', 'cosmic-cat', 'mochi', 9960000, 6120000,
-        4402341478, 48),
-    _demo(4, 'Spirited Away', 'cosmic-cat', 'mochi', 7440000, 1931000,
-        2362232012, 72),
-    _demo(5, 'Frieren — S01E12', 'ghibli-night', 'you', 1440000, 663000,
-        754974720, 120),
-    _demo(6, 'Frieren — S01E11', 'ghibli-night', 'you', 1440000, 1420000,
-        734003200, 144),
+    _demo(
+      1,
+      'The Bear — S03E08',
+      'sleepy-otter',
+      'lin',
+      2850000,
+      1122000,
+      1503238553,
+      2,
+    ),
+    _demo(
+      2,
+      'The Bear — S03E07',
+      'sleepy-otter',
+      'lin',
+      2850000,
+      2650000,
+      1503238553,
+      24,
+    ),
+    _demo(
+      3,
+      'Dune: Part Two',
+      'cosmic-cat',
+      'mochi',
+      9960000,
+      6120000,
+      4402341478,
+      48,
+    ),
+    _demo(
+      4,
+      'Spirited Away',
+      'cosmic-cat',
+      'mochi',
+      7440000,
+      1931000,
+      2362232012,
+      72,
+    ),
+    _demo(
+      5,
+      'Frieren — S01E12',
+      'ghibli-night',
+      'you',
+      1440000,
+      663000,
+      754974720,
+      120,
+    ),
+    _demo(
+      6,
+      'Frieren — S01E11',
+      'ghibli-night',
+      'you',
+      1440000,
+      1420000,
+      734003200,
+      144,
+    ),
   ];
 
-  static HistoryEntry _demo(int id, String title, String room, String user,
-          int durationMs, int positionMs, int sizeBytes, int hoursAgo) =>
-      HistoryEntry(
-        id: id,
-        filePath: '/$title',
-        fileName: title,
-        fileSizeBytes: sizeBytes,
-        durationMs: durationMs,
-        lastPositionMs: positionMs,
-        playedAt: _now.subtract(Duration(hours: hoursAgo)),
-        room: room,
-        username: user,
-      );
+  static HistoryEntry _demo(
+    int id,
+    String title,
+    String room,
+    String user,
+    int durationMs,
+    int positionMs,
+    int sizeBytes,
+    int hoursAgo,
+  ) => HistoryEntry(
+    id: id,
+    filePath: '/$title',
+    fileName: title,
+    fileSizeBytes: sizeBytes,
+    durationMs: durationMs,
+    lastPositionMs: positionMs,
+    playedAt: _now.subtract(Duration(hours: hoursAgo)),
+    room: room,
+    username: user,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -612,15 +718,15 @@ class _MotionReflowSpecimenState extends State<MotionReflowSpecimen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ReflowToggle(
-          mode: _mode,
-          onChanged: (m) => setState(() => _mode = m),
-        ),
+        _ReflowToggle(mode: _mode, onChanged: (m) => setState(() => _mode = m)),
         const SizedBox(height: Spacing.md),
         StaggeredReflowList(
           children: [
             for (final e in visible)
-              ReflowChild(id: e.id, child: _ReflowDemoCard(entry: e, now: _now)),
+              ReflowChild(
+                id: e.id,
+                child: _ReflowDemoCard(entry: e, now: _now),
+              ),
           ],
         ),
       ],
@@ -670,8 +776,13 @@ class _ReflowToggle extends StatelessWidget {
             ),
             Row(
               children: [
-                _segment('Latest per room', !isEvery, HistoryMode.latestPerRoom,
-                    c, t),
+                _segment(
+                  'Latest per room',
+                  !isEvery,
+                  HistoryMode.latestPerRoom,
+                  c,
+                  t,
+                ),
                 _segment('Every video', isEvery, HistoryMode.everyVideo, c, t),
               ],
             ),
@@ -681,8 +792,13 @@ class _ReflowToggle extends StatelessWidget {
     );
   }
 
-  Widget _segment(String label, bool selected, HistoryMode value, MeowColors c,
-      MeowTextStyles t) {
+  Widget _segment(
+    String label,
+    bool selected,
+    HistoryMode value,
+    MeowColors c,
+    MeowTextStyles t,
+  ) {
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(Radii.sm),
@@ -788,8 +904,7 @@ class _ReflowDemoCard extends StatelessWidget {
   }
 }
 
-/// The launch-reveal motion, live: a [RevealIn] demo you can replay, a
-/// reduce-motion preview toggle that forces the degraded (instant) form, and a
+/// The launch-reveal motion, live: a [RevealIn] demo you can replay and a
 /// "Play full launch reveal" button that runs the real [LaunchReveal] over a
 /// placeholder lobby. The replay tile lets the splash live in the design system.
 class MotionRevealSpecimen extends StatefulWidget {
@@ -800,84 +915,64 @@ class MotionRevealSpecimen extends StatefulWidget {
 }
 
 class _MotionRevealSpecimenState extends State<MotionRevealSpecimen> {
-  bool _reduceMotion = false;
   int _replayKey = 0; // bump to remount the RevealIn demo
 
   void _playFullReveal() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => _FullRevealReplay(reduceMotion: _reduceMotion),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const _FullRevealReplay()));
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.meow;
     final t = context.meowText;
-    return ReduceMotionScope(
-      reduceMotion: _reduceMotion,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // RevealIn demo — remounts on replay so the fade+rise replays.
+        Container(
+          padding: const EdgeInsets.all(Spacing.lg),
+          decoration: BoxDecoration(
+            color: c.background,
+            borderRadius: BorderRadius.circular(Radii.md),
+            border: Border.all(color: c.border),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Reduce motion',
-                  style: t.body.copyWith(color: c.textPrimary)),
-              const SizedBox(width: Spacing.md),
-              Switch(
-                value: _reduceMotion,
-                activeThumbColor: c.accent,
-                onChanged: (v) => setState(() {
-                  _reduceMotion = v;
-                  _replayKey++;
-                }),
+              RevealIn(
+                key: ValueKey('reveal-in-$_replayKey'),
+                overshoot: true,
+                child: Text(
+                  'RevealIn',
+                  style: t.title.copyWith(color: c.accent),
+                ),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _replayKey++),
+                style: TextButton.styleFrom(foregroundColor: c.accent),
+                child: const Text('Replay'),
               ),
             ],
           ),
-          const SizedBox(height: Spacing.md),
-          // RevealIn demo — remounts on replay so the fade+rise replays.
-          Container(
-            padding: const EdgeInsets.all(Spacing.lg),
-            decoration: BoxDecoration(
-              color: c.background,
-              borderRadius: BorderRadius.circular(Radii.md),
-              border: Border.all(color: c.border),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                RevealIn(
-                  key: ValueKey('reveal-in-$_replayKey-$_reduceMotion'),
-                  overshoot: true,
-                  child:
-                      Text('RevealIn', style: t.title.copyWith(color: c.accent)),
-                ),
-                TextButton(
-                  onPressed: () => setState(() => _replayKey++),
-                  style: TextButton.styleFrom(foregroundColor: c.accent),
-                  child: const Text('Replay'),
-                ),
-              ],
-            ),
+        ),
+        const SizedBox(height: Spacing.md),
+        FilledButton.icon(
+          onPressed: _playFullReveal,
+          style: FilledButton.styleFrom(
+            backgroundColor: c.accent,
+            foregroundColor: c.background,
           ),
-          const SizedBox(height: Spacing.md),
-          FilledButton.icon(
-            onPressed: _playFullReveal,
-            style: FilledButton.styleFrom(
-              backgroundColor: c.accent,
-              foregroundColor: c.background,
-            ),
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Play full launch reveal'),
-          ),
-          const SizedBox(height: Spacing.sm),
-          Text(
-            'Tip shown: “${kLaunchTips.first}”',
-            style: t.caption.copyWith(color: c.textDim),
-          ),
-        ],
-      ),
+          icon: const Icon(Icons.play_arrow),
+          label: const Text('Play full launch reveal'),
+        ),
+        const SizedBox(height: Spacing.sm),
+        Text(
+          'Tip shown: “${kLaunchTips.first}”',
+          style: t.caption.copyWith(color: c.textDim),
+        ),
+      ],
     );
   }
 }
@@ -887,9 +982,7 @@ class _MotionRevealSpecimenState extends State<MotionRevealSpecimen> {
 /// is always present (the preview is never a dead end) and a Replay button
 /// appears once the reveal has settled.
 class _FullRevealReplay extends StatefulWidget {
-  const _FullRevealReplay({required this.reduceMotion});
-
-  final bool reduceMotion;
+  const _FullRevealReplay();
 
   @override
   State<_FullRevealReplay> createState() => _FullRevealReplayState();
@@ -903,91 +996,88 @@ class _FullRevealReplayState extends State<_FullRevealReplay> {
   Widget build(BuildContext context) {
     final c = context.meow;
     final t = context.meowText;
-    return ReduceMotionScope(
-      reduceMotion: widget.reduceMotion,
-      child: Scaffold(
-        backgroundColor: c.background,
-        body: Stack(
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: c.backgroundGradient,
-                  color: c.backgroundGradient == null ? c.background : null,
-                ),
-                child: LaunchReveal(
-                  key: ValueKey('full-reveal-$_key'),
-                  onComplete: () {
-                    if (mounted) setState(() => _settled = true);
-                  },
-                  // A faux lobby so the content-rise reads as real content
-                  // settling in, not a lone line of text slowly fading.
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 360),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text('Welcome back', style: t.heading),
-                          const SizedBox(height: Spacing.xs),
-                          Text(
-                            'Preview — the real lobby rises in here.',
-                            style: t.body.copyWith(color: c.textDim),
-                          ),
-                          const SizedBox(height: Spacing.lg),
-                          for (var i = 0; i < 2; i++) ...[
-                            Container(
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: c.surface,
-                                borderRadius: BorderRadius.circular(Radii.md),
-                                border: Border.all(color: c.border),
-                              ),
-                            ),
-                            const SizedBox(height: Spacing.sm),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+    return Scaffold(
+      backgroundColor: c.background,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: c.backgroundGradient,
+                color: c.backgroundGradient == null ? c.background : null,
               ),
-            ),
-            // Always on top of the splash, so the preview is never a dead end.
-            Positioned(
-              top: Spacing.md,
-              left: Spacing.md,
-              child: SafeArea(
-                child: IconButton(
-                  tooltip: 'Back',
-                  icon: Icon(Icons.arrow_back, color: c.textPrimary),
-                  onPressed: () => Navigator.of(context).maybePop(),
-                ),
-              ),
-            ),
-            if (_settled)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: Spacing.xxl,
+              child: LaunchReveal(
+                key: ValueKey('full-reveal-$_key'),
+                onComplete: () {
+                  if (mounted) setState(() => _settled = true);
+                },
+                // A faux lobby so the content-rise reads as real content
+                // settling in, not a lone line of text slowly fading.
                 child: Center(
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: c.accent,
-                      foregroundColor: c.background,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 360),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('Welcome back', style: t.heading),
+                        const SizedBox(height: Spacing.xs),
+                        Text(
+                          'Preview — the real lobby rises in here.',
+                          style: t.body.copyWith(color: c.textDim),
+                        ),
+                        const SizedBox(height: Spacing.lg),
+                        for (var i = 0; i < 2; i++) ...[
+                          Container(
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: c.surface,
+                              borderRadius: BorderRadius.circular(Radii.md),
+                              border: Border.all(color: c.border),
+                            ),
+                          ),
+                          const SizedBox(height: Spacing.sm),
+                        ],
+                      ],
                     ),
-                    onPressed: () => setState(() {
-                      _settled = false;
-                      _key++;
-                    }),
-                    icon: const Icon(Icons.replay),
-                    label: const Text('Replay'),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+          ),
+          // Always on top of the splash, so the preview is never a dead end.
+          Positioned(
+            top: Spacing.md,
+            left: Spacing.md,
+            child: SafeArea(
+              child: IconButton(
+                tooltip: 'Back',
+                icon: Icon(Icons.arrow_back, color: c.textPrimary),
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+            ),
+          ),
+          if (_settled)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: Spacing.xxl,
+              child: Center(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: c.accent,
+                    foregroundColor: c.background,
+                  ),
+                  onPressed: () => setState(() {
+                    _settled = false;
+                    _key++;
+                  }),
+                  icon: const Icon(Icons.replay),
+                  label: const Text('Replay'),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -998,32 +1088,36 @@ class ShadowSpecimen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.meow;
-    return Wrap(spacing: Spacing.xxxl, runSpacing: Spacing.lg, children: [
-      _Swatch(
-        name: 'card',
-        tile: Container(
-          width: 96,
-          height: 56,
-          decoration: BoxDecoration(
-            color: c.surface,
-            borderRadius: BorderRadius.circular(Radii.md),
-            boxShadow: Shadows.card(c.scrim),
+    return Wrap(
+      spacing: Spacing.xxxl,
+      runSpacing: Spacing.lg,
+      children: [
+        _Swatch(
+          name: 'card',
+          tile: Container(
+            width: 96,
+            height: 56,
+            decoration: BoxDecoration(
+              color: c.surface,
+              borderRadius: BorderRadius.circular(Radii.md),
+              boxShadow: Shadows.card(c.scrim),
+            ),
           ),
         ),
-      ),
-      _Swatch(
-        name: 'overlay',
-        tile: Container(
-          width: 96,
-          height: 56,
-          decoration: BoxDecoration(
-            color: c.surface,
-            borderRadius: BorderRadius.circular(Radii.md),
-            boxShadow: Shadows.overlay(c.scrim),
+        _Swatch(
+          name: 'overlay',
+          tile: Container(
+            width: 96,
+            height: 56,
+            decoration: BoxDecoration(
+              color: c.surface,
+              borderRadius: BorderRadius.circular(Radii.md),
+              boxShadow: Shadows.overlay(c.scrim),
+            ),
           ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -1045,15 +1139,27 @@ class ComponentZoo extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               ChatBubble(
-                message: ChatMessage(username: 'Mochi', text: 'this part is so good omg', timestamp: stamp),
+                message: ChatMessage(
+                  username: 'Mochi',
+                  text: 'this part is so good omg',
+                  timestamp: stamp,
+                ),
               ),
               const SizedBox(height: Spacing.xs),
               ChatBubble(
-                message: ChatMessage(username: me, text: 'right?? rewinding 10s', timestamp: stamp),
+                message: ChatMessage(
+                  username: me,
+                  text: 'right?? rewinding 10s',
+                  timestamp: stamp,
+                ),
               ),
               const SizedBox(height: Spacing.xs),
               const ChatBubble(
-                message: ChatMessage(username: '', text: '🐾 Mochi joined the room', system: true),
+                message: ChatMessage(
+                  username: '',
+                  text: '🐾 Mochi joined the room',
+                  system: true,
+                ),
               ),
             ],
           ),
@@ -1061,7 +1167,10 @@ class ComponentZoo extends StatelessWidget {
         const SizedBox(height: Spacing.lg),
         SizedBox(
           height: 320,
-          child: EmptyState(onBrowse: () {}, notice: 'lin started playback — load a video to join'),
+          child: EmptyState(
+            onBrowse: () {},
+            notice: 'lin started playback — load a video to join',
+          ),
         ),
       ],
     );
@@ -1079,26 +1188,26 @@ class BrandSpecimen extends StatelessWidget {
     final t = context.meowText;
 
     Widget label(String s) => Text(
-          s.toUpperCase(),
-          style: t.caption.copyWith(
-            color: c.textPrimary,
-            letterSpacing: 1.5,
-            fontWeight: TypeScale.semibold,
-          ),
-        );
+      s.toUpperCase(),
+      style: t.caption.copyWith(
+        color: c.textPrimary,
+        letterSpacing: 1.5,
+        fontWeight: TypeScale.semibold,
+      ),
+    );
 
     // Each specimen is a labelled tile, centred over its content; the row
     // spreads them across the card's full width — first flush left, last flush
     // right — and centres them vertically against the tallest tile.
     Widget tile(String name, Widget content) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            label(name),
-            const SizedBox(height: Spacing.lg),
-            content,
-          ],
-        );
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        label(name),
+        const SizedBox(height: Spacing.lg),
+        content,
+      ],
+    );
 
     // double.infinity width forces the Wrap to take the card's full width;
     // without it the Wrap shrinks to its content and spaceBetween has no room
@@ -1142,75 +1251,77 @@ class BrandSpecimen extends StatelessWidget {
 
 /// The sections in display order. Used by the gallery screen.
 List<Widget> gallerySections() => const [
-      GallerySection(
-        title: 'Brand',
-        description:
-            'The Neon Nine mark + Sora wordmark, tinted live to the active '
-            'theme. Mark is pure vector; "Watch" + glow take the accent.',
-        child: BrandSpecimen(),
-      ),
-      GallerySection(
-        title: 'Color',
-        description:
-            'Ten roles per theme — only colour changes between Cozy, Cinema Noir, and Glass Aurora.',
-        child: ColorSpecimen(),
-      ),
-      GallerySection(
-        title: 'Typography',
-        description:
-            'Six roles. Size + weight are global; colour and font come from the active theme.',
-        child: TypeSpecimen(),
-      ),
-      GallerySection(
-        title: 'Radius',
-        description: 'Six steps in even 4px increments.',
-        child: RadiusSpecimen(),
-      ),
-      GallerySection(
-        title: 'Spacing',
-        description: 'Eight steps on a 4px grid for every gap and inset.',
-        child: SpacingSpecimen(),
-      ),
-      GallerySection(
-        title: 'Icon / Glyph',
-        description: 'Icon sizes, plus emoji glyph sizes (kept separate from text).',
-        child: IconSpecimen(),
-      ),
-      GallerySection(
-        title: 'Opacity',
-        description: 'Named alpha levels for dim text, scrims, and states.',
-        child: OpacitySpecimen(),
-      ),
-      GallerySection(
-        title: 'Motion',
-        description: 'The shared timing and easing every transition draws from. '
-            'Looping live so the difference is legible.',
-        child: MotionSpecimen(),
-      ),
-      GallerySection(
-        title: 'Motion · list reflow',
-        description:
-            'Toggling Latest per room ⇄ Every video adds, removes and reorders '
-            'cards. The staggered cascade glides survivors and ripples arrivals '
-            'in top-to-bottom instead of hard-swapping the list.',
-        child: MotionReflowSpecimen(),
-      ),
-      GallerySection(
-        title: 'Motion · reveal',
-        description:
-            'The cold-start launch reveal + its RevealIn primitive. Toggle '
-            'reduce motion to preview the instant, degraded form; replay the '
-            'full splash to review it as it ships.',
-        child: MotionRevealSpecimen(),
-      ),
-      GallerySection(
-        title: 'Shadow',
-        description: 'Two elevation tokens; colour follows each theme’s scrim.',
-        child: ShadowSpecimen(),
-      ),
-      GallerySection(
-        title: 'Components',
-        description: 'Real widgets, live — change a token and they all move with it.',
-        child: ComponentZoo(),
-      ),
-    ];
+  GallerySection(
+    title: 'Brand',
+    description:
+        'The Neon Nine mark + Sora wordmark, tinted live to the active '
+        'theme. Mark is pure vector; "Watch" + glow take the accent.',
+    child: BrandSpecimen(),
+  ),
+  GallerySection(
+    title: 'Color',
+    description:
+        'Ten roles per theme — only colour changes between Cozy, Cinema Noir, and Glass Aurora.',
+    child: ColorSpecimen(),
+  ),
+  GallerySection(
+    title: 'Typography',
+    description:
+        'Six roles. Size + weight are global; colour and font come from the active theme.',
+    child: TypeSpecimen(),
+  ),
+  GallerySection(
+    title: 'Radius',
+    description: 'Six steps in even 4px increments.',
+    child: RadiusSpecimen(),
+  ),
+  GallerySection(
+    title: 'Spacing',
+    description: 'Eight steps on a 4px grid for every gap and inset.',
+    child: SpacingSpecimen(),
+  ),
+  GallerySection(
+    title: 'Icon / Glyph',
+    description:
+        'Icon sizes, plus emoji glyph sizes (kept separate from text).',
+    child: IconSpecimen(),
+  ),
+  GallerySection(
+    title: 'Opacity',
+    description: 'Named alpha levels for dim text, scrims, and states.',
+    child: OpacitySpecimen(),
+  ),
+  GallerySection(
+    title: 'Motion',
+    description:
+        'The shared timing and easing every transition draws from. '
+        'Looping live so the difference is legible.',
+    child: MotionSpecimen(),
+  ),
+  GallerySection(
+    title: 'Motion · list reflow',
+    description:
+        'Toggling Latest per room ⇄ Every video adds, removes and reorders '
+        'cards. The staggered cascade glides survivors and ripples arrivals '
+        'in top-to-bottom instead of hard-swapping the list.',
+    child: MotionReflowSpecimen(),
+  ),
+  GallerySection(
+    title: 'Motion · reveal',
+    description:
+        'The cold-start launch reveal + its RevealIn primitive. Replay the '
+        'RevealIn demo or play the full splash to review it as it ships.',
+    child: MotionRevealSpecimen(),
+  ),
+  GallerySection(
+    title: 'Shadow',
+    description: 'Two elevation tokens; colour follows each theme’s scrim.',
+    child: ShadowSpecimen(),
+  ),
+  GallerySection(
+    title: 'Components',
+    description:
+        'Real widgets, live — change a token and they all move with it.',
+    child: ComponentZoo(),
+  ),
+];

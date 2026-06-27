@@ -10,6 +10,17 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.37.0-alpha] - 2026-06-27
+
+> The lobby comes alive — cards ripple in, rooms rise and fade.
+
+### Improved
+- The lobby's saved rooms and continue-watching cards now **ripple in together**
+  when the app opens, just after the welcome.
+- Opening a room now **rises and fades in** instead of snapping, and reverses as
+  you leave.
+- Theme switches and the settings menu glide with a smoother, slower curve.
+
 ## [0.36.1-alpha] - 2026-06-26
 
 > No more phantom "lost connection" under your own name after a reconnect.

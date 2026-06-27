@@ -28,6 +28,7 @@ import '../../core/theme/tokens/spacing.dart';
 import '../../core/theme/tokens/type_scale.dart';
 import '../../core/video/video_url.dart';
 import '../brand/meow_logo.dart';
+import '../motion/staggered_reveal.dart';
 import '../settings/lobby_settings_button.dart';
 import '../staggered_reflow_list.dart';
 import '../version_badge.dart';
@@ -41,6 +42,8 @@ class ConnectScreen extends StatefulWidget {
     required this.currentTheme,
     required this.onThemeChanged,
     required this.onConnect,
+    this.playLobbyEntrance = false,
+    this.holdLobbyHidden = false,
     super.key,
   });
 
@@ -50,6 +53,14 @@ class ConnectScreen extends StatefulWidget {
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
   final Future<void> Function(RoomConfig config) onConnect;
+
+  /// Cold-start card cascade signals, driven by the launch reveal completing.
+  /// [playLobbyEntrance] starts the one-shot ripple; [holdLobbyHidden] keeps the
+  /// lobby content invisible until then so it doesn't flash during the reveal.
+  /// Both lobby columns share these so they ripple in together (in parallel),
+  /// not one-then-the-other.
+  final bool playLobbyEntrance;
+  final bool holdLobbyHidden;
 
   @override
   State<ConnectScreen> createState() => _ConnectScreenState();
@@ -501,10 +512,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
+                                        // Both columns share the same entrance
+                                        // signals, so they ripple in together
+                                        // (in parallel) once the splash clears —
+                                        // not left-then-right.
                                         Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.stretch,
+                                          child: StaggeredReveal(
+                                            play: widget.playLobbyEntrance,
+                                            holdHidden: widget.holdLobbyHidden,
                                             children: [
                                               ..._formColumn(),
                                               const SizedBox(
@@ -516,9 +531,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                         ),
                                         const SizedBox(width: 40),
                                         Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.stretch,
+                                          child: StaggeredReveal(
+                                            play: widget.playLobbyEntrance,
+                                            holdHidden: widget.holdLobbyHidden,
                                             children: _libraryColumn(
                                               savedProfiles,
                                               mostRecent,
@@ -527,9 +542,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
                                         ),
                                       ],
                                     )
-                                  : Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
+                                  : StaggeredReveal(
+                                      play: widget.playLobbyEntrance,
+                                      holdHidden: widget.holdLobbyHidden,
                                       children: [
                                         ..._formColumn(),
                                         ..._libraryColumn(

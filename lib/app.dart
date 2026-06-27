@@ -5,10 +5,13 @@ import 'core/data/settings_store.dart';
 import 'core/data/stores.dart';
 import 'core/theme/meow_context.dart';
 import 'core/theme/meow_theme.dart';
+import 'core/theme/reduce_motion.dart';
+import 'core/theme/tokens/motion.dart';
 import 'core/update/update_service.dart';
 import 'ui/connect/connect_screen.dart';
 import 'ui/home_screen.dart';
 import 'ui/launch/launch_reveal.dart';
+import 'ui/motion/fade_up_route.dart';
 import 'ui/whats_new_dialog.dart';
 
 class MeowWatchApp extends StatefulWidget {
@@ -64,6 +67,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
       widget.navigatorKey ?? GlobalKey<NavigatorState>();
 
   bool _whatsNewShown = false;
+  bool _revealSettled = false;
 
   /// Show the post-update "What's new" modal — but only once the launch reveal
   /// has settled, so it no longer pops over the animation (it used to fire from
@@ -71,6 +75,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
   /// which fires after the reveal (or, when the reveal is disabled / reduce
   /// motion is on, after the first frame).
   void _onRevealComplete() {
+    if (!_revealSettled) setState(() => _revealSettled = true);
     if (_whatsNewShown) return;
     _whatsNewShown = true;
     final entries = widget.whatsNewEntries;
@@ -88,11 +93,19 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
 
   @override
   Widget build(BuildContext context) {
+    // OS "reduce animations" makes the app-level theme melt instant, matching
+    // every other motion primitive (and the gallery's AnimatedTheme). Read it
+    // non-throwing: this context sits above MaterialApp, so a MediaQuery may be
+    // absent (`context.reduceMotion` would assert). Mirrors that getter's logic.
+    final reduceMotion = ReduceMotionScope.of(context) ||
+        (MediaQuery.maybeOf(context)?.disableAnimations ?? false);
     return MaterialApp(
       title: 'MeowWatch',
       navigatorKey: _navKey,
       debugShowCheckedModeBanner: false,
       theme: themeDataFor(_theme),
+      themeAnimationDuration: reduceMotion ? Duration.zero : Motion.slow,
+      themeAnimationCurve: Motion.emphasized,
       home: Builder(
         builder: (context) => LaunchReveal(
           enabled: widget.showLaunchReveal,
@@ -103,8 +116,14 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             settings: widget.settings,
             currentTheme: _theme,
             onThemeChanged: _setTheme,
+            playLobbyEntrance: widget.showLaunchReveal && _revealSettled,
+            holdLobbyHidden: widget.showLaunchReveal && !_revealSettled,
             onConnect: (RoomConfig config) => Navigator.of(context).push(
-              MaterialPageRoute<void>(
+              fadeUpRoute<void>(
+                reduceMotion: context.reduceMotion,
+                // A builder, not a captured widget, so the room page rebuilds
+                // with the latest [_theme] when the in-room gear switches theme
+                // (the swatch highlight tracks it) — see [fadeUpRoute].
                 builder: (_) => HomeScreen(
                   config: config,
                   history: widget.history,

@@ -32,6 +32,9 @@ void main() {
     // Let it settle so the test tears down cleanly.
     await tester.pump(const Duration(milliseconds: 2900));
     expect(find.byKey(const Key('launch-reveal-splash')), findsNothing);
+    // Drain the cold-start card cascade that fires once the splash clears, so
+    // teardown isn't left with its in-flight RevealIn timers/animations.
+    await tester.pumpAndSettle();
   });
 
   testWidgets('the What\'s-new modal waits until the reveal finishes',
@@ -45,5 +48,8 @@ void main() {
     await tester.pump(); // onComplete → showDialog
     await tester.pump(const Duration(milliseconds: 350)); // route transition
     expect(find.byType(WhatsNewDialog), findsOneWidget);
+    // Drain the cold-start card cascade so teardown isn't left with its
+    // in-flight RevealIn timers/animations.
+    await tester.pumpAndSettle();
   });
 }

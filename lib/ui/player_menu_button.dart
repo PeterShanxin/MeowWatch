@@ -8,6 +8,7 @@ import '../core/data/history_mode.dart';
 import '../core/debug/log_level.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
+import '../core/theme/reduce_motion.dart';
 import '../core/theme/tokens/icon_sizes.dart';
 import '../core/theme/tokens/motion.dart';
 import '../core/theme/tokens/radii.dart';
@@ -144,8 +145,10 @@ class PlayerMenuButton extends StatelessWidget {
         // pops the panel in with no transition otherwise.
         TweenAnimationBuilder<double>(
           tween: Tween<double>(begin: 0, end: 1),
-          duration: const Duration(milliseconds: 160),
-          curve: Motion.standard,
+          duration: context.reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 160),
+          curve: Motion.emphasized,
           builder: (context, t, child) => Opacity(
             opacity: t,
             child: Transform.translate(
