@@ -62,4 +62,46 @@ void main() {
     await tester.pump();
     expect(find.text('a'), findsOneWidget);
   });
+
+  testWidgets('preserves child state across the hidden->playing handoff',
+      (tester) async {
+    // Regression: the held->playing handoff must not swap widget shape, or a
+    // stateful child (e.g. ConnectScreen's continue-watching StreamBuilder)
+    // gets torn down and repopulates from its initialData — cards pop in.
+    _InitCounter.count = 0;
+    await tester.pumpWidget(_host(StaggeredReveal(
+      play: false,
+      holdHidden: true,
+      children: [_InitCounter()],
+    )));
+    expect(_InitCounter.count, 1); // mounted once while held
+
+    await tester.pumpWidget(_host(StaggeredReveal(
+      play: true,
+      holdHidden: false,
+      children: [_InitCounter()],
+    )));
+    await tester.pumpAndSettle();
+    // Child was not torn down at the handoff, so initState ran exactly once.
+    expect(_InitCounter.count, 1);
+  });
+}
+
+/// A stateful child that counts how many times it is mounted, to prove the
+/// hidden->playing handoff preserves (rather than recreates) its state.
+class _InitCounter extends StatefulWidget {
+  static int count = 0;
+  @override
+  State<_InitCounter> createState() => _InitCounterState();
+}
+
+class _InitCounterState extends State<_InitCounter> {
+  @override
+  void initState() {
+    super.initState();
+    _InitCounter.count++;
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }

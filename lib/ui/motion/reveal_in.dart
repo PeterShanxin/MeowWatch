@@ -10,6 +10,7 @@ import '../../core/theme/tokens/motion.dart';
 class RevealIn extends StatefulWidget {
   const RevealIn({
     required this.child,
+    this.play = true,
     this.delay = Duration.zero,
     this.offset = 16,
     this.duration = Motion.base,
@@ -19,7 +20,13 @@ class RevealIn extends StatefulWidget {
 
   final Widget child;
 
-  /// How long to wait after mount before starting (for cascades).
+  /// Whether the reveal may start. Default true: animate on first mount. Pass
+  /// false to hold [child] mounted but invisible — preserving its state — until
+  /// [play] flips true. [StaggeredReveal] uses this to keep one stable subtree
+  /// across the launch-reveal handoff so descendants are not torn down.
+  final bool play;
+
+  /// How long to wait after [play] before starting (for cascades).
   final Duration delay;
 
   /// Logical pixels the child rises from (translate-up distance).
@@ -54,11 +61,30 @@ class _RevealInState extends State<RevealIn>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _maybeKick();
+  }
+
+  @override
+  void didUpdateWidget(RevealIn old) {
+    super.didUpdateWidget(old);
+    // [play] flipping true starts a previously-held reveal (the cascade handoff).
+    _maybeKick();
+  }
+
+  /// Start the reveal once: instantly under reduce motion, otherwise on (or
+  /// [delay] past) the first build where [play] is true. While held
+  /// ([play] false) the child stays mounted but invisible, so its state
+  /// survives until the cascade hands off.
+  void _maybeKick() {
     if (_kicked) return;
-    _kicked = true;
     if (context.reduceMotion) {
+      _kicked = true;
       _c.value = 1; // instant present
-    } else if (widget.delay == Duration.zero) {
+      return;
+    }
+    if (!widget.play) return; // held — wait for [play] to flip true
+    _kicked = true;
+    if (widget.delay == Duration.zero) {
       _c.forward();
     } else {
       Future<void>.delayed(widget.delay, () {

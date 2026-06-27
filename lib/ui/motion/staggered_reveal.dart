@@ -64,14 +64,15 @@ class _StaggeredRevealState extends State<StaggeredReveal> {
     if (context.reduceMotion || (!_started && !widget.holdHidden)) {
       return _column(widget.children);
     }
-    // Held invisible (keeps layout) until the cascade starts.
-    if (!_started) {
-      return Opacity(opacity: 0, child: _column(widget.children));
-    }
-    // The cascade: each child ripples in, staggered top-to-bottom.
+    // One stable tree from the held state through the cascade, so stateful
+    // descendants (e.g. the continue-watching StreamBuilder) survive the
+    // hidden->playing handoff instead of being torn down and repopulating from
+    // their initialData. Each RevealIn holds its child invisible until [play]
+    // ([_started]), then ripples it in, staggered top-to-bottom.
     return _column([
       for (var i = 0; i < widget.children.length; i++)
         RevealIn(
+          play: _started,
           delay: widget.stagger * i,
           offset: widget.offset,
           duration: widget.itemDuration,

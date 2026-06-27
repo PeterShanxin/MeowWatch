@@ -28,6 +28,24 @@ void main() {
     expect(end.opacity, 1.0);
   });
 
+  testWidgets('play:false holds the child hidden until play flips true',
+      (tester) async {
+    await tester.pumpWidget(_host(const RevealIn(play: false, child: Text('hi'))));
+    await tester.pump(const Duration(milliseconds: 400)); // no animation runs
+    final held = tester.widget<Opacity>(
+      find.ancestor(of: find.text('hi'), matching: find.byType(Opacity)).first,
+    );
+    expect(held.opacity, 0.0);
+    expect(find.text('hi'), findsOneWidget); // mounted while held
+
+    await tester.pumpWidget(_host(const RevealIn(play: true, child: Text('hi'))));
+    await tester.pumpAndSettle();
+    final shown = tester.widget<Opacity>(
+      find.ancestor(of: find.text('hi'), matching: find.byType(Opacity)).first,
+    );
+    expect(shown.opacity, 1.0);
+  });
+
   testWidgets('reduce motion shows the child instantly at full opacity',
       (tester) async {
     await tester.pumpWidget(
