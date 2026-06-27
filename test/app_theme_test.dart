@@ -31,4 +31,24 @@ void main() {
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(app.themeAnimationDuration, Motion.slow);
   });
+
+  testWidgets('theme switch is instant under OS reduce motion', (tester) async {
+    // Override only disableAnimations on the ambient MediaQuery so the screen
+    // keeps a real size (a hand-rolled MediaQueryData defaults to Size.zero and
+    // crashes layout).
+    await tester.pumpWidget(Builder(
+      builder: (context) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(disableAnimations: true),
+        child: MeowWatchApp(
+          profiles: FakeProfileStore(),
+          history: FakeHistoryStore(),
+          settings: FakeSettingsStore(),
+          initialTheme: MeowThemeId.cozy,
+          showLaunchReveal: false,
+        ),
+      ),
+    ));
+    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(app.themeAnimationDuration, Duration.zero);
+  });
 }

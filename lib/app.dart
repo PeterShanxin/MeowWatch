@@ -93,12 +93,18 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
 
   @override
   Widget build(BuildContext context) {
+    // OS "reduce animations" makes the app-level theme melt instant, matching
+    // every other motion primitive (and the gallery's AnimatedTheme). Read it
+    // non-throwing: this context sits above MaterialApp, so a MediaQuery may be
+    // absent (`context.reduceMotion` would assert). Mirrors that getter's logic.
+    final reduceMotion = ReduceMotionScope.of(context) ||
+        (MediaQuery.maybeOf(context)?.disableAnimations ?? false);
     return MaterialApp(
       title: 'MeowWatch',
       navigatorKey: _navKey,
       debugShowCheckedModeBanner: false,
       theme: themeDataFor(_theme),
-      themeAnimationDuration: Motion.slow,
+      themeAnimationDuration: reduceMotion ? Duration.zero : Motion.slow,
       themeAnimationCurve: Motion.emphasized,
       home: Builder(
         builder: (context) => LaunchReveal(
