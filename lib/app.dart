@@ -115,7 +115,10 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             onConnect: (RoomConfig config) => Navigator.of(context).push(
               fadeUpRoute<void>(
                 reduceMotion: context.reduceMotion,
-                page: HomeScreen(
+                // A builder, not a captured widget, so the room page rebuilds
+                // with the latest [_theme] when the in-room gear switches theme
+                // (the swatch highlight tracks it) — see [fadeUpRoute].
+                builder: (_) => HomeScreen(
                   config: config,
                   history: widget.history,
                   settings: widget.settings,
