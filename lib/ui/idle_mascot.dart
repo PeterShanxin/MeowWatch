@@ -3,14 +3,22 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../core/theme/meow_context.dart';
+import '../core/theme/reduce_motion.dart';
 
 /// A hand-painted sitting cat that idles on the empty screen so MeowWatch feels
 /// alive while waiting for a video. Theme-aware (drawn in the active accent),
 /// and animated: it breathes, its tail wags, an ear twitches, and it blinks.
+///
+/// It quiets to a calm, level rest frame when [animate] is false or when reduce
+/// motion is on — a still cat rather than a frozen mid-breath one.
 class IdleMascot extends StatefulWidget {
-  const IdleMascot({this.size = 128, super.key});
+  const IdleMascot({this.size = 128, this.animate = true, super.key});
 
   final double size;
+
+  /// Whether the cat breathes/wags/blinks. Pass false to hold it still (e.g.
+  /// once a video is playing); reduce motion also holds it regardless.
+  final bool animate;
 
   @override
   State<IdleMascot> createState() => _IdleMascotState();
@@ -18,15 +26,34 @@ class IdleMascot extends StatefulWidget {
 
 class _IdleMascotState extends State<IdleMascot>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 4000),
+  );
 
   @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 4000),
-    )..repeat();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync(); // reduce-motion may have changed
+  }
+
+  @override
+  void didUpdateWidget(IdleMascot old) {
+    super.didUpdateWidget(old);
+    if (old.animate != widget.animate) _sync();
+  }
+
+  /// Run the idle loop while idle; hold a calm, level rest frame (value 0:
+  /// level breath, centred tail, eyes open) when asked not to animate or when
+  /// reduce motion is on.
+  void _sync() {
+    if (widget.animate && !context.reduceMotion) {
+      if (!_controller.isAnimating) _controller.repeat();
+    } else {
+      _controller
+        ..stop()
+        ..value = 0;
+    }
   }
 
   @override
