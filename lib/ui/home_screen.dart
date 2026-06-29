@@ -23,6 +23,7 @@ import '../core/sync/auto_pause.dart';
 import '../core/sync/file_match.dart';
 import '../core/sync/join_prompt.dart';
 import '../core/sync/loaded_file_message.dart';
+import '../core/sync/loaded_notice.dart';
 import '../core/sync/presence_messages.dart';
 import '../core/sync/room_greeting.dart';
 import '../core/sync/peer_files.dart';
@@ -1135,6 +1136,16 @@ class _HomeScreenState extends State<HomeScreen> {
     // `dispose()` doesn't bump the generation, so guard on `mounted` too.
     if (gen != _loadGeneration || !mounted) return false;
     _addLoadedFileMessage();
+    // Brief over-video confirmation that the load landed and we're in sync with
+    // a friend (the chat line is easy to miss on the video). Silent solo or on a
+    // mismatch — see [loadedInSyncNotice].
+    final notice = loadedInSyncNotice(
+      syncHealthy: _syncHealthyNow,
+      fileMismatch: _fileMismatchBanner != null,
+    );
+    if (notice != null && mounted) {
+      setState(() => _showTransientNotice(notice));
+    }
     return true;
   }
 
