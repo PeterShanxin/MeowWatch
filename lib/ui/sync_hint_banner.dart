@@ -32,10 +32,13 @@ class SyncHintBanner extends StatelessWidget {
       transitionBuilder: (child, animation) => FadeTransition(
         opacity: animation,
         child: SlideTransition(
-          // Enters from just above and drops into place; the outgoing notice
-          // reverses (slides back up) as it fades.
+          // Drops in from above and the outgoing notice reverses (slides back
+          // up) as it fades. The travel is a full pill-height so that even a
+          // swap from one notice straight to another — overlapping opaque pills
+          // in the same slot — reads as a clear in/out move, not an in-place
+          // text flip (#178 follow-up).
           position: Tween<Offset>(
-            begin: const Offset(0, -0.3),
+            begin: const Offset(0, -1.0),
             end: Offset.zero,
           ).animate(animation),
           child: child,
