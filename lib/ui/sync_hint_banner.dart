@@ -7,80 +7,69 @@ import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 
-/// The pill shown over the video for a transient sync notice ("friend joined",
-/// "you're in sync", a file mismatch, …). It slides down a touch and fades in
-/// with a gentle [Motion.springy] settle when it first appears, so a notice
-/// never hard-cuts onto the screen.
+/// The slot that shows the transient over-video notice ("friend joined", "you're
+/// in sync", a file mismatch, the waiting hint, …). There's only ever one at a
+/// time; pass the current [text], or null when there's nothing to say.
 ///
-/// Key it on its text at the call site (`SyncHintBanner(key: ValueKey(text), …)`)
-/// so a new notice re-mounts and replays the entrance. Honors reduce motion:
-/// when on, it is present immediately, fully settled, with no slide.
-class SyncHintBanner extends StatefulWidget {
+/// Every change animates: a new notice **slides down + fades in**, the old one
+/// **slides up + fades out**, and swapping one notice for another cross-fades
+/// between them — so a notice never hard-cuts on or off the screen. Honors reduce
+/// motion: swaps are instant.
+class SyncHintBanner extends StatelessWidget {
   const SyncHintBanner({required this.text, super.key});
 
-  final String text;
+  /// The notice to show, or null to show nothing (animating any current notice
+  /// out).
+  final String? text;
 
   @override
-  State<SyncHintBanner> createState() => _SyncHintBannerState();
+  Widget build(BuildContext context) {
+    final reduce = context.reduceMotion;
+    return AnimatedSwitcher(
+      duration: reduce ? Duration.zero : Motion.base,
+      switchInCurve: Motion.standard,
+      switchOutCurve: Motion.standard,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          // Enters from just above and drops into place; the outgoing notice
+          // reverses (slides back up) as it fades.
+          position: Tween<Offset>(
+            begin: const Offset(0, -0.3),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      child: text == null
+          ? const SizedBox.shrink(key: ValueKey<String>('_sync-banner-empty'))
+          : _BannerPill(key: ValueKey<String>(text!), text: text!),
+    );
+  }
 }
 
-class _SyncHintBannerState extends State<SyncHintBanner>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: Motion.base);
-  late final CurvedAnimation _curve =
-      CurvedAnimation(parent: _c, curve: Motion.springy);
+class _BannerPill extends StatelessWidget {
+  const _BannerPill({required this.text, super.key});
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (context.reduceMotion) {
-      _c.value = 1; // instant, fully settled
-    } else if (_c.status == AnimationStatus.dismissed) {
-      _c.forward();
-    }
-  }
-
-  @override
-  void dispose() {
-    _curve.dispose();
-    _c.dispose();
-    super.dispose();
-  }
+  final String text;
 
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
     return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _curve,
-        builder: (context, child) {
-          final t = _curve.value;
-          return Opacity(
-            // springy can overshoot past 1; opacity must stay in range.
-            opacity: t.clamp(0.0, 1.0),
-            // Starts ~12px above and drops into place (springy dips slightly
-            // past 0 then settles).
-            child: Transform.translate(
-              offset: Offset(0, (t - 1) * 12),
-              child: child,
-            ),
-          );
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: Spacing.lg,
-            vertical: Spacing.sm,
-          ),
-          decoration: BoxDecoration(
-            color: m.background.withValues(alpha: 0.80),
-            borderRadius: BorderRadius.circular(Radii.xl),
-            border: Border.all(color: m.border),
-          ),
-          child: Text(
-            widget.text,
-            style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
-          ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.lg,
+          vertical: Spacing.sm,
+        ),
+        decoration: BoxDecoration(
+          color: m.background.withValues(alpha: 0.80),
+          borderRadius: BorderRadius.circular(Radii.xl),
+          border: Border.all(color: m.border),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
         ),
       ),
     );

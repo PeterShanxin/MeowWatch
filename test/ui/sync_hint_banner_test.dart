@@ -5,52 +5,67 @@ import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/core/theme/reduce_motion.dart';
 import 'package:meowwatch/ui/sync_hint_banner.dart';
 
-double _opacity(WidgetTester tester) => tester
-    .widget<Opacity>(find.descendant(
-      of: find.byType(SyncHintBanner),
-      matching: find.byType(Opacity),
-    ))
-    .opacity;
-
-double _offsetY(WidgetTester tester) => tester
-    .widget<Transform>(find.descendant(
-      of: find.byType(SyncHintBanner),
-      matching: find.byType(Transform),
-    ))
-    .transform
-    .getTranslation()
-    .y;
-
-Widget _host({required Widget child, bool reduceMotion = false}) => MaterialApp(
+Widget _host(ValueNotifier<String?> text, {bool reduceMotion = false}) =>
+    MaterialApp(
       theme: themeDataFor(MeowThemeId.cozy),
       home: Scaffold(
         body: Center(
-          child: ReduceMotionScope(reduceMotion: reduceMotion, child: child),
+          child: ReduceMotionScope(
+            reduceMotion: reduceMotion,
+            child: ValueListenableBuilder<String?>(
+              valueListenable: text,
+              builder: (_, t, __) => SyncHintBanner(text: t),
+            ),
+          ),
         ),
       ),
     );
 
 void main() {
-  testWidgets('slides down + fades in, then settles', (tester) async {
-    await tester.pumpWidget(_host(child: const SyncHintBanner(text: 'hi')));
-    await tester.pump(); // first frame: entrance just started
+  testWidgets('animates a notice in, then out (no hard cut)', (tester) async {
+    final text = ValueNotifier<String?>(null);
+    addTearDown(text.dispose);
+    await tester.pumpWidget(_host(text));
+    expect(find.text('hi'), findsNothing);
 
-    expect(_opacity(tester), lessThan(1.0)); // fading in
-    expect(_offsetY(tester), lessThan(0.0)); // started above its resting spot
-
+    text.value = 'hi';
+    await tester.pump(); // start the in-animation
     await tester.pumpAndSettle();
-    expect(_opacity(tester), 1.0);
-    expect(_offsetY(tester), closeTo(0.0, 0.001)); // settled into place
     expect(find.text('hi'), findsOneWidget);
+
+    text.value = null;
+    await tester.pump(const Duration(milliseconds: 50)); // mid out-animation
+    expect(find.text('hi'), findsOneWidget,
+        reason: 'still sliding/fading out, not hard-cut');
+    await tester.pumpAndSettle();
+    expect(find.text('hi'), findsNothing);
   });
 
-  testWidgets('reduce motion: present immediately, no slide', (tester) async {
-    await tester.pumpWidget(
-      _host(reduceMotion: true, child: const SyncHintBanner(text: 'hi')),
-    );
-    await tester.pump();
+  testWidgets('cross-fades between two notices', (tester) async {
+    final text = ValueNotifier<String?>('first');
+    addTearDown(text.dispose);
+    await tester.pumpWidget(_host(text));
+    await tester.pumpAndSettle();
+    expect(find.text('first'), findsOneWidget);
 
-    expect(_opacity(tester), 1.0);
-    expect(_offsetY(tester), closeTo(0.0, 0.001));
+    text.value = 'second';
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('first'), findsOneWidget); // outgoing still present
+    expect(find.text('second'), findsOneWidget); // incoming present
+    await tester.pumpAndSettle();
+    expect(find.text('first'), findsNothing);
+    expect(find.text('second'), findsOneWidget);
+  });
+
+  testWidgets('reduce motion: instant swap, no lingering exit', (tester) async {
+    final text = ValueNotifier<String?>('hi');
+    addTearDown(text.dispose);
+    await tester.pumpWidget(_host(text, reduceMotion: true));
+    await tester.pump();
+    expect(find.text('hi'), findsOneWidget);
+
+    text.value = null;
+    await tester.pump();
+    expect(find.text('hi'), findsNothing); // gone instantly
   });
 }

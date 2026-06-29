@@ -1505,16 +1505,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     // Banner + chat show even before a video is loaded, so the
                     // "waiting / friend joined" notices and chat history are
                     // visible on the load-video screen (not just while watching).
-                    if (hint != null)
-                      Align(
-                        alignment: const Alignment(0, -0.8),
-                        // Key on the text so a new notice re-mounts and replays
-                        // the slide-in entrance.
-                        child: SyncHintBanner(
-                          key: ValueKey<String>(hint),
-                          text: hint,
-                        ),
-                      ),
+                    // Always mounted: SyncHintBanner animates the notice in, out,
+                    // and between changes (null = nothing shown).
+                    Align(
+                      alignment: const Alignment(0, -0.8),
+                      child: SyncHintBanner(text: hint),
+                    ),
                     AnimatedOpacity(
                       opacity: chatOpacity,
                       duration: Motion.base,
