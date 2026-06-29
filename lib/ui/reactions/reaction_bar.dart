@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/tokens/icon_sizes.dart';
+import '../../core/theme/tokens/motion.dart';
 import '../../core/theme/tokens/radii.dart';
 import '../../core/theme/tokens/spacing.dart';
 
@@ -35,8 +36,8 @@ class _ReactionBarState extends State<ReactionBar> {
       mainAxisSize: MainAxisSize.min,
       children: [
         AnimatedSize(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOut,
+          duration: Motion.base,
+          curve: Motion.standard,
           child: _open
               ? Container(
                   margin: const EdgeInsets.only(right: Spacing.sm),
