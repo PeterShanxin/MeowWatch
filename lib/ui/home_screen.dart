@@ -57,6 +57,7 @@ import 'player_menu_button.dart';
 import 'reactions/floating_reactions.dart';
 import 'reactions/reaction_bar.dart';
 import 'sync_activity_text.dart';
+import 'sync_hint_banner.dart';
 import 'video_error_state.dart';
 import 'video_surface.dart';
 
@@ -1496,7 +1497,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (hint != null)
                       Align(
                         alignment: const Alignment(0, -0.8),
-                        child: _SyncHintBanner(text: hint),
+                        // Key on the text so a new notice re-mounts and replays
+                        // the slide-in entrance.
+                        child: SyncHintBanner(
+                          key: ValueKey<String>(hint),
+                          text: hint,
+                        ),
                       ),
                     AnimatedOpacity(
                       opacity: chatOpacity,
@@ -1669,34 +1675,6 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SyncHintBanner extends StatelessWidget {
-  const _SyncHintBanner({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final m = context.meow;
-    return IgnorePointer(
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.lg,
-          vertical: Spacing.sm,
-        ),
-        decoration: BoxDecoration(
-          color: m.background.withValues(alpha: 0.80),
-          borderRadius: BorderRadius.circular(Radii.xl),
-          border: Border.all(color: m.border),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
         ),
       ),
     );
