@@ -47,6 +47,16 @@ void main() {
     // ...and harder than the gentle springy beat.
     expect(popPeak, greaterThan(springyPeak));
   });
+
+  test('anticipate winds up backward (dips below 0) then settles to 1', () {
+    var min = 1.0;
+    for (var i = 0; i <= 100; i++) {
+      final v = Motion.anticipate.transform(i / 100);
+      if (v < min) min = v;
+    }
+    expect(min, lessThan(0.0)); // the backward wind-up
+    expect(Motion.anticipate.transform(1.0), closeTo(1.0, 0.001));
+  });
 }
 
 /// Highest value a curve reaches across its [0,1] sweep — used to compare

@@ -49,4 +49,10 @@ abstract final class Motion {
   /// itself bounce). Never reuse this for everyday UI — that's what [springy]
   /// and [standard] are for.
   static const Curve elasticPop = Cubic(0.2, 1.5, 0.4, 1.0);
+
+  /// "Anticipation" (a Disney principle): a hero element winds up slightly the
+  /// opposite way before its main move. The auto-hiding playback bar uses it on
+  /// hide — a small upward dip before it drops away. Deliberately a *hint* (a
+  /// milder backward wind-up than Curves.easeInBack).
+  static const Curve anticipate = Cubic(0.36, 0.0, 0.66, -0.30);
 }
