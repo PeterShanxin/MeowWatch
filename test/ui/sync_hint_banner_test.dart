@@ -14,7 +14,7 @@ Widget _host(ValueNotifier<String?> text, {bool reduceMotion = false}) =>
             reduceMotion: reduceMotion,
             child: ValueListenableBuilder<String?>(
               valueListenable: text,
-              builder: (_, t, __) => SyncHintBanner(text: t),
+              builder: (_, t, _) => SyncHintBanner(text: t),
             ),
           ),
         ),

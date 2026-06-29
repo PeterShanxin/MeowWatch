@@ -15,7 +15,7 @@ const _sample = PlaybackState(
 double _thumbR(WidgetTester tester) =>
     (tester.widget<SliderTheme>(find.byType(SliderTheme)).data.thumbShape
             as RoundSliderThumbShape)
-        .enabledThumbRadius!;
+        .enabledThumbRadius;
 
 void main() {
   test('scrubber metrics grow from rest to active', () {
