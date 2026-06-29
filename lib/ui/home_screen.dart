@@ -1135,14 +1135,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _announceLoadedFile(path, sizeBytes: size);
     // `dispose()` doesn't bump the generation, so guard on `mounted` too.
     if (gen != _loadGeneration || !mounted) return false;
-    _addLoadedFileMessage();
-    // Brief over-video confirmation that the load landed and we're in sync with
-    // a friend (the chat line is easy to miss on the video). Silent solo or on a
-    // mismatch — see [loadedInSyncNotice].
-    final notice = loadedInSyncNotice(
-      syncHealthy: _syncHealthyNow,
-      fileMismatch: _fileMismatchBanner != null,
+    // Compare against the peer's announced file once; both the chat line and the
+    // over-video banner key off the same verdict so they can't contradict (#178).
+    final match = compareFiles(
+      localName: _core.state.fileName,
+      localSize: _localFileSizeBytes,
+      peerName: _peerFile?.name,
+      peerSize: _peerFile?.sizeBytes,
     );
+    _addLoadedFileMessage(match);
+    // Brief over-video confirmation that the load landed and we're in sync with
+    // a friend (the chat line is easy to miss on the video). Silent solo, while a
+    // friend hasn't loaded yet, or on a mismatch — see [loadedInSyncNotice].
+    final notice = loadedInSyncNotice(match: match);
     if (notice != null && mounted) {
       setState(() => _showTransientNotice(notice));
     }
@@ -1152,15 +1157,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Append a "Loaded …" system line to chat. Shows "in sync!" when the peer's
   /// file matches ours; otherwise just names the file. Replaces the misleading
   /// "jumped to 00:00" that appeared on first load (#91).
-  void _addLoadedFileMessage() {
+  void _addLoadedFileMessage(FileMatch match) {
     final fileName = _core.state.fileName;
     if (fileName == null) return;
-    final match = compareFiles(
-      localName: fileName,
-      localSize: _localFileSizeBytes,
-      peerName: _peerFile?.name,
-      peerSize: _peerFile?.sizeBytes,
-    );
     // Match on the full name (URL identity); show the short label in chat.
     _chat.addSystem(
       loadedFileMessage(fileName: mediaDisplayName(fileName), match: match),
