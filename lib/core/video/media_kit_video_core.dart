@@ -372,10 +372,21 @@ class MediaKitVideoCore extends VideoCore {
   /// Best-effort: a failed stop/volume call must not crash the (fire-and-forget)
   /// leave path nor reject [_pendingReset], which [load] awaits.
   Future<void> _doReset() async {
+    // Eagerly-flushed teardown markers (#176): the intermittent leave-room freeze
+    // hard-deadlocks on this path with no thrown exception, so the LAST marker
+    // that reaches disk localizes the blocking call. `life:` lines are flushed
+    // per write (unlike the buffered `trace:` firehose), so they survive a freeze
+    // where the next buffered line would be lost. Diagnostics only — `appLog` is
+    // crash-proof by contract and never throws back into this teardown.
+    appLog('life: reset stop begin');
     try {
       await _player.stop();
+      appLog('life: reset stop done');
       await _player.setVolume(100.0);
-    } catch (_) {}
+      appLog('life: reset volume done');
+    } catch (e) {
+      appLog('life: reset error ${redactUrls('$e')}');
+    }
   }
 
   @override
