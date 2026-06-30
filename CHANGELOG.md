@@ -10,6 +10,35 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.38.0-alpha] - 2026-06-30
+
+> The room comes alive — notices slide, reactions pop, controls press back.
+
+### Added
+- A quick **"Loaded — in sync!"** confirmation now appears over the video when
+  you load a file and you're synced up with a friend.
+- Entering a room where a friend is already waiting now greets you with a
+  **"🐾 … is here"** banner, not just a line in chat.
+
+### Improved
+- Friend join/leave and sync notices now **slide in and settle** instead of
+  blinking onto the screen.
+- Paw reactions **pop with a little bounce** and **drift up along an arc**.
+- The playback bar **slides away with a hint of wind-up** when it auto-hides,
+  and slides back the moment you move the mouse.
+- Buttons and the in-room controls now **press in slightly when tapped**, so
+  clicks feel tactile.
+- The scrubber thumb **grows while you drag or click** it, so it's easier to
+  see where you're seeking.
+- The idle cat settles to a **calm, still pose** when your system's "reduce
+  animations" setting is on.
+
+### Fixed
+- The **"Loaded — in sync!"** confirmation no longer appears when your friend
+  hasn't loaded the same video yet (#178).
+- No more brief **"Disconnected"** or **"Connecting…"** banner flashing past
+  when you enter or leave a room.
+
 ## [0.37.0-alpha] - 2026-06-27
 
 > The lobby comes alive — cards ripple in, rooms rise and fade.

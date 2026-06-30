@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:meowwatch/core/theme/reduce_motion.dart';
 import 'package:meowwatch/ui/instant_tap_icon.dart';
 
 Widget _wrap(Widget child) =>
     MaterialApp(home: Scaffold(body: Center(child: child)));
+
+double _scale(WidgetTester tester) => tester
+    .widget<AnimatedScale>(find.descendant(
+      of: find.byType(InstantTapIcon),
+      matching: find.byType(AnimatedScale),
+    ))
+    .scale;
 
 void main() {
   group('InstantTapIcon', () {
@@ -32,6 +40,52 @@ void main() {
 
       await gesture.up();
       await tester.pump(const Duration(milliseconds: 400));
+    });
+
+    testWidgets('squashes on press, restores on release, still fires on down',
+        (tester) async {
+      var pressed = 0;
+      await tester.pumpWidget(_wrap(InstantTapIcon(
+        icon: Icons.play_arrow_rounded,
+        onPressed: () => pressed++,
+      )));
+      expect(_scale(tester), 1.0);
+
+      final gesture = await tester
+          .startGesture(tester.getCenter(find.byType(InstantTapIcon)));
+      await tester.pump();
+      expect(pressed, 1); // fired on down, no arena wait
+      expect(_scale(tester), lessThan(1.0)); // squashed
+
+      await gesture.up();
+      await tester.pump();
+      expect(_scale(tester), 1.0); // restored
+      await tester.pumpAndSettle(); // drain the scale animation
+    });
+
+    testWidgets('reduce motion: fires on down with no squash', (tester) async {
+      var pressed = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: ReduceMotionScope(
+              reduceMotion: true,
+              child: InstantTapIcon(
+                icon: Icons.play_arrow_rounded,
+                onPressed: () => pressed++,
+              ),
+            ),
+          ),
+        ),
+      ));
+
+      final gesture = await tester
+          .startGesture(tester.getCenter(find.byType(InstantTapIcon)));
+      await tester.pump();
+      expect(pressed, 1);
+      expect(_scale(tester), 1.0); // no squash under reduce motion
+      await gesture.up();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('Enter activates it when focused (keyboard parity)',

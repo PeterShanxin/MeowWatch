@@ -31,4 +31,41 @@ void main() {
     expect(Motion.emphasizedAccelerate, const Cubic(0.3, 0.0, 0.8, 0.15));
     expect(Motion.springy, const Cubic(0.34, 1.26, 0.64, 1.0));
   });
+
+  test('xfast is the press/hover feedback duration, shorter than fast', () {
+    expect(Motion.xfast, const Duration(milliseconds: 80));
+    expect(Motion.xfast < Motion.fast, isTrue);
+  });
+
+  test('elasticPop overshoots harder than springy (the one squash-&-stretch)',
+      () {
+    expect(Motion.elasticPop, const Cubic(0.2, 1.5, 0.4, 1.0));
+    final popPeak = _peak(Motion.elasticPop);
+    final springyPeak = _peak(Motion.springy);
+    // It actually overshoots past 1.0...
+    expect(popPeak, greaterThan(1.05));
+    // ...and harder than the gentle springy beat.
+    expect(popPeak, greaterThan(springyPeak));
+  });
+
+  test('anticipate winds up backward (dips below 0) then settles to 1', () {
+    var min = 1.0;
+    for (var i = 0; i <= 100; i++) {
+      final v = Motion.anticipate.transform(i / 100);
+      if (v < min) min = v;
+    }
+    expect(min, lessThan(0.0)); // the backward wind-up
+    expect(Motion.anticipate.transform(1.0), closeTo(1.0, 0.001));
+  });
+}
+
+/// Highest value a curve reaches across its [0,1] sweep — used to compare
+/// overshoot strength between two cubics.
+double _peak(Curve c) {
+  var peak = 0.0;
+  for (var i = 0; i <= 100; i++) {
+    final v = c.transform(i / 100);
+    if (v > peak) peak = v;
+  }
+  return peak;
 }

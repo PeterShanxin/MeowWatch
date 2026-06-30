@@ -2,6 +2,10 @@ import 'package:flutter/animation.dart';
 
 /// Animation speeds + easings. Global across themes.
 abstract final class Motion {
+  /// The snappiest token — press-down / hover feedback, where any perceptible
+  /// delay would feel laggy. Used by [PressableScale]'s press scale.
+  static const Duration xfast = Duration(milliseconds: 80);
+
   static const Duration fast = Duration(milliseconds: 120);
   static const Duration base = Duration(milliseconds: 200);
   static const Duration slow = Duration(milliseconds: 320);
@@ -39,4 +43,16 @@ abstract final class Motion {
   /// for the one playful beat (the mark settling in). Deliberately gentle, not
   /// elastic.
   static const Curve springy = Cubic(0.34, 1.26, 0.64, 1.0);
+
+  /// The one true squash-&-stretch beat: a stronger overshoot than [springy],
+  /// scoped to the floating paw-reaction burst (the only place the app lets
+  /// itself bounce). Never reuse this for everyday UI — that's what [springy]
+  /// and [standard] are for.
+  static const Curve elasticPop = Cubic(0.2, 1.5, 0.4, 1.0);
+
+  /// "Anticipation" (a Disney principle): a hero element winds up slightly the
+  /// opposite way before its main move. The auto-hiding playback bar uses it on
+  /// hide — a small upward dip before it drops away. Deliberately a *hint* (a
+  /// milder backward wind-up than Curves.easeInBack).
+  static const Curve anticipate = Cubic(0.36, 0.0, 0.66, -0.30);
 }

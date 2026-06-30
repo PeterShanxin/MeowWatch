@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../core/theme/reduce_motion.dart';
 import '../core/theme/tokens/motion.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/playback_state.dart';
@@ -262,17 +263,27 @@ class _VideoSurfaceState extends State<VideoSurface> {
                     final state = snapshot.data!;
                     final visible =
                         !widget.isUiIdle || state.status != PlaybackStatus.playing;
+                    final reduceMotion = context.reduceMotion;
+                    final dur = reduceMotion ? Duration.zero : Motion.base;
                     return IgnorePointer(
                       ignoring: !visible,
-                      child: AnimatedOpacity(
-                        opacity: visible ? 1.0 : 0.0,
-                        duration: Motion.base,
-                        child: PlaybackBar(
-                          state: state,
-                          onSeek: widget.core.seek,
-                          onTogglePlay: _togglePlay,
-                          onToggleMute: _toggleMute,
-                          onSetVolume: _setVolume,
+                      // Slide down + fade out on hide, with a hint of anticipation
+                      // (a small upward wind-up before it drops); snappy on show.
+                      child: AnimatedSlide(
+                        offset: visible ? Offset.zero : const Offset(0, 0.35),
+                        duration: dur,
+                        curve: visible ? Motion.standard : Motion.anticipate,
+                        child: AnimatedOpacity(
+                          opacity: visible ? 1.0 : 0.0,
+                          duration: dur,
+                          curve: Motion.standard,
+                          child: PlaybackBar(
+                            state: state,
+                            onSeek: widget.core.seek,
+                            onTogglePlay: _togglePlay,
+                            onToggleMute: _toggleMute,
+                            onSetVolume: _setVolume,
+                          ),
                         ),
                       ),
                     );

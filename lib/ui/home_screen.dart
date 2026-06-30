@@ -23,8 +23,10 @@ import '../core/sync/auto_pause.dart';
 import '../core/sync/file_match.dart';
 import '../core/sync/join_prompt.dart';
 import '../core/sync/loaded_file_message.dart';
+import '../core/sync/loaded_notice.dart';
 import '../core/sync/presence_messages.dart';
 import '../core/sync/room_greeting.dart';
+import '../core/sync/roster_banner.dart';
 import '../core/sync/peer_files.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
@@ -57,6 +59,7 @@ import 'player_menu_button.dart';
 import 'reactions/floating_reactions.dart';
 import 'reactions/reaction_bar.dart';
 import 'sync_activity_text.dart';
+import 'sync_hint_banner.dart';
 import 'video_error_state.dart';
 import 'video_surface.dart';
 
@@ -107,7 +110,10 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Duration _notifyThrottle = Duration(seconds: 2);
   final Stopwatch _notifyClock = Stopwatch();
 
-  SyncConnectionStatus _syncStatus = SyncConnectionStatus.disconnected;
+  // Start as "connecting", not "disconnected": entering a room immediately
+  // begins a connection, so the first frame should read "Connecting to room …"
+  // rather than flashing "Disconnected from room …" before the socket dials.
+  SyncConnectionStatus _syncStatus = SyncConnectionStatus.connecting;
   String? _syncError;
   final Set<String> _peers = <String>{};
   StreamSubscription<SyncConnectionState>? _connSub;
@@ -580,7 +586,13 @@ class _HomeScreenState extends State<HomeScreen> {
       _chat.addSystem(t.chatLine);
     });
     _rosterSub = _sync.initialRoster.listen((members) {
-      if (mounted) _chat.addSystem(roomGreeting(members));
+      if (!mounted) return;
+      _chat.addSystem(roomGreeting(members));
+      // Friends already in the room when you arrive get a banner too, not just
+      // the chat greeting (easy to miss on the video). Live joins after this are
+      // handled by the presence handler above.
+      final banner = rosterPresenceBanner(members);
+      if (banner != null) setState(() => _showTransientNotice(banner));
     });
     _noticeSub = _core.stateStream.listen((s) {
       if (!mounted) return;
@@ -999,6 +1011,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// auto-pause reason, then a "friend hasn't loaded a video" heads-up, then the
   /// plain waiting/connect hint.
   String? get _banner {
+    // Once leaving is committed, suppress every hint — the socket teardown can
+    // briefly flip status to "Connecting…/Disconnected" and we don't want that
+    // flashing over the video during the leave + route-exit animation.
+    if (_leavingRoom) return null;
     if (_presenceNotice != null) return _presenceNotice;
     final mismatch = _fileMismatchBanner;
     if (mismatch != null) return mismatch;
@@ -1133,22 +1149,31 @@ class _HomeScreenState extends State<HomeScreen> {
     _announceLoadedFile(path, sizeBytes: size);
     // `dispose()` doesn't bump the generation, so guard on `mounted` too.
     if (gen != _loadGeneration || !mounted) return false;
-    _addLoadedFileMessage();
+    // Compare against the peer's announced file once; both the chat line and the
+    // over-video banner key off the same verdict so they can't contradict (#178).
+    final match = compareFiles(
+      localName: _core.state.fileName,
+      localSize: _localFileSizeBytes,
+      peerName: _peerFile?.name,
+      peerSize: _peerFile?.sizeBytes,
+    );
+    _addLoadedFileMessage(match);
+    // Brief over-video confirmation that the load landed and we're in sync with
+    // a friend (the chat line is easy to miss on the video). Silent solo, while a
+    // friend hasn't loaded yet, or on a mismatch — see [loadedInSyncNotice].
+    final notice = loadedInSyncNotice(match: match);
+    if (notice != null && mounted) {
+      setState(() => _showTransientNotice(notice));
+    }
     return true;
   }
 
   /// Append a "Loaded …" system line to chat. Shows "in sync!" when the peer's
   /// file matches ours; otherwise just names the file. Replaces the misleading
   /// "jumped to 00:00" that appeared on first load (#91).
-  void _addLoadedFileMessage() {
+  void _addLoadedFileMessage(FileMatch match) {
     final fileName = _core.state.fileName;
     if (fileName == null) return;
-    final match = compareFiles(
-      localName: fileName,
-      localSize: _localFileSizeBytes,
-      peerName: _peerFile?.name,
-      peerSize: _peerFile?.sizeBytes,
-    );
     // Match on the full name (URL identity); show the short label in chat.
     _chat.addSystem(
       loadedFileMessage(fileName: mediaDisplayName(fileName), match: match),
@@ -1232,7 +1257,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _leave() async {
     if (_leavingRoom) return;
-    _leavingRoom = true;
+    // setState so the banner clears this frame (see [_banner]) — the resume-save
+    // await below holds the room on screen for up to 600ms before we pop.
+    if (mounted) {
+      setState(() => _leavingRoom = true);
+    } else {
+      _leavingRoom = true;
+    }
     appLog('life: leave room (button)');
     _historyTimer?.cancel();
     if (isPlaybackOpen(_core.state)) {
@@ -1452,14 +1483,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
                 return Stack(
                   fit: StackFit.expand,
+                  // Every child carries a stable key. The conditional children
+                  // (reactions overlay, reaction bar) insert/remove as a video
+                  // loads/unloads, shifting later children's positions; without
+                  // keys Flutter re-matches by index and destroys+rebuilds the
+                  // shifted elements — which reset SyncHintBanner's AnimatedSwitcher
+                  // (notices then hard-cut in) and ChatOverlay's state on every
+                  // load. Keys keep each element's identity across the reshuffle.
                   children: [
                     DecoratedBox(
+                      key: const ValueKey<String>('room-bg'),
                       decoration: m.backgroundGradient != null
                           ? BoxDecoration(gradient: m.backgroundGradient)
                           : BoxDecoration(color: m.background),
                     ),
                     if (state.fileName == null)
                       EmptyState(
+                        key: const ValueKey<String>('empty-state'),
                         onBrowse: _browse,
                         onLeave: () => unawaited(_leave()),
                         onLoadUrl: (url) => unawaited(_load(url)),
@@ -1467,6 +1507,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       )
                     else if (state.status == PlaybackStatus.error)
                       VideoErrorState(
+                        key: const ValueKey<String>('video-error'),
                         message: friendlyPlaybackError(
                           isUrl: isHttpUrl(state.filePath ?? ''),
                         ),
@@ -1479,6 +1520,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       )
                     else
                       VideoSurface(
+                        key: const ValueKey<String>('video-surface'),
                         core: _core,
                         focusNode: _videoFocus,
                         isUiIdle: _isUiIdle,
@@ -1486,6 +1528,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     if (videoVisible)
                       Positioned.fill(
+                        key: const ValueKey<String>('reactions-overlay'),
                         child: FloatingReactionsOverlay(
                           emojis: _reactionFeed.stream,
                         ),
@@ -1493,12 +1536,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     // Banner + chat show even before a video is loaded, so the
                     // "waiting / friend joined" notices and chat history are
                     // visible on the load-video screen (not just while watching).
-                    if (hint != null)
-                      Align(
-                        alignment: const Alignment(0, -0.8),
-                        child: _SyncHintBanner(text: hint),
-                      ),
+                    // Always mounted: SyncHintBanner animates the notice in, out,
+                    // and between changes (null = nothing shown).
+                    Align(
+                      key: const ValueKey<String>('sync-hint'),
+                      alignment: const Alignment(0, -0.8),
+                      child: SyncHintBanner(text: hint),
+                    ),
                     AnimatedOpacity(
+                      key: const ValueKey<String>('chat-overlay'),
                       opacity: chatOpacity,
                       duration: Motion.base,
                       child: IgnorePointer(
@@ -1547,6 +1593,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     Positioned(
+                      key: const ValueKey<String>('player-menu'),
                       top: 12,
                       left: 12,
                       // Fade the gear out while the chat card is being dragged so
@@ -1642,6 +1689,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     if (videoVisible)
                       Positioned(
+                        key: const ValueKey<String>('reaction-bar'),
                         right: 16,
                         bottom: 84,
                         child: AnimatedOpacity(
@@ -1656,6 +1704,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     // Load-screen "Press Tab" hint — a self-fading bottom toast.
                     if (_chatHintToken != null)
                       Align(
+                        key: const ValueKey<String>('chat-tab-hint'),
                         alignment: const Alignment(0, 0.92),
                         child: _FadingToast(
                           key: ValueKey<int>(_chatHintToken!),
@@ -1669,34 +1718,6 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SyncHintBanner extends StatelessWidget {
-  const _SyncHintBanner({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final m = context.meow;
-    return IgnorePointer(
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.lg,
-          vertical: Spacing.sm,
-        ),
-        decoration: BoxDecoration(
-          color: m.background.withValues(alpha: 0.80),
-          borderRadius: BorderRadius.circular(Radii.xl),
-          border: Border.all(color: m.border),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
         ),
       ),
     );

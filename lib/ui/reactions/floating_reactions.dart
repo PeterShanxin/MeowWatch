@@ -1,9 +1,25 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/theme/reduce_motion.dart';
 import '../../core/theme/tokens/icon_sizes.dart';
+import '../../core/theme/tokens/motion.dart';
+
+/// Pop-in scale for a reaction burst at animation progress [t] (0..1). It
+/// overshoots past 1.0 — the one squash-&-stretch beat the app allows
+/// ([Motion.elasticPop]) — then settles to 1.0. The pop happens in the first
+/// quarter of the rise. Reduce motion skips this path entirely (the burst is
+/// presented settled), so there's no reduce-motion variant here.
+double reactionPopScale(double t) {
+  final pop = (t / 0.25).clamp(0.0, 1.0);
+  return Motion.elasticPop.transform(pop);
+}
+
+/// Horizontal arc drift at progress [t] (0..1): the emoji eases sideways toward
+/// [drift] as it rises, tracing an arc rather than a straight vertical line.
+double reactionArcX(double t, double drift) =>
+    drift * Curves.easeOut.transform(t.clamp(0.0, 1.0));
 
 /// Overlay that renders emoji "reactions" floating up over the video, like a
 /// live-stream's heart burst. Each emoji pushed onto [emojis] spawns one
@@ -67,6 +83,9 @@ class _FloatingReactionsOverlayState extends State<FloatingReactionsOverlay> {
                   emoji: r.emoji,
                   startLeft: constraints.maxWidth * r.lane,
                   riseBy: constraints.maxHeight * 0.45,
+                  // Lanes left of centre drift left, right drift right — a gentle
+                  // fountain spread instead of every burst rising dead straight.
+                  arcDrift: (r.lane - 0.5) * constraints.maxWidth * 0.30,
                   onDone: () => _remove(r.id),
                 ),
             ],
@@ -89,6 +108,7 @@ class _FloatingEmoji extends StatefulWidget {
     required this.emoji,
     required this.startLeft,
     required this.riseBy,
+    required this.arcDrift,
     required this.onDone,
     super.key,
   });
@@ -96,6 +116,7 @@ class _FloatingEmoji extends StatefulWidget {
   final String emoji;
   final double startLeft;
   final double riseBy;
+  final double arcDrift;
   final VoidCallback onDone;
 
   @override
@@ -126,23 +147,36 @@ class _FloatingEmojiState extends State<_FloatingEmoji>
 
   @override
   Widget build(BuildContext context) {
+    if (context.reduceMotion) {
+      // Reduce motion: present the reaction settled — no rise, pop, drift, or
+      // fade. The controller still runs purely to schedule onDone (self-removal),
+      // so the burst appears, holds, and clears without any animated movement.
+      return Positioned(
+        left: widget.startLeft,
+        bottom: 90,
+        child:
+            Text(widget.emoji, style: const TextStyle(fontSize: Glyphs.burst)),
+      );
+    }
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
         final t = _controller.value;
-        // Rise, fade out near the end, pop-in scale at the start, gentle sway.
+        // Rise straight up, drift sideways along an arc, fade out near the end,
+        // and pop in with an elastic overshoot (the one squash-&-stretch beat).
         final rise = widget.riseBy * t;
-        final sway = math.sin(t * math.pi * 3) * 14;
+        final drift = reactionArcX(t, widget.arcDrift);
         final opacity = t < 0.85 ? 1.0 : (1.0 - (t - 0.85) / 0.15);
-        final scale = t < 0.18 ? (t / 0.18) : 1.0;
+        final scale = reactionPopScale(t);
         return Positioned(
-          left: widget.startLeft + sway,
+          left: widget.startLeft + drift,
           bottom: 90 + rise,
           child: Opacity(
             opacity: opacity.clamp(0.0, 1.0),
             child: Transform.scale(
               scale: scale,
-              child: Text(widget.emoji, style: const TextStyle(fontSize: Glyphs.burst)),
+              child:
+                  Text(widget.emoji, style: const TextStyle(fontSize: Glyphs.burst)),
             ),
           ),
         );

@@ -12,7 +12,46 @@ const _sample = PlaybackState(
   fileName: 'movie.mkv',
 );
 
+double _thumbR(WidgetTester tester) =>
+    (tester.widget<SliderTheme>(find.byType(SliderTheme)).data.thumbShape
+            as RoundSliderThumbShape)
+        .enabledThumbRadius;
+
 void main() {
+  test('scrubber metrics grow from rest to active', () {
+    expect(scrubberMetrics(0).thumb, 6);
+    expect(scrubberMetrics(1).thumb, greaterThan(scrubberMetrics(0).thumb));
+    expect(scrubberMetrics(1).track, greaterThan(scrubberMetrics(0).track));
+    expect(scrubberMetrics(1).overlay, greaterThan(scrubberMetrics(0).overlay));
+  });
+
+  testWidgets('scrubber thumb grows while dragging, shrinks on release',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: themeDataFor(MeowThemeId.cozy),
+      home: Scaffold(
+        body: PlaybackBar(
+          state: _sample,
+          onSeek: (_) {},
+          onTogglePlay: () {},
+          onToggleMute: () {},
+          onSetVolume: (_) {},
+        ),
+      ),
+    ));
+    expect(_thumbR(tester), closeTo(6, 0.01));
+
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.byType(Slider)));
+    await tester.pump();
+    await gesture.moveBy(const Offset(8, 0)); // ensure the drag actually starts
+    await tester.pumpAndSettle();
+    expect(_thumbR(tester), greaterThan(6));
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_thumbR(tester), closeTo(6, 0.01));
+  });
   testWidgets('shows current position and total duration', (tester) async {
     await tester.pumpWidget(MaterialApp(
       theme: themeDataFor(MeowThemeId.cozy),
