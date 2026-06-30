@@ -6,15 +6,14 @@ import '../../core/theme/reduce_motion.dart';
 import '../../core/theme/tokens/icon_sizes.dart';
 import '../../core/theme/tokens/motion.dart';
 
-/// Pop-in scale for a reaction burst at animation progress [t] (0..1). Without
-/// reduce motion it overshoots past 1.0 — the one squash-&-stretch beat the app
-/// allows ([Motion.elasticPop]) — then settles to 1.0. With reduce motion it
-/// eases in with no overshoot. The pop happens in the first quarter of the rise.
-double reactionPopScale(double t, {required bool reduceMotion}) {
+/// Pop-in scale for a reaction burst at animation progress [t] (0..1). It
+/// overshoots past 1.0 — the one squash-&-stretch beat the app allows
+/// ([Motion.elasticPop]) — then settles to 1.0. The pop happens in the first
+/// quarter of the rise. Reduce motion skips this path entirely (the burst is
+/// presented settled), so there's no reduce-motion variant here.
+double reactionPopScale(double t) {
   final pop = (t / 0.25).clamp(0.0, 1.0);
-  return reduceMotion
-      ? Curves.easeOut.transform(pop)
-      : Motion.elasticPop.transform(pop);
+  return Motion.elasticPop.transform(pop);
 }
 
 /// Horizontal arc drift at progress [t] (0..1): the emoji eases sideways toward
@@ -148,7 +147,17 @@ class _FloatingEmojiState extends State<_FloatingEmoji>
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion = context.reduceMotion;
+    if (context.reduceMotion) {
+      // Reduce motion: present the reaction settled — no rise, pop, drift, or
+      // fade. The controller still runs purely to schedule onDone (self-removal),
+      // so the burst appears, holds, and clears without any animated movement.
+      return Positioned(
+        left: widget.startLeft,
+        bottom: 90,
+        child:
+            Text(widget.emoji, style: const TextStyle(fontSize: Glyphs.burst)),
+      );
+    }
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -156,9 +165,9 @@ class _FloatingEmojiState extends State<_FloatingEmoji>
         // Rise straight up, drift sideways along an arc, fade out near the end,
         // and pop in with an elastic overshoot (the one squash-&-stretch beat).
         final rise = widget.riseBy * t;
-        final drift = reduceMotion ? 0.0 : reactionArcX(t, widget.arcDrift);
+        final drift = reactionArcX(t, widget.arcDrift);
         final opacity = t < 0.85 ? 1.0 : (1.0 - (t - 0.85) / 0.15);
-        final scale = reactionPopScale(t, reduceMotion: reduceMotion);
+        final scale = reactionPopScale(t);
         return Positioned(
           left: widget.startLeft + drift,
           bottom: 90 + rise,
