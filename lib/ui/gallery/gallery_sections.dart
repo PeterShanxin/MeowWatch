@@ -22,6 +22,7 @@ import '../connect/history_format.dart';
 import '../empty_state.dart';
 import '../launch/launch_reveal.dart';
 import '../launch/launch_tips.dart';
+import '../motion/pressable_scale.dart';
 import '../motion/reveal_in.dart';
 import '../staggered_reflow_list.dart';
 
@@ -399,6 +400,12 @@ class MotionSpecimen extends StatelessWidget {
         subhead('Durations'),
         const SizedBox(height: Spacing.md),
         _MotionRacer(
+          duration: Motion.xfast,
+          curve: Motion.standard,
+          leading: durationLeading('xfast · ${Motion.xfast.inMilliseconds}ms'),
+        ),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
           duration: Motion.fast,
           curve: Motion.standard,
           leading: durationLeading('fast · ${Motion.fast.inMilliseconds}ms'),
@@ -414,6 +421,14 @@ class MotionSpecimen extends StatelessWidget {
           duration: Motion.slow,
           curve: Motion.standard,
           leading: durationLeading('slow · ${Motion.slow.inMilliseconds}ms'),
+        ),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
+          duration: Motion.expressive,
+          curve: Motion.standard,
+          leading: durationLeading(
+            'expressive · ${Motion.expressive.inMilliseconds}ms',
+          ),
         ),
         const SizedBox(height: Spacing.xl),
         subhead('Easings'),
@@ -439,14 +454,41 @@ class MotionSpecimen extends StatelessWidget {
             '(.42, 0, .58, 1)',
           ),
         ),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
+          duration: _easingRace,
+          curve: Motion.emphasized,
+          leadingWidth: 168,
+          leading: easingLeading(
+            Motion.emphasized,
+            'emphasized',
+            'M3 emphasized',
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
+          duration: _easingRace,
+          curve: Motion.emphasizedAccelerate,
+          leadingWidth: 168,
+          leading: easingLeading(
+            Motion.emphasizedAccelerate,
+            'emphasizedAccel',
+            '(.3, 0, .8, .15)',
+          ),
+        ),
         const SizedBox(height: Spacing.xl),
+        // The overshoot / wind-up curves (springy, elasticPop, anticipate) are
+        // shown live in the Motion · principles section, where the transform is
+        // built for overshoot; here they're named so the token list is complete.
         Wrap(
           spacing: Spacing.md,
           runSpacing: Spacing.md,
           children: [
+            chip('xfast · ${Motion.xfast.inMilliseconds}ms'),
             chip('fast · ${Motion.fast.inMilliseconds}ms'),
             chip('base · ${Motion.base.inMilliseconds}ms'),
             chip('slow · ${Motion.slow.inMilliseconds}ms'),
+            chip('expressive · ${Motion.expressive.inMilliseconds}ms'),
             chip('stagger · ${Motion.stagger.inMilliseconds}ms'),
             chip('reveal · ${Motion.reveal.inMilliseconds}ms'),
             chip('standard · easeOutCubic'),
@@ -454,6 +496,8 @@ class MotionSpecimen extends StatelessWidget {
             chip('emphasized · easeInOutCubicEmphasized'),
             chip('emphasizedAccelerate · (.3, 0, .8, .15)'),
             chip('springy · (.34, 1.26, .64, 1)'),
+            chip('elasticPop · (.2, 1.5, .4, 1)'),
+            chip('anticipate · (.36, 0, .66, -.3)'),
           ],
         ),
       ],
@@ -662,7 +706,10 @@ class MotionPrinciplesSpecimen extends StatelessWidget {
             builder: (context, t) => Center(
               child: Transform.scale(
                 scale: 0.4 + t * 0.6,
-                child: const Text('🐾', style: TextStyle(fontSize: Glyphs.burst)),
+                child: const Text(
+                  '🐾',
+                  style: TextStyle(fontSize: Glyphs.burst),
+                ),
               ),
             ),
           ),
@@ -1363,6 +1410,79 @@ class _FullRevealReplayState extends State<_FullRevealReplay> {
   }
 }
 
+/// Live [PressableScale] demo: a button + an icon that squash ~3% on press and
+/// lift on hover, driving the real primitive so it degrades to an instant tap
+/// target under reduce motion exactly as it does app-wide. Tapping either bumps
+/// a counter so the press is unmistakably live.
+class MotionPressableSpecimen extends StatefulWidget {
+  const MotionPressableSpecimen({super.key});
+
+  @override
+  State<MotionPressableSpecimen> createState() =>
+      _MotionPressableSpecimenState();
+}
+
+class _MotionPressableSpecimenState extends State<MotionPressableSpecimen> {
+  int _presses = 0;
+
+  void _bump() => setState(() => _presses++);
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    final t = context.meowText;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            PressableScale(
+              onPressed: _bump,
+              semanticLabel: 'Pressable button demo',
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Spacing.xl,
+                  vertical: Spacing.md,
+                ),
+                decoration: BoxDecoration(
+                  color: c.accent,
+                  borderRadius: BorderRadius.circular(Radii.md),
+                ),
+                child: Text(
+                  'Press me',
+                  style: t.label.copyWith(color: c.background),
+                ),
+              ),
+            ),
+            const SizedBox(width: Spacing.xl),
+            PressableScale(
+              onPressed: _bump,
+              semanticLabel: 'Pressable icon demo',
+              child: Container(
+                padding: const EdgeInsets.all(Spacing.md),
+                decoration: BoxDecoration(
+                  color: c.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: c.border),
+                ),
+                child: Icon(Icons.pets, color: c.accent, size: IconSizes.lg),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: Spacing.md),
+        Text(
+          _presses == 0
+              ? 'Press for the ~3% squash; hover for the lift. '
+                    'Instant under reduce motion.'
+              : 'Pressed $_presses ${_presses == 1 ? 'time' : 'times'}.',
+          style: t.caption.copyWith(color: c.textDim),
+        ),
+      ],
+    );
+  }
+}
+
 class ShadowSpecimen extends StatelessWidget {
   const ShadowSpecimen({super.key});
   @override
@@ -1600,6 +1720,14 @@ List<Widget> gallerySections() => const [
         'The cold-start launch reveal + its RevealIn primitive. Replay the '
         'RevealIn demo or play the full splash to review it as it ships.',
     child: MotionRevealSpecimen(),
+  ),
+  GallerySection(
+    title: 'Motion · pressable',
+    description:
+        'The shared press feel — a few-percent squash on press, a subtle lift '
+        'on hover. Press the button or icon to feel it; instant under reduce '
+        'motion.',
+    child: MotionPressableSpecimen(),
   ),
   GallerySection(
     title: 'Shadow',
