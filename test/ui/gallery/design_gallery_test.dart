@@ -29,8 +29,10 @@ void main() {
 
     // Scroll down in steps to build the lazy "Components" section (the list is
     // tall; one big drag can over/under-shoot, so step until it appears).
-    final scrollable = find.byType(Scrollable).first;
-    for (var i = 0; i < 20 && find.text('COMPONENTS').evaluate().isEmpty; i++) {
+    // The main list is the only ListView; target it directly so the top bar's
+    // horizontal scroll view is never picked up instead.
+    final scrollable = find.byType(ListView);
+    for (var i = 0; i < 40 && find.text('COMPONENTS').evaluate().isEmpty; i++) {
       await tester.drag(scrollable, const Offset(0, -500));
       await tester.pump(const Duration(milliseconds: 50));
     }
@@ -39,16 +41,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('gallery includes the launch-reveal motion section',
-      (tester) async {
+  testWidgets('gallery includes the launch-reveal motion section', (
+    tester,
+  ) async {
     await tester.pumpWidget(const MaterialApp(home: DesignGallery()));
     await tester.pump(const Duration(milliseconds: 300));
 
     // The section is lazy; step-scroll until its title is built.
-    final scrollable = find.byType(Scrollable).first;
-    for (var i = 0;
-        i < 30 && find.text('MOTION · REVEAL').evaluate().isEmpty;
-        i++) {
+    // The main list is the only ListView; target it directly so the top bar's
+    // horizontal scroll view is never picked up instead.
+    final scrollable = find.byType(ListView);
+    for (
+      var i = 0;
+      i < 30 && find.text('MOTION · REVEAL').evaluate().isEmpty;
+      i++
+    ) {
       await tester.drag(scrollable, const Offset(0, -400));
       await tester.pump(const Duration(milliseconds: 50));
     }
@@ -62,6 +69,26 @@ void main() {
 
     await tester.tap(find.text(MeowThemeId.noir.label));
     await tester.pump(const Duration(milliseconds: 300));
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reduce-motion preview toggle flips without throwing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: DesignGallery()));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Reduce motion'), findsOneWidget);
+
+    // Flip it on, then off — the gallery keeps rendering its hero either way.
+    await tester.tap(find.text('Reduce motion'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Design System'), findsOneWidget);
+
+    await tester.tap(find.text('Reduce motion'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Design System'), findsOneWidget);
 
     expect(tester.takeException(), isNull);
   });
