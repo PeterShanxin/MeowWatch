@@ -110,7 +110,10 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Duration _notifyThrottle = Duration(seconds: 2);
   final Stopwatch _notifyClock = Stopwatch();
 
-  SyncConnectionStatus _syncStatus = SyncConnectionStatus.disconnected;
+  // Start as "connecting", not "disconnected": entering a room immediately
+  // begins a connection, so the first frame should read "Connecting to room …"
+  // rather than flashing "Disconnected from room …" before the socket dials.
+  SyncConnectionStatus _syncStatus = SyncConnectionStatus.connecting;
   String? _syncError;
   final Set<String> _peers = <String>{};
   StreamSubscription<SyncConnectionState>? _connSub;
