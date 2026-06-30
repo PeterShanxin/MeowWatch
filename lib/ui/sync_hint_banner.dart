@@ -15,14 +15,13 @@ import '../core/theme/tokens/type_scale.dart';
 /// **fades out**, and swapping one notice for another cross-dissolves while the
 /// incoming notice slides in over it — so a notice never hard-cuts on screen.
 ///
-/// The entrance is driven by [_BannerPill] **itself** (it plays an intro the
-/// moment it mounts), not by the [AnimatedSwitcher]. That's deliberate: a notice
-/// can appear in the same frame the surrounding layout reshuffles (loading a
-/// video inserts sibling overlays), which can rebuild this subtree and reset an
-/// AnimatedSwitcher — making it skip its "first child" transition and hard-cut
-/// the notice in. A pill that animates on mount can't be defeated that way. The
-/// switcher only manages one-at-a-time + the exit fade. Honors reduce motion:
-/// swaps are instant.
+/// The entrance is driven by [_BannerPill] **itself**, not by the
+/// [AnimatedSwitcher]. That's deliberate: a notice can appear in the same frame
+/// the surrounding layout reshuffles (loading a video inserts sibling overlays),
+/// which can rebuild this subtree and reset an AnimatedSwitcher — making it
+/// skip its "first child" transition and hard-cut the notice in. A pill with
+/// its own intro can't be defeated that way. The switcher only manages
+/// one-at-a-time + the exit fade. Honors reduce motion: swaps are instant.
 class SyncHintBanner extends StatelessWidget {
   const SyncHintBanner({required this.text, super.key});
 
@@ -60,6 +59,8 @@ class _BannerPill extends StatefulWidget {
 
 class _BannerPillState extends State<_BannerPill>
     with SingleTickerProviderStateMixin {
+  static const double _firstVisibleIntroValue = 0.16;
+
   late final AnimationController _intro = AnimationController(
     vsync: this,
     duration: Motion.base,
@@ -76,8 +77,22 @@ class _BannerPillState extends State<_BannerPill>
     if (context.reduceMotion) {
       _intro.value = 1; // present instantly
     } else {
-      _intro.forward(from: 0);
+      _startIntroAfterFirstPaint();
     }
+  }
+
+  void _startIntroAfterFirstPaint() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _intro.value = _firstVisibleIntroValue;
+
+      // If video loading delays the first frame after mount, don't let that
+      // whole wall-clock gap complete the entrance before anything paints.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _intro.forward(from: _firstVisibleIntroValue);
+      });
+    });
   }
 
   @override

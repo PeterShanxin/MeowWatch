@@ -54,6 +54,26 @@ void main() {
     expect(_slideDy(tester, 'hi'), 0.0, reason: 'settled at rest');
   });
 
+  testWidgets('a delayed first animation frame still shows entrance motion', (
+    tester,
+  ) async {
+    final text = ValueNotifier<String?>(null);
+    addTearDown(text.dispose);
+    await tester.pumpWidget(_host(text));
+
+    text.value = 'late load';
+    await tester.pump(); // mount the pill; intro at 0
+    await tester.pump(const Duration(milliseconds: 500)); // janky first frame
+    expect(
+      _slideDy(tester, 'late load'),
+      lessThan(0.0),
+      reason: 'a late first tick must not make the entrance finish off-screen',
+    );
+
+    await tester.pumpAndSettle();
+    expect(_slideDy(tester, 'late load'), 0.0, reason: 'settled at rest');
+  });
+
   testWidgets('animates a notice in, then out (no hard cut)', (tester) async {
     final text = ValueNotifier<String?>(null);
     addTearDown(text.dispose);
