@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/meow_context.dart';
+import '../../core/theme/reduce_motion.dart';
 import '../../core/theme/tokens/icon_sizes.dart';
 import '../../core/theme/tokens/motion.dart';
 import '../../core/theme/tokens/radii.dart';
@@ -32,37 +33,44 @@ class _ReactionBarState extends State<ReactionBar> {
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
+    final reduce = context.reduceMotion;
+    final palette = _open
+        ? Container(
+            margin: const EdgeInsets.only(right: Spacing.sm),
+            padding: const EdgeInsets.symmetric(
+                horizontal: Spacing.sm, vertical: Spacing.xs),
+            decoration: BoxDecoration(
+              color: m.surface,
+              borderRadius: BorderRadius.circular(Radii.pill),
+              border: Border.all(color: m.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final e in kReactionEmojis)
+                  IconButton(
+                    key: Key('reaction-$e'),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _pick(e),
+                    icon: Text(e, style: const TextStyle(fontSize: Glyphs.react)),
+                  ),
+              ],
+            ),
+          )
+        : const SizedBox.shrink();
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        AnimatedSize(
-          duration: Motion.base,
-          curve: Motion.standard,
-          child: _open
-              ? Container(
-                  margin: const EdgeInsets.only(right: Spacing.sm),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: Spacing.sm, vertical: Spacing.xs),
-                  decoration: BoxDecoration(
-                    color: m.surface,
-                    borderRadius: BorderRadius.circular(Radii.pill),
-                    border: Border.all(color: m.border),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final e in kReactionEmojis)
-                        IconButton(
-                          key: Key('reaction-$e'),
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () => _pick(e),
-                          icon: Text(e, style: const TextStyle(fontSize: Glyphs.react)),
-                        ),
-                    ],
-                  ),
-                )
-              : const SizedBox.shrink(),
-        ),
+        // Reduce motion drops the AnimatedSize entirely (it rejects a zero
+        // duration), so the palette opens and closes instantly.
+        if (reduce)
+          palette
+        else
+          AnimatedSize(
+            duration: Motion.base,
+            curve: Motion.standard,
+            child: palette,
+          ),
         Material(
           color: m.background.withValues(alpha: 0.80),
           shape: RoundedRectangleBorder(
