@@ -65,6 +65,17 @@ class _BannerPillState extends State<_BannerPill>
     vsync: this,
     duration: Motion.base,
   );
+  // Built once, not per-build: a CurvedAnimation registers a status listener on
+  // its parent and is only detached by dispose(), so creating one each build
+  // would leak listeners on _intro for as long as the pill stays mounted.
+  late final CurvedAnimation _curved = CurvedAnimation(
+    parent: _intro,
+    curve: Motion.standard,
+  );
+  late final Animation<Offset> _slide = Tween<Offset>(
+    begin: const Offset(0, -0.6),
+    end: Offset.zero,
+  ).animate(_curved);
   bool _started = false;
 
   @override
@@ -97,6 +108,7 @@ class _BannerPillState extends State<_BannerPill>
 
   @override
   void dispose() {
+    _curved.dispose();
     _intro.dispose();
     super.dispose();
   }
@@ -104,14 +116,10 @@ class _BannerPillState extends State<_BannerPill>
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
-    final curved = CurvedAnimation(parent: _intro, curve: Motion.standard);
     return FadeTransition(
-      opacity: curved,
+      opacity: _curved,
       child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, -0.6),
-          end: Offset.zero,
-        ).animate(curved),
+        position: _slide,
         child: IgnorePointer(
           child: Container(
             padding: const EdgeInsets.symmetric(
