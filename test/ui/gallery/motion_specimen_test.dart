@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
+import 'package:meowwatch/core/theme/reduce_motion.dart';
 import 'package:meowwatch/ui/gallery/gallery_sections.dart';
 
 void main() {
@@ -38,6 +39,46 @@ void main() {
     for (var i = 0; i < 4; i++) {
       await tester.pump(const Duration(milliseconds: 400));
     }
+    expect(tester.takeException(), isNull);
+  });
+
+  // The principle loops also run forever — pump fixed durations, never settle.
+  Widget principlesHost({bool reduceMotion = false}) => MaterialApp(
+        theme: themeDataFor(MeowThemeId.cozy),
+        home: Scaffold(
+          body: ReduceMotionScope(
+            reduceMotion: reduceMotion,
+            child: const SingleChildScrollView(child: MotionPrinciplesSpecimen()),
+          ),
+        ),
+      );
+
+  testWidgets('motion principles: the four named specimens render and loop',
+      (tester) async {
+    await tester.pumpWidget(principlesHost());
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Anticipation'), findsOneWidget);
+    expect(find.text('Overshoot'), findsOneWidget);
+    expect(find.text('Squash & stretch'), findsOneWidget);
+    expect(find.text('Staging'), findsOneWidget);
+
+    // Advance past the loops a few times — they must keep running cleanly.
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('motion principles: static under reduce motion (loops settle)',
+      (tester) async {
+    await tester.pumpWidget(principlesHost(reduceMotion: true));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Anticipation'), findsOneWidget);
+    // Nothing loops under reduce motion, so the tree settles (no infinite
+    // animation). pumpAndSettle would hang if a principle kept looping.
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 }
