@@ -94,6 +94,34 @@ void main() {
   });
 
   testWidgets(
+    'motion principles: flipping reduce motion on freezes the loops',
+    (tester) async {
+      // Same tree, only the scope flag flips — so the loop States persist and
+      // receive the change live (rather than being recreated).
+      Widget tree(bool reduce) => MaterialApp(
+        theme: themeDataFor(MeowThemeId.cozy),
+        home: Scaffold(
+          body: ReduceMotionScope(
+            reduceMotion: reduce,
+            child: const SingleChildScrollView(
+              child: MotionPrinciplesSpecimen(),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(tree(false));
+      await tester.pump(const Duration(milliseconds: 200)); // loops running
+
+      // Flip the preview on: the running loops must stop, so the tree settles.
+      // Were the freeze not live, pumpAndSettle would time out here.
+      await tester.pumpWidget(tree(true));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'pressable demo: tapping bumps the counter in both motion modes',
     (tester) async {
       for (final reduce in [false, true]) {

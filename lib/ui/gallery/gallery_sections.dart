@@ -839,16 +839,17 @@ class _CurveLoopState extends State<_CurveLoop>
     parent: _controller,
     curve: widget.curve,
   );
-  bool _started = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_started) return;
-    _started = true;
+    // Track reduce motion live so the gallery's preview toggle freezes the loop
+    // on and resumes it off. Idempotent across the theme-change rebuilds that
+    // also fire here (only (re)start when not already looping).
     if (context.reduceMotion) {
+      _controller.stop();
       _controller.value = 1; // settled, no character
-    } else {
+    } else if (!_controller.isAnimating) {
       _controller.repeat(reverse: true);
     }
   }
@@ -884,14 +885,17 @@ class _StagingLoopState extends State<_StagingLoop>
     vsync: this,
     duration: const Duration(milliseconds: 1500),
   );
-  bool _started = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_started) return;
-    _started = true;
-    if (!context.reduceMotion) _controller.repeat();
+    // Live with the gallery's reduce-motion toggle (see _CurveLoop).
+    if (context.reduceMotion) {
+      _controller.stop();
+      _controller.value = 0;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   @override
