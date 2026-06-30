@@ -21,7 +21,39 @@ Widget _host(ValueNotifier<String?> text, {bool reduceMotion = false}) =>
       ),
     );
 
+// The vertical slide offset of the pill carrying [text], at the current frame.
+// Non-zero while it's still arriving; zero once settled.
+double _slideDy(WidgetTester tester, String text) => tester
+    .widget<SlideTransition>(
+      find
+          .ancestor(of: find.text(text), matching: find.byType(SlideTransition))
+          .first,
+    )
+    .position
+    .value
+    .dy;
+
 void main() {
+  testWidgets('a fresh notice physically slides in, then settles', (
+    tester,
+  ) async {
+    final text = ValueNotifier<String?>(null);
+    addTearDown(text.dispose);
+    await tester.pumpWidget(_host(text));
+
+    text.value = 'hi';
+    await tester.pump(); // mount the pill; intro at 0
+    await tester.pump(const Duration(milliseconds: 80)); // mid intro
+    expect(
+      _slideDy(tester, 'hi'),
+      lessThan(0.0),
+      reason: 'still sliding down from above — not hard-cut in',
+    );
+
+    await tester.pumpAndSettle();
+    expect(_slideDy(tester, 'hi'), 0.0, reason: 'settled at rest');
+  });
+
   testWidgets('animates a notice in, then out (no hard cut)', (tester) async {
     final text = ValueNotifier<String?>(null);
     addTearDown(text.dispose);
@@ -29,19 +61,24 @@ void main() {
     expect(find.text('hi'), findsNothing);
 
     text.value = 'hi';
-    await tester.pump(); // start the in-animation
+    await tester.pump();
     await tester.pumpAndSettle();
     expect(find.text('hi'), findsOneWidget);
 
     text.value = null;
     await tester.pump(const Duration(milliseconds: 50)); // mid out-animation
-    expect(find.text('hi'), findsOneWidget,
-        reason: 'still sliding/fading out, not hard-cut');
+    expect(
+      find.text('hi'),
+      findsOneWidget,
+      reason: 'still fading out, not hard-cut',
+    );
     await tester.pumpAndSettle();
     expect(find.text('hi'), findsNothing);
   });
 
-  testWidgets('cross-fades between two notices', (tester) async {
+  testWidgets('the incoming notice slides in even when swapping from another', (
+    tester,
+  ) async {
     final text = ValueNotifier<String?>('first');
     addTearDown(text.dispose);
     await tester.pumpWidget(_host(text));
@@ -49,20 +86,30 @@ void main() {
     expect(find.text('first'), findsOneWidget);
 
     text.value = 'second';
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.text('first'), findsOneWidget); // outgoing still present
+    await tester.pump(); // mount the incoming pill
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(find.text('first'), findsOneWidget); // outgoing still fading
     expect(find.text('second'), findsOneWidget); // incoming present
+    expect(
+      _slideDy(tester, 'second'),
+      lessThan(0.0),
+      reason: 'incoming notice slides in over the outgoing one, not in place',
+    );
+
     await tester.pumpAndSettle();
     expect(find.text('first'), findsNothing);
     expect(find.text('second'), findsOneWidget);
   });
 
-  testWidgets('reduce motion: instant swap, no lingering exit', (tester) async {
+  testWidgets('reduce motion: instant present, no lingering exit, no timers', (
+    tester,
+  ) async {
     final text = ValueNotifier<String?>('hi');
     addTearDown(text.dispose);
     await tester.pumpWidget(_host(text, reduceMotion: true));
     await tester.pump();
     expect(find.text('hi'), findsOneWidget);
+    expect(_slideDy(tester, 'hi'), 0.0, reason: 'present instantly, no slide');
 
     text.value = null;
     await tester.pump();
