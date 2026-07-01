@@ -7,6 +7,7 @@ import '../../core/sync/peer_state.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
 import '../../core/theme/meow_theme.dart';
+import '../../core/theme/reduce_motion.dart';
 import '../../core/theme/tokens/icon_sizes.dart';
 import '../../core/theme/tokens/motion.dart';
 import '../../core/theme/tokens/opacities.dart';
@@ -21,6 +22,7 @@ import '../connect/history_format.dart';
 import '../empty_state.dart';
 import '../launch/launch_reveal.dart';
 import '../launch/launch_tips.dart';
+import '../motion/pressable_scale.dart';
 import '../motion/reveal_in.dart';
 import '../staggered_reflow_list.dart';
 
@@ -398,6 +400,12 @@ class MotionSpecimen extends StatelessWidget {
         subhead('Durations'),
         const SizedBox(height: Spacing.md),
         _MotionRacer(
+          duration: Motion.xfast,
+          curve: Motion.standard,
+          leading: durationLeading('xfast · ${Motion.xfast.inMilliseconds}ms'),
+        ),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
           duration: Motion.fast,
           curve: Motion.standard,
           leading: durationLeading('fast · ${Motion.fast.inMilliseconds}ms'),
@@ -413,6 +421,14 @@ class MotionSpecimen extends StatelessWidget {
           duration: Motion.slow,
           curve: Motion.standard,
           leading: durationLeading('slow · ${Motion.slow.inMilliseconds}ms'),
+        ),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
+          duration: Motion.expressive,
+          curve: Motion.standard,
+          leading: durationLeading(
+            'expressive · ${Motion.expressive.inMilliseconds}ms',
+          ),
         ),
         const SizedBox(height: Spacing.xl),
         subhead('Easings'),
@@ -438,14 +454,41 @@ class MotionSpecimen extends StatelessWidget {
             '(.42, 0, .58, 1)',
           ),
         ),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
+          duration: _easingRace,
+          curve: Motion.emphasized,
+          leadingWidth: 168,
+          leading: easingLeading(
+            Motion.emphasized,
+            'emphasized',
+            'M3 emphasized',
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        _MotionRacer(
+          duration: _easingRace,
+          curve: Motion.emphasizedAccelerate,
+          leadingWidth: 168,
+          leading: easingLeading(
+            Motion.emphasizedAccelerate,
+            'emphasizedAccel',
+            '(.3, 0, .8, .15)',
+          ),
+        ),
         const SizedBox(height: Spacing.xl),
+        // The overshoot / wind-up curves (springy, elasticPop, anticipate) are
+        // shown live in the Motion · principles section, where the transform is
+        // built for overshoot; here they're named so the token list is complete.
         Wrap(
           spacing: Spacing.md,
           runSpacing: Spacing.md,
           children: [
+            chip('xfast · ${Motion.xfast.inMilliseconds}ms'),
             chip('fast · ${Motion.fast.inMilliseconds}ms'),
             chip('base · ${Motion.base.inMilliseconds}ms'),
             chip('slow · ${Motion.slow.inMilliseconds}ms'),
+            chip('expressive · ${Motion.expressive.inMilliseconds}ms'),
             chip('stagger · ${Motion.stagger.inMilliseconds}ms'),
             chip('reveal · ${Motion.reveal.inMilliseconds}ms'),
             chip('standard · easeOutCubic'),
@@ -453,6 +496,8 @@ class MotionSpecimen extends StatelessWidget {
             chip('emphasized · easeInOutCubicEmphasized'),
             chip('emphasizedAccelerate · (.3, 0, .8, .15)'),
             chip('springy · (.34, 1.26, .64, 1)'),
+            chip('elasticPop · (.2, 1.5, .4, 1)'),
+            chip('anticipate · (.36, 0, .66, -.3)'),
           ],
         ),
       ],
@@ -610,6 +655,292 @@ class _EasingCurvePainter extends CustomPainter {
   @override
   bool shouldRepaint(_EasingCurvePainter old) =>
       old.curve != curve || old.color != color;
+}
+
+/// The Disney motion principles that map to this app's UI, each a live looping
+/// specimen driving the real [Motion] character curves — so "anticipation",
+/// "overshoot" and "squash" are running code, not vibes. Honors reduce motion:
+/// the loops hold their settled end-state, which is itself the lesson (reduce
+/// motion drops the character).
+class MotionPrinciplesSpecimen extends StatelessWidget {
+  const MotionPrinciplesSpecimen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PrincipleTile(
+          title: 'Anticipation',
+          blurb: 'A tiny wind-up before the move.',
+          // Motion.anticipate dips backward first, then drives forward.
+          child: _CurveLoop(
+            curve: Motion.anticipate,
+            duration: Motion.slow,
+            builder: (context, t) => Align(
+              alignment: Alignment(-0.8 + t * 1.6, 0),
+              child: const _AccentDot(),
+            ),
+          ),
+        ),
+        _PrincipleTile(
+          title: 'Overshoot',
+          blurb: 'Follow-through that settles past the mark.',
+          // Motion.springy overshoots its target (interior) then settles back.
+          child: _CurveLoop(
+            curve: Motion.springy,
+            duration: Motion.slow,
+            builder: (context, t) => Align(
+              alignment: Alignment(-0.8 + t * 1.2, 0),
+              child: const _AccentDot(),
+            ),
+          ),
+        ),
+        _PrincipleTile(
+          title: 'Squash & stretch',
+          blurb: 'The one playful beat — the paw-reaction pop.',
+          // Motion.elasticPop is the scoped squash-&-stretch (reaction burst).
+          child: _CurveLoop(
+            curve: Motion.elasticPop,
+            duration: Motion.slow,
+            builder: (context, t) => Center(
+              child: Transform.scale(
+                scale: 0.4 + t * 0.6,
+                child: const Text(
+                  '🐾',
+                  style: TextStyle(fontSize: Glyphs.burst),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const _PrincipleTile(
+          title: 'Staging',
+          blurb: 'One focal motion at a time.',
+          child: _StagingLoop(),
+        ),
+      ],
+    );
+  }
+}
+
+/// A labelled principle row: a fixed-width title + blurb on the left, the live
+/// animated specimen framed on the right (mirrors the racer leading layout).
+class _PrincipleTile extends StatelessWidget {
+  const _PrincipleTile({
+    required this.title,
+    required this.blurb,
+    required this.child,
+  });
+
+  final String title;
+  final String blurb;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    final t = context.meowText;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Spacing.lg),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 140,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: c.textPrimary,
+                    fontWeight: TypeScale.semibold,
+                  ),
+                ),
+                const SizedBox(height: Spacing.xxs),
+                Text(blurb, style: t.caption.copyWith(color: c.textDim)),
+              ],
+            ),
+          ),
+          const SizedBox(width: Spacing.lg),
+          Expanded(
+            child: Container(
+              height: 64,
+              padding: const EdgeInsets.symmetric(
+                horizontal: Spacing.lg,
+                vertical: Spacing.md,
+              ),
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: c.background,
+                borderRadius: BorderRadius.circular(Radii.md),
+                border: Border.all(color: c.border),
+              ),
+              child: child,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The accent dot shared by the principle slides (matches the racer dot).
+class _AccentDot extends StatelessWidget {
+  const _AccentDot();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: c.accent,
+        boxShadow: [
+          BoxShadow(
+            color: c.accent.withValues(alpha: Opacities.pressed),
+            spreadRadius: 4,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Loops a [curve]'s progress 0↔1 forever and hands [builder] the eased value,
+/// so a principle's character (wind-up, overshoot, squash) reads at a glance.
+/// Honors reduce motion: holds the settled end-state with no loop.
+class _CurveLoop extends StatefulWidget {
+  const _CurveLoop({
+    required this.curve,
+    required this.duration,
+    required this.builder,
+  });
+
+  final Curve curve;
+  final Duration duration;
+  final Widget Function(BuildContext context, double t) builder;
+
+  @override
+  State<_CurveLoop> createState() => _CurveLoopState();
+}
+
+class _CurveLoopState extends State<_CurveLoop>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+  );
+  late final Animation<double> _t = CurvedAnimation(
+    parent: _controller,
+    curve: widget.curve,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Track reduce motion live so the gallery's preview toggle freezes the loop
+    // on and resumes it off. Idempotent across the theme-change rebuilds that
+    // also fire here (only (re)start when not already looping).
+    if (context.reduceMotion) {
+      _controller.stop();
+      _controller.value = 1; // settled, no character
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _t,
+      builder: (context, _) => widget.builder(context, _t.value),
+    );
+  }
+}
+
+/// "Staging" — one focal motion at a time: a highlight travels across three
+/// cards, only one raised at any moment. Honors reduce motion (static).
+class _StagingLoop extends StatefulWidget {
+  const _StagingLoop();
+
+  @override
+  State<_StagingLoop> createState() => _StagingLoopState();
+}
+
+class _StagingLoopState extends State<_StagingLoop>
+    with SingleTickerProviderStateMixin {
+  static const int _count = 3;
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Live with the gallery's reduce-motion toggle (see _CurveLoop).
+    if (context.reduceMotion) {
+      _controller.stop();
+      _controller.value = 0;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    final reduce = context.reduceMotion;
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final active = (_controller.value * _count).floor() % _count;
+        return Row(
+          children: [
+            for (var i = 0; i < _count; i++) ...[
+              if (i > 0) const SizedBox(width: Spacing.md),
+              Expanded(
+                child: AnimatedScale(
+                  scale: i == active ? 1.0 : 0.92,
+                  duration: reduce ? Duration.zero : Motion.fast,
+                  curve: Motion.standard,
+                  child: Container(
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: i == active
+                          ? c.accent.withValues(alpha: Opacities.hover)
+                          : c.surface,
+                      borderRadius: BorderRadius.circular(Radii.sm),
+                      border: Border.all(
+                        color: i == active ? c.accent : c.border,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
 }
 
 /// Live demo of the staggered-cascade list reflow (Motion study variant C).
@@ -1083,6 +1414,79 @@ class _FullRevealReplayState extends State<_FullRevealReplay> {
   }
 }
 
+/// Live [PressableScale] demo: a button + an icon that squash ~3% on press and
+/// lift on hover, driving the real primitive so it degrades to an instant tap
+/// target under reduce motion exactly as it does app-wide. Tapping either bumps
+/// a counter so the press is unmistakably live.
+class MotionPressableSpecimen extends StatefulWidget {
+  const MotionPressableSpecimen({super.key});
+
+  @override
+  State<MotionPressableSpecimen> createState() =>
+      _MotionPressableSpecimenState();
+}
+
+class _MotionPressableSpecimenState extends State<MotionPressableSpecimen> {
+  int _presses = 0;
+
+  void _bump() => setState(() => _presses++);
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.meow;
+    final t = context.meowText;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            PressableScale(
+              onPressed: _bump,
+              semanticLabel: 'Pressable button demo',
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Spacing.xl,
+                  vertical: Spacing.md,
+                ),
+                decoration: BoxDecoration(
+                  color: c.accent,
+                  borderRadius: BorderRadius.circular(Radii.md),
+                ),
+                child: Text(
+                  'Press me',
+                  style: t.label.copyWith(color: c.background),
+                ),
+              ),
+            ),
+            const SizedBox(width: Spacing.xl),
+            PressableScale(
+              onPressed: _bump,
+              semanticLabel: 'Pressable icon demo',
+              child: Container(
+                padding: const EdgeInsets.all(Spacing.md),
+                decoration: BoxDecoration(
+                  color: c.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: c.border),
+                ),
+                child: Icon(Icons.pets, color: c.accent, size: IconSizes.lg),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: Spacing.md),
+        Text(
+          _presses == 0
+              ? 'Press for the ~3% squash; hover for the lift. '
+                    'Instant under reduce motion.'
+              : 'Pressed $_presses ${_presses == 1 ? 'time' : 'times'}.',
+          style: t.caption.copyWith(color: c.textDim),
+        ),
+      ],
+    );
+  }
+}
+
 class ShadowSpecimen extends StatelessWidget {
   const ShadowSpecimen({super.key});
   @override
@@ -1299,6 +1703,14 @@ List<Widget> gallerySections() => const [
     child: MotionSpecimen(),
   ),
   GallerySection(
+    title: 'Motion · principles',
+    description:
+        'The Disney principles that map to UI, each a live looping specimen '
+        'driving the real character curves. Under reduce motion they hold '
+        'still — the character is exactly what reduce motion drops.',
+    child: MotionPrinciplesSpecimen(),
+  ),
+  GallerySection(
     title: 'Motion · list reflow',
     description:
         'Toggling Latest per room ⇄ Every video adds, removes and reorders '
@@ -1312,6 +1724,14 @@ List<Widget> gallerySections() => const [
         'The cold-start launch reveal + its RevealIn primitive. Replay the '
         'RevealIn demo or play the full splash to review it as it ships.',
     child: MotionRevealSpecimen(),
+  ),
+  GallerySection(
+    title: 'Motion · pressable',
+    description:
+        'The shared press feel — a few-percent squash on press, a subtle lift '
+        'on hover. Press the button or icon to feel it; instant under reduce '
+        'motion.',
+    child: MotionPressableSpecimen(),
   ),
   GallerySection(
     title: 'Shadow',

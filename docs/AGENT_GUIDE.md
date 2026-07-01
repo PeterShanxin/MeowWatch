@@ -131,6 +131,18 @@ worth surfacing, add a one-line tip there** — keep it true of the shipping app
 and short enough to sit on one row (the test enforces this). Nothing else to
 wire; the bigger pool is picked up automatically.
 
+The hidden **design gallery** (`lib/ui/gallery/`, reachable via the version-badge
+long-press or `MEOWWATCH_GALLERY=1`) is the living motion showcase — it drives
+the real `Motion.*` tokens and primitives, so it can't drift from what ships.
+**When you add a motion token, name it in the `Motion` section's chips and, if
+it's a curve, give it a racer (monotonic easings) or a live specimen in
+`Motion · principles` (overshoot/wind-up curves).** New primitives get a demo
+section (see `Motion · pressable` / `Motion · reveal`). The gallery's
+**Reduce motion** toggle (a gallery-only `ReduceMotionScope` override, not a
+global setting) previews the degraded form across every specimen. Gallery loops
+run forever — tests pump fixed durations, never `pumpAndSettle`, and the lazy
+`ListView` means bottom sections must be step-scrolled into view first.
+
 ### Changelog writing style
 
 The in-app "What's new" screen renders each version's notes. Write them for the

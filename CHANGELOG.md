@@ -10,6 +10,16 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.39.0-alpha] - 2026-07-01
+
+> Design-system polish — the motion showcase is complete.
+
+### Improved: Motion showcase
+- The hidden design gallery now demonstrates the whole motion system end to end:
+  a live "motion principles" section, every timing and easing token, a
+  press-to-feel button demo, and a reduce-motion preview toggle. Housekeeping —
+  no change to the app you actually watch with.
+
 ## [0.38.0-alpha] - 2026-06-30
 
 > The room comes alive — notices slide, reactions pop, controls press back.
