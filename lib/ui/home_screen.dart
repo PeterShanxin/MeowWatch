@@ -842,6 +842,20 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_syncLog?.flush() ?? Future<void>.value());
     _videoFocus.dispose();
     _rootFocus.dispose();
+    // Synchronous exit checkpoint (#176). `_core.reset()` above is unawaited and
+    // its `_player.stop()` is async (media_kit dispatches via mpv_command_async),
+    // so reset() yields at `await stop()` and this line runs right after —
+    // meaning the crash-markers sidecar normally reads `reset stop begin`,
+    // `dispose home done`, then (once stop acks) `reset stop done`. So this
+    // checkpoint marks only that dispose()'s SYNCHRONOUS body finished; it does
+    // NOT imply the engine stopped. Read the tail by `reset stop done`, not this
+    // line: `reset stop done` present ⇒ stop completed and any freeze is later
+    // (post-dispose native render/raster teardown of the held frame); `reset stop
+    // begin` with no `reset stop done` ⇒ wedged in/around libmpv `stop()`,
+    // regardless of `dispose home done`. Written with appLogSync (not appLog)
+    // because dispose() can't await and a queued async flush would never run if
+    // the freeze lands in or right after super.dispose().
+    appLogSync('life: dispose home done');
     super.dispose();
   }
 

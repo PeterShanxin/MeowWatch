@@ -10,6 +10,15 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.39.1-alpha] - 2026-07-02
+
+> Quiet groundwork to catch a rare leave-room freeze.
+
+### Improved
+- Added deeper behind-the-scenes diagnostics around leaving a room, so the rare
+  freeze that some setups hit on the way out can finally be pinned down and
+  fixed (#176). Nothing changes in how the app looks or plays.
+
 ## [0.39.0-alpha] - 2026-07-01
 
 > Design-system polish — the motion showcase is complete.

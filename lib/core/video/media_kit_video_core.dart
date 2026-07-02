@@ -372,10 +372,31 @@ class MediaKitVideoCore extends VideoCore {
   /// Best-effort: a failed stop/volume call must not crash the (fire-and-forget)
   /// leave path nor reject [_pendingReset], which [load] awaits.
   Future<void> _doReset() async {
+    // Teardown checkpoints for the intermittent leave-room freeze (#176): this
+    // path can hard-deadlock with no thrown exception, so the checkpoints on disk
+    // localize the blocking call. Written with appLogSync (not appLog): appLog
+    // only queues an *async* flush a wedged isolate would never run, so the
+    // marker could be lost exactly when it matters. appLogSync appends
+    // synchronously to the crash-markers sidecar and returns only once the bytes
+    // are on disk. Crash-proof by contract; never throws back into this teardown.
+    //
+    // Interpretation: stop() is async and reset() is started unawaited from
+    // HomeScreen.dispose(), so `dispose home done` lands between `reset stop
+    // begin` and `reset stop done`. It is `reset stop done` — NOT `dispose home
+    // done` — that proves the engine actually stopped; `reset stop begin` with no
+    // `reset stop done` means the freeze is in libmpv `stop()`.
+    appLogSync('life: reset stop begin');
     try {
       await _player.stop();
+      appLogSync('life: reset stop done');
       await _player.setVolume(100.0);
-    } catch (_) {}
+      appLogSync('life: reset volume done');
+    } catch (e, st) {
+      // Log the stack too (still diagnostics-only) so a captured session says
+      // what failed, not just the message.
+      appLogSync('life: reset error ${redactUrls('$e')}');
+      appLogSync('life: reset stack ${redactUrls('$st')}');
+    }
   }
 
   @override

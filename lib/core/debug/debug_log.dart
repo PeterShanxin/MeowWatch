@@ -183,6 +183,42 @@ class DebugLog {
     }
   }
 
+  /// Sidecar filename for [writeSync] crash markers. Ends in `.log` so the
+  /// Export-logs bundle picks it up, but does not carry the rotating base
+  /// prefix so [_prune] leaves it alone.
+  static const String crashMarkerFileName = 'crash-markers.log';
+
+  /// Append one teardown marker **synchronously**, blocking until it is flushed
+  /// to the OS, so it survives even if the calling isolate deadlocks on the
+  /// very next statement (#176). Unlike [call] — which buffers into the
+  /// [IOSink] and queues an *asynchronous* flush that a wedged event loop would
+  /// never run — this writes straight to disk and returns only once the bytes
+  /// are there.
+  ///
+  /// Writes to a dedicated [crashMarkerFileName] sidecar next to the session
+  /// log, not the log itself: a second writer into the buffered session file
+  /// would race the sink (its later flush writes at its own offset and can
+  /// overwrite the marker). The sidecar has a single, sequential appender, so
+  /// every marker is safe and its tail localizes exactly where a freeze wedged.
+  /// Best-effort and crash-proof like [call]; no-op until a session is open.
+  void writeSync(String line) {
+    if (_level == LogLevel.off) return;
+    if (_level == LogLevel.neat && isVerboseOnly(line)) return;
+    final active = _file;
+    if (active == null) return; // no session open yet
+    final dir = _dir ?? active.parent;
+    try {
+      File('${dir.path}${Platform.pathSeparator}$crashMarkerFileName')
+          .writeAsStringSync(
+        '${_clock().toIso8601String()} $line\n',
+        mode: FileMode.append,
+        flush: true,
+      );
+    } catch (_) {
+      // Best-effort: a diagnostic marker must never disrupt teardown.
+    }
+  }
+
   /// Push buffered lines to disk without closing the file, so an in-session
   /// read (e.g. the Export-logs bundle) sees the latest protocol/FOLLOW lines
   /// rather than whatever happened to be flushed already.
