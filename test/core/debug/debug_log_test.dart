@@ -224,6 +224,78 @@ void main() {
     });
   });
 
+  group('writeSync (#176 crash markers)', () {
+    File crashFile(Directory d) => File(
+          '${d.path}${Platform.pathSeparator}${DebugLog.crashMarkerFileName}',
+        );
+
+    test('lands a marker on disk with no event-loop turn', () async {
+      final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.verbose)
+        ..start();
+      log.writeSync('life: reset stop begin');
+      // A frozen isolate never turns the loop, so the marker must be readable
+      // immediately — no await, unlike the eager async flush behind call().
+      final text = crashFile(dir).readAsStringSync();
+      expect(text, contains('life: reset stop begin'));
+      // ISO-8601 timestamp prefix, same as call().
+      expect(RegExp(r'\d{4}-\d{2}-\d{2}T').hasMatch(text), isTrue);
+      await log.close();
+    });
+
+    test('sidecar is separate from the session log and survives sink writes',
+        () async {
+      // The sidecar has a single sequential appender, so buffered session-log
+      // writes before/after can never overwrite a marker.
+      final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.verbose)
+        ..start();
+      log('trace: buffered before');
+      log.writeSync('life: reset stop begin');
+      log.writeSync('life: dispose home done');
+      log('trace: buffered after');
+      await log.close();
+      final crash = crashFile(dir).readAsStringSync();
+      // Both markers present and in order.
+      expect(
+        crash.indexOf('reset stop begin'),
+        lessThan(crash.indexOf('dispose home done')),
+      );
+      // The session log is a different file and holds its own lines only.
+      final session = logsIn(dir)
+          .firstWhere((f) => !f.path.endsWith(DebugLog.crashMarkerFileName))
+          .readAsStringSync();
+      expect(session, contains('trace: buffered after'));
+      expect(session, isNot(contains('reset stop begin')));
+    });
+
+    test('respects level — off writes no sidecar', () async {
+      final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.off)
+        ..start();
+      log.writeSync('life: marker');
+      expect(crashFile(dir).existsSync(), isFalse);
+      await log.close();
+    });
+
+    test('drops a verbose-only line at neat, keeps a meaningful marker',
+        () async {
+      final log = DebugLog.inDir(dir, baseName: 'x', level: LogLevel.neat)
+        ..start();
+      log.writeSync('trace: firehose'); // verbose-only → dropped
+      log.writeSync('life: dispose home done'); // meaningful → kept
+      final text = crashFile(dir).readAsStringSync();
+      expect(text, isNot(contains('trace: firehose')));
+      expect(text, contains('life: dispose home done'));
+      await log.close();
+    });
+
+    test('before start is a silent no-op (no session open)', () {
+      expect(
+        () => DebugLog.inDir(dir, baseName: 'x').writeSync('orphan'),
+        returnsNormally,
+      );
+      expect(crashFile(dir).existsSync(), isFalse);
+    });
+  });
+
   group('rotation', () {
     test('each start writes a new file', () async {
       var t = DateTime(2026, 6, 11, 16, 0, 0);

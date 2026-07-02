@@ -842,14 +842,18 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_syncLog?.flush() ?? Future<void>.value());
     _videoFocus.dispose();
     _rootFocus.dispose();
-    // Eagerly-flushed exit marker (#176). The intermittent leave-room freeze dies
+    // Synchronous exit checkpoint (#176). The intermittent leave-room freeze dies
     // somewhere on this teardown frame with no exception. `_core.reset()` above
     // runs synchronously up to its `await _player.stop()` (emitting `reset stop
-    // begin`), so the marker order on disk pins WHERE it wedged: ending at `reset
-    // stop begin` ⇒ inside libmpv `stop()`; reaching this `dispose home done` ⇒
-    // the synchronous Dart teardown finished and the freeze is in the post-dispose
-    // native render/raster pipeline (the held-frame texture teardown), not Dart.
-    appLog('life: dispose home done');
+    // begin`), so the checkpoint order in the crash-markers sidecar pins WHERE it
+    // wedged: tail = `reset stop begin` ⇒ inside libmpv `stop()`; reaching this
+    // `dispose home done` ⇒ the synchronous Dart teardown finished and the freeze
+    // is in the post-dispose native render/raster pipeline (the held-frame
+    // texture teardown), not Dart. Written with appLogSync, not appLog: dispose()
+    // cannot await, and if the freeze lands in or right after super.dispose() a
+    // queued async flush would never run — the sync sidecar append guarantees
+    // this checkpoint is on disk regardless.
+    appLogSync('life: dispose home done');
     super.dispose();
   }
 

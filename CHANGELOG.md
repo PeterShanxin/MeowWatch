@@ -15,8 +15,8 @@ in-app updater reads to show what changed.
 > Quiet groundwork to catch a rare leave-room freeze.
 
 ### Improved
-- Added deeper behind-the-scenes diagnostics around leaving a room, so a rare
-  freeze a few setups can hit on the way out can finally be pinned down and
+- Added deeper behind-the-scenes diagnostics around leaving a room, so the rare
+  freeze that some setups hit on the way out can finally be pinned down and
   fixed (#176). Nothing changes in how the app looks or plays.
 
 ## [0.39.0-alpha] - 2026-07-01

@@ -43,3 +43,16 @@ void appLog(String line) {
     // Best-effort: never let a diagnostic failure surface to the caller.
   }
 }
+
+/// Like [appLog], but forces the line to disk **synchronously** before
+/// returning — so a teardown marker survives even if the isolate deadlocks on
+/// the very next statement (#176), where the async eager flush behind [appLog]
+/// would never run. Crash-proof by the same contract as [appLog]; reserve it
+/// for rare must-survive markers, not the normal firehose.
+void appLogSync(String line) {
+  try {
+    _appLog?.writeSync(line);
+  } catch (_) {
+    // Best-effort: never let a diagnostic failure surface to the caller.
+  }
+}

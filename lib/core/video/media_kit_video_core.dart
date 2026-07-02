@@ -372,20 +372,24 @@ class MediaKitVideoCore extends VideoCore {
   /// Best-effort: a failed stop/volume call must not crash the (fire-and-forget)
   /// leave path nor reject [_pendingReset], which [load] awaits.
   Future<void> _doReset() async {
-    // Eagerly-flushed teardown markers (#176): the intermittent leave-room freeze
-    // hard-deadlocks on this path with no thrown exception, so the LAST marker
-    // that reaches disk localizes the blocking call. `life:` lines are flushed
-    // per write (unlike the buffered `trace:` firehose), so they survive a freeze
-    // where the next buffered line would be lost. Diagnostics only — `appLog` is
-    // crash-proof by contract and never throws back into this teardown.
-    appLog('life: reset stop begin');
+    // Teardown checkpoints for the intermittent leave-room freeze (#176): this
+    // path can hard-deadlock with no thrown exception, so the LAST checkpoint on
+    // disk localizes the blocking call. Written with appLogSync (not appLog):
+    // appLog only queues an *async* flush a wedged isolate would never run, so
+    // the marker could be lost exactly when it matters. appLogSync appends
+    // synchronously to the crash-markers sidecar and returns only once the bytes
+    // are on disk. Crash-proof by contract; never throws back into this teardown.
+    appLogSync('life: reset stop begin');
     try {
       await _player.stop();
-      appLog('life: reset stop done');
+      appLogSync('life: reset stop done');
       await _player.setVolume(100.0);
-      appLog('life: reset volume done');
-    } catch (e) {
-      appLog('life: reset error ${redactUrls('$e')}');
+      appLogSync('life: reset volume done');
+    } catch (e, st) {
+      // Log the stack too (still diagnostics-only) so a captured session says
+      // what failed, not just the message.
+      appLogSync('life: reset error ${redactUrls('$e')}');
+      appLogSync('life: reset stack ${redactUrls('$st')}');
     }
   }
 
