@@ -842,17 +842,19 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_syncLog?.flush() ?? Future<void>.value());
     _videoFocus.dispose();
     _rootFocus.dispose();
-    // Synchronous exit checkpoint (#176). The intermittent leave-room freeze dies
-    // somewhere on this teardown frame with no exception. `_core.reset()` above
-    // runs synchronously up to its `await _player.stop()` (emitting `reset stop
-    // begin`), so the checkpoint order in the crash-markers sidecar pins WHERE it
-    // wedged: tail = `reset stop begin` ⇒ inside libmpv `stop()`; reaching this
-    // `dispose home done` ⇒ the synchronous Dart teardown finished and the freeze
-    // is in the post-dispose native render/raster pipeline (the held-frame
-    // texture teardown), not Dart. Written with appLogSync, not appLog: dispose()
-    // cannot await, and if the freeze lands in or right after super.dispose() a
-    // queued async flush would never run — the sync sidecar append guarantees
-    // this checkpoint is on disk regardless.
+    // Synchronous exit checkpoint (#176). `_core.reset()` above is unawaited and
+    // its `_player.stop()` is async (media_kit dispatches via mpv_command_async),
+    // so reset() yields at `await stop()` and this line runs right after —
+    // meaning the crash-markers sidecar normally reads `reset stop begin`,
+    // `dispose home done`, then (once stop acks) `reset stop done`. So this
+    // checkpoint marks only that dispose()'s SYNCHRONOUS body finished; it does
+    // NOT imply the engine stopped. Read the tail by `reset stop done`, not this
+    // line: `reset stop done` present ⇒ stop completed and any freeze is later
+    // (post-dispose native render/raster teardown of the held frame); `reset stop
+    // begin` with no `reset stop done` ⇒ wedged in/around libmpv `stop()`,
+    // regardless of `dispose home done`. Written with appLogSync (not appLog)
+    // because dispose() can't await and a queued async flush would never run if
+    // the freeze lands in or right after super.dispose().
     appLogSync('life: dispose home done');
     super.dispose();
   }
