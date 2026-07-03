@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'playback_screen_view.dart';
 import 'playback_state.dart';
 
 /// Abstract interface for video playback. Implementations may wrap libmpv,
@@ -16,6 +17,15 @@ abstract class VideoCore {
 
   PlaybackState get state => _state;
   Stream<PlaybackState> get stateStream => _controller.stream;
+
+  /// Current [PlaybackScreenView] projection of [state].
+  PlaybackScreenView get screenView => PlaybackScreenView.of(_state);
+
+  /// [stateStream] narrowed to the coarse fields screen-level UI consumes,
+  /// de-duplicated — position/duration/volume churn never surfaces here. See
+  /// [PlaybackScreenView] for why (#181).
+  Stream<PlaybackScreenView> get screenViewStream =>
+      stateStream.map(PlaybackScreenView.of).distinct();
 
   /// True once [dispose] has run (the state stream is closed). Lets callers that
   /// await the stream avoid acting on a torn-down core (e.g. seeking after the

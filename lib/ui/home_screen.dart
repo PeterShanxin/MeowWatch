@@ -43,6 +43,7 @@ import '../core/video/media_kit_video_core.dart';
 import '../core/video/video_engine_pool.dart';
 import '../core/video/await_open_result.dart';
 import '../core/video/picker_initial_directory.dart';
+import '../core/video/playback_screen_view.dart';
 import '../core/video/playback_state.dart';
 import '../core/video/seek_when_ready.dart';
 import '../core/video/source_announce.dart';
@@ -1475,9 +1476,13 @@ class _HomeScreenState extends State<HomeScreen> {
           onPointerSignal: (_) => _onUserInteraction(),
           child: VideoDropTarget(
             onFileDropped: _handleDropped,
-            child: StreamBuilder<PlaybackState>(
-              stream: _core.stateStream,
-              initialData: _core.state,
+            // Narrowed, de-duplicated view: mpv's per-frame position ticks
+            // must NOT rebuild this whole Stack (#181). Widgets that need
+            // position (playback bar inside VideoSurface) subscribe to the raw
+            // stateStream themselves.
+            child: StreamBuilder<PlaybackScreenView>(
+              stream: _core.screenViewStream,
+              initialData: _core.screenView,
               builder: (context, snapshot) {
                 final state = snapshot.data!;
                 // True only while a video surface is actually on screen — not on
