@@ -24,7 +24,12 @@ abstract class VideoCore {
   /// [stateStream] narrowed to the coarse fields screen-level UI consumes,
   /// de-duplicated — position/duration/volume churn never surfaces here. See
   /// [PlaybackScreenView] for why (#181).
-  Stream<PlaybackScreenView> get screenViewStream =>
+  ///
+  /// Cached (`late final`) so every access returns the same stream object:
+  /// `StreamBuilder` resubscribes when handed a different stream, which would
+  /// reset `distinct()`'s memory on every parent rebuild and let the next
+  /// position tick through as a "first" event.
+  late final Stream<PlaybackScreenView> screenViewStream =
       stateStream.map(PlaybackScreenView.of).distinct();
 
   /// True once [dispose] has run (the state stream is closed). Lets callers that

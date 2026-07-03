@@ -98,6 +98,13 @@ void main() {
       expect(views[3].errorMessage, 'boom');
     });
 
+    test('is a single cached stream object across accesses', () {
+      // StreamBuilder resubscribes whenever it's handed a different stream
+      // object, which would reset distinct()'s memory on every parent
+      // setState and let the next position tick through as a "first" event.
+      expect(core.screenViewStream, same(core.screenViewStream));
+    });
+
     test('screenView getter mirrors the current state projection', () {
       core.push(core.state.copyWith(
         status: PlaybackStatus.paused,
