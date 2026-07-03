@@ -10,6 +10,16 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.39.2-alpha] - 2026-07-04
+
+> Lighter on your laptop while a video plays.
+
+### Improved: Less battery drain
+- The room screen no longer redraws itself many times a second while a video
+  is playing — it now only reacts when something actually changes on screen.
+  Less busywork for your CPU means a cooler, quieter laptop during long
+  watch sessions (#79, #181).
+
 ## [0.39.1-alpha] - 2026-07-02
 
 > Quiet groundwork to catch a rare leave-room freeze.
