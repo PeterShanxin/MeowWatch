@@ -10,6 +10,16 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.40.0-alpha] - 2026-07-04
+
+> Blank name? MeowWatch picks you a cute one.
+
+### Added: Random names
+- Leave the name field blank and you'll join as a fun suggested name like
+  `SleepyOtter` — it's shown right in the field before you connect, and a
+  little dice button rolls a new one until you like it. Typing your own name
+  works exactly as before (#172).
+
 ## [0.39.2-alpha] - 2026-07-04
 
 > Lighter on your laptop while a video plays.

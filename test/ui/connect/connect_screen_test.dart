@@ -224,6 +224,58 @@ void main() {
     expect(find.byKey(const Key('connect-name-clear')), findsNothing);
   });
 
+  testWidgets('name hint offers a random username and blank connect commits it', (
+    tester,
+  ) async {
+    // #172: leaving the name blank joins as the fun suggested name the field
+    // was showing — never a hardcoded "meow" the user didn't see coming.
+    await pump(tester);
+
+    String hint() => tester
+        .widget<TextField>(find.byKey(const Key('connect-name')))
+        .decoration!
+        .hintText!;
+    expect(hint(), matches(RegExp(r'^[A-Z][a-z]+[A-Z][a-z]+$')));
+
+    final offered = hint();
+    await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+    await tester.tap(find.byKey(const Key('connect-start-new')));
+    await tester.pumpAndSettle();
+
+    expect(connected!.username, offered);
+    expect(profiles.savedUsernames.single, offered);
+  });
+
+  testWidgets('dice reruns the name suggestion while the field is blank', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    String hint() => tester
+        .widget<TextField>(find.byKey(const Key('connect-name')))
+        .decoration!
+        .hintText!;
+    final dice = find.byKey(const Key('connect-name-dice'));
+    expect(dice, findsOneWidget);
+
+    // A single redraw can collide (64×64 combos), so allow a few taps before
+    // calling the suggestion stuck — keeps the test deterministic in practice.
+    final before = hint();
+    var changed = false;
+    for (var i = 0; i < 8 && !changed; i++) {
+      await tester.tap(dice);
+      await tester.pump();
+      changed = hint() != before;
+    }
+    expect(changed, isTrue);
+
+    // Typing a name swaps the dice for the clear button.
+    await tester.enterText(find.byKey(const Key('connect-name')), 'alice');
+    await tester.pump();
+    expect(find.byKey(const Key('connect-name-dice')), findsNothing);
+    expect(find.byKey(const Key('connect-name-clear')), findsOneWidget);
+  });
+
   testWidgets('Start new room generates a private code and connects', (
     tester,
   ) async {
@@ -802,6 +854,26 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(connected!.username, 'meowPEOW');
+    },
+  );
+
+  testWidgets(
+    'continue-watching without any saved name falls back to the suggestion',
+    (tester) async {
+      // #172: old history row with no name and no saved rooms — resume joins
+      // as the suggested random name the field is showing, not "meow".
+      history.recent.add(historyEntry(1, 'ep1'));
+      await pump(tester);
+
+      final offered = tester
+          .widget<TextField>(find.byKey(const Key('connect-name')))
+          .decoration!
+          .hintText!;
+      await tester.ensureVisible(find.byKey(const Key('continue-1')));
+      await tester.tap(find.byKey(const Key('continue-1')));
+      await tester.pumpAndSettle();
+
+      expect(connected!.username, offered);
     },
   );
 

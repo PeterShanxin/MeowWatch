@@ -12,6 +12,7 @@ const List<String> kLaunchTips = <String>[
   'Find themes and sounds in the gear, top-right.',
   'Press Tab to show or hide chat.',
   'MeowWatch keeps itself up to date.',
+  'No name? Leave it blank — the dice picks you a cute one.',
 ];
 
 /// The tip for [index], wrapping around the list so any seed is valid.
