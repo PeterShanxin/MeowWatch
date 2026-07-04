@@ -10,6 +10,7 @@ import '../../core/audio/notify_sounds.dart';
 import '../../core/connect/room_code.dart';
 import '../../core/connect/room_config.dart';
 import '../../core/connect/room_share.dart';
+import '../../core/connect/username_generator.dart';
 import '../../core/data/history_entry.dart';
 import '../../core/data/history_mode.dart';
 import '../../core/data/saved_profile.dart';
@@ -77,6 +78,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
   final _passwordFocus = FocusNode();
   final _scroll = ScrollController();
   bool _advancedOpen = false;
+
+  // Who a blank name field joins as (#172). Shown as the field's hint so the
+  // user sees the name before connecting, rerollable via the dice button, and
+  // regenerated after each join so every blank connect gets a fresh one — an
+  // accepted name is already remembered through the saved room.
+  String _suggestedName = generateUsername();
+
   String? _serverFocusStart;
   String? _portFocusStart;
   String? _passwordFocusStart;
@@ -281,7 +289,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   String get _username {
     final typed = _name.text.trim();
-    return typed.isEmpty ? 'meow' : typed;
+    return typed.isEmpty ? _suggestedName : typed;
   }
 
   String get _typedUsername => _name.text.trim();
@@ -315,7 +323,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
     // changed the level/sounds, and the lobby gear should reflect that, not the
     // value captured at app start.
     await widget.onConnect(config);
-    if (mounted) await _loadSettings();
+    if (!mounted) return;
+    // Fresh suggestion for the next join: a blank name means "surprise me",
+    // and the name just used is already remembered via the saved room (#172).
+    setState(() => _suggestedName = generateUsername());
+    await _loadSettings();
   }
 
   Future<void> _startNewRoom() async {
@@ -442,7 +454,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
             ? entryName
             : typed.isNotEmpty
             ? typed
-            : (recent?.username ?? 'meow'));
+            : (recent?.username ?? _suggestedName));
     final savedUsername = (entryName != null && entryName.isNotEmpty)
         ? entryName
         : recent?.username;
@@ -615,10 +627,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _textField(
         key: const Key('connect-name'),
         controller: _name,
-        hint: 'e.g. lin',
+        // The hint is who a blank field joins as (#172) — a real committed
+        // name, not example copy. The dice rerolls it; typing anything wins.
+        hint: _suggestedName,
         suffixIcon: _name.text.isNotEmpty
             ? _clearNameButton(key: const Key('connect-name-clear'))
-            : null,
+            : _diceNameButton(key: const Key('connect-name-dice')),
       ),
       const SizedBox(height: Spacing.xl),
       FilledButton(
@@ -875,6 +889,16 @@ class _ConnectScreenState extends State<ConnectScreen> {
       tooltip: 'Clear name',
       icon: Icon(Icons.close, color: m.textDim, size: IconSizes.md),
       onPressed: _name.clear,
+    );
+  }
+
+  Widget _diceNameButton({required Key key}) {
+    final m = context.meow;
+    return IconButton(
+      key: key,
+      tooltip: 'New random name',
+      icon: Icon(Icons.casino_outlined, color: m.textDim, size: IconSizes.md),
+      onPressed: () => setState(() => _suggestedName = generateUsername()),
     );
   }
 }
