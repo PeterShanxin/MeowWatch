@@ -75,6 +75,22 @@ class UpdateVerificationException implements Exception {
       'Update checksum mismatch: expected $expected, got $actual';
 }
 
+/// Thrown when a zip entry's path would escape the extraction directory
+/// (zip-slip / path traversal). The entry names in a release zip are attacker-
+/// influenced — whoever can write the R2 bucket controls them — so an entry like
+/// `..\..\Startup\evil.exe` or an absolute path must be rejected before any
+/// bytes are written. Aborts the whole update.
+class UnsafeArchiveEntryException implements Exception {
+  const UnsafeArchiveEntryException({required this.entryName});
+
+  /// The rejected entry name, as it appeared in the archive.
+  final String entryName;
+
+  @override
+  String toString() =>
+      'Unsafe archive entry rejected (path traversal): $entryName';
+}
+
 /// Checks for updates from the R2 release bucket, downloads, and applies them.
 ///
 /// Flow:
@@ -347,16 +363,7 @@ class UpdateService extends ChangeNotifier {
     final extractDir = Directory(p.join(tempDir.path, 'extracted'));
     extractDir.createSync(recursive: true);
 
-    for (final file in archive) {
-      final outPath = p.join(extractDir.path, file.name);
-      if (file.isFile) {
-        final outFile = File(outPath);
-        outFile.parent.createSync(recursive: true);
-        outFile.writeAsBytesSync(file.content as List<int>);
-      } else {
-        Directory(outPath).createSync(recursive: true);
-      }
-    }
+    extractArchive(archive, extractDir);
 
     // The app directory is the folder containing the current executable.
     final appDir = p.dirname(Platform.resolvedExecutable);
@@ -407,6 +414,32 @@ class UpdateService extends ChangeNotifier {
     final actual = sha256.convert(bytes).toString();
     if (actual.toLowerCase() != want.toLowerCase()) {
       throw UpdateVerificationException(expected: want, actual: actual);
+    }
+  }
+
+  /// Extract [archive] into [extractDir], rejecting any entry whose resolved
+  /// path would land outside [extractDir] (zip-slip). Throws
+  /// [UnsafeArchiveEntryException] on the first unsafe entry, aborting the whole
+  /// extraction — the entry names come from an attacker-influenced zip, so a
+  /// `..`-traversal or absolute-path entry must never be written. The
+  /// `archive` package performs no such check itself.
+  static void extractArchive(Archive archive, Directory extractDir) {
+    final root = p.normalize(extractDir.path);
+    for (final file in archive) {
+      final outPath = p.normalize(p.join(root, file.name));
+      // Allow the root itself (e.g. a '.' entry); everything else must sit
+      // strictly beneath it. `p.isWithin` rejects both `..`-traversal and a
+      // sibling like `<root>_evil` that a bare `startsWith(root)` would miss.
+      if (outPath != root && !p.isWithin(root, outPath)) {
+        throw UnsafeArchiveEntryException(entryName: file.name);
+      }
+      if (file.isFile) {
+        final outFile = File(outPath);
+        outFile.parent.createSync(recursive: true);
+        outFile.writeAsBytesSync(file.content as List<int>);
+      } else {
+        Directory(outPath).createSync(recursive: true);
+      }
     }
   }
 
