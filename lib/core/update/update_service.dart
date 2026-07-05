@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import '../app_version.dart';
 import '../debug/app_log.dart';
 import '../debug/log_redact.dart';
+import 'release_signature.dart';
 import 'semver.dart';
 
 /// Metadata about an available update.
@@ -18,6 +19,7 @@ class UpdateInfo {
     required this.version,
     required this.downloadUrl,
     required this.sha256,
+    required this.signature,
     required this.releaseNotes,
     required this.releaseDate,
   });
@@ -25,6 +27,12 @@ class UpdateInfo {
   final String version;
   final String downloadUrl;
   final String? sha256;
+
+  /// Base64 Ed25519 signature of the asset zip's bytes, from latest.json's
+  /// `sig` field. Verified against the baked-in release public key before the
+  /// update is applied. Null for releases published before signing existed —
+  /// which the install path (fail-closed) refuses.
+  final String? signature;
   final String releaseNotes;
   final String releaseDate;
 }
@@ -190,6 +198,7 @@ class UpdateService extends ChangeNotifier {
         version: remoteVersion,
         downloadUrl: asset['url'] as String,
         sha256: asset['sha256'] as String?,
+        signature: asset['sig'] as String?,
         releaseNotes: (json['release_notes'] as String?) ?? '',
         releaseDate: (json['release_date'] as String?) ?? '',
       );
@@ -356,6 +365,13 @@ class UpdateService extends ChangeNotifier {
     // latest.json before we extract or run anything. A mismatch means the
     // download was corrupted or tampered with — abort instead of installing.
     verifyChecksum(zipBytes, _latestUpdate?.sha256);
+
+    // Authenticity gate: the checksum only proves the bytes match latest.json,
+    // which lives in the same bucket as the zip — whoever can swap one can swap
+    // the other. The Ed25519 signature is made with a private key that never
+    // touches R2, GitHub, or this repo, so a poisoned bucket can't forge it.
+    // Fail closed: refuse any update we can't verify against the baked-in key.
+    verifyReleaseSignature(zipBytes, _latestUpdate?.signature);
 
     final archive = ZipDecoder().decodeBytes(zipBytes);
 

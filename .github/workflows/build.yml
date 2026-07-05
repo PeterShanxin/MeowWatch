@@ -179,6 +179,32 @@ jobs:
           $releaseDir = "build\windows\x64\runner\Release"
           Compress-Archive -Path "$releaseDir\*" -DestinationPath "MeowWatch-windows-x64.zip" -Force
 
+      # Authenticity: sign the zip with the Ed25519 release key that lives ONLY
+      # on this PC (never in the repo, GitHub secrets, or R2). The app verifies
+      # this signature against its baked-in public key before installing, so a
+      # poisoned bucket can't forge an update. Fail-closed: no key => no release,
+      # because shipping an unsigned build would brick every install's updater.
+      # See docs/AGENT_GUIDE.md -> Release signing.
+      - name: Sign release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $keyPath = if ($env:MEOWWATCH_RELEASE_KEY) {
+            $env:MEOWWATCH_RELEASE_KEY
+          } else {
+            Join-Path $env:USERPROFILE '.meowwatch\release-key.txt'
+          }
+          if (-not (Test-Path $keyPath)) {
+            Write-Error "Release signing key not found at $keyPath. A release must be signed (fail-closed). Place the private seed on this runner, or set MEOWWATCH_RELEASE_KEY to its path. See docs/AGENT_GUIDE.md -> Release signing."
+            exit 1
+          }
+          dart run tool/release_signer.dart sign "$keyPath" MeowWatch-windows-x64.zip MeowWatch-windows-x64.zip.sig
+          if (-not (Test-Path 'MeowWatch-windows-x64.zip.sig')) {
+            Write-Error "Signing produced no .sig file"
+            exit 1
+          }
+          Write-Host "Signed release; sig bytes: $((Get-Item 'MeowWatch-windows-x64.zip.sig').Length)"
+
       - name: Create GitHub Release
         shell: pwsh
         env:
@@ -187,7 +213,13 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $tag = $env:GITHUB_REF -replace '^refs/tags/', ''
           $repo = $env:GITHUB_REPOSITORY
-          $assetName = 'MeowWatch-windows-x64.zip'
+          # Upload the zip AND its detached signature so the R2 publish job can
+          # embed the sig into latest.json.
+          $assetNames = @('MeowWatch-windows-x64.zip', 'MeowWatch-windows-x64.zip.sig')
+          $contentTypes = @{
+            'MeowWatch-windows-x64.zip'     = 'application/zip'
+            'MeowWatch-windows-x64.zip.sig' = 'text/plain'
+          }
           $headers = @{
             Authorization = "Bearer $env:GITHUB_TOKEN"
             Accept = 'application/vnd.github+json'
@@ -227,7 +259,7 @@ jobs:
           }
 
           foreach ($asset in @($release.assets)) {
-            if ($asset.name -eq $assetName) {
+            if ($assetNames -contains $asset.name) {
               try {
                 Invoke-RestMethod `
                   -Method Delete `
@@ -239,12 +271,14 @@ jobs:
             }
           }
           $uploadUrl = $release.upload_url -replace '\{\?name,label\}$', ''
-          Invoke-RestMethod `
-            -Method Post `
-            -Uri "${uploadUrl}?name=$assetName" `
-            -Headers $headers `
-            -ContentType 'application/zip' `
-            -InFile $assetName
+          foreach ($name in $assetNames) {
+            Invoke-RestMethod `
+              -Method Post `
+              -Uri "${uploadUrl}?name=$name" `
+              -Headers $headers `
+              -ContentType $contentTypes[$name] `
+              -InFile $name
+          }
 
   # ── Create GitHub Release (tag pushes only) ────────────────────────
   release:
@@ -269,7 +303,7 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           mkdir -p artifacts
           gh release download "$TAG" \
-            --pattern 'MeowWatch-windows-x64.zip' \
+            --pattern 'MeowWatch-windows-x64.zip*' \
             --dir artifacts
 
       - name: Locate release zip
@@ -284,6 +318,16 @@ jobs:
           fi
           echo "path=$ZIP" >> "$GITHUB_OUTPUT"
           echo "Resolved release zip: $ZIP"
+          # The detached signature must be present — a release with no sig would
+          # be refused by every install's updater (fail-closed).
+          SIG=$(find artifacts -type f -name 'MeowWatch-windows-x64.zip.sig' | head -n1)
+          if [ -z "$SIG" ]; then
+            echo "::error::MeowWatch-windows-x64.zip.sig not found — release must be signed."
+            find artifacts -maxdepth 3 -print
+            exit 1
+          fi
+          echo "sig=$SIG" >> "$GITHUB_OUTPUT"
+          echo "Resolved signature: $SIG"
 
       # ── Upload to Cloudflare R2 ──
       - name: Install rclone
@@ -310,12 +354,21 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           rclone copy "${{ steps.zip.outputs.path }}" \
             r2:${{ secrets.R2_BUCKET_NAME }}/releases/$TAG/
+          rclone copy "${{ steps.zip.outputs.sig }}" \
+            r2:${{ secrets.R2_BUCKET_NAME }}/releases/$TAG/
 
       - name: Update latest.json on R2
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
           SHA=$(sha256sum "${{ steps.zip.outputs.path }}" | cut -d' ' -f1)
+          # Base64 Ed25519 signature over the zip bytes; the app verifies this
+          # against its baked-in public key before installing (fail-closed).
+          SIG=$(cat "${{ steps.zip.outputs.sig }}")
+          if [ -z "$SIG" ]; then
+            echo "::error::signature file is empty — refusing to publish an unverifiable release."
+            exit 1
+          fi
           cat > latest.json << EOF
           {
             "version": "$VERSION",
@@ -323,7 +376,8 @@ jobs:
             "assets": {
               "windows-x64": {
                 "url": "${{ secrets.R2_PUBLIC_URL }}/releases/$TAG/MeowWatch-windows-x64.zip",
-                "sha256": "$SHA"
+                "sha256": "$SHA",
+                "sig": "$SIG"
               }
             },
             "release_notes": "Release $TAG"
