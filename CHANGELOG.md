@@ -10,6 +10,14 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.40.1-alpha] - 2026-07-05
+
+> Safer auto-updates.
+
+### Fixed: Safer updates
+- The updater now refuses any update package that tries to write files outside
+  its own folder, hardening auto-update against a tampered download.
+
 ## [0.40.0-alpha] - 2026-07-04
 
 > Blank name? MeowWatch picks you a cute one.
