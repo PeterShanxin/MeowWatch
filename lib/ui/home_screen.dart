@@ -53,6 +53,7 @@ import 'chat/chat_overlay.dart';
 import 'chat/chat_overlay_layout.dart';
 import 'drop_target.dart';
 import 'empty_state.dart';
+import 'idle_rearm_throttle.dart';
 import 'idle_visibility.dart';
 import 'notify_decision.dart';
 import 'paste_link_dialog.dart';
@@ -278,6 +279,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isUiIdle = false;
   Timer? _uiIdleTimer;
+
+  /// Monotonic clock + throttle so a burst of pointer hover/move events doesn't
+  /// cancel-and-reallocate the idle timers on every raw event (#182). Waking
+  /// from idle stays immediate; only the re-arm is coalesced.
+  final Stopwatch _interactionClock = Stopwatch()..start();
+  final IdleRearmThrottle _idleRearm = IdleRearmThrottle();
 
   /// Second idle stage: after staying idle past the first threshold, the dimmed
   /// chat card fades fully out (issue #34) instead of lingering as a ghost.
@@ -770,7 +777,13 @@ class _HomeScreenState extends State<HomeScreen> {
         _isUiIdle = false;
         _isUiDeepIdle = false;
       });
+      // Waking must re-arm the countdown now, not wait out the throttle window.
+      _idleRearm.reset();
     }
+    // Pointer hover/move fires hundreds of times a second; only re-arm the idle
+    // timers at most once per throttle window. The (rare) wake above always
+    // re-arms via reset(); the still-running timer covers the skipped events.
+    if (!_idleRearm.shouldRearm(_interactionClock.elapsed)) return;
     _uiIdleTimer?.cancel();
     _uiDeepIdleTimer?.cancel();
     _uiIdleTimer = Timer(_uiIdleDelay, () {

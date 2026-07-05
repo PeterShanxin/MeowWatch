@@ -221,8 +221,12 @@ class _VideoSurfaceState extends State<VideoSurface> {
   @override
   Widget build(BuildContext context) {
     // Hide the OS cursor during idle playback; any mouse movement wakes it via
-    // the Listener/MouseRegion chain in HomeScreen calling onUserInteraction,
-    // which flips isUiIdle back to false and restores the cursor (#78).
+    // HomeScreen's outer Listener (onPointerHover/onPointerMove) calling
+    // onUserInteraction, which flips isUiIdle back to false and restores the
+    // cursor (#78). This MouseRegion intentionally has no onHover of its own —
+    // hover events already bubble to that ancestor Listener, so a local handler
+    // would just double-fire onUserInteraction on every move (#182). The
+    // MouseRegion stays only for the idle cursor.
     final cursor = widget.isUiIdle ? SystemMouseCursors.none : MouseCursor.defer;
 
     return Focus(
@@ -231,7 +235,6 @@ class _VideoSurfaceState extends State<VideoSurface> {
       autofocus: true,
       child: MouseRegion(
         cursor: cursor,
-        onHover: (_) => _handleUserInteraction(),
         child: GestureDetector(
           onTap: _handleTap,
           onDoubleTap: _toggleFullscreen,

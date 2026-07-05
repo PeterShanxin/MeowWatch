@@ -10,6 +10,16 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.40.2-alpha] - 2026-07-05
+
+> Lighter on your laptop while you watch.
+
+### Improved: Less busywork
+- Moving the mouse during playback no longer makes the app do needless work on
+  every twitch — the timer that auto-hides the controls now updates far less
+  often. One less source of heat and fan noise in a long watch session
+  (#182, #79).
+
 ## [0.40.1-alpha] - 2026-07-05
 
 > Safer auto-updates.
