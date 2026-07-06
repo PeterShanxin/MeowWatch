@@ -9,11 +9,15 @@
 //       stdout — paste it into `releasePublicKeyBase64` in
 //       lib/core/update/release_signature.dart.
 //
-//   dart run tool/release_signer.dart sign <seed-file> <zip-path> <sig-out-path>
+//   dart run tool/release_signer.dart sign [--allow-key-mismatch] \
+//       <seed-file> <zip-path> <sig-out-path>
 //       Sign the release zip's bytes. Writes the base64 signature to
 //       <sig-out-path>. Fails if the seed's public half does not match the key
 //       baked into the app, so an accidental wrong-key signing can't ship a
-//       release the app would refuse.
+//       release the app would refuse. Pass --allow-key-mismatch ONLY for a
+//       key-rotation transitional release — the build that bakes the NEW public
+//       key but must be signed with the OLD private key so existing installs
+//       (which still carry the old key) can verify it.
 //
 // The private seed lives ONLY on the release PC (never in the repo, GitHub
 // secrets, or R2). See docs/AGENT_GUIDE.md → Release signing.
@@ -114,13 +118,24 @@ void _genkey(List<String> args) {
 }
 
 Future<void> _sign(List<String> args) async {
-  if (args.length != 3) {
-    stderr.writeln('usage: sign <seed-file> <zip-path> <sig-out-path>');
+  final allowMismatch = args.contains('--allow-key-mismatch');
+  final unknownFlags = args
+      .where((a) => a.startsWith('--') && a != '--allow-key-mismatch')
+      .toList();
+  if (unknownFlags.isNotEmpty) {
+    stderr.writeln('unknown flag(s): ${unknownFlags.join(', ')}');
     exit(2);
   }
-  final seedFile = File(args[0]);
-  final zipFile = File(args[1]);
-  final sigOut = File(args[2]);
+  final positional = args.where((a) => !a.startsWith('--')).toList();
+  if (positional.length != 3) {
+    stderr.writeln(
+      'usage: sign [--allow-key-mismatch] <seed-file> <zip-path> <sig-out-path>',
+    );
+    exit(2);
+  }
+  final seedFile = File(positional[0]);
+  final zipFile = File(positional[1]);
+  final sigOut = File(positional[2]);
 
   if (!seedFile.existsSync()) {
     stderr.writeln('release key file not found: ${seedFile.path}');
@@ -133,24 +148,43 @@ Future<void> _sign(List<String> args) async {
 
   final seedB64 = seedFile.readAsStringSync().trim();
 
-  // Guard: the seed we're signing with MUST correspond to the public key the
-  // app ships. Signing with the wrong key would produce a release every install
-  // refuses — fail loudly here instead of at every user's updater.
+  // Guard: normally the signing seed MUST correspond to the public key the app
+  // ships, so a wrong-key signing can't produce a release every install refuses.
+  // The one legitimate exception is a key-rotation transitional release: it
+  // bakes the NEW public key but is signed with the OLD private key, because
+  // existing installs still verify against the old key. --allow-key-mismatch
+  // permits exactly that (and only that).
   final derivedPublic = publicKeyForSeed(seedB64);
   if (derivedPublic != rel.releasePublicKeyBase64.trim()) {
-    stderr.writeln(
-      'release key mismatch: this seed\'s public key does not match '
-      'releasePublicKeyBase64 baked into the app. Refusing to sign — the '
-      'resulting release would fail verification on every install.',
-    );
-    exit(1);
+    if (allowMismatch) {
+      stderr.writeln(
+        'WARNING: signing key does not match the baked-in releasePublicKeyBase64. '
+        'Proceeding because --allow-key-mismatch was set (key-rotation '
+        'transitional release, signed with the OLD key).',
+      );
+    } else {
+      stderr.writeln(
+        'release key mismatch: this seed\'s public key does not match '
+        'releasePublicKeyBase64 baked into the app. Refusing to sign — the '
+        'resulting release would fail verification on every install. Pass '
+        '--allow-key-mismatch ONLY for a key-rotation transitional release '
+        '(baking the NEW key while signing with the OLD one).',
+      );
+      exit(1);
+    }
   }
 
   final zipBytes = await zipFile.readAsBytes();
   final sigB64 = signReleaseZip(privateSeedBase64: seedB64, zipBytes: zipBytes);
 
-  // Self-check: the signature we just produced must verify under the baked key.
-  if (!rel.isReleaseSignatureValid(bytes: zipBytes, signatureBase64: sigB64)) {
+  // Self-check the invariant that always holds: the signature must verify under
+  // the signing seed's OWN public key, whether or not that equals the baked-in
+  // key (during rotation it deliberately doesn't).
+  if (!rel.isReleaseSignatureValid(
+    bytes: zipBytes,
+    signatureBase64: sigB64,
+    publicKeyBase64: derivedPublic,
+  )) {
     stderr.writeln('internal error: freshly-made signature failed to verify');
     exit(1);
   }
