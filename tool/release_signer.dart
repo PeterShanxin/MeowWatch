@@ -9,12 +9,13 @@
 //       stdout — paste it into `releasePublicKeyBase64` in
 //       lib/core/update/release_signature.dart.
 //
-//   dart run tool/release_signer.dart sign [--allow-key-mismatch] \
+//   dart run tool/release_signer.dart sign --version <v> [--allow-key-mismatch] \
 //       <seed-file> <zip-path> <sig-out-path>
-//       Sign the release zip's bytes. Writes the base64 signature to
-//       <sig-out-path>. Fails if the seed's public half does not match the key
-//       baked into the app, so an accidental wrong-key signing can't ship a
-//       release the app would refuse. Pass --allow-key-mismatch ONLY for a
+//       Sign the release. The signature covers a version-bound manifest
+//       (version + the zip's SHA-256), not the raw bytes alone, so an old signed
+//       zip can't be replayed under a faked higher version. Writes the base64
+//       signature to <sig-out-path>. Fails if the seed's public half does not
+//       match the key baked into the app. Pass --allow-key-mismatch ONLY for a
 //       key-rotation transitional release — the build that bakes the NEW public
 //       key but must be signed with the OLD private key so existing installs
 //       (which still carry the old key) can verify it.
@@ -26,6 +27,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:ed25519_edwards/ed25519_edwards.dart' as ed;
 import 'package:meowwatch/core/update/release_signature.dart' as rel;
 
@@ -58,15 +60,21 @@ String publicKeyForSeed(String privateSeedBase64) {
   return base64.encode(ed.public(priv).bytes);
 }
 
-/// Sign [zipBytes] with the 32-byte seed [privateSeedBase64]; returns the
-/// base64-encoded 64-byte signature (the value that goes into latest.json).
-String signReleaseZip({
+/// Sign the version-bound release manifest (see
+/// [rel.releaseSignedMessage]) for [zipBytes] advertised as [version], using the
+/// 32-byte seed [privateSeedBase64]. Returns the base64-encoded 64-byte
+/// signature (the value that goes into latest.json's `sig`).
+String signRelease({
   required String privateSeedBase64,
+  required String version,
   required List<int> zipBytes,
 }) {
+  final sha = sha256.convert(zipBytes).toString();
   final priv = _privateKeyFromSeed(privateSeedBase64);
-  final sig = ed.sign(priv, Uint8List.fromList(zipBytes));
-  return base64.encode(sig);
+  final message = Uint8List.fromList(
+    utf8.encode(rel.releaseSignedMessage(version: version, sha256Hex: sha)),
+  );
+  return base64.encode(ed.sign(priv, message));
 }
 
 ed.PrivateKey _privateKeyFromSeed(String privateSeedBase64) {
@@ -118,18 +126,34 @@ void _genkey(List<String> args) {
 }
 
 Future<void> _sign(List<String> args) async {
-  final allowMismatch = args.contains('--allow-key-mismatch');
-  final unknownFlags = args
-      .where((a) => a.startsWith('--') && a != '--allow-key-mismatch')
-      .toList();
-  if (unknownFlags.isNotEmpty) {
-    stderr.writeln('unknown flag(s): ${unknownFlags.join(', ')}');
+  var allowMismatch = false;
+  String? version;
+  final positional = <String>[];
+  for (var i = 0; i < args.length; i++) {
+    final arg = args[i];
+    if (arg == '--allow-key-mismatch') {
+      allowMismatch = true;
+    } else if (arg == '--version') {
+      if (i + 1 >= args.length) {
+        stderr.writeln('--version needs a value');
+        exit(2);
+      }
+      version = args[++i];
+    } else if (arg.startsWith('--')) {
+      stderr.writeln('unknown flag: $arg');
+      exit(2);
+    } else {
+      positional.add(arg);
+    }
+  }
+  if (version == null || version.isEmpty) {
+    stderr.writeln('sign requires --version <version> (e.g. 0.41.0-alpha)');
     exit(2);
   }
-  final positional = args.where((a) => !a.startsWith('--')).toList();
   if (positional.length != 3) {
     stderr.writeln(
-      'usage: sign [--allow-key-mismatch] <seed-file> <zip-path> <sig-out-path>',
+      'usage: sign --version <v> [--allow-key-mismatch] '
+      '<seed-file> <zip-path> <sig-out-path>',
     );
     exit(2);
   }
@@ -175,12 +199,17 @@ Future<void> _sign(List<String> args) async {
   }
 
   final zipBytes = await zipFile.readAsBytes();
-  final sigB64 = signReleaseZip(privateSeedBase64: seedB64, zipBytes: zipBytes);
+  final sigB64 = signRelease(
+    privateSeedBase64: seedB64,
+    version: version,
+    zipBytes: zipBytes,
+  );
 
-  // Self-check the invariant that always holds: the signature must verify under
-  // the signing seed's OWN public key, whether or not that equals the baked-in
-  // key (during rotation it deliberately doesn't).
+  // Self-check the invariant that always holds: the signature must verify for
+  // this version under the signing seed's OWN public key, whether or not that
+  // equals the baked-in key (during rotation it deliberately doesn't).
   if (!rel.isReleaseSignatureValid(
+    version: version,
     bytes: zipBytes,
     signatureBase64: sigB64,
     publicKeyBase64: derivedPublic,
@@ -190,14 +219,18 @@ Future<void> _sign(List<String> args) async {
   }
 
   sigOut.writeAsStringSync(sigB64);
-  stdout.writeln('Signed ${zipFile.path} → ${sigOut.path} (${sigB64.length} b64 chars)');
+  stdout.writeln(
+    'Signed ${zipFile.path} as v$version → ${sigOut.path} '
+    '(${sigB64.length} b64 chars)',
+  );
 }
 
 Never _usageAndExit() {
   stderr.writeln(
     'usage:\n'
     '  dart run tool/release_signer.dart genkey <out-seed-file>\n'
-    '  dart run tool/release_signer.dart sign <seed-file> <zip-path> <sig-out-path>',
+    '  dart run tool/release_signer.dart sign --version <v> '
+    '[--allow-key-mismatch] <seed-file> <zip-path> <sig-out-path>',
   );
   exit(2);
 }

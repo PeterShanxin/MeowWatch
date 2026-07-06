@@ -187,6 +187,12 @@ jobs:
       # See docs/AGENT_GUIDE.md -> Release signing.
       - name: Sign release
         shell: pwsh
+        env:
+          # Set the repo/workflow variable MEOWWATCH_ALLOW_KEY_MISMATCH to 'true'
+          # for a single key-rotation transitional release (baking the NEW public
+          # key while the runner still holds the OLD seed) — then clear it. Empty
+          # on normal releases. See docs/AGENT_GUIDE.md -> Release signing.
+          MEOWWATCH_ALLOW_KEY_MISMATCH: ${{ vars.MEOWWATCH_ALLOW_KEY_MISMATCH }}
         run: |
           $ErrorActionPreference = 'Stop'
           $keyPath = if ($env:MEOWWATCH_RELEASE_KEY) {
@@ -198,12 +204,25 @@ jobs:
             Write-Error "Release signing key not found at $keyPath. A release must be signed (fail-closed). Place the private seed on this runner, or set MEOWWATCH_RELEASE_KEY to its path. See docs/AGENT_GUIDE.md -> Release signing."
             exit 1
           }
-          dart run tool/release_signer.dart sign "$keyPath" MeowWatch-windows-x64.zip MeowWatch-windows-x64.zip.sig
+          # The signature binds the version, so sign with the tag's version
+          # (matches the "version" the R2 job writes into latest.json).
+          $version = ($env:GITHUB_REF -replace '^refs/tags/v', '')
+          $signArgs = @('run', 'tool/release_signer.dart', 'sign', '--version', $version)
+          if ($env:MEOWWATCH_ALLOW_KEY_MISMATCH -in @('1', 'true', 'TRUE', 'True')) {
+            Write-Host 'MEOWWATCH_ALLOW_KEY_MISMATCH set -> signing with --allow-key-mismatch (key-rotation transitional release).'
+            $signArgs += '--allow-key-mismatch'
+          }
+          $signArgs += @("$keyPath", 'MeowWatch-windows-x64.zip', 'MeowWatch-windows-x64.zip.sig')
+          & dart @signArgs
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Signing failed (exit $LASTEXITCODE)"
+            exit 1
+          }
           if (-not (Test-Path 'MeowWatch-windows-x64.zip.sig')) {
             Write-Error "Signing produced no .sig file"
             exit 1
           }
-          Write-Host "Signed release; sig bytes: $((Get-Item 'MeowWatch-windows-x64.zip.sig').Length)"
+          Write-Host "Signed release v$version; sig bytes: $((Get-Item 'MeowWatch-windows-x64.zip.sig').Length)"
 
       - name: Create GitHub Release
         shell: pwsh

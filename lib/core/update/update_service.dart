@@ -369,9 +369,15 @@ class UpdateService extends ChangeNotifier {
     // Authenticity gate: the checksum only proves the bytes match latest.json,
     // which lives in the same bucket as the zip — whoever can swap one can swap
     // the other. The Ed25519 signature is made with a private key that never
-    // touches R2, GitHub, or this repo, so a poisoned bucket can't forge it.
+    // touches R2, GitHub, or this repo, so a poisoned bucket can't forge it. The
+    // signature also binds the advertised version (not just the bytes), so an
+    // old genuinely-signed zip can't be replayed under a faked higher version.
     // Fail closed: refuse any update we can't verify against the baked-in key.
-    verifyReleaseSignature(zipBytes, _latestUpdate?.signature);
+    verifyReleaseSignature(
+      _latestUpdate?.version ?? '',
+      zipBytes,
+      _latestUpdate?.signature,
+    );
 
     final archive = ZipDecoder().decodeBytes(zipBytes);
 
