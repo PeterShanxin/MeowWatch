@@ -10,6 +10,17 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.41.0-alpha] - 2026-07-06
+
+> Updates are now signed, so only genuine releases can install.
+
+### Added: Verified updates
+- Every MeowWatch update is now cryptographically signed with a key that lives
+  only on the release machine — never on the download server. Before installing,
+  the app checks that signature against a key built into the app and refuses
+  anything that doesn't match. So even if someone swapped the file on the
+  download server, a tampered or fake update can't be installed.
+
 ## [0.40.2-alpha] - 2026-07-05
 
 > Lighter on your laptop while you watch.
