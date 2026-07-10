@@ -49,6 +49,7 @@ import '../core/video/seek_when_ready.dart';
 import '../core/video/source_announce.dart';
 import '../core/video/video_url.dart';
 import 'app_close_hook.dart';
+import 'chat/chat_corner.dart';
 import 'chat/chat_overlay.dart';
 import 'chat/chat_overlay_layout.dart';
 import 'drop_target.dart';
@@ -74,6 +75,7 @@ class HomeScreen extends StatefulWidget {
     required this.onThemeChanged,
     this.initialWidthPx,
     this.initialHeightPx,
+    this.initialCorner,
     super.key,
   });
 
@@ -82,6 +84,9 @@ class HomeScreen extends StatefulWidget {
   final SettingsStore settings;
   final double? initialWidthPx;
   final double? initialHeightPx;
+
+  /// The chat card's persisted docked corner; null falls back to the default.
+  final ChatCorner? initialCorner;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
 
@@ -309,11 +314,17 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _initSettings();
     _onUserInteraction();
+    // Restore the persisted corner into BOTH slots: we start collapsed, and
+    // expanding restores lastCorner — corner alone would be discarded by the
+    // first toggle.
+    final corner = widget.initialCorner ?? ChatCorner.bottomLeft;
     _chatLayout = ChatOverlayLayout(
       // Start collapsed so the load screen stays clean (just a small chat tab in
       // the corner) instead of a big empty card crowding the load controls. Tab
       // — hinted on the load screen — expands it.
       collapsed: true,
+      corner: corner,
+      lastCorner: corner,
       widthPx: widget.initialWidthPx,
       heightPx: widget.initialHeightPx,
     );
@@ -1596,6 +1607,14 @@ class _HomeScreenState extends State<HomeScreen> {
                               () => _chatLayout = _chatLayout.applySnap(result),
                             );
                             if (_chatLayout.collapsed) _restorePlayerFocus();
+                            // Persist the docked corner like the size, so the
+                            // card comes back where it was left. A collapse
+                            // keeps .corner unchanged, so it is always the
+                            // docked corner.
+                            widget.settings.set(
+                              kChatCardCornerSettingKey,
+                              formatCardCorner(_chatLayout.corner),
+                            );
                           },
                           onDraggingChanged: (d) =>
                               setState(() => _chatDragging = d),

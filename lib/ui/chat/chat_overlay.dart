@@ -85,16 +85,39 @@ class ChatOverlay extends StatefulWidget {
   State<ChatOverlay> createState() => _ChatOverlayState();
 }
 
+/// Which free-floating interaction is active. A move shows the dock hints and
+/// repositions a memoized card; a resize and the post-release glide keep the
+/// hints hidden.
+enum _DragMode { moving, resizing, gliding }
+
+/// Live placement of the free-floating card while it is dragged, resized, or
+/// gliding to its dock.
+@immutable
+class _DragRect {
+  const _DragRect(this.topLeft, this.size, this.mode);
+  final Offset topLeft;
+  final Size size;
+  final _DragMode mode;
+}
+
 class _ChatOverlayState extends State<ChatOverlay>
     with SingleTickerProviderStateMixin {
-  // While dragging, a free top-left offset (relative to this overlay's own
-  // box) overrides corner placement. Captured from the card's real rect at
-  // drag start so the first grab never teleports. Also driven by [_snapCtrl]
+  // While dragging, a free placement (relative to this overlay's own box)
+  // overrides corner placement. Captured from the card's real rect at drag
+  // start so the first grab never teleports. Also driven by [_snapCtrl]
   // during the post-release glide to a corner.
-  Offset? _dragTopLeft;
-  // Real card + overlay sizes captured at drag start, used for snap math.
-  Size? _dragCardSize;
+  //
+  // A ValueNotifier, deliberately NOT setState, for the per-move updates:
+  // pointer moves arrive every frame, and rebuilding this whole State —
+  // re-diffing the card's message list and input on each mouse event — made
+  // the card visibly trail the cursor. Only the ValueListenableBuilder in
+  // [build] listens, so a move just repositions the already-built card.
+  final ValueNotifier<_DragRect?> _drag = ValueNotifier<_DragRect?>(null);
+  // Overlay size captured at drag start, used for snap math.
   Size? _overlaySize;
+  // Size the memoized drag-path card (the ValueListenableBuilder child) was
+  // built with; a _DragRect at any other size must rebuild the card.
+  Size? _memoSize;
   final GlobalKey _cardKey = GlobalKey();
 
   // Active resize: rect captured at grip-drag start + accumulated grip delta +
@@ -304,6 +327,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     _dividerTimer?.cancel();
     _inputFocus.removeListener(_onInputFocusChanged);
     _snapCtrl.dispose();
+    _drag.dispose();
     _inputFocus.dispose();
     _draftController.dispose();
     _scrollController.dispose();
@@ -347,13 +371,12 @@ class _ChatOverlayState extends State<ChatOverlay>
   void _onSnapTick() {
     final from = _snapFrom;
     final to = _snapTo;
-    if (from == null || to == null) return;
-    setState(
-      () => _dragTopLeft = Offset.lerp(
-        from,
-        to,
-        Motion.standard.transform(_snapCtrl.value),
-      ),
+    final d = _drag.value;
+    if (from == null || to == null || d == null) return;
+    _drag.value = _DragRect(
+      Offset.lerp(from, to, Motion.standard.transform(_snapCtrl.value))!,
+      d.size,
+      _DragMode.gliding,
     );
   }
 
@@ -363,8 +386,7 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   void _clearDrag() {
     setState(() {
-      _dragTopLeft = null;
-      _dragCardSize = null;
+      _drag.value = null;
       _overlaySize = null;
       _snapFrom = null;
       _snapTo = null;
@@ -376,7 +398,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     // collapse the parent restores player focus instead, so skip it here.
     if (!widget.collapsed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _dragTopLeft == null) _inputFocus.requestFocus();
+        if (mounted && _drag.value == null) _inputFocus.requestFocus();
       });
     }
   }
@@ -391,8 +413,11 @@ class _ChatOverlayState extends State<ChatOverlay>
     if (cardBox == null || selfBox == null) return;
     final origin = selfBox.localToGlobal(Offset.zero);
     setState(() {
-      _dragTopLeft = cardBox.localToGlobal(Offset.zero) - origin;
-      _dragCardSize = cardBox.size;
+      _drag.value = _DragRect(
+        cardBox.localToGlobal(Offset.zero) - origin,
+        cardBox.size,
+        _DragMode.moving,
+      );
       _overlaySize = selfBox.size;
     });
     widget.onDraggingChanged?.call(true);
@@ -408,8 +433,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     final origin = selfBox.localToGlobal(Offset.zero);
     final topLeft = cardBox.localToGlobal(Offset.zero) - origin;
     setState(() {
-      _dragTopLeft = topLeft;
-      _dragCardSize = cardBox.size;
+      _drag.value = _DragRect(topLeft, cardBox.size, _DragMode.resizing);
       _overlaySize = selfBox.size;
       _resizeStartSize = cardBox.size;
       _resizeStartTopLeft = topLeft;
@@ -432,54 +456,51 @@ class _ChatOverlayState extends State<ChatOverlay>
       grip: _resizeGrip,
       windowSize: window,
     );
-    setState(() {
-      _dragTopLeft = r.topLeft;
-      _dragCardSize = r.size;
-    });
+    _drag.value = _DragRect(r.topLeft, r.size, _DragMode.resizing);
   }
 
   /// End the resize: report the new size, then glide back to the docked corner.
   void _endResize() {
-    final size = _dragCardSize;
-    final topLeft = _dragTopLeft;
+    final d = _drag.value;
     final window = _overlaySize;
     _resizeStartSize = null;
     _resizeStartTopLeft = null;
     _resizeDelta = Offset.zero;
-    if (size == null || topLeft == null || window == null) {
+    if (d == null || window == null) {
       _clearDrag();
       return;
     }
-    widget.onResize?.call(size);
-    _snapFrom = topLeft;
-    _snapTo = _cornerTopLeft(widget.corner, size, window);
+    widget.onResize?.call(d.size);
+    _snapFrom = d.topLeft;
+    _snapTo = _cornerTopLeft(widget.corner, d.size, window);
+    _drag.value = _DragRect(d.topLeft, d.size, _DragMode.gliding);
     _snapCtrl.forward(from: 0);
   }
 
   void _endHeaderDrag() {
-    final topLeft = _dragTopLeft;
-    final card = _dragCardSize;
+    final d = _drag.value;
     final window = _overlaySize;
-    if (topLeft == null || card == null || window == null) {
+    if (d == null || window == null) {
       _clearDrag();
       return;
     }
     final result = computeSnap(
-      dropTopLeft: topLeft,
-      cardSize: card,
+      dropTopLeft: d.topLeft,
+      cardSize: d.size,
       windowSize: window,
     );
     widget.onSnap(result);
     final corner = result.corner;
-    _snapFrom = topLeft;
+    _snapFrom = d.topLeft;
     if (corner != null) {
       // Glide to the docked corner, then settle into the Align placement.
-      _snapTo = _cornerTopLeft(corner, card, window);
+      _snapTo = _cornerTopLeft(corner, d.size, window);
     } else {
       // Collapse: slide the card off the right edge, then it becomes the peek
       // tab — so docking to the edge isn't an abrupt disappearance.
-      _snapTo = Offset(window.width, topLeft.dy);
+      _snapTo = Offset(window.width, d.topLeft.dy);
     }
+    _drag.value = _DragRect(d.topLeft, d.size, _DragMode.gliding);
     _snapCtrl.forward(from: 0);
   }
 
@@ -489,9 +510,11 @@ class _ChatOverlayState extends State<ChatOverlay>
     height: cardSize.height,
     onHeaderDragStart: _startHeaderDrag,
     onHeaderDragUpdate: (delta) {
-      final base = _dragTopLeft;
-      if (base == null) return;
-      setState(() => _dragTopLeft = base + delta);
+      final d = _drag.value;
+      if (d == null) return;
+      // No setState: the notifier repositions the memoized card without
+      // re-diffing its subtree (the drag-lag fix).
+      _drag.value = _DragRect(d.topLeft + delta, d.size, d.mode);
     },
     onHeaderDragEnd: _endHeaderDrag,
     onCollapse: widget.onToggleCollapsed,
@@ -517,30 +540,11 @@ class _ChatOverlayState extends State<ChatOverlay>
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context).size;
-    // Stored px size, clamped to the current viewport (so it never overflows a
-    // small window) but otherwise stable when the window is resized/maximized.
-    final cardSize =
-        _dragCardSize ??
-        clampCardSize(
-          Size(
-            widget.widthPx ?? kDefaultCardWidth,
-            widget.heightPx ?? kDefaultCardHeight,
-          ),
-          media,
-        );
 
-    // Active drag, or the post-release snap glide, renders a free-floating card.
-    final topLeft = _dragTopLeft;
-    if (topLeft != null) {
-      // Dock hints show only during the live move-drag: not the settling glide
-      // (isAnimating), and not during a grip resize (_resizeStartSize) — the
-      // resize reuses this free-floating render path, where the full-screen
-      // hint layer just adds noise (it's a move affordance, not a resize one).
-      final showHints =
-          !_snapCtrl.isAnimating &&
-          _resizeStartSize == null &&
-          _overlaySize != null &&
-          _dragCardSize != null;
+    // Active drag/resize, or the post-release snap glide, renders a
+    // free-floating card.
+    final drag = _drag.value;
+    if (drag != null) {
       // Fill the overlay's box with a plain SizedBox.expand — NOT Positioned.fill.
       // ChatOverlay is mounted under IgnorePointer/AnimatedOpacity (see
       // HomeScreen), not directly inside a Stack, so a Positioned here is a
@@ -548,29 +552,64 @@ class _ChatOverlayState extends State<ChatOverlay>
       // composite the whole screen wrong → a translucent pale-white wash for the
       // entire drag (#50; debug tolerated it, release didn't). The inner Stack
       // (below) is the real Stack the card's Positioned belongs to.
+      _memoSize = drag.size;
       return SizedBox.expand(
         // Isolate the moving/resizing card in its own compositor layer so its
         // per-frame drag/resize repaints stay local instead of repainting the
         // whole screen.
         child: RepaintBoundary(
-          child: Stack(
-            children: [
-              if (showHints)
-                _DropZoneHints(
-                  overlaySize: _overlaySize!,
-                  cardSize: _dragCardSize!,
-                  dragTopLeft: topLeft,
-                ),
-              Positioned(
-                left: topLeft.dx,
-                top: topLeft.dy,
-                child: _buildCard(cardSize),
-              ),
-            ],
+          child: ValueListenableBuilder<_DragRect?>(
+            valueListenable: _drag,
+            // The memoized card: built here (once per drag, and again on real
+            // content updates when this build method reruns), NOT on every
+            // pointer move — re-diffing the message list per mouse event is
+            // what made the card trail the cursor. Its own RepaintBoundary
+            // caches the card's raster so a plain move is compositor-only.
+            child: RepaintBoundary(child: _buildCard(drag.size)),
+            builder: (context, d, memoCard) {
+              if (d == null) return const SizedBox.shrink();
+              // A resize (and a glide the memo hasn't caught up with) changes
+              // the card's size, so those frames rebuild the card; a move
+              // keeps the size and reuses the memoized child.
+              final card = d.size == _memoSize
+                  ? memoCard!
+                  : RepaintBoundary(child: _buildCard(d.size));
+              final overlaySize = _overlaySize;
+              return Stack(
+                children: [
+                  // Dock hints show only during the live move-drag: not the
+                  // settling glide, and not during a grip resize — the resize
+                  // reuses this free-floating render path, where the
+                  // full-screen hint layer just adds noise (it's a move
+                  // affordance, not a resize one).
+                  if (d.mode == _DragMode.moving && overlaySize != null)
+                    _DropZoneHints(
+                      overlaySize: overlaySize,
+                      cardSize: d.size,
+                      dragTopLeft: d.topLeft,
+                    ),
+                  Positioned(
+                    left: d.topLeft.dx,
+                    top: d.topLeft.dy,
+                    child: card,
+                  ),
+                ],
+              );
+            },
           ),
         ),
       );
     }
+
+    // Stored px size, clamped to the current viewport (so it never overflows a
+    // small window) but otherwise stable when the window is resized/maximized.
+    final cardSize = clampCardSize(
+      Size(
+        widget.widthPx ?? kDefaultCardWidth,
+        widget.heightPx ?? kDefaultCardHeight,
+      ),
+      media,
+    );
 
     // Resting: cross-fade between the peek tab and the docked card so
     // collapse/expand eases instead of snapping instantly.

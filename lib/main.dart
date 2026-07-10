@@ -52,6 +52,8 @@ Future<void> main() async {
   final savedTheme = MeowThemeId.fromName(await settings.get(kThemeSettingKey));
   final (cardW, cardH) =
       parseCardSize(await settings.get(kChatCardSizeSettingKey));
+  final savedCorner =
+      parseCardCorner(await settings.get(kChatCardCornerSettingKey));
 
   // Stamp the run with its environment (OS, window, locale, log path, settings)
   // so environment-specific reports can be confirmed from the log alone (#156).
@@ -108,6 +110,7 @@ Future<void> main() async {
     initialTheme: savedTheme,
     initialCardWidthPx: cardW,
     initialCardHeightPx: cardH,
+    initialChatCorner: savedCorner,
     navigatorKey: navigatorKey,
     showWhatsNew: showWhatsNew,
     whatsNewEntries: whatsNewEntries,

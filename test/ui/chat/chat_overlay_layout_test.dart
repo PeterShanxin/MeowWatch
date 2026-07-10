@@ -52,4 +52,17 @@ void main() {
     expect(a, b);
     expect(a, isNot(const ChatOverlayLayout()));
   });
+
+  test('corner format and parse round-trip for every corner', () {
+    for (final corner in ChatCorner.values) {
+      expect(parseCardCorner(formatCardCorner(corner)), corner);
+    }
+  });
+
+  test('corner parse returns null for missing or unknown values', () {
+    expect(parseCardCorner(null), isNull);
+    expect(parseCardCorner(''), isNull);
+    expect(parseCardCorner('garbage'), isNull);
+    expect(parseCardCorner('BOTTOMLEFT'), isNull);
+  });
 }

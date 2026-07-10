@@ -108,3 +108,17 @@ String formatCardSize(double widthPx, double heightPx) =>
   if (h < _kMinStoredPx || h > _kMaxStoredPx) return (null, null);
   return (w, h);
 }
+
+/// Serialize a corner for [kChatCardCornerSettingKey] storage (the enum name,
+/// e.g. `"bottomLeft"`).
+String formatCardCorner(ChatCorner corner) => corner.name;
+
+/// Parse a stored corner name. Returns null for missing or unknown values so
+/// the caller falls back to the default corner.
+ChatCorner? parseCardCorner(String? value) {
+  if (value == null || value.isEmpty) return null;
+  for (final corner in ChatCorner.values) {
+    if (corner.name == value) return corner;
+  }
+  return null;
+}

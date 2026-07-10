@@ -10,6 +10,17 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.41.1-alpha] - 2026-07-11
+
+> The chat card remembers its corner and follows the cursor smoothly.
+
+### Fixed
+- The chat card now remembers which corner you docked it in, just like it
+  already remembered its size — it used to fall back to the bottom-left every
+  time you entered a room.
+- Dragging the chat card no longer trails visibly behind the cursor — the card
+  now follows your mouse smoothly.
+
 ## [0.41.0-alpha] - 2026-07-06
 
 > Updates are now signed, so only genuine releases can install.
