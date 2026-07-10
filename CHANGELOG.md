@@ -15,11 +15,12 @@ in-app updater reads to show what changed.
 > The chat card remembers its corner and follows the cursor smoothly.
 
 ### Fixed
-- The chat card now remembers which corner you docked it in, just like it
-  already remembered its size — it used to fall back to the bottom-left every
-  time you entered a room.
-- Dragging the chat card no longer trails visibly behind the cursor — the card
-  now follows your mouse smoothly.
+- The chat card now remembers which corner you docked it in — it used to fall
+  back to the bottom-left every time you entered a room.
+- The card's size is now restored fresh on every room entry too; it used to
+  quietly reset to whatever it was when the app started.
+- Dragging the chat card no longer trails behind a fast-moving cursor — the
+  card now keeps up with your mouse.
 
 ## [0.41.0-alpha] - 2026-07-06
 

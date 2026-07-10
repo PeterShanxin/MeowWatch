@@ -688,6 +688,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initSettings() async {
+    // Restore the chat card's persisted size + corner NOW, not from the
+    // app-startup snapshot the constructor carries: that snapshot goes stale
+    // the moment the user resizes/moves the card, so re-entering a room used
+    // to reset the card. The card starts collapsed, so this async read always
+    // lands before it is first shown.
+    final sizeValue = await widget.settings.get(kChatCardSizeSettingKey);
+    final cornerValue = await widget.settings.get(kChatCardCornerSettingKey);
+    if (mounted) {
+      setState(
+        () => _chatLayout = restoredLayout(
+          base: _chatLayout,
+          sizeValue: sizeValue,
+          cornerValue: cornerValue,
+        ),
+      );
+    }
     await _loadLogLevel();
     final dimSetting = await widget.settings.get(kChatAutoDimSettingKey);
     if (dimSetting == 'false' && mounted) {

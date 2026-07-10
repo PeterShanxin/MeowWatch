@@ -65,4 +65,30 @@ void main() {
     expect(parseCardCorner('garbage'), isNull);
     expect(parseCardCorner('BOTTOMLEFT'), isNull);
   });
+
+  test('restoredLayout applies stored size and corner onto the base', () {
+    const base = ChatOverlayLayout(collapsed: true);
+    final r = restoredLayout(
+      base: base,
+      sizeValue: '360,420',
+      cornerValue: 'topRight',
+    );
+    expect(r.collapsed, isTrue);
+    expect(r.widthPx, 360);
+    expect(r.heightPx, 420);
+    expect(r.corner, ChatCorner.topRight);
+    // Both slots: the card starts collapsed, and expanding restores
+    // lastCorner — corner alone would be discarded by the first toggle.
+    expect(r.lastCorner, ChatCorner.topRight);
+  });
+
+  test('restoredLayout keeps base values for missing or invalid stored ones',
+      () {
+    final base = const ChatOverlayLayout(
+      corner: ChatCorner.bottomRight,
+      lastCorner: ChatCorner.bottomRight,
+    ).applyResize(const Size(300, 400));
+    final r = restoredLayout(base: base, sizeValue: null, cornerValue: 'junk');
+    expect(r, base);
+  });
 }

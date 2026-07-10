@@ -109,6 +109,30 @@ String formatCardSize(double widthPx, double heightPx) =>
   return (w, h);
 }
 
+/// Apply the persisted card size and corner (their raw stored strings) onto
+/// [base], keeping everything else — used on every room entry so the card
+/// comes back where and how big it was left, not as the app-startup snapshot.
+/// Missing/invalid stored values keep the base's values.
+///
+/// The corner fills BOTH corner slots: the card enters a room collapsed, and
+/// expanding restores `lastCorner` — corner alone would be discarded by the
+/// first toggle.
+ChatOverlayLayout restoredLayout({
+  required ChatOverlayLayout base,
+  required String? sizeValue,
+  required String? cornerValue,
+}) {
+  final (w, h) = parseCardSize(sizeValue);
+  final corner = parseCardCorner(cornerValue);
+  return ChatOverlayLayout(
+    collapsed: base.collapsed,
+    corner: corner ?? base.corner,
+    lastCorner: corner ?? base.lastCorner,
+    widthPx: w ?? base.widthPx,
+    heightPx: h ?? base.heightPx,
+  );
+}
+
 /// Serialize a corner for [kChatCardCornerSettingKey] storage (the enum name,
 /// e.g. `"bottomLeft"`).
 String formatCardCorner(ChatCorner corner) => corner.name;
