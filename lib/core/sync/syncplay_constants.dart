@@ -9,7 +9,8 @@ class SyncplayConstants {
   static const realVersion = '1.7.5';
 
   static const defaultServer = 'syncplay.pl';
-  static const defaultPort = 8995;
+  static const defaultPort = 8999;
+  static const publicServerPort = 8995;
 
   /// Max displayed characters per chat message (upstream
   /// `MAX_CHAT_MESSAGE_LENGTH = 150`). The server silently truncates anything

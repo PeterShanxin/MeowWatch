@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/connect/room_share.dart';
+import 'package:meowwatch/core/sync/syncplay_constants.dart';
 
 void main() {
   const sentence = 'sleepy-otter-counts-cozy-stars';
@@ -33,6 +34,10 @@ void main() {
     });
 
     test('custom port on the default host still carries the port', () {
+      expect(
+        encodeShareCode(room: sentence, server: 'syncplay.pl', port: 8999),
+        '$sentence@syncplay.pl:8999',
+      );
       expect(
         encodeShareCode(room: sentence, server: 'syncplay.pl', port: 9000),
         '$sentence@syncplay.pl:9000',
@@ -183,7 +188,7 @@ void main() {
         // A null server/port from the parser means "use the default" — which is
         // exactly what was encoded, so reconstruct before comparing.
         expect(parsed.server ?? 'syncplay.pl', server);
-        expect(parsed.port ?? 8995, port);
+        expect(parsed.port ?? SyncplayConstants.publicServerPort, port);
       });
     }
   });

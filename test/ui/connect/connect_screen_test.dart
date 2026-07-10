@@ -378,7 +378,7 @@ void main() {
   testWidgets('share code with a server but no port uses the host default, not '
       'Advanced Port (#110)', (tester) async {
     // A server-bearing code that omits the port (here a bracketed IPv6 host)
-    // must dial the Syncplay default 8995 — never the joiner's Advanced Port.
+    // must dial the Syncplay default 8999 — never the joiner's Advanced Port.
     await pump(tester);
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -397,7 +397,7 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
     expect(connected!.server, '2001:db8::1');
-    expect(connected!.port, 8995);
+    expect(connected!.port, 8999);
   });
 
   testWidgets('a bare room code still honors the Advanced server/port (#110)', (
