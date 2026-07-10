@@ -10,6 +10,15 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.41.1-alpha] - 2026-07-10
+
+> Room joins fail clearly when the saved server is stale.
+
+### Fixed: Room connection
+- Updated the public Syncplay endpoint MeowWatch uses by default, and changed
+  first-time connection failures to show a clear server/port error instead of
+  sitting on "Connecting" forever.
+
 ## [0.41.0-alpha] - 2026-07-06
 
 > Updates are now signed, so only genuine releases can install.
