@@ -77,6 +77,11 @@ class SyncplayClient extends SyncCore {
 
   bool _loggedIn = false;
 
+  // Once a Hello completes, later silence means "recover the room connection".
+  // Before that, silence means the endpoint itself is bad/stale/unresponsive
+  // and should be surfaced as an actionable error instead of looping forever.
+  bool _everLoggedIn = false;
+
   // True once the initial roster greeting has been emitted. Set on the first
   // RosterMessage and never reset — reconnects are silent (issue #90).
   bool _rosterGreeted = false;
@@ -119,6 +124,7 @@ class SyncplayClient extends SyncCore {
     _room = room;
     _password = password;
     _manualDisconnect = false;
+    _everLoggedIn = false;
     _reconnectAttempt = 0;
     emitConnectionState(
       const SyncConnectionState(status: SyncConnectionStatus.connecting),
@@ -164,7 +170,11 @@ class SyncplayClient extends SyncCore {
     } on SocketException catch (e) {
       if (generation != _generation || _manualDisconnect) return;
       onLog?.call('connect failed: ${e.message}');
-      _scheduleReconnect(message: 'Could not reach server: ${e.message}');
+      if (_everLoggedIn) {
+        _scheduleReconnect(message: 'Could not reach server: ${e.message}');
+      } else {
+        _failInitialConnection();
+      }
     }
   }
 
@@ -172,11 +182,31 @@ class SyncplayClient extends SyncCore {
   /// close) and arm a backed-off reconnect — unless the user asked to leave.
   void _onConnectionLost() {
     if (_manualDisconnect) return;
+    if (!_everLoggedIn) {
+      _failInitialConnection();
+      return;
+    }
     onLog?.call(
       'connection lost (no server traffic within '
       '${livenessTimeout.inSeconds}s) — reconnecting',
     );
     _scheduleReconnect();
+  }
+
+  void _failInitialConnection() {
+    if (_manualDisconnect) return;
+    final message =
+        'Could not reach Syncplay server $_server:$_port. Check Advanced '
+        'server/port or paste your friend\'s full code.';
+    onLog?.call('connect failed before login: $message');
+    _stopReconnecting();
+    final old = _socket;
+    _socket = null;
+    old?.destroy();
+    _loggedIn = false;
+    emitConnectionState(
+      SyncConnectionState(status: SyncConnectionStatus.error, message: message),
+    );
   }
 
   /// Permanently stop the connection — no auto-reconnect. Used for a deliberate
@@ -213,7 +243,9 @@ class SyncplayClient extends SyncCore {
     _reconnectAttempt++;
     // Mark the otherwise-silent gap between "connection lost" and the next
     // `>> Hello` so a stalled recovery is visible in the log (#156). Neat-kept.
-    onLog?.call('reconnect: attempt $_reconnectAttempt in ${delay.inMilliseconds}ms');
+    onLog?.call(
+      'reconnect: attempt $_reconnectAttempt in ${delay.inMilliseconds}ms',
+    );
     _reconnectTimer = Timer(delay, () {
       if (_manualDisconnect) return;
       unawaited(_openConnection());
@@ -344,6 +376,7 @@ class SyncplayClient extends SyncCore {
     switch (msg) {
       case HelloMessage(:final username):
         _loggedIn = true;
+        _everLoggedIn = true;
         // A completed login means the (re)connect succeeded — reset the backoff
         // so the next drop starts over from the short end.
         _reconnectAttempt = 0;
@@ -611,6 +644,7 @@ class SyncplayClient extends SyncCore {
     _requestedUsername = username;
     _username = username;
     _loggedIn = true;
+    _everLoggedIn = true;
   }
 
   @visibleForTesting

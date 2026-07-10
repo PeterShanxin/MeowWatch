@@ -16,10 +16,10 @@ import '../sync/syncplay_constants.dart';
 /// When the server or port differ from the defaults, the endpoint is appended
 /// URL-style, always with an explicit port (the `:` is the unambiguous marker):
 ///
-///   `sleepy-otter-counts-cozy-stars@cozy.example.net:8999`    (custom host)
+///   `sleepy-otter-counts-cozy-stars@cozy.example.net:8995`    (custom host)
 ///   `sleepy-otter-counts-cozy-stars@cozy.example.net:9000`    (custom host+port)
 ///   `sleepy-otter-counts-cozy-stars@syncplay.pl:9000`         (custom port only)
-///   `sleepy-otter-counts-cozy-stars@[2001:db8::1]:8999`       (IPv6 literal)
+///   `sleepy-otter-counts-cozy-stars@[2001:db8::1]:8995`       (IPv6 literal)
 ///
 /// ## No password, ever
 /// The Advanced *server* password is deliberately NOT encoded. A cipher would
@@ -44,7 +44,7 @@ import '../sync/syncplay_constants.dart';
 /// exactly like a code, e.g. a default-server room literally named
 /// `movie@home:9000`: it's indistinguishable from room `movie` on `home:9000`,
 /// and disambiguating it would conflict with supporting real single-label
-/// servers (`room@myserver:8999`). Fully resolving it would require a version
+/// servers (`room@myserver:8995`). Fully resolving it would require a version
 /// marker or percent-escaping — a product decision taken against in favour of
 /// short, readable codes. This never affects generated codes or any old code
 /// (none contain `@`); it only touches deliberately hand-typed names, which

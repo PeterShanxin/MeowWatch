@@ -403,7 +403,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
     }
     // A code that names a server describes a complete destination: it carries a
     // port only when non-default, so an omitted port means the host's default
-    // (8999) — NOT whatever sits in the joiner's Advanced Port. Only a bare room
+    // (8995) — NOT whatever sits in the joiner's Advanced Port. Only a bare room
     // code (no server in the code) falls back to the Advanced fields.
     final fromCode = parsed.server != null;
     await _connect(
@@ -974,7 +974,7 @@ class _ContinueWatching extends StatelessWidget {
                       onResumeWithCurrentName: currentUsername.isEmpty
                           ? null
                           : () =>
-                              onResume(e, usernameOverride: currentUsername),
+                                onResume(e, usernameOverride: currentUsername),
                       onDelete: () => history.delete(e.id),
                     ),
                   ),

@@ -23,6 +23,7 @@ void main() {
   tearDown(() => client.dispose());
 
   test('a lost link moves to reconnecting and arms a retry', () async {
+    client.debugMarkLoggedIn('me');
     client.debugSimulateConnectionLost();
     await Future<void>.delayed(Duration.zero);
 
@@ -36,20 +37,25 @@ void main() {
     final logged = SyncplayClient(onLog: lines.add);
     addTearDown(logged.dispose);
 
+    logged.debugMarkLoggedIn('me');
     logged.debugSimulateConnectionLost();
     await Future<void>.delayed(Duration.zero);
 
     expect(
       lines,
-      contains(predicate<String>(
-        (l) => l.startsWith('reconnect: attempt 1 in ') && l.endsWith('ms'),
-      )),
-      reason: 'the gap between "connection lost" and the next Hello must be '
+      contains(
+        predicate<String>(
+          (l) => l.startsWith('reconnect: attempt 1 in ') && l.endsWith('ms'),
+        ),
+      ),
+      reason:
+          'the gap between "connection lost" and the next Hello must be '
           'visible in the log (#156)',
     );
   });
 
   test('repeated drops advance the backoff attempt counter', () async {
+    client.debugMarkLoggedIn('me');
     client.debugSimulateConnectionLost();
     client.debugSimulateConnectionLost();
     client.debugSimulateConnectionLost();
@@ -60,6 +66,7 @@ void main() {
   });
 
   test('manual disconnect cancels reconnect and stays disconnected', () async {
+    client.debugMarkLoggedIn('me');
     client.debugSimulateConnectionLost();
     await Future<void>.delayed(Duration.zero);
     expect(client.debugReconnectScheduled, isTrue);
@@ -129,6 +136,46 @@ void main() {
     expect(statuses, isNot(contains(SyncConnectionStatus.reconnecting)));
     expect(statuses.last, SyncConnectionStatus.error);
   });
+
+  test(
+    'initial silent endpoint fails instead of reconnecting forever',
+    () async {
+      final server = await ServerSocket.bind('127.0.0.1', 0);
+      final accepted = <Socket>[];
+      server.listen((s) {
+        accepted.add(s);
+        s.listen((_) {}); // read & ignore; never answer TLS/Hello
+      });
+      addTearDown(() async {
+        for (final s in accepted) {
+          s.destroy();
+        }
+        await server.close();
+      });
+
+      final silent = SyncplayClient(
+        livenessTimeout: const Duration(milliseconds: 30),
+      );
+      final states = <SyncConnectionState>[];
+      silent.connectionState.listen(states.add);
+      addTearDown(silent.dispose);
+
+      await silent.connect(
+        server: '127.0.0.1',
+        port: server.port,
+        username: 'me',
+        room: 'r',
+      );
+      await _until(
+        () => states.any((s) => s.status == SyncConnectionStatus.error),
+      );
+
+      expect(states.last.status, SyncConnectionStatus.error);
+      expect(states.last.message, contains('Could not reach Syncplay server'));
+      expect(states.last.message, contains('127.0.0.1:${server.port}'));
+      expect(silent.debugReconnectScheduled, isFalse);
+    },
+  );
 
   test('manual leave mid-handshake tears down and never reconnects', () async {
     // A server that accepts the TCP connection but never answers the TLS

@@ -224,27 +224,28 @@ void main() {
     expect(find.byKey(const Key('connect-name-clear')), findsNothing);
   });
 
-  testWidgets('name hint offers a random username and blank connect commits it', (
-    tester,
-  ) async {
-    // #172: leaving the name blank joins as the fun suggested name the field
-    // was showing — never a hardcoded "meow" the user didn't see coming.
-    await pump(tester);
+  testWidgets(
+    'name hint offers a random username and blank connect commits it',
+    (tester) async {
+      // #172: leaving the name blank joins as the fun suggested name the field
+      // was showing — never a hardcoded "meow" the user didn't see coming.
+      await pump(tester);
 
-    String hint() => tester
-        .widget<TextField>(find.byKey(const Key('connect-name')))
-        .decoration!
-        .hintText!;
-    expect(hint(), matches(RegExp(r'^[A-Z][a-z]+[A-Z][a-z]+$')));
+      String hint() => tester
+          .widget<TextField>(find.byKey(const Key('connect-name')))
+          .decoration!
+          .hintText!;
+      expect(hint(), matches(RegExp(r'^[A-Z][a-z]+[A-Z][a-z]+$')));
 
-    final offered = hint();
-    await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
-    await tester.tap(find.byKey(const Key('connect-start-new')));
-    await tester.pumpAndSettle();
+      final offered = hint();
+      await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+      await tester.tap(find.byKey(const Key('connect-start-new')));
+      await tester.pumpAndSettle();
 
-    expect(connected!.username, offered);
-    expect(profiles.savedUsernames.single, offered);
-  });
+      expect(connected!.username, offered);
+      expect(profiles.savedUsernames.single, offered);
+    },
+  );
 
   testWidgets('dice reruns the name suggestion while the field is blank', (
     tester,
@@ -377,7 +378,7 @@ void main() {
   testWidgets('share code with a server but no port uses the host default, not '
       'Advanced Port (#110)', (tester) async {
     // A server-bearing code that omits the port (here a bracketed IPv6 host)
-    // must dial the Syncplay default 8999 — never the joiner's Advanced Port.
+    // must dial the Syncplay default 8995 — never the joiner's Advanced Port.
     await pump(tester);
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -396,7 +397,7 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
     expect(connected!.server, '2001:db8::1');
-    expect(connected!.port, 8999);
+    expect(connected!.port, 8995);
   });
 
   testWidgets('a bare room code still honors the Advanced server/port (#110)', (
@@ -538,7 +539,7 @@ void main() {
           .widget<TextField>(find.byKey(const Key('connect-advanced-port')))
           .controller!
           .text,
-      '8999',
+      '8995',
     );
     expect(
       tester
