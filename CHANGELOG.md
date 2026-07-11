@@ -10,7 +10,7 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
-## [0.41.2-alpha] - 2026-07-11
+## [0.41.2-alpha] - 2026-07-12
 
 > The chat card now remembers where you docked it.
 

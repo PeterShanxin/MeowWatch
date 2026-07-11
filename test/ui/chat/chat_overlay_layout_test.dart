@@ -91,4 +91,20 @@ void main() {
     final r = restoredLayout(base: base, sizeValue: null, cornerValue: 'junk');
     expect(r, base);
   });
+
+  test('restoredLayout treats the empty-string reset sentinel as default size',
+      () {
+    // base carries a stale app-startup custom size; the user has since reset,
+    // storing '' (distinct from a missing null). The reset must win over base,
+    // otherwise re-entering a room resurrects the old size until app restart.
+    final base = const ChatOverlayLayout(
+      corner: ChatCorner.topLeft,
+      lastCorner: ChatCorner.topLeft,
+    ).applyResize(const Size(800, 600));
+    final r = restoredLayout(base: base, sizeValue: '', cornerValue: 'topLeft');
+    expect(r.widthPx, isNull);
+    expect(r.heightPx, isNull);
+    // Corner is untouched by a size reset.
+    expect(r.corner, ChatCorner.topLeft);
+  });
 }

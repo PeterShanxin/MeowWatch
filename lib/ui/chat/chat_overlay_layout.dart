@@ -117,19 +117,26 @@ String formatCardSize(double widthPx, double heightPx) =>
 /// The corner fills BOTH corner slots: the card enters a room collapsed, and
 /// expanding restores `lastCorner` — corner alone would be discarded by the
 /// first toggle.
+///
+/// The empty-string reset sentinel (stored by onResetSize) is distinct from a
+/// missing/malformed value: it means "back to the default size" and must clear
+/// the dimensions, not fall back to `base` — otherwise a reset done earlier in
+/// the session is resurrected by the stale app-startup size on the next room
+/// entry.
 ChatOverlayLayout restoredLayout({
   required ChatOverlayLayout base,
   required String? sizeValue,
   required String? cornerValue,
 }) {
+  final sizeWasReset = sizeValue != null && sizeValue.isEmpty;
   final (w, h) = parseCardSize(sizeValue);
   final corner = parseCardCorner(cornerValue);
   return ChatOverlayLayout(
     collapsed: base.collapsed,
     corner: corner ?? base.corner,
     lastCorner: corner ?? base.lastCorner,
-    widthPx: w ?? base.widthPx,
-    heightPx: h ?? base.heightPx,
+    widthPx: sizeWasReset ? null : (w ?? base.widthPx),
+    heightPx: sizeWasReset ? null : (h ?? base.heightPx),
   );
 }
 
