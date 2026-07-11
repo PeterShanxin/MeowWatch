@@ -440,14 +440,27 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   Future<void> _resumeHistory(
     HistoryEntry entry,
-    SavedProfile? recent, {
+    List<SavedProfile> profiles, {
     String? usernameOverride,
   }) async {
     // Identity priority: tapping a history card means "resume as watched
     // before"; the inline "Join as current name" action is the explicit
     // override.
-    // When an old history row has no saved name, still honor a typed name before
-    // falling back to the most recent room/default so #40 stays fixed.
+    // Legacy history did not retain an endpoint. Its fallback may only use a
+    // same-room profile; a global most-recent profile can be unrelated or stale.
+    final roomProfile = _matchingRoomProfile(entry, profiles);
+    final room = (entry.room != null && entry.room!.isNotEmpty)
+        ? entry.room!
+        : (roomProfile?.room ?? generateRoomCode());
+    final server = entry.server ?? roomProfile?.server ?? _serverValue;
+    final port = entry.port ?? roomProfile?.port ?? _portValue;
+    final endpointProfile = _matchingEndpointProfile(
+      room: room,
+      server: server,
+      port: port,
+      username: entry.username,
+      profiles: profiles,
+    );
     final typed = _name.text.trim();
     final entryName = entry.username;
     final username =
@@ -456,25 +469,68 @@ class _ConnectScreenState extends State<ConnectScreen> {
             ? entryName
             : typed.isNotEmpty
             ? typed
-            : (recent?.username ?? _suggestedName));
+            : (roomProfile?.username ?? _suggestedName));
     final savedUsername = (entryName != null && entryName.isNotEmpty)
         ? entryName
-        : recent?.username;
-    final room = (entry.room != null && entry.room!.isNotEmpty)
-        ? entry.room!
-        : (recent?.room ?? generateRoomCode());
+        : roomProfile?.username;
     await _connect(
       RoomConfig(
-        server: recent?.server ?? _serverValue,
-        port: recent?.port ?? _portValue,
+        server: server,
+        port: port,
         room: room,
         username: username,
-        password: recent?.password ?? _passwordValue,
+        password:
+            endpointProfile?.password ??
+            roomProfile?.password ??
+            _passwordValue,
         resumeFilePath: entry.filePath,
         resumePositionMs: entry.lastPositionMs,
       ),
       profileUsername: usernameOverride == null ? null : savedUsername,
     );
+  }
+
+  SavedProfile? _matchingRoomProfile(
+    HistoryEntry entry,
+    List<SavedProfile> profiles,
+  ) {
+    final room = entry.room?.trim();
+    if (room == null || room.isEmpty) return null;
+    SavedProfile? sameRoom;
+    for (final profile in profiles) {
+      if (profile.room != room) continue;
+      sameRoom ??= profile;
+      if (entry.username == null ||
+          entry.username!.isEmpty ||
+          profile.username == entry.username) {
+        return profile;
+      }
+    }
+    return sameRoom;
+  }
+
+  SavedProfile? _matchingEndpointProfile({
+    required String room,
+    required String server,
+    required int port,
+    required String? username,
+    required List<SavedProfile> profiles,
+  }) {
+    SavedProfile? sameEndpoint;
+    for (final profile in profiles) {
+      if (profile.room != room ||
+          profile.server != server ||
+          profile.port != port) {
+        continue;
+      }
+      sameEndpoint ??= profile;
+      if (username == null ||
+          username.isEmpty ||
+          profile.username == username) {
+        return profile;
+      }
+    }
+    return sameEndpoint;
   }
 
   @override
@@ -701,7 +757,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         currentUsername: _typedUsername,
         onResume: (entry, {usernameOverride}) => _resumeHistory(
           entry,
-          mostRecent,
+          savedProfiles,
           usernameOverride: usernameOverride,
         ),
       ),

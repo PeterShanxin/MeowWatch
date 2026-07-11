@@ -1272,6 +1272,8 @@ class _HomeScreenState extends State<HomeScreen> {
         durationMs: state.duration.inMilliseconds,
         room: widget.config.room,
         username: widget.config.username,
+        server: widget.config.server,
+        port: widget.config.port,
       );
       appLog('db: recordOpen ok ${mediaDisplayName(path)}');
     } catch (e) {

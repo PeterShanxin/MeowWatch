@@ -37,6 +37,8 @@ class HistoryEntries extends Table {
   DateTimeColumn get playedAt => dateTime()();
   TextColumn get room => text().nullable()();
   TextColumn get username => text().nullable()();
+  TextColumn get server => text().nullable()();
+  IntColumn get port => integer().nullable()();
 }
 
 @DataClassName('SettingRow')
@@ -56,7 +58,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.memory() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -66,6 +68,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 3) {
             await m.addColumn(historyEntries, historyEntries.room);
             await m.addColumn(historyEntries, historyEntries.username);
+          }
+          if (from < 4) {
+            await m.addColumn(historyEntries, historyEntries.server);
+            await m.addColumn(historyEntries, historyEntries.port);
           }
         },
       );

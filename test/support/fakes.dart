@@ -59,6 +59,8 @@ class FakeHistoryStore implements HistoryStore {
     int? durationMs,
     String? room,
     String? username,
+    String? server,
+    int? port,
   }) async {}
 
   @override

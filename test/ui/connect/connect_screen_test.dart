@@ -112,6 +112,8 @@ class _FakeHistoryStore implements HistoryStore {
     int? durationMs,
     String? room,
     String? username,
+    String? server,
+    int? port,
   }) async {}
 
   @override
@@ -855,6 +857,96 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(connected!.username, 'meowPEOW');
+    },
+  );
+
+  testWidgets(
+    'continue-watching uses its saved endpoint, not a newer unrelated room',
+    (tester) async {
+      profiles.profiles.add(
+        SavedProfile(
+          id: 1,
+          name: 'unrelated-room',
+          server: 'stale.example',
+          port: 8999,
+          room: 'unrelated-room',
+          username: 'other',
+          password: null,
+          lastUsedAt: DateTime(2026, 7, 11),
+        ),
+      );
+      history.recent.add(
+        HistoryEntry(
+          id: 1,
+          filePath: '/ep1.mkv',
+          fileName: 'ep1.mkv',
+          fileSizeBytes: 1,
+          durationMs: 600000,
+          lastPositionMs: 120000,
+          playedAt: DateTime(2026, 7, 11),
+          room: 'mellow-robin-wears-wise-pickle',
+          username: 'meow',
+          server: 'syncplay.pl',
+          port: 8995,
+        ),
+      );
+      await pump(tester);
+
+      await tester.ensureVisible(find.byKey(const Key('continue-1')));
+      await tester.tap(find.byKey(const Key('continue-1')));
+      await tester.pumpAndSettle();
+
+      expect(connected!.server, 'syncplay.pl');
+      expect(connected!.port, 8995);
+    },
+  );
+
+  testWidgets(
+    'legacy continue-watching uses a matching room profile, not an unrelated one',
+    (tester) async {
+      profiles.profiles.addAll([
+        SavedProfile(
+          id: 1,
+          name: 'unrelated-room',
+          server: 'stale.example',
+          port: 8999,
+          room: 'unrelated-room',
+          username: 'other',
+          password: null,
+          lastUsedAt: DateTime(2026, 7, 11),
+        ),
+        SavedProfile(
+          id: 2,
+          name: 'mellow-robin-wears-wise-pickle',
+          server: 'syncplay.pl',
+          port: 8995,
+          room: 'mellow-robin-wears-wise-pickle',
+          username: 'meow',
+          password: null,
+          lastUsedAt: DateTime(2026, 7, 10),
+        ),
+      ]);
+      history.recent.add(
+        HistoryEntry(
+          id: 1,
+          filePath: '/ep1.mkv',
+          fileName: 'ep1.mkv',
+          fileSizeBytes: 1,
+          durationMs: 600000,
+          lastPositionMs: 120000,
+          playedAt: DateTime(2026, 7, 11),
+          room: 'mellow-robin-wears-wise-pickle',
+          username: 'meow',
+        ),
+      );
+      await pump(tester);
+
+      await tester.ensureVisible(find.byKey(const Key('continue-1')));
+      await tester.tap(find.byKey(const Key('continue-1')));
+      await tester.pumpAndSettle();
+
+      expect(connected!.server, 'syncplay.pl');
+      expect(connected!.port, 8995);
     },
   );
 

@@ -10,6 +10,14 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.41.3-alpha] - 2026-07-12
+
+> Continue watching returns to the room you actually watched in.
+
+### Fixed: Continue watching
+- Resuming a video now remembers its room's server and port, so it will not
+  accidentally retry through another saved room's stale connection (#194).
+
 ## [0.41.2-alpha] - 2026-07-12
 
 > The chat card now remembers where you docked it.
@@ -23,7 +31,6 @@ in-app updater reads to show what changed.
 ### Improved
 - Dragging the chat card is lighter: moving it no longer redraws the whole
   chat every frame.
-
 ## [0.41.1-alpha] - 2026-07-10
 
 > Room joins fail clearly when the saved server is stale.
