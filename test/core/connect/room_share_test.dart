@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/connect/room_share.dart';
+import 'package:meowwatch/core/sync/syncplay_constants.dart';
 
 void main() {
   const sentence = 'sleepy-otter-counts-cozy-stars';
@@ -7,11 +8,11 @@ void main() {
   group('encodeShareCode', () {
     test('default server + port stays the bare sentence', () {
       expect(
-        encodeShareCode(room: sentence, server: 'syncplay.pl', port: 8999),
+        encodeShareCode(room: sentence, server: 'syncplay.pl', port: 8995),
         sentence,
       );
       expect(
-        encodeShareCode(room: sentence, server: 'syncplay.pl', port: 8999),
+        encodeShareCode(room: sentence, server: 'syncplay.pl', port: 8995),
         isNot(contains('@')),
       );
     });
@@ -33,6 +34,10 @@ void main() {
     });
 
     test('custom port on the default host still carries the port', () {
+      expect(
+        encodeShareCode(room: sentence, server: 'syncplay.pl', port: 8999),
+        '$sentence@syncplay.pl:8999',
+      );
       expect(
         encodeShareCode(room: sentence, server: 'syncplay.pl', port: 9000),
         '$sentence@syncplay.pl:9000',
@@ -146,7 +151,10 @@ void main() {
 
     test('a room name with @ round-trips through encode → parse', () {
       final encoded = encodeShareCode(
-          room: 'movie@example.com', server: 'cozy.example.net', port: 9000);
+        room: 'movie@example.com',
+        server: 'cozy.example.net',
+        port: 9000,
+      );
       expect(encoded, 'movie@example.com@cozy.example.net:9000');
       final r = parseShareCode(encoded);
       expect(r.room, 'movie@example.com');
@@ -158,6 +166,7 @@ void main() {
   group('parseShareCode — round-trips with encodeShareCode', () {
     for (final c in const [
       ['syncplay.pl', 8999],
+      ['syncplay.pl', 8995],
       ['cozy.example.net', 8999],
       ['cozy.example.net', 9000],
       ['syncplay.pl', 9000],
@@ -168,15 +177,18 @@ void main() {
       final server = c[0] as String;
       final port = c[1] as int;
       test('$server:$port survives encode → parse', () {
-        final encoded =
-            encodeShareCode(room: sentence, server: server, port: port);
+        final encoded = encodeShareCode(
+          room: sentence,
+          server: server,
+          port: port,
+        );
         final parsed = parseShareCode(encoded);
         expect(parsed.isValid, isTrue);
         expect(parsed.room, sentence);
         // A null server/port from the parser means "use the default" — which is
         // exactly what was encoded, so reconstruct before comparing.
         expect(parsed.server ?? 'syncplay.pl', server);
-        expect(parsed.port ?? 8999, port);
+        expect(parsed.port ?? SyncplayConstants.publicServerPort, port);
       });
     }
   });

@@ -71,7 +71,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
   final _name = TextEditingController();
   final _code = TextEditingController();
   final _server = TextEditingController(text: SyncplayConstants.defaultServer);
-  final _port = TextEditingController(text: '${SyncplayConstants.defaultPort}');
+  final _port = TextEditingController(
+    text: '${SyncplayConstants.publicServerPort}',
+  );
   final _password = TextEditingController();
   final _serverFocus = FocusNode();
   final _portFocus = FocusNode();
@@ -299,7 +301,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       : _server.text.trim();
 
   int get _portValue =>
-      int.tryParse(_port.text.trim()) ?? SyncplayConstants.defaultPort;
+      int.tryParse(_port.text.trim()) ?? SyncplayConstants.publicServerPort;
 
   String? get _passwordValue => _password.text.isEmpty ? null : _password.text;
 
@@ -402,7 +404,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       return;
     }
     // A code that names a server describes a complete destination: it carries a
-    // port only when non-default, so an omitted port means the host's default
+    // port only when non-default, so an omitted port means the Syncplay default
     // (8999) — NOT whatever sits in the joiner's Advanced Port. Only a bare room
     // code (no server in the code) falls back to the Advanced fields.
     final fromCode = parsed.server != null;
@@ -803,7 +805,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         _server.text.trim() != SyncplayConstants.defaultServer;
     final portChanged =
         _port.text.trim().isNotEmpty &&
-        _port.text.trim() != '${SyncplayConstants.defaultPort}';
+        _port.text.trim() != '${SyncplayConstants.publicServerPort}';
     final passwordChanged = _password.text.isNotEmpty;
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -835,12 +837,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
             key: const Key('connect-advanced-port'),
             controller: _port,
             focusNode: _portFocus,
-            hint: '${SyncplayConstants.defaultPort}',
+            hint: '${SyncplayConstants.publicServerPort}',
             suffixIcon: portChanged
                 ? _resetFieldButton(
                     key: const Key('connect-advanced-port-reset'),
                     onPressed: () =>
-                        _port.text = '${SyncplayConstants.defaultPort}',
+                        _port.text = '${SyncplayConstants.publicServerPort}',
                   )
                 : null,
           ),
@@ -974,7 +976,7 @@ class _ContinueWatching extends StatelessWidget {
                       onResumeWithCurrentName: currentUsername.isEmpty
                           ? null
                           : () =>
-                              onResume(e, usernameOverride: currentUsername),
+                                onResume(e, usernameOverride: currentUsername),
                       onDelete: () => history.delete(e.id),
                     ),
                   ),

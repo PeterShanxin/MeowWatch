@@ -13,8 +13,9 @@ import '../sync/syncplay_constants.dart';
 ///
 ///   `sleepy-otter-counts-cozy-stars`
 ///
-/// When the server or port differ from the defaults, the endpoint is appended
-/// URL-style, always with an explicit port (the `:` is the unambiguous marker):
+/// When the server or port differ from the public defaults, the endpoint is
+/// appended URL-style, always with an explicit port (the `:` is the
+/// unambiguous marker):
 ///
 ///   `sleepy-otter-counts-cozy-stars@cozy.example.net:8999`    (custom host)
 ///   `sleepy-otter-counts-cozy-stars@cozy.example.net:9000`    (custom host+port)
@@ -107,8 +108,8 @@ String encodeShareCode({
   required int port,
 }) {
   final isDefaultServer = server == SyncplayConstants.defaultServer;
-  final isDefaultPort = port == SyncplayConstants.defaultPort;
-  if (isDefaultServer && isDefaultPort) return room;
+  final isPublicPort = port == SyncplayConstants.publicServerPort;
+  if (isDefaultServer && isPublicPort) return room;
   return '$room@${_encodeHost(server)}:$port';
 }
 
