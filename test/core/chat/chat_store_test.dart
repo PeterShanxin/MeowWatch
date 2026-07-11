@@ -199,6 +199,69 @@ void main() {
     await sync.dispose();
   });
 
+  test('caps retained history, dropping the oldest lines', () async {
+    final sync = FakeSync();
+    final store = ChatStore(sync: sync);
+
+    for (var i = 0; i < ChatStore.maxRetained + 10; i++) {
+      sync.incoming(ChatMessage(username: 'lin', text: 'm$i'));
+    }
+    await Future<void>.delayed(Duration.zero);
+
+    expect(store.messages.length, ChatStore.maxRetained);
+    expect(store.messages.first.text, 'm10');
+    expect(store.messages.last.text, 'm${ChatStore.maxRetained + 9}');
+    await store.dispose();
+    await sync.dispose();
+  });
+
+  test('system lines count toward the history cap', () async {
+    final sync = FakeSync();
+    final store = ChatStore(sync: sync);
+
+    for (var i = 0; i < ChatStore.maxRetained; i++) {
+      sync.incoming(ChatMessage(username: 'lin', text: 'm$i'));
+    }
+    await Future<void>.delayed(Duration.zero);
+    store.addSystem('lin joined the room');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(store.messages.length, ChatStore.maxRetained);
+    expect(store.messages.first.text, 'm1');
+    expect(store.messages.last.text, 'lin joined the room');
+    await store.dispose();
+    await sync.dispose();
+  });
+
+  group('appendedMessages', () {
+    const a = ChatMessage(username: 'lin', text: 'a');
+    const b = ChatMessage(username: 'lin', text: 'b');
+    const c = ChatMessage(username: 'lin', text: 'c');
+    const d = ChatMessage(username: 'lin', text: 'd');
+
+    test('pure append: everything past the old length', () {
+      expect(appendedMessages(const [a, b], const [a, b, c, d]), [c, d]);
+    });
+
+    test('first snapshot: the whole list is new', () {
+      expect(appendedMessages(const [], const [a, b]), [a, b]);
+    });
+
+    test('trimmed same-length list: anchors on the old last instance', () {
+      // The retention cap drops 'a' as 'd' arrives — length stays equal, but
+      // 'd' is still detected as new.
+      expect(appendedMessages(const [a, b, c], const [b, c, d]), [d]);
+    });
+
+    test('unchanged list: nothing new', () {
+      expect(appendedMessages(const [a, b], const [a, b]), isEmpty);
+    });
+
+    test('wholesale replacement: nothing provably new', () {
+      expect(appendedMessages(const [a, b], const [c, d]), isEmpty);
+    });
+  });
+
   test('tracks ownership across a reconnect rename (collision dedupe)', () async {
     // The server can hand us a different name on reconnect ("meow" -> "meow_").
     // Ownership is stamped at receipt against our *current* name, so a message

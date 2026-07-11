@@ -4,6 +4,28 @@ import '../sync/peer_state.dart';
 import '../sync/sync_core.dart';
 import 'chat_signals.dart';
 
+/// Messages present in [current] but not in [old]. Handles both shapes a
+/// [ChatStore.stream] consumer can see: a longer list (pure append) and a
+/// same-length list where the retention cap trimmed the oldest line as a new
+/// one arrived — a bare length comparison misses the latter. The trim case
+/// anchors on the previous last message *instance* (the store's snapshots
+/// share instances), so duplicate texts can't mis-anchor.
+List<ChatMessage> appendedMessages(
+  List<ChatMessage> old,
+  List<ChatMessage> current,
+) {
+  if (current.isEmpty) return const [];
+  if (old.isEmpty) return current;
+  if (current.length > old.length) return current.sublist(old.length);
+  final lastOld = old.last;
+  for (var i = current.length - 1; i >= 0; i--) {
+    if (identical(current[i], lastOld)) return current.sublist(i + 1);
+  }
+  // The whole previous tail is gone (list replaced wholesale) — nothing is
+  // provably an append.
+  return const [];
+}
+
 /// A reaction (floating emoji) received from a room member.
 class ReactionEvent {
   const ReactionEvent({required this.username, required this.emoji});
@@ -31,6 +53,13 @@ class ChatStore {
   // Fields are private; named params cannot start with an underscore, so
   // initializing formals don't apply here.
   // ignore_for_file: prefer_initializing_formals
+
+  /// Maximum retained chat lines (user messages + system lines). The history
+  /// grows all session even without anyone chatting — every join/leave and
+  /// sync event appends a line — so an uncapped list makes each snapshot copy
+  /// (and every downstream rebuild) steadily more expensive. Oldest lines are
+  /// dropped first once the cap is reached.
+  static const int maxRetained = 500;
   ChatStore({required SyncCore sync, DateTime Function() now = DateTime.now})
     : _sync = sync,
       _now = now {
@@ -98,11 +127,19 @@ class ChatStore {
       }
       return; // Control messages never appear in chat history.
     }
-    _messages.add(
+    _append(
       m.timestamp == null
           ? m.copyWith(timestamp: _now(), isMine: m.username == _myUsername)
           : m,
     );
+  }
+
+  /// Append [m], trim to [maxRetained], and emit a fresh snapshot.
+  void _append(ChatMessage m) {
+    _messages.add(m);
+    if (_messages.length > maxRetained) {
+      _messages.removeRange(0, _messages.length - maxRetained);
+    }
     _controller.add(messages);
   }
 
@@ -115,10 +152,9 @@ class ChatStore {
   /// Append a local-only event line (e.g. "lin joined the room"). Not sent over
   /// the wire — each client annotates its own history.
   void addSystem(String text) {
-    _messages.add(
+    _append(
       ChatMessage(username: '', text: text, timestamp: _now(), system: true),
     );
-    _controller.add(messages);
   }
 
   /// Broadcast a floating reaction to the room.

@@ -4,6 +4,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
+import '../../core/chat/chat_store.dart' show appendedMessages;
 import '../../core/sync/peer_state.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
@@ -87,13 +88,16 @@ class ChatOverlay extends StatefulWidget {
 
 class _ChatOverlayState extends State<ChatOverlay>
     with SingleTickerProviderStateMixin {
-  // While dragging, a free top-left offset (relative to this overlay's own
-  // box) overrides corner placement. Captured from the card's real rect at
-  // drag start so the first grab never teleports. Also driven by [_snapCtrl]
-  // during the post-release glide to a corner.
-  Offset? _dragTopLeft;
-  // Real card + overlay sizes captured at drag start, used for snap math.
-  Size? _dragCardSize;
+  // While dragging, the card renders free-floating at this rect (top-left
+  // relative to this overlay's own box, plus the live size — a grip resize
+  // changes it mid-gesture). Captured from the card's real rect at drag start
+  // so the first grab never teleports; also driven by [_snapCtrl] during the
+  // post-release glide to a corner. Held in a ValueNotifier so per-pointer-move
+  // updates flow through a ValueListenableBuilder that only repositions the
+  // card — its contents keep their widget identity instead of rebuilding every
+  // message bubble per frame. Null while docked.
+  final ValueNotifier<Rect?> _floatRect = ValueNotifier<Rect?>(null);
+  // Overlay size captured at drag start, used for snap math.
   Size? _overlaySize;
   final GlobalKey _cardKey = GlobalKey();
 
@@ -104,7 +108,7 @@ class _ChatOverlayState extends State<ChatOverlay>
   Offset _resizeDelta = Offset.zero;
   ChatCorner _resizeGrip = ChatCorner.bottomRight;
 
-  // Post-release snap glide: tween _dragTopLeft from where it was dropped to
+  // Post-release snap glide: tween the float rect from where it was dropped to
   // the resting corner, so docking eases in instead of teleporting.
   late final AnimationController _snapCtrl = AnimationController(
     vsync: this,
@@ -145,9 +149,9 @@ class _ChatOverlayState extends State<ChatOverlay>
         if (mounted) setState(() => _dividerIndex = null);
       });
     } else if (!wasUnread && isUnread) {
-      // Pin the divider just before the first unread message. Safe as an
-      // absolute index only because the message list is append-only — existing
-      // indices never shift, so the boundary stays put as more arrive.
+      // Pin the divider just before the first unread message. The list is
+      // append-only until the store's retention cap kicks in; once trims start
+      // shifting indices, didUpdateWidget slides this index along with them.
       _dividerIndex = firstUnreadIndex ?? (widget.messages.length - count);
       _dividerTimer?.cancel();
       _dividerTimer = null;
@@ -209,23 +213,34 @@ class _ChatOverlayState extends State<ChatOverlay>
         if (mounted) _inputFocus.requestFocus();
       });
     }
+    final appended = appendedMessages(old.messages, widget.messages);
+    // Lines the store trimmed off the front this update (only happens once its
+    // retention cap is hit). Slide the pinned divider with the content so it
+    // stays above the same message instead of drifting to a stale index.
+    final trimmed =
+        old.messages.length + appended.length - widget.messages.length;
+    if (trimmed > 0 && _dividerIndex != null) {
+      final shifted = _dividerIndex! - trimmed;
+      _dividerIndex = shifted < 0 ? null : shifted;
+    }
+
     // Reopening jumps straight to the latest (messages can pile up while
     // collapsed, when the list is unmounted and a scroll would no-op); a new
     // message while already open animates into view.
     if (justOpened) {
       if (_unreadCount > 0) setState(() => _setUnreadCount(0));
       _scrollToBottom(animate: false);
-    } else if (old.messages.length < widget.messages.length) {
-      final newMsgs = widget.messages.sublist(old.messages.length);
-      final isMyMessage = newMsgs.isNotEmpty && newMsgs.last.isMine;
+    } else if (appended.isNotEmpty) {
+      final isMyMessage = appended.last.isMine;
 
       int newUnread = 0;
       int? firstUnreadIndex;
-      for (int i = 0; i < newMsgs.length; i++) {
-        final m = newMsgs[i];
+      final appendStart = widget.messages.length - appended.length;
+      for (int i = 0; i < appended.length; i++) {
+        final m = appended[i];
         if (!m.system && !m.isMine) {
           newUnread++;
-          firstUnreadIndex ??= old.messages.length + i;
+          firstUnreadIndex ??= appendStart + i;
         }
       }
 
@@ -304,6 +319,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     _dividerTimer?.cancel();
     _inputFocus.removeListener(_onInputFocusChanged);
     _snapCtrl.dispose();
+    _floatRect.dispose();
     _inputFocus.dispose();
     _draftController.dispose();
     _scrollController.dispose();
@@ -347,14 +363,14 @@ class _ChatOverlayState extends State<ChatOverlay>
   void _onSnapTick() {
     final from = _snapFrom;
     final to = _snapTo;
-    if (from == null || to == null) return;
-    setState(
-      () => _dragTopLeft = Offset.lerp(
-        from,
-        to,
-        Motion.standard.transform(_snapCtrl.value),
-      ),
-    );
+    final rect = _floatRect.value;
+    if (from == null || to == null || rect == null) return;
+    final at = Offset.lerp(
+      from,
+      to,
+      Motion.standard.transform(_snapCtrl.value),
+    )!;
+    _floatRect.value = at & rect.size;
   }
 
   void _onSnapStatus(AnimationStatus status) {
@@ -363,8 +379,7 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   void _clearDrag() {
     setState(() {
-      _dragTopLeft = null;
-      _dragCardSize = null;
+      _floatRect.value = null;
       _overlaySize = null;
       _snapFrom = null;
       _snapTo = null;
@@ -376,7 +391,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     // collapse the parent restores player focus instead, so skip it here.
     if (!widget.collapsed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _dragTopLeft == null) _inputFocus.requestFocus();
+        if (mounted && _floatRect.value == null) _inputFocus.requestFocus();
       });
     }
   }
@@ -391,11 +406,19 @@ class _ChatOverlayState extends State<ChatOverlay>
     if (cardBox == null || selfBox == null) return;
     final origin = selfBox.localToGlobal(Offset.zero);
     setState(() {
-      _dragTopLeft = cardBox.localToGlobal(Offset.zero) - origin;
-      _dragCardSize = cardBox.size;
       _overlaySize = selfBox.size;
+      _floatRect.value =
+          (cardBox.localToGlobal(Offset.zero) - origin) & cardBox.size;
     });
     widget.onDraggingChanged?.call(true);
+  }
+
+  /// Live move-drag: shift the floating rect only — no setState, so the card's
+  /// contents are not rebuilt per pointer move.
+  void _moveBy(Offset delta) {
+    final rect = _floatRect.value;
+    if (rect == null) return;
+    _floatRect.value = rect.shift(delta);
   }
 
   /// Begin a grip resize from corner [grip]: pin the card's current rect and
@@ -408,9 +431,8 @@ class _ChatOverlayState extends State<ChatOverlay>
     final origin = selfBox.localToGlobal(Offset.zero);
     final topLeft = cardBox.localToGlobal(Offset.zero) - origin;
     setState(() {
-      _dragTopLeft = topLeft;
-      _dragCardSize = cardBox.size;
       _overlaySize = selfBox.size;
+      _floatRect.value = topLeft & cardBox.size;
       _resizeStartSize = cardBox.size;
       _resizeStartTopLeft = topLeft;
       _resizeDelta = Offset.zero;
@@ -432,67 +454,68 @@ class _ChatOverlayState extends State<ChatOverlay>
       grip: _resizeGrip,
       windowSize: window,
     );
-    setState(() {
-      _dragTopLeft = r.topLeft;
-      _dragCardSize = r.size;
-    });
+    // Notifier-only, like _moveBy: the card relayouts to its new size but its
+    // contents keep their widget identity.
+    _floatRect.value = r.topLeft & r.size;
   }
 
   /// End the resize: report the new size, then glide back to the docked corner.
   void _endResize() {
-    final size = _dragCardSize;
-    final topLeft = _dragTopLeft;
+    final rect = _floatRect.value;
     final window = _overlaySize;
     _resizeStartSize = null;
     _resizeStartTopLeft = null;
     _resizeDelta = Offset.zero;
-    if (size == null || topLeft == null || window == null) {
+    if (rect == null || window == null) {
       _clearDrag();
       return;
     }
-    widget.onResize?.call(size);
-    _snapFrom = topLeft;
-    _snapTo = _cornerTopLeft(widget.corner, size, window);
+    widget.onResize?.call(rect.size);
+    // setState: the glide is a mode change (hints hide, resize ends) that the
+    // float-rect notifier alone can't signal — its first tick re-emits the
+    // same rect, which a ValueNotifier swallows.
+    setState(() {
+      _snapFrom = rect.topLeft;
+      _snapTo = _cornerTopLeft(widget.corner, rect.size, window);
+    });
     _snapCtrl.forward(from: 0);
   }
 
   void _endHeaderDrag() {
-    final topLeft = _dragTopLeft;
-    final card = _dragCardSize;
+    final rect = _floatRect.value;
     final window = _overlaySize;
-    if (topLeft == null || card == null || window == null) {
+    if (rect == null || window == null) {
       _clearDrag();
       return;
     }
     final result = computeSnap(
-      dropTopLeft: topLeft,
-      cardSize: card,
+      dropTopLeft: rect.topLeft,
+      cardSize: rect.size,
       windowSize: window,
     );
     widget.onSnap(result);
     final corner = result.corner;
-    _snapFrom = topLeft;
-    if (corner != null) {
-      // Glide to the docked corner, then settle into the Align placement.
-      _snapTo = _cornerTopLeft(corner, card, window);
-    } else {
-      // Collapse: slide the card off the right edge, then it becomes the peek
-      // tab — so docking to the edge isn't an abrupt disappearance.
-      _snapTo = Offset(window.width, topLeft.dy);
-    }
+    // setState: hints must hide the moment the drag releases, and the
+    // float-rect notifier can't signal that — its first glide tick re-emits
+    // the same rect, which a ValueNotifier swallows.
+    setState(() {
+      _snapFrom = rect.topLeft;
+      if (corner != null) {
+        // Glide to the docked corner, then settle into the Align placement.
+        _snapTo = _cornerTopLeft(corner, rect.size, window);
+      } else {
+        // Collapse: slide the card off the right edge, then it becomes the
+        // peek tab — so docking to the edge isn't an abrupt disappearance.
+        _snapTo = Offset(window.width, rect.top);
+      }
+    });
     _snapCtrl.forward(from: 0);
   }
 
-  Widget _buildCard(Size cardSize) => _GlassCard(
+  Widget _buildCard() => _GlassCard(
     key: _cardKey,
-    width: cardSize.width,
-    height: cardSize.height,
     onHeaderDragStart: _startHeaderDrag,
-    onHeaderDragUpdate: (delta) {
-      final base = _dragTopLeft;
-      if (base == null) return;
-      setState(() => _dragTopLeft = base + delta);
-    },
+    onHeaderDragUpdate: _moveBy,
     onHeaderDragEnd: _endHeaderDrag,
     onCollapse: widget.onToggleCollapsed,
     messages: widget.messages,
@@ -516,31 +539,11 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context).size;
-    // Stored px size, clamped to the current viewport (so it never overflows a
-    // small window) but otherwise stable when the window is resized/maximized.
-    final cardSize =
-        _dragCardSize ??
-        clampCardSize(
-          Size(
-            widget.widthPx ?? kDefaultCardWidth,
-            widget.heightPx ?? kDefaultCardHeight,
-          ),
-          media,
-        );
-
-    // Active drag, or the post-release snap glide, renders a free-floating card.
-    final topLeft = _dragTopLeft;
-    if (topLeft != null) {
-      // Dock hints show only during the live move-drag: not the settling glide
-      // (isAnimating), and not during a grip resize (_resizeStartSize) — the
-      // resize reuses this free-floating render path, where the full-screen
-      // hint layer just adds noise (it's a move affordance, not a resize one).
-      final showHints =
-          !_snapCtrl.isAnimating &&
-          _resizeStartSize == null &&
-          _overlaySize != null &&
-          _dragCardSize != null;
+    // Active drag, or the post-release snap glide, renders a free-floating
+    // card. Pointer moves and glide ticks write [_floatRect] only — the
+    // ValueListenableBuilder repositions/resizes the card while its contents
+    // (the cached [child]) keep their widget identity, so no bubble rebuilds.
+    if (_floatRect.value != null) {
       // Fill the overlay's box with a plain SizedBox.expand — NOT Positioned.fill.
       // ChatOverlay is mounted under IgnorePointer/AnimatedOpacity (see
       // HomeScreen), not directly inside a Stack, so a Positioned here is a
@@ -553,24 +556,55 @@ class _ChatOverlayState extends State<ChatOverlay>
         // per-frame drag/resize repaints stay local instead of repainting the
         // whole screen.
         child: RepaintBoundary(
-          child: Stack(
-            children: [
-              if (showHints)
-                _DropZoneHints(
-                  overlaySize: _overlaySize!,
-                  cardSize: _dragCardSize!,
-                  dragTopLeft: topLeft,
-                ),
-              Positioned(
-                left: topLeft.dx,
-                top: topLeft.dy,
-                child: _buildCard(cardSize),
-              ),
-            ],
+          child: ValueListenableBuilder<Rect?>(
+            valueListenable: _floatRect,
+            builder: (context, rect, card) {
+              if (rect == null) return const SizedBox.shrink();
+              // Dock hints show only during the live move-drag: not the
+              // settling glide (isAnimating), and not during a grip resize
+              // (_resizeStartSize) — the resize reuses this free-floating
+              // render path, where the full-screen hint layer just adds noise
+              // (it's a move affordance, not a resize one).
+              final showHints =
+                  !_snapCtrl.isAnimating &&
+                  _resizeStartSize == null &&
+                  _overlaySize != null;
+              return Stack(
+                children: [
+                  if (showHints)
+                    _DropZoneHints(
+                      overlaySize: _overlaySize!,
+                      cardSize: rect.size,
+                      dragTopLeft: rect.topLeft,
+                    ),
+                  Positioned(
+                    left: rect.left,
+                    top: rect.top,
+                    child: SizedBox(
+                      width: rect.width,
+                      height: rect.height,
+                      child: card,
+                    ),
+                  ),
+                ],
+              );
+            },
+            child: _buildCard(),
           ),
         ),
       );
     }
+
+    final media = MediaQuery.of(context).size;
+    // Stored px size, clamped to the current viewport (so it never overflows a
+    // small window) but otherwise stable when the window is resized/maximized.
+    final cardSize = clampCardSize(
+      Size(
+        widget.widthPx ?? kDefaultCardWidth,
+        widget.heightPx ?? kDefaultCardHeight,
+      ),
+      media,
+    );
 
     // Resting: cross-fade between the peek tab and the docked card so
     // collapse/expand eases instead of snapping instantly.
@@ -591,7 +625,11 @@ class _ChatOverlayState extends State<ChatOverlay>
             child: Padding(
               padding: const EdgeInsets.fromLTRB(
                   Spacing.md, Spacing.md, Spacing.md, 64),
-              child: _buildCard(cardSize),
+              child: SizedBox(
+                width: cardSize.width,
+                height: cardSize.height,
+                child: _buildCard(),
+              ),
             ),
           );
     // Same isolation as the drag path: the docked card's own repaints (new
@@ -611,8 +649,6 @@ class _ChatOverlayState extends State<ChatOverlay>
 class _GlassCard extends StatelessWidget {
   const _GlassCard({
     super.key,
-    required this.width,
-    required this.height,
     required this.onHeaderDragStart,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
@@ -633,8 +669,6 @@ class _GlassCard extends StatelessWidget {
     required this.onResizeEnd,
   });
 
-  final double width;
-  final double height;
   final VoidCallback onHeaderDragStart;
   final void Function(Offset delta) onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
@@ -724,8 +758,10 @@ class _GlassCard extends StatelessWidget {
           child: _frosted(
             context,
             Container(
-              width: width,
-              height: height,
+              // Fills the SizedBox the caller wraps the card in — the size
+              // lives outside so a live resize relayouts without a rebuild.
+              width: double.infinity,
+              height: double.infinity,
               decoration: BoxDecoration(
                 color: m.surface,
                 borderRadius: BorderRadius.circular(Radii.lg),
@@ -838,38 +874,30 @@ class _GlassCard extends StatelessWidget {
                               // bubbles become selectable without changing how
                               // they render.
                               SelectionArea(
-                                child: ListView(
+                                // A builder list only constructs the bubbles
+                                // that scroll into view — a children:[...] list
+                                // rebuilt every message widget on every card
+                                // rebuild, which grew with session length.
+                                child: ListView.builder(
                                   controller: scrollController,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: Spacing.xs,
                                   ),
-                                  children: [
-                                    for (int i = 0; i < messages.length; i++) ...[
-                                      if (i == dividerIndex)
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: Spacing.sm, horizontal: Spacing.lg),
-                                          child: Row(
-                                            children: [
-                                              Expanded(child: Divider(color: m.accent.withValues(alpha: Opacities.scrim), thickness: 1)),
-                                              Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
-                                                child: Text(
-                                                  'New Messages',
-                                                  style: context.meowText.caption.copyWith(
-                                                    color: m.accent,
-                                                    fontWeight: TypeScale.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                              Expanded(child: Divider(color: m.accent.withValues(alpha: Opacities.scrim), thickness: 1)),
-                                            ],
-                                          ),
-                                        ),
-                                      ChatBubble(
-                                        message: messages[i],
-                                      ),
-                                    ],
-                                  ],
+                                  itemCount: messages.length,
+                                  itemBuilder: (context, i) {
+                                    final bubble =
+                                        ChatBubble(message: messages[i]);
+                                    if (i != dividerIndex) return bubble;
+                                    return Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        const _NewMessagesDivider(),
+                                        bubble,
+                                      ],
+                                    );
+                                  },
                                 ),
                               ),
                               if (unreadCount > 0)
@@ -944,6 +972,43 @@ class _GlassCard extends StatelessWidget {
           child: _grip(context, ChatCorner.bottomRight),
         ),
       ],
+    );
+  }
+}
+
+/// The "New Messages" boundary line, rendered just above the first unread
+/// message while the unread marker is pinned.
+class _NewMessagesDivider extends StatelessWidget {
+  const _NewMessagesDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    final line = Divider(
+      color: m.accent.withValues(alpha: Opacities.scrim),
+      thickness: 1,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: Spacing.sm,
+        horizontal: Spacing.lg,
+      ),
+      child: Row(
+        children: [
+          Expanded(child: line),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+            child: Text(
+              'New Messages',
+              style: context.meowText.caption.copyWith(
+                color: m.accent,
+                fontWeight: TypeScale.bold,
+              ),
+            ),
+          ),
+          Expanded(child: line),
+        ],
+      ),
     );
   }
 }
