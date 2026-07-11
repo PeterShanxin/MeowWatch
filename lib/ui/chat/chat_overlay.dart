@@ -17,7 +17,6 @@ import '../../core/theme/tokens/type_scale.dart';
 import 'chat_bubble.dart';
 import 'chat_corner.dart';
 import 'chat_input.dart';
-import 'drag_predictor.dart';
 import 'peek_tab.dart';
 import 'resize_math.dart';
 
@@ -93,22 +92,12 @@ enum _DragMode { moving, resizing, gliding }
 
 /// Live placement of the free-floating card while it is dragged, resized, or
 /// gliding to its dock.
-///
-/// [topLeft] is the TRUE drag position (snap math and drop decisions use it);
-/// [prediction] is the extra latency-compensation offset the card is
-/// *rendered* at during a move (see [DragPredictor]) — zero otherwise.
 @immutable
 class _DragRect {
-  const _DragRect(
-    this.topLeft,
-    this.size,
-    this.mode, {
-    this.prediction = Offset.zero,
-  });
+  const _DragRect(this.topLeft, this.size, this.mode);
   final Offset topLeft;
   final Size size;
   final _DragMode mode;
-  final Offset prediction;
 }
 
 class _ChatOverlayState extends State<ChatOverlay>
@@ -126,13 +115,6 @@ class _ChatOverlayState extends State<ChatOverlay>
   final ValueNotifier<_DragRect?> _drag = ValueNotifier<_DragRect?>(null);
   // Overlay size captured at drag start, used for snap math.
   Size? _overlaySize;
-
-  // Latency compensation for the move-drag: the card renders slightly ahead
-  // of the true position at speed (see DragPredictor). The settle timer zeroes
-  // the prediction when pointer events stop arriving mid-drag, so a parked
-  // cursor ends up exactly on the grab point.
-  final DragPredictor _predictor = DragPredictor();
-  Timer? _predictionSettleTimer;
   // Size the memoized drag-path card (the ValueListenableBuilder child) was
   // built with; a _DragRect at any other size must rebuild the card.
   Size? _memoSize;
@@ -343,7 +325,6 @@ class _ChatOverlayState extends State<ChatOverlay>
   @override
   void dispose() {
     _dividerTimer?.cancel();
-    _predictionSettleTimer?.cancel();
     _inputFocus.removeListener(_onInputFocusChanged);
     _snapCtrl.dispose();
     _drag.dispose();
@@ -404,8 +385,6 @@ class _ChatOverlayState extends State<ChatOverlay>
   }
 
   void _clearDrag() {
-    _predictionSettleTimer?.cancel();
-    _predictor.reset();
     setState(() {
       _drag.value = null;
       _overlaySize = null;
@@ -433,7 +412,6 @@ class _ChatOverlayState extends State<ChatOverlay>
     final selfBox = context.findRenderObject() as RenderBox?;
     if (cardBox == null || selfBox == null) return;
     final origin = selfBox.localToGlobal(Offset.zero);
-    _predictor.reset();
     setState(() {
       _drag.value = _DragRect(
         cardBox.localToGlobal(Offset.zero) - origin,
@@ -447,27 +425,13 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   /// One pointer move of the header drag. No setState: the notifier
   /// repositions the memoized card without re-diffing its subtree (the
-  /// drag-lag fix), and the predictor renders it slightly ahead at speed
-  /// (the latency-compensation half of the same fix).
-  void _updateHeaderDrag(Offset delta, Duration? sourceTimeStamp) {
+  /// drag-jank fix). The remaining cursor-trail at speed is platform input
+  /// latency, accepted as-is — a velocity-prediction pass was tried and
+  /// reverted because it made the card shiver (#192).
+  void _updateHeaderDrag(Offset delta) {
     final d = _drag.value;
     if (d == null) return;
-    _predictor.addSample(delta, sourceTimeStamp);
-    _drag.value = _DragRect(
-      d.topLeft + delta,
-      d.size,
-      d.mode,
-      prediction: _predictor.prediction,
-    );
-    // If pointer events stop arriving (cursor parked mid-drag), ease the
-    // prediction out so the card rests exactly on the grab point.
-    _predictionSettleTimer?.cancel();
-    _predictionSettleTimer = Timer(const Duration(milliseconds: 50), () {
-      final held = _drag.value;
-      if (held == null || held.mode != _DragMode.moving) return;
-      _predictor.reset();
-      _drag.value = _DragRect(held.topLeft, held.size, held.mode);
-    });
+    _drag.value = _DragRect(d.topLeft + delta, d.size, d.mode);
   }
 
   /// Begin a grip resize from corner [grip]: pin the card's current rect and
@@ -525,7 +489,6 @@ class _ChatOverlayState extends State<ChatOverlay>
   }
 
   void _endHeaderDrag() {
-    _predictionSettleTimer?.cancel();
     final d = _drag.value;
     final window = _overlaySize;
     if (d == null || window == null) {
@@ -539,11 +502,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     );
     widget.onSnap(result);
     final corner = result.corner;
-    // Glide from where the card was RENDERED (true + prediction), not the
-    // true position — otherwise releasing at speed makes the card hop back
-    // by the prediction gap before gliding.
-    _snapFrom = d.topLeft + d.prediction;
-    _predictor.reset();
+    _snapFrom = d.topLeft;
     if (corner != null) {
       // Glide to the docked corner, then settle into the Align placement.
       _snapTo = _cornerTopLeft(corner, d.size, window);
@@ -552,7 +511,7 @@ class _ChatOverlayState extends State<ChatOverlay>
       // tab — so docking to the edge isn't an abrupt disappearance.
       _snapTo = Offset(window.width, d.topLeft.dy);
     }
-    _drag.value = _DragRect(_snapFrom!, d.size, _DragMode.gliding);
+    _drag.value = _DragRect(d.topLeft, d.size, _DragMode.gliding);
     _snapCtrl.forward(from: 0);
   }
 
@@ -634,12 +593,9 @@ class _ChatOverlayState extends State<ChatOverlay>
                       cardSize: d.size,
                       dragTopLeft: d.topLeft,
                     ),
-                  // Rendered at true position + latency prediction: at speed
-                  // the card sits where the cursor IS, not where it was two
-                  // frames ago. Snap math above stays on the true position.
                   Positioned(
-                    left: d.topLeft.dx + d.prediction.dx,
-                    top: d.topLeft.dy + d.prediction.dy,
+                    left: d.topLeft.dx,
+                    top: d.topLeft.dy,
                     child: card,
                   ),
                 ],
@@ -724,8 +680,7 @@ class _GlassCard extends StatelessWidget {
   final double width;
   final double height;
   final VoidCallback onHeaderDragStart;
-  final void Function(Offset delta, Duration? sourceTimeStamp)
-      onHeaderDragUpdate;
+  final void Function(Offset delta) onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
   final VoidCallback onCollapse;
   final List<ChatMessage> messages;
@@ -829,8 +784,7 @@ class _GlassCard extends StatelessWidget {
                     behavior: HitTestBehavior.opaque,
                     dragStartBehavior: DragStartBehavior.down,
                     onPanStart: (_) => onHeaderDragStart(),
-                    onPanUpdate: (d) =>
-                        onHeaderDragUpdate(d.delta, d.sourceTimeStamp),
+                    onPanUpdate: (d) => onHeaderDragUpdate(d.delta),
                     onPanEnd: (_) => onHeaderDragEnd(),
                     child: Container(
                       height: 36,
