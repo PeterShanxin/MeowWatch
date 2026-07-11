@@ -210,4 +210,69 @@ void main() {
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
   });
+
+  testWidgets('unread badge and divider re-pin when the oldest unread lines '
+      'age out under the retention cap', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    var messages = manyMessages(40);
+    late StateSetter setOuter;
+
+    await tester.pumpWidget(
+      host(
+        StatefulBuilder(
+          builder: (context, setState) {
+            setOuter = setState;
+            return ChatOverlay(
+              messages: messages,
+              collapsed: false,
+              onSend: (_) {},
+              onToggleCollapsed: () {},
+              onSnap: (_) {},
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Scrolled up (first build doesn't auto-scroll). Three peer lines arrive
+    // and pile up unread, pinning the divider above the first of them.
+    final base = messages;
+    setOuter(() {
+      messages = [
+        ...base,
+        const ChatMessage(username: 'lin', text: 'u1'),
+        const ChatMessage(username: 'lin', text: 'u2'),
+        const ChatMessage(username: 'lin', text: 'u3'),
+      ];
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('↓ 3 new messages'), findsOneWidget);
+
+    // Now the retention cap bites hard: the whole read backlog *and* the two
+    // oldest unread lines age out, leaving only the third unread line, while a
+    // fourth unread line arrives in the same snapshot. The badge must report
+    // the two lines still retained (not keep the two trimmed ones in its
+    // count), and the "New Messages" divider must re-pin to the oldest unread
+    // line still present instead of vanishing.
+    final grown = messages; // [...40 read, u1, u2, u3]
+    setOuter(() {
+      messages = [
+        grown[42], // u3 — the only surviving earlier unread line
+        const ChatMessage(username: 'lin', text: 'u4'),
+      ];
+    });
+    await tester.pumpAndSettle();
+
+    expect(find.text('↓ 2 new messages'), findsOneWidget);
+    expect(find.text('↓ 4 new messages'), findsNothing);
+    expect(find.text('New Messages'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('New Messages')).dy,
+      lessThan(tester.getTopLeft(find.text('u3')).dy),
+    );
+  });
 }

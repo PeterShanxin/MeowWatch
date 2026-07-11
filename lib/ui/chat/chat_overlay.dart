@@ -220,8 +220,57 @@ class _ChatOverlayState extends State<ChatOverlay>
     final trimmed =
         old.messages.length + appended.length - widget.messages.length;
     if (trimmed > 0 && _dividerIndex != null) {
-      final shifted = _dividerIndex! - trimmed;
-      _dividerIndex = shifted < 0 ? null : shifted;
+      final oldDivider = _dividerIndex!;
+      final shifted = oldDivider - trimmed;
+      if (shifted >= 0) {
+        // The first unread line survived the trim — just slide the marker down.
+        _dividerIndex = shifted;
+      } else if (_unreadCount > 0) {
+        // The oldest unread line(s) themselves aged out under the cap. Drop
+        // the trimmed unread lines from the badge (otherwise it over-reports
+        // messages that no longer exist) and re-pin the divider to the oldest
+        // unread line still retained. Leaving _unreadCount untouched here also
+        // wedges the divider: a later _setUnreadCount sees wasUnread == true,
+        // so neither pin branch fires and the marker never comes back.
+        var trimmedUnread = 0;
+        final end = trimmed < old.messages.length
+            ? trimmed
+            : old.messages.length;
+        for (var i = oldDivider; i < end; i++) {
+          final m = old.messages[i];
+          if (!m.system && !m.isMine) trimmedUnread++;
+        }
+        final remaining = _unreadCount - trimmedUnread;
+        if (remaining > 0) {
+          int? firstRetainedUnread;
+          for (var i = 0; i < widget.messages.length; i++) {
+            final m = widget.messages[i];
+            if (!m.system && !m.isMine) {
+              firstRetainedUnread = i;
+              break;
+            }
+          }
+          _unreadCount = remaining;
+          _dividerIndex = firstRetainedUnread;
+        } else {
+          // Every counted unread line aged out — clear the marker and badge,
+          // and tell the parent the unread flag dropped (peek pulse, etc.).
+          _unreadCount = 0;
+          _dividerIndex = null;
+          _dividerTimer?.cancel();
+          _dividerTimer = null;
+          final cb = widget.onUnreadChanged;
+          if (cb != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) cb(false);
+            });
+          }
+        }
+      } else {
+        // No active unread run — a lingering (post-read) divider whose message
+        // aged out; just drop it.
+        _dividerIndex = null;
+      }
     }
 
     // Reopening jumps straight to the latest (messages can pile up while
