@@ -4,25 +4,33 @@ import '../sync/peer_state.dart';
 import '../sync/sync_core.dart';
 import 'chat_signals.dart';
 
-/// Messages present in [current] but not in [old]. Handles both shapes a
-/// [ChatStore.stream] consumer can see: a longer list (pure append) and a
+/// Messages present in [current] but not in [old]. Handles every shape a
+/// [ChatStore.stream] consumer can see: a plain append (longer list), a
 /// same-length list where the retention cap trimmed the oldest line as a new
-/// one arrived — a bare length comparison misses the latter. The trim case
-/// anchors on the previous last message *instance* (the store's snapshots
-/// share instances), so duplicate texts can't mis-anchor.
+/// one arrived, and a *longer* list that was also front-trimmed in the same
+/// update (two lines landing at the 499→500 cap boundary: +2 appended, −1
+/// trimmed, net longer). The last case is why we can't just take
+/// `current.sublist(old.length)` when the list grew: `old` is no longer a
+/// prefix, so that would drop the first genuinely-new line.
+///
+/// So we anchor on the previous last message *instance* (the store's snapshots
+/// share instances) — that stays correct through a coincident trim and can't
+/// mis-anchor on duplicate texts. Only if the previous tail isn't present by
+/// identity (a caller that rebuilds instances instead of sharing them, or a
+/// wholesale replacement) do we fall back to a length-based append.
 List<ChatMessage> appendedMessages(
   List<ChatMessage> old,
   List<ChatMessage> current,
 ) {
   if (current.isEmpty) return const [];
   if (old.isEmpty) return current;
-  if (current.length > old.length) return current.sublist(old.length);
   final lastOld = old.last;
   for (var i = current.length - 1; i >= 0; i--) {
     if (identical(current[i], lastOld)) return current.sublist(i + 1);
   }
-  // The whole previous tail is gone (list replaced wholesale) — nothing is
-  // provably an append.
+  // The previous tail isn't present by identity. If the list still grew, treat
+  // the extra tail as the append; a same-or-shorter length proves nothing new.
+  if (current.length > old.length) return current.sublist(old.length);
   return const [];
 }
 

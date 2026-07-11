@@ -260,6 +260,21 @@ void main() {
     test('wholesale replacement: nothing provably new', () {
       expect(appendedMessages(const [a, b], const [c, d]), isEmpty);
     });
+
+    test('append with a coincident front-trim: longer list is not a prefix', () {
+      // Two lines arrive while the list sits at the retention cap: both are
+      // appended and the oldest is trimmed in the same coalesced update, so
+      // `current` is longer than `old` yet no longer starts with it. A bare
+      // length fast path (`current.sublist(old.length)`) drops the first new
+      // line ('f'); both must be reported.
+      const e = ChatMessage(username: 'lin', text: 'e');
+      const f = ChatMessage(username: 'lin', text: 'f');
+      const g = ChatMessage(username: 'lin', text: 'g');
+      expect(
+        appendedMessages(const [a, b, c, d, e], const [b, c, d, e, f, g]),
+        [f, g],
+      );
+    });
   });
 
   test('tracks ownership across a reconnect rename (collision dedupe)', () async {
