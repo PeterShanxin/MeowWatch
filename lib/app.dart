@@ -8,6 +8,7 @@ import 'core/theme/meow_theme.dart';
 import 'core/theme/reduce_motion.dart';
 import 'core/theme/tokens/motion.dart';
 import 'core/update/update_service.dart';
+import 'ui/chat/chat_corner.dart';
 import 'ui/connect/connect_screen.dart';
 import 'ui/home_screen.dart';
 import 'ui/launch/launch_reveal.dart';
@@ -22,6 +23,7 @@ class MeowWatchApp extends StatefulWidget {
     required this.initialTheme,
     this.initialCardWidthPx,
     this.initialCardHeightPx,
+    this.initialChatCorner,
     this.navigatorKey,
     this.showWhatsNew = false,
     this.whatsNewEntries = const <ChangelogEntry>[],
@@ -35,6 +37,9 @@ class MeowWatchApp extends StatefulWidget {
   final MeowThemeId initialTheme;
   final double? initialCardWidthPx;
   final double? initialCardHeightPx;
+
+  /// The chat card's persisted docked corner; null falls back to the default.
+  final ChatCorner? initialChatCorner;
 
   /// Optional navigator key so the apply-on-close handler can show its confirm
   /// dialog over the live route (#62). Null in tests.
@@ -130,6 +135,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
                   settings: widget.settings,
                   initialWidthPx: widget.initialCardWidthPx,
                   initialHeightPx: widget.initialCardHeightPx,
+                  initialCorner: widget.initialChatCorner,
                   currentTheme: _theme,
                   onThemeChanged: _setTheme,
                 ),

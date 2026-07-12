@@ -117,6 +117,55 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('a move-drag reuses the same card subtree across pointer moves '
+      '(no per-move rebuild — the drag-lag guard)', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      host(
+        ChatOverlay(
+          messages: const [
+            ChatMessage(username: 'lin', text: 'hi', isMine: false),
+            ChatMessage(username: 'me', text: 'yo', isMine: true),
+          ],
+          collapsed: false,
+          onSend: (_) {},
+          onToggleCollapsed: () {},
+          onSnap: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Enter the free-floating drag path and take one move.
+    final handle = find.byIcon(Icons.drag_indicator);
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await gesture.moveBy(const Offset(40, -30));
+    await tester.pump();
+
+    // The message list widget must be the SAME instance across further moves:
+    // rebuilding (re-diffing) the whole card subtree on every mouse event is
+    // what made the card visibly trail the cursor.
+    final before = tester.widget<ListView>(find.byType(ListView));
+    await gesture.moveBy(const Offset(15, 10));
+    await tester.pump();
+    await gesture.moveBy(const Offset(15, 10));
+    await tester.pump();
+    final after = tester.widget<ListView>(find.byType(ListView));
+
+    expect(
+      identical(before, after),
+      isTrue,
+      reason: 'the card subtree was rebuilt during a move-drag — pointer '
+          'moves must only reposition the memoized card, not re-diff it',
+    );
+
+    await gesture.up();
+    await tester.pump();
+  });
+
   testWidgets('shows the five dock hints only while dragging', (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1.0;
