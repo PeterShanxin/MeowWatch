@@ -20,8 +20,8 @@ import 'volume_control.dart';
     );
 
 /// Bottom overlay bar: current time, a draggable scrubber, total duration,
-/// a play/pause button, and a volume control (hover-to-slider, tap-to-mute).
-/// Auto-hide behaviour is owned by the parent.
+/// a play/pause button, a volume control (hover-to-slider, tap-to-mute), and a
+/// windowed/fullscreen toggle. Auto-hide behaviour is owned by the parent.
 class PlaybackBar extends StatefulWidget {
   const PlaybackBar({
     required this.state,
@@ -29,6 +29,8 @@ class PlaybackBar extends StatefulWidget {
     required this.onTogglePlay,
     required this.onToggleMute,
     required this.onSetVolume,
+    required this.isFullscreen,
+    required this.onToggleFullscreen,
     super.key,
   });
 
@@ -37,6 +39,12 @@ class PlaybackBar extends StatefulWidget {
   final VoidCallback onTogglePlay;
   final VoidCallback onToggleMute;
   final ValueChanged<double> onSetVolume;
+
+  /// Whether the window is currently fullscreen — picks the toggle's icon.
+  final bool isFullscreen;
+
+  /// Toggle between windowed and fullscreen.
+  final VoidCallback onToggleFullscreen;
 
   @override
   State<PlaybackBar> createState() => _PlaybackBarState();
@@ -119,6 +127,15 @@ class _PlaybackBarState extends State<PlaybackBar> {
             volume: state.volume,
             onSetVolume: widget.onSetVolume,
             onToggleMute: widget.onToggleMute,
+          ),
+          InstantTapIcon(
+            icon: widget.isFullscreen
+                ? Icons.fullscreen_exit_rounded
+                : Icons.fullscreen_rounded,
+            color: m.textPrimary,
+            semanticLabel:
+                widget.isFullscreen ? 'Exit fullscreen' : 'Fullscreen',
+            onPressed: widget.onToggleFullscreen,
           ),
         ],
       ),

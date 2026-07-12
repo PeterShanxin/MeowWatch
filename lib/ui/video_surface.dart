@@ -12,6 +12,7 @@ import '../core/video/playback_state.dart';
 import 'action_feedback_overlay.dart';
 import 'playback_action.dart';
 import 'playback_bar.dart';
+import 'screen_tap.dart';
 import 'seek_indicator.dart';
 import 'volume_indicator.dart';
 
@@ -21,6 +22,8 @@ class VideoSurface extends StatefulWidget {
     this.focusNode,
     required this.isUiIdle,
     required this.onUserInteraction,
+    this.chatOpen = false,
+    this.onDismissChat,
     super.key,
   });
 
@@ -32,6 +35,14 @@ class VideoSurface extends StatefulWidget {
 
   final bool isUiIdle;
   final VoidCallback onUserInteraction;
+
+  /// True while the chat card is expanded (not collapsed to its corner tab). A
+  /// tap on the surface then dismisses the card instead of toggling playback.
+  final bool chatOpen;
+
+  /// Collapse the open chat card. Invoked by a surface tap while [chatOpen];
+  /// null falls back to the plain toggle-play behavior.
+  final VoidCallback? onDismissChat;
 
   @override
   State<VideoSurface> createState() => _VideoSurfaceState();
@@ -101,11 +112,21 @@ class _VideoSurfaceState extends State<VideoSurface> {
   }
 
   Future<void> _toggleFullscreen() async {
-    _isFullscreen = !_isFullscreen;
+    setState(() => _isFullscreen = !_isFullscreen);
     await windowManager.setFullScreen(_isFullscreen);
+    _handleUserInteraction();
   }
 
   void _handleTap() {
+    final dismiss = widget.onDismissChat;
+    final action = resolveScreenTap(chatOpen: widget.chatOpen && dismiss != null);
+    if (action == ScreenTapAction.dismissChat) {
+      // Collapsing the card restores player focus itself; the click that
+      // closes chat must not also toggle playback.
+      dismiss!();
+      _handleUserInteraction();
+      return;
+    }
     _focus.requestFocus();
     _togglePlay();
   }
@@ -286,6 +307,8 @@ class _VideoSurfaceState extends State<VideoSurface> {
                             onTogglePlay: _togglePlay,
                             onToggleMute: _toggleMute,
                             onSetVolume: _setVolume,
+                            isFullscreen: _isFullscreen,
+                            onToggleFullscreen: _toggleFullscreen,
                           ),
                         ),
                       ),

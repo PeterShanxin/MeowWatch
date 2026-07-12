@@ -11,6 +11,7 @@ const List<String> kLaunchTips = <String>[
   'Your spot is saved — pick up where you left off.',
   'Find themes and sounds in the gear, top-right.',
   'Press Tab to show or hide chat.',
+  'Go fullscreen from the player bar — or double-click the video.',
   'MeowWatch keeps itself up to date.',
   'No name? Leave it blank — the dice picks you a cute one.',
 ];
