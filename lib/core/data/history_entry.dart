@@ -31,7 +31,7 @@ class HistoryEntry {
   final String? username;
 
   /// Syncplay endpoint used for this watch. This lets a history row resume
-  /// without borrowing another saved room's connection details.
+  /// without borrowing another saved room's connection details (#194).
   final String? server;
   final int? port;
 
