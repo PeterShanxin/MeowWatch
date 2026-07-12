@@ -940,18 +940,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_chatLayout.collapsed) _restorePlayerFocus();
   }
 
-  /// Collapse the chat card if it's open — used by a tap on the video surface
-  /// (click-away-to-dismiss). No-op when already collapsed, so a surface tap
-  /// with chat closed falls through to toggle-play.
-  void _collapseChat() {
-    if (_chatLayout.collapsed) return;
-    setState(
-      () => _chatLayout =
-          _chatLayout.copyWith(collapsed: true, lastCorner: _chatLayout.corner),
-    );
-    _restorePlayerFocus();
-  }
-
   /// True only while a real [VideoSurface] is on screen — not on the empty/load
   /// screen and not on the load-error screen (which shows [VideoErrorState], so
   /// `_videoFocus` is attached to nothing). Mirrors the `videoVisible` gate in
@@ -1598,8 +1586,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         focusNode: _videoFocus,
                         isUiIdle: _isUiIdle,
                         onUserInteraction: _onUserInteraction,
-                        chatOpen: !_chatLayout.collapsed,
-                        onDismissChat: _collapseChat,
                       ),
                     if (videoVisible)
                       Positioned.fill(
