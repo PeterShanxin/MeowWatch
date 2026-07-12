@@ -951,6 +951,48 @@ void main() {
   );
 
   testWidgets(
+    'continue-watching never reuses another endpoint\'s server password',
+    (tester) async {
+      profiles.profiles.add(
+        SavedProfile(
+          id: 1,
+          name: 'mellow-robin-wears-wise-pickle',
+          server: 'old.private.example',
+          port: 8999,
+          room: 'mellow-robin-wears-wise-pickle',
+          username: 'meow',
+          password: 'stale-password',
+          lastUsedAt: DateTime(2026, 7, 11),
+        ),
+      );
+      history.recent.add(
+        HistoryEntry(
+          id: 1,
+          filePath: '/ep1.mkv',
+          fileName: 'ep1.mkv',
+          fileSizeBytes: 1,
+          durationMs: 600000,
+          lastPositionMs: 120000,
+          playedAt: DateTime(2026, 7, 11),
+          room: 'mellow-robin-wears-wise-pickle',
+          username: 'meow',
+          server: 'syncplay.pl',
+          port: 8995,
+        ),
+      );
+      await pump(tester);
+
+      await tester.ensureVisible(find.byKey(const Key('continue-1')));
+      await tester.tap(find.byKey(const Key('continue-1')));
+      await tester.pumpAndSettle();
+
+      expect(connected!.server, 'syncplay.pl');
+      expect(connected!.port, 8995);
+      expect(connected!.password, isNull);
+    },
+  );
+
+  testWidgets(
     'continue-watching without any saved name falls back to the suggestion',
     (tester) async {
       // #172: old history row with no name and no saved rooms — resume joins

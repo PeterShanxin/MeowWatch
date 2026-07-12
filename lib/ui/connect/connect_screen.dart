@@ -473,6 +473,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final savedUsername = (entryName != null && entryName.isNotEmpty)
         ? entryName
         : roomProfile?.username;
+    // A stored endpoint is authoritative. Never carry a same-room password
+    // across servers/ports; only legacy rows may borrow their room profile.
+    final legacyEntry = entry.server == null || entry.port == null;
     await _connect(
       RoomConfig(
         server: server,
@@ -481,7 +484,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         username: username,
         password:
             endpointProfile?.password ??
-            roomProfile?.password ??
+            (legacyEntry ? roomProfile?.password : null) ??
             _passwordValue,
         resumeFilePath: entry.filePath,
         resumePositionMs: entry.lastPositionMs,
