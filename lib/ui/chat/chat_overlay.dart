@@ -660,7 +660,10 @@ class _ChatOverlayState extends State<ChatOverlay>
             // content updates when this build method reruns), NOT on every
             // pointer move or resize tick — the size lives in the SizedBox
             // above, so even a live resize only relayouts these same widgets.
-            child: _buildCard(),
+            // Its own RepaintBoundary keeps the card's pixels cached while the
+            // Positioned above moves it: without it every drag tick repaints
+            // the whole card subtree (bubbles, glass) into the outer layer.
+            child: RepaintBoundary(child: _buildCard()),
           ),
         ),
       );
