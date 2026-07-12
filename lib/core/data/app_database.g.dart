@@ -665,6 +665,24 @@ class $HistoryEntriesTable extends HistoryEntries
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _serverMeta = const VerificationMeta('server');
+  @override
+  late final GeneratedColumn<String> server = GeneratedColumn<String>(
+    'server',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _portMeta = const VerificationMeta('port');
+  @override
+  late final GeneratedColumn<int> port = GeneratedColumn<int>(
+    'port',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -676,6 +694,8 @@ class $HistoryEntriesTable extends HistoryEntries
     playedAt,
     room,
     username,
+    server,
+    port,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -752,6 +772,18 @@ class $HistoryEntriesTable extends HistoryEntries
         username.isAcceptableOrUnknown(data['username']!, _usernameMeta),
       );
     }
+    if (data.containsKey('server')) {
+      context.handle(
+        _serverMeta,
+        server.isAcceptableOrUnknown(data['server']!, _serverMeta),
+      );
+    }
+    if (data.containsKey('port')) {
+      context.handle(
+        _portMeta,
+        port.isAcceptableOrUnknown(data['port']!, _portMeta),
+      );
+    }
     return context;
   }
 
@@ -797,6 +829,14 @@ class $HistoryEntriesTable extends HistoryEntries
         DriftSqlType.string,
         data['${effectivePrefix}username'],
       ),
+      server: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server'],
+      ),
+      port: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}port'],
+      ),
     );
   }
 
@@ -816,6 +856,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
   final DateTime playedAt;
   final String? room;
   final String? username;
+  final String? server;
+  final int? port;
   const HistoryRow({
     required this.id,
     required this.filePath,
@@ -826,6 +868,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     required this.playedAt,
     this.room,
     this.username,
+    this.server,
+    this.port,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -845,6 +889,12 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     if (!nullToAbsent || username != null) {
       map['username'] = Variable<String>(username);
     }
+    if (!nullToAbsent || server != null) {
+      map['server'] = Variable<String>(server);
+    }
+    if (!nullToAbsent || port != null) {
+      map['port'] = Variable<int>(port);
+    }
     return map;
   }
 
@@ -863,6 +913,10 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
       username: username == null && nullToAbsent
           ? const Value.absent()
           : Value(username),
+      server: server == null && nullToAbsent
+          ? const Value.absent()
+          : Value(server),
+      port: port == null && nullToAbsent ? const Value.absent() : Value(port),
     );
   }
 
@@ -881,6 +935,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
       playedAt: serializer.fromJson<DateTime>(json['playedAt']),
       room: serializer.fromJson<String?>(json['room']),
       username: serializer.fromJson<String?>(json['username']),
+      server: serializer.fromJson<String?>(json['server']),
+      port: serializer.fromJson<int?>(json['port']),
     );
   }
   @override
@@ -896,6 +952,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
       'playedAt': serializer.toJson<DateTime>(playedAt),
       'room': serializer.toJson<String?>(room),
       'username': serializer.toJson<String?>(username),
+      'server': serializer.toJson<String?>(server),
+      'port': serializer.toJson<int?>(port),
     };
   }
 
@@ -909,6 +967,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     DateTime? playedAt,
     Value<String?> room = const Value.absent(),
     Value<String?> username = const Value.absent(),
+    Value<String?> server = const Value.absent(),
+    Value<int?> port = const Value.absent(),
   }) => HistoryRow(
     id: id ?? this.id,
     filePath: filePath ?? this.filePath,
@@ -919,6 +979,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     playedAt: playedAt ?? this.playedAt,
     room: room.present ? room.value : this.room,
     username: username.present ? username.value : this.username,
+    server: server.present ? server.value : this.server,
+    port: port.present ? port.value : this.port,
   );
   HistoryRow copyWithCompanion(HistoryEntriesCompanion data) {
     return HistoryRow(
@@ -937,6 +999,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
       playedAt: data.playedAt.present ? data.playedAt.value : this.playedAt,
       room: data.room.present ? data.room.value : this.room,
       username: data.username.present ? data.username.value : this.username,
+      server: data.server.present ? data.server.value : this.server,
+      port: data.port.present ? data.port.value : this.port,
     );
   }
 
@@ -951,7 +1015,9 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           ..write('lastPositionMs: $lastPositionMs, ')
           ..write('playedAt: $playedAt, ')
           ..write('room: $room, ')
-          ..write('username: $username')
+          ..write('username: $username, ')
+          ..write('server: $server, ')
+          ..write('port: $port')
           ..write(')'))
         .toString();
   }
@@ -967,6 +1033,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     playedAt,
     room,
     username,
+    server,
+    port,
   );
   @override
   bool operator ==(Object other) =>
@@ -980,7 +1048,9 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           other.lastPositionMs == this.lastPositionMs &&
           other.playedAt == this.playedAt &&
           other.room == this.room &&
-          other.username == this.username);
+          other.username == this.username &&
+          other.server == this.server &&
+          other.port == this.port);
 }
 
 class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
@@ -993,6 +1063,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
   final Value<DateTime> playedAt;
   final Value<String?> room;
   final Value<String?> username;
+  final Value<String?> server;
+  final Value<int?> port;
   const HistoryEntriesCompanion({
     this.id = const Value.absent(),
     this.filePath = const Value.absent(),
@@ -1003,6 +1075,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     this.playedAt = const Value.absent(),
     this.room = const Value.absent(),
     this.username = const Value.absent(),
+    this.server = const Value.absent(),
+    this.port = const Value.absent(),
   });
   HistoryEntriesCompanion.insert({
     this.id = const Value.absent(),
@@ -1014,6 +1088,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     required DateTime playedAt,
     this.room = const Value.absent(),
     this.username = const Value.absent(),
+    this.server = const Value.absent(),
+    this.port = const Value.absent(),
   }) : filePath = Value(filePath),
        fileName = Value(fileName),
        playedAt = Value(playedAt);
@@ -1027,6 +1103,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     Expression<DateTime>? playedAt,
     Expression<String>? room,
     Expression<String>? username,
+    Expression<String>? server,
+    Expression<int>? port,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1038,6 +1116,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
       if (playedAt != null) 'played_at': playedAt,
       if (room != null) 'room': room,
       if (username != null) 'username': username,
+      if (server != null) 'server': server,
+      if (port != null) 'port': port,
     });
   }
 
@@ -1051,6 +1131,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     Value<DateTime>? playedAt,
     Value<String?>? room,
     Value<String?>? username,
+    Value<String?>? server,
+    Value<int?>? port,
   }) {
     return HistoryEntriesCompanion(
       id: id ?? this.id,
@@ -1062,6 +1144,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
       playedAt: playedAt ?? this.playedAt,
       room: room ?? this.room,
       username: username ?? this.username,
+      server: server ?? this.server,
+      port: port ?? this.port,
     );
   }
 
@@ -1095,6 +1179,12 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     if (username.present) {
       map['username'] = Variable<String>(username.value);
     }
+    if (server.present) {
+      map['server'] = Variable<String>(server.value);
+    }
+    if (port.present) {
+      map['port'] = Variable<int>(port.value);
+    }
     return map;
   }
 
@@ -1109,7 +1199,9 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
           ..write('lastPositionMs: $lastPositionMs, ')
           ..write('playedAt: $playedAt, ')
           ..write('room: $room, ')
-          ..write('username: $username')
+          ..write('username: $username, ')
+          ..write('server: $server, ')
+          ..write('port: $port')
           ..write(')'))
         .toString();
   }
@@ -1620,6 +1712,8 @@ typedef $$HistoryEntriesTableCreateCompanionBuilder =
       required DateTime playedAt,
       Value<String?> room,
       Value<String?> username,
+      Value<String?> server,
+      Value<int?> port,
     });
 typedef $$HistoryEntriesTableUpdateCompanionBuilder =
     HistoryEntriesCompanion Function({
@@ -1632,6 +1726,8 @@ typedef $$HistoryEntriesTableUpdateCompanionBuilder =
       Value<DateTime> playedAt,
       Value<String?> room,
       Value<String?> username,
+      Value<String?> server,
+      Value<int?> port,
     });
 
 class $$HistoryEntriesTableFilterComposer
@@ -1685,6 +1781,16 @@ class $$HistoryEntriesTableFilterComposer
 
   ColumnFilters<String> get username => $composableBuilder(
     column: $table.username,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get server => $composableBuilder(
+    column: $table.server,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get port => $composableBuilder(
+    column: $table.port,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1742,6 +1848,16 @@ class $$HistoryEntriesTableOrderingComposer
     column: $table.username,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get server => $composableBuilder(
+    column: $table.server,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get port => $composableBuilder(
+    column: $table.port,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$HistoryEntriesTableAnnotationComposer
@@ -1785,6 +1901,12 @@ class $$HistoryEntriesTableAnnotationComposer
 
   GeneratedColumn<String> get username =>
       $composableBuilder(column: $table.username, builder: (column) => column);
+
+  GeneratedColumn<String> get server =>
+      $composableBuilder(column: $table.server, builder: (column) => column);
+
+  GeneratedColumn<int> get port =>
+      $composableBuilder(column: $table.port, builder: (column) => column);
 }
 
 class $$HistoryEntriesTableTableManager
@@ -1829,6 +1951,8 @@ class $$HistoryEntriesTableTableManager
                 Value<DateTime> playedAt = const Value.absent(),
                 Value<String?> room = const Value.absent(),
                 Value<String?> username = const Value.absent(),
+                Value<String?> server = const Value.absent(),
+                Value<int?> port = const Value.absent(),
               }) => HistoryEntriesCompanion(
                 id: id,
                 filePath: filePath,
@@ -1839,6 +1963,8 @@ class $$HistoryEntriesTableTableManager
                 playedAt: playedAt,
                 room: room,
                 username: username,
+                server: server,
+                port: port,
               ),
           createCompanionCallback:
               ({
@@ -1851,6 +1977,8 @@ class $$HistoryEntriesTableTableManager
                 required DateTime playedAt,
                 Value<String?> room = const Value.absent(),
                 Value<String?> username = const Value.absent(),
+                Value<String?> server = const Value.absent(),
+                Value<int?> port = const Value.absent(),
               }) => HistoryEntriesCompanion.insert(
                 id: id,
                 filePath: filePath,
@@ -1861,6 +1989,8 @@ class $$HistoryEntriesTableTableManager
                 playedAt: playedAt,
                 room: room,
                 username: username,
+                server: server,
+                port: port,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

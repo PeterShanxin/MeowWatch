@@ -13,6 +13,8 @@ class HistoryEntry {
     required this.playedAt,
     this.room,
     this.username,
+    this.server,
+    this.port,
   });
 
   final int id;
@@ -28,6 +30,11 @@ class HistoryEntry {
   final String? room;
   final String? username;
 
+  /// Syncplay endpoint used for this watch. This lets a history row resume
+  /// without borrowing another saved room's connection details (#194).
+  final String? server;
+  final int? port;
+
   HistoryEntry copyWith({
     int? id,
     String? filePath,
@@ -38,6 +45,8 @@ class HistoryEntry {
     DateTime? playedAt,
     String? room,
     String? username,
+    String? server,
+    int? port,
   }) {
     return HistoryEntry(
       id: id ?? this.id,
@@ -49,6 +58,8 @@ class HistoryEntry {
       playedAt: playedAt ?? this.playedAt,
       room: room ?? this.room,
       username: username ?? this.username,
+      server: server ?? this.server,
+      port: port ?? this.port,
     );
   }
 
@@ -63,9 +74,22 @@ class HistoryEntry {
       other.lastPositionMs == lastPositionMs &&
       other.playedAt == playedAt &&
       other.room == room &&
-      other.username == username;
+      other.username == username &&
+      other.server == server &&
+      other.port == port;
 
   @override
-  int get hashCode => Object.hash(id, filePath, fileName, fileSizeBytes,
-      durationMs, lastPositionMs, playedAt, room, username);
+  int get hashCode => Object.hash(
+    id,
+    filePath,
+    fileName,
+    fileSizeBytes,
+    durationMs,
+    lastPositionMs,
+    playedAt,
+    room,
+    username,
+    server,
+    port,
+  );
 }

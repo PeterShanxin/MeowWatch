@@ -33,9 +33,8 @@ abstract class HistoryStore {
   });
 
   /// Record (or refresh) that [filePath] was opened. Keeps the existing
-  /// [lastPositionMs]; updates name/size/duration/room/username and bumps
-  /// playedAt. [room]/[username] capture where it was watched (null outside a
-  /// room).
+  /// [lastPositionMs]; updates name/size/duration/room/username/endpoint and
+  /// bumps playedAt. Room fields are null outside a room.
   Future<void> recordOpen({
     required String filePath,
     required String fileName,
@@ -43,6 +42,8 @@ abstract class HistoryStore {
     int? durationMs,
     String? room,
     String? username,
+    String? server,
+    int? port,
   });
 
   /// Update the resume position for an already-recorded file (no-op if absent).
