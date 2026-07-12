@@ -993,6 +993,54 @@ void main() {
   );
 
   testWidgets(
+    'continue-watching reuses the endpoint password when the exact room card '
+    'is gone',
+    (tester) async {
+      // The room's own card was deleted, but another saved room on the SAME
+      // self-hosted server:port still holds its password. Since Syncplay
+      // passwords are server-wide, resume must reuse it — not fall back to the
+      // (empty) Advanced password.
+      profiles.profiles.add(
+        SavedProfile(
+          id: 1,
+          name: 'other-room',
+          server: 'private.example',
+          port: 8999,
+          room: 'other-room',
+          username: 'meow',
+          password: 'server-secret',
+          lastUsedAt: DateTime(2026, 7, 11),
+        ),
+      );
+      history.recent.add(
+        HistoryEntry(
+          id: 1,
+          filePath: '/ep1.mkv',
+          fileName: 'ep1.mkv',
+          fileSizeBytes: 1,
+          durationMs: 600000,
+          lastPositionMs: 120000,
+          playedAt: DateTime(2026, 7, 11),
+          room: 'deleted-room',
+          username: 'meow',
+          server: 'private.example',
+          port: 8999,
+        ),
+      );
+      await pump(tester);
+
+      await tester.ensureVisible(find.byKey(const Key('continue-1')));
+      await tester.tap(find.byKey(const Key('continue-1')));
+      await tester.pumpAndSettle();
+
+      expect(connected!.server, 'private.example');
+      expect(connected!.port, 8999);
+      expect(connected!.room, 'deleted-room');
+      expect(connected!.password, 'server-secret');
+    },
+  );
+
+  testWidgets(
     'continue-watching without any saved name falls back to the suggestion',
     (tester) async {
       // #172: old history row with no name and no saved rooms — resume joins

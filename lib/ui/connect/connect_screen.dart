@@ -455,7 +455,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final server = entry.server ?? roomProfile?.server ?? _serverValue;
     final port = entry.port ?? roomProfile?.port ?? _portValue;
     final endpointProfile = _matchingEndpointProfile(
-      room: room,
       server: server,
       port: port,
       username: entry.username,
@@ -512,8 +511,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
     return sameRoom;
   }
 
+  // Syncplay passwords are server-wide, keyed by endpoint (server:port), not by
+  // room. So the password to resume with is any saved profile on the same
+  // endpoint — even if the exact room's card was since deleted. Requiring a room
+  // match here would drop a valid password and fall back to the typed Advanced
+  // one, breaking Continue watching against passworded self-hosted servers.
   SavedProfile? _matchingEndpointProfile({
-    required String room,
     required String server,
     required int port,
     required String? username,
@@ -521,9 +524,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }) {
     SavedProfile? sameEndpoint;
     for (final profile in profiles) {
-      if (profile.room != room ||
-          profile.server != server ||
-          profile.port != port) {
+      if (profile.server != server || profile.port != port) {
         continue;
       }
       sameEndpoint ??= profile;

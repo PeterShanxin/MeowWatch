@@ -17,6 +17,8 @@ in-app updater reads to show what changed.
 ### Fixed: Continue watching
 - Resuming a video now remembers its room's server and port, so it will not
   accidentally retry through another saved room's stale connection (#194).
+- On a passworded self-hosted server, resuming still reuses that server's saved
+  password even if you have since deleted the room's card (#194).
 
 ## [0.41.2-alpha] - 2026-07-12
 
