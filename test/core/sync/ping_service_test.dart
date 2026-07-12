@@ -9,8 +9,8 @@ void main() {
       expect(ping.rtt, closeTo(0.10, 1e-9));
     });
 
-    test('subsequent samples are exponentially weighted', () {
-      final ping = PingService(weight: 0.85);
+    test('with window 1 the EMA matches upstream exactly', () {
+      final ping = PingService(weight: 0.85, window: 1);
       ping.recordRtt(0.10);
       ping.recordRtt(0.20);
       // 0.85*0.10 + 0.15*0.20 = 0.115
@@ -72,6 +72,45 @@ void main() {
 
     test('window must be odd', () {
       expect(() => PingService(window: 4), throwsA(isA<AssertionError>()));
+    });
+
+    test('warm-up: a spike before the window fills never enters the estimate',
+        () {
+      final ping = PingService(weight: 0.85, window: 5);
+      ping.recordRtt(0.10);
+      // Spike as the 2nd sample. An upper-middle partial median would pick the
+      // 5s flap here and feed it to the EMA (0.835s); the warm-up policy —
+      // running lower-middle median, no EMA until the window is full — keeps
+      // the estimate on the good sample.
+      ping.recordRtt(5.0);
+      expect(ping.rtt, closeTo(0.10, 1e-9));
+      ping.recordRtt(0.10);
+      ping.recordRtt(0.10);
+      expect(ping.rtt, closeTo(0.10, 1e-9));
+      // Window full — EMA takes over from a clean seed.
+      ping.recordRtt(0.10);
+      expect(ping.rtt, closeTo(0.10, 1e-9));
+    });
+
+    test('warm-up: a spiky first sample is forgotten, not decayed through', () {
+      final ping = PingService(weight: 0.85, window: 5);
+      ping.recordRtt(5.0);
+      // One sample: nothing else to trust yet.
+      expect(ping.rtt, closeTo(5.0, 1e-9));
+      // As soon as a normal sample lands, the running median drops the spike
+      // outright — no EMA memory of it to decay through over many heartbeats.
+      ping.recordRtt(0.10);
+      expect(ping.rtt, closeTo(0.10, 1e-9));
+      ping.recordRtt(0.10);
+      expect(ping.rtt, closeTo(0.10, 1e-9));
+    });
+
+    test('warm-up: genuine samples track the running median', () {
+      final ping = PingService(weight: 0.85, window: 5);
+      ping.recordRtt(0.10);
+      ping.recordRtt(0.20);
+      ping.recordRtt(0.30);
+      expect(ping.rtt, closeTo(0.20, 1e-9));
     });
 
     test('newTimestamp returns a monotonically sensible epoch seconds', () {

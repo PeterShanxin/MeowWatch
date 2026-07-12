@@ -17,6 +17,11 @@ class PingService {
   /// middles (which could itself be pulled toward an outlier). A genuine shift is
   /// still tracked: once it dominates the window the median flips, ~[window] ~/ 2
   /// samples behind, then the EMA converges as before.
+  ///
+  /// While the buffer is still filling (warm-up) the estimate is the running
+  /// median itself — no EMA — so a spike among the first few samples is
+  /// dropped the moment good samples outnumber it instead of lingering in the
+  /// average (see [recordRtt]).
   final int window;
 
   final List<double> _recent = <double>[];
@@ -32,11 +37,20 @@ class PingService {
     _recent.add(sample);
     if (_recent.length > window) _recent.removeAt(0);
     // Median of the current window (the buffer is short — a sort is trivial).
-    // With an odd full window this is the middle element; during warm-up the
-    // partial buffer's `length ~/ 2` picks the upper-middle, which only affects
-    // the first few samples.
-    final median = (<double>[..._recent]..sort())[_recent.length ~/ 2];
-    if (!_hasSample) {
+    // With an odd full window `(length - 1) ~/ 2` is the exact middle; during
+    // warm-up an even-length buffer takes the LOWER middle, so a spike needs a
+    // strict majority of the partial buffer — not just half — to reach the
+    // estimate. Biasing low is the safe direction: a briefly understated RTT
+    // means a touch less latency compensation, while an overstated one is what
+    // trips the drift-rewind.
+    final median = (<double>[..._recent]..sort())[(_recent.length - 1) ~/ 2];
+    if (!_hasSample || _recent.length < window) {
+      // Warm-up: the estimate IS the running median. Blending medians into an
+      // EMA before the window fills would let a startup spike linger for many
+      // heartbeats; the running median instead forgets it outright as soon as
+      // good samples outnumber it. Once the window is full the EMA takes over
+      // from a spike-free seed. (`_hasSample` matters only for window == 1,
+      // where the buffer is "full" from the very first sample.)
       _rtt = median;
       _hasSample = true;
     } else {
