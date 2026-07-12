@@ -17,13 +17,13 @@ void main() {
     expect(row.value, 'noir');
   });
 
-  test('schemaVersion is 3', () {
+  test('schemaVersion is 4', () {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 3);
+    expect(db.schemaVersion, 4);
   });
 
-  test('v3 history table exposes room + username columns', () async {
+  test('v4 history table exposes room endpoint + username columns', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
 
@@ -34,6 +34,8 @@ void main() {
             playedAt: DateTime(2026, 5, 30),
             room: const Value('breezy-crow-66'),
             username: const Value('meow'),
+            server: const Value('syncplay.pl'),
+            port: const Value(8995),
           ),
         );
     final row = await (db.select(db.historyEntries)
@@ -41,5 +43,7 @@ void main() {
         .getSingle();
     expect(row.room, 'breezy-crow-66');
     expect(row.username, 'meow');
+    expect(row.server, 'syncplay.pl');
+    expect(row.port, 8995);
   });
 }

@@ -115,6 +115,8 @@ class DriftHistoryStore implements HistoryStore {
     int? durationMs,
     String? room,
     String? username,
+    String? server,
+    int? port,
   }) async {
     final existing = await (_db.select(_db.historyEntries)
           ..where((t) => t.filePath.equals(filePath)))
@@ -130,6 +132,8 @@ class DriftHistoryStore implements HistoryStore {
               playedAt: DateTime.now(),
               room: Value(room),
               username: Value(username),
+              server: Value(server),
+              port: Value(port),
             ),
           );
     } else {
@@ -141,9 +145,11 @@ class DriftHistoryStore implements HistoryStore {
           fileSizeBytes: Value(fileSizeBytes),
           durationMs: Value(durationMs ?? existing.durationMs),
           playedAt: Value(DateTime.now()),
-          // Keep the previous room/username when this open isn't in a room.
+          // Keep room metadata when this open isn't in a room.
           room: Value(room ?? existing.room),
           username: Value(username ?? existing.username),
+          server: Value(server ?? existing.server),
+          port: Value(port ?? existing.port),
         ),
       );
     }
@@ -182,6 +188,8 @@ class DriftHistoryStore implements HistoryStore {
         playedAt: r.playedAt,
         room: r.room,
         username: r.username,
+        server: r.server,
+        port: r.port,
       );
 }
 

@@ -108,3 +108,48 @@ String formatCardSize(double widthPx, double heightPx) =>
   if (h < _kMinStoredPx || h > _kMaxStoredPx) return (null, null);
   return (w, h);
 }
+
+/// Apply the persisted card size and corner (their raw stored strings) onto
+/// [base], keeping everything else — used on every room entry so the card
+/// comes back where and how big it was left, not as the app-startup snapshot.
+/// Missing/invalid stored values keep the base's values.
+///
+/// The corner fills BOTH corner slots: the card enters a room collapsed, and
+/// expanding restores `lastCorner` — corner alone would be discarded by the
+/// first toggle.
+///
+/// The empty-string reset sentinel (stored by onResetSize) is distinct from a
+/// missing/malformed value: it means "back to the default size" and must clear
+/// the dimensions, not fall back to `base` — otherwise a reset done earlier in
+/// the session is resurrected by the stale app-startup size on the next room
+/// entry.
+ChatOverlayLayout restoredLayout({
+  required ChatOverlayLayout base,
+  required String? sizeValue,
+  required String? cornerValue,
+}) {
+  final sizeWasReset = sizeValue != null && sizeValue.isEmpty;
+  final (w, h) = parseCardSize(sizeValue);
+  final corner = parseCardCorner(cornerValue);
+  return ChatOverlayLayout(
+    collapsed: base.collapsed,
+    corner: corner ?? base.corner,
+    lastCorner: corner ?? base.lastCorner,
+    widthPx: sizeWasReset ? null : (w ?? base.widthPx),
+    heightPx: sizeWasReset ? null : (h ?? base.heightPx),
+  );
+}
+
+/// Serialize a corner for [kChatCardCornerSettingKey] storage (the enum name,
+/// e.g. `"bottomLeft"`).
+String formatCardCorner(ChatCorner corner) => corner.name;
+
+/// Parse a stored corner name. Returns null for missing or unknown values so
+/// the caller falls back to the default corner.
+ChatCorner? parseCardCorner(String? value) {
+  if (value == null || value.isEmpty) return null;
+  for (final corner in ChatCorner.values) {
+    if (corner.name == value) return corner;
+  }
+  return null;
+}

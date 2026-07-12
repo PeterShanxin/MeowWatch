@@ -10,16 +10,40 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
-## [0.41.2-alpha] - 2026-07-12
+## [0.41.4-alpha] - 2026-07-12
 
 > Chat stays light and smooth, even hours into a movie night.
 
 ### Improved: Smoother chat
-- Dragging or resizing the chat card no longer re-renders every message on each
-  mouse move — the card now glides without redoing its contents.
+- Resizing the chat card is now as light as dragging it, and the message list
+  only draws the messages on screen instead of re-rendering all of them.
 - Chat history is now kept to the most recent 500 lines, so a long session
-  can't make the app progressively heavier. The "New Messages" line still
-  points at the right message when older lines rotate out.
+  can't make the app progressively heavier. The "New Messages" line and the
+  unread count still point at the right messages when older lines rotate out.
+
+## [0.41.3-alpha] - 2026-07-12
+
+> Continue watching returns to the room you actually watched in.
+
+### Fixed: Continue watching
+- Resuming a video now remembers its room's server and port, so it will not
+  accidentally retry through another saved room's stale connection (#194).
+- On a passworded self-hosted server, resuming still reuses that server's saved
+  password even if you have since deleted the room's card (#194).
+
+## [0.41.2-alpha] - 2026-07-12
+
+> The chat card now remembers where you docked it.
+
+### Fixed
+- The chat card now remembers which corner you docked it in — it used to fall
+  back to the bottom-left every time you entered a room.
+- The card's size is now restored fresh on every room entry too; it used to
+  quietly reset to whatever it was when the app started.
+
+### Improved
+- Dragging the chat card is lighter: moving it no longer redraws the whole
+  chat every frame.
 
 ## [0.41.1-alpha] - 2026-07-10
 

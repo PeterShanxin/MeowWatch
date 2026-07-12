@@ -52,4 +52,59 @@ void main() {
     expect(a, b);
     expect(a, isNot(const ChatOverlayLayout()));
   });
+
+  test('corner format and parse round-trip for every corner', () {
+    for (final corner in ChatCorner.values) {
+      expect(parseCardCorner(formatCardCorner(corner)), corner);
+    }
+  });
+
+  test('corner parse returns null for missing or unknown values', () {
+    expect(parseCardCorner(null), isNull);
+    expect(parseCardCorner(''), isNull);
+    expect(parseCardCorner('garbage'), isNull);
+    expect(parseCardCorner('BOTTOMLEFT'), isNull);
+  });
+
+  test('restoredLayout applies stored size and corner onto the base', () {
+    const base = ChatOverlayLayout(collapsed: true);
+    final r = restoredLayout(
+      base: base,
+      sizeValue: '360,420',
+      cornerValue: 'topRight',
+    );
+    expect(r.collapsed, isTrue);
+    expect(r.widthPx, 360);
+    expect(r.heightPx, 420);
+    expect(r.corner, ChatCorner.topRight);
+    // Both slots: the card starts collapsed, and expanding restores
+    // lastCorner — corner alone would be discarded by the first toggle.
+    expect(r.lastCorner, ChatCorner.topRight);
+  });
+
+  test('restoredLayout keeps base values for missing or invalid stored ones',
+      () {
+    final base = const ChatOverlayLayout(
+      corner: ChatCorner.bottomRight,
+      lastCorner: ChatCorner.bottomRight,
+    ).applyResize(const Size(300, 400));
+    final r = restoredLayout(base: base, sizeValue: null, cornerValue: 'junk');
+    expect(r, base);
+  });
+
+  test('restoredLayout treats the empty-string reset sentinel as default size',
+      () {
+    // base carries a stale app-startup custom size; the user has since reset,
+    // storing '' (distinct from a missing null). The reset must win over base,
+    // otherwise re-entering a room resurrects the old size until app restart.
+    final base = const ChatOverlayLayout(
+      corner: ChatCorner.topLeft,
+      lastCorner: ChatCorner.topLeft,
+    ).applyResize(const Size(800, 600));
+    final r = restoredLayout(base: base, sizeValue: '', cornerValue: 'topLeft');
+    expect(r.widthPx, isNull);
+    expect(r.heightPx, isNull);
+    // Corner is untouched by a size reset.
+    expect(r.corner, ChatCorner.topLeft);
+  });
 }

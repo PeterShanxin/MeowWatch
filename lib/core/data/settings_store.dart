@@ -5,6 +5,10 @@ const String kThemeSettingKey = 'theme';
 /// or empty string for the default size).
 const String kChatCardSizeSettingKey = 'chat_card_size';
 
+/// Key for the persisted chat-card docked corner (value = a ChatCorner name,
+/// e.g. "bottomLeft"; absent/unknown → the default bottom-left).
+const String kChatCardCornerSettingKey = 'chat_card_corner';
+
 /// Key for the persisted choice to auto-dim the expanded chat card on idle
 /// (value = "true" or "false", default = "true").
 const String kChatAutoDimSettingKey = 'chat_auto_dim';

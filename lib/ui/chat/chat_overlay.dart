@@ -86,17 +86,36 @@ class ChatOverlay extends StatefulWidget {
   State<ChatOverlay> createState() => _ChatOverlayState();
 }
 
+/// Which free-floating interaction is active. A move shows the dock hints and
+/// repositions a memoized card; a resize and the post-release glide keep the
+/// hints hidden.
+enum _DragMode { moving, resizing, gliding }
+
+/// Live placement of the free-floating card while it is dragged, resized, or
+/// gliding to its dock.
+@immutable
+class _DragRect {
+  const _DragRect(this.topLeft, this.size, this.mode);
+  final Offset topLeft;
+  final Size size;
+  final _DragMode mode;
+}
+
 class _ChatOverlayState extends State<ChatOverlay>
     with SingleTickerProviderStateMixin {
-  // While dragging, the card renders free-floating at this rect (top-left
-  // relative to this overlay's own box, plus the live size — a grip resize
-  // changes it mid-gesture). Captured from the card's real rect at drag start
-  // so the first grab never teleports; also driven by [_snapCtrl] during the
-  // post-release glide to a corner. Held in a ValueNotifier so per-pointer-move
-  // updates flow through a ValueListenableBuilder that only repositions the
-  // card — its contents keep their widget identity instead of rebuilding every
-  // message bubble per frame. Null while docked.
-  final ValueNotifier<Rect?> _floatRect = ValueNotifier<Rect?>(null);
+  // While dragging, a free placement (relative to this overlay's own box)
+  // overrides corner placement. Captured from the card's real rect at drag
+  // start so the first grab never teleports. Also driven by [_snapCtrl]
+  // during the post-release glide to a corner.
+  //
+  // A ValueNotifier, deliberately NOT setState, for the per-move updates:
+  // pointer moves arrive every frame, and rebuilding this whole State —
+  // re-diffing the card's message list and input on each mouse event — made
+  // the card visibly trail the cursor. Only the ValueListenableBuilder in
+  // [build] listens, so a move just repositions the already-built card.
+  // Every write is a fresh [_DragRect] instance, so mode changes (drag →
+  // glide) always notify even when the placement itself is unchanged.
+  final ValueNotifier<_DragRect?> _drag = ValueNotifier<_DragRect?>(null);
   // Overlay size captured at drag start, used for snap math.
   Size? _overlaySize;
   final GlobalKey _cardKey = GlobalKey();
@@ -368,7 +387,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     _dividerTimer?.cancel();
     _inputFocus.removeListener(_onInputFocusChanged);
     _snapCtrl.dispose();
-    _floatRect.dispose();
+    _drag.dispose();
     _inputFocus.dispose();
     _draftController.dispose();
     _scrollController.dispose();
@@ -412,14 +431,13 @@ class _ChatOverlayState extends State<ChatOverlay>
   void _onSnapTick() {
     final from = _snapFrom;
     final to = _snapTo;
-    final rect = _floatRect.value;
-    if (from == null || to == null || rect == null) return;
-    final at = Offset.lerp(
-      from,
-      to,
-      Motion.standard.transform(_snapCtrl.value),
-    )!;
-    _floatRect.value = at & rect.size;
+    final d = _drag.value;
+    if (from == null || to == null || d == null) return;
+    _drag.value = _DragRect(
+      Offset.lerp(from, to, Motion.standard.transform(_snapCtrl.value))!,
+      d.size,
+      _DragMode.gliding,
+    );
   }
 
   void _onSnapStatus(AnimationStatus status) {
@@ -428,7 +446,7 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   void _clearDrag() {
     setState(() {
-      _floatRect.value = null;
+      _drag.value = null;
       _overlaySize = null;
       _snapFrom = null;
       _snapTo = null;
@@ -440,7 +458,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     // collapse the parent restores player focus instead, so skip it here.
     if (!widget.collapsed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _floatRect.value == null) _inputFocus.requestFocus();
+        if (mounted && _drag.value == null) _inputFocus.requestFocus();
       });
     }
   }
@@ -456,18 +474,24 @@ class _ChatOverlayState extends State<ChatOverlay>
     final origin = selfBox.localToGlobal(Offset.zero);
     setState(() {
       _overlaySize = selfBox.size;
-      _floatRect.value =
-          (cardBox.localToGlobal(Offset.zero) - origin) & cardBox.size;
+      _drag.value = _DragRect(
+        cardBox.localToGlobal(Offset.zero) - origin,
+        cardBox.size,
+        _DragMode.moving,
+      );
     });
     widget.onDraggingChanged?.call(true);
   }
 
-  /// Live move-drag: shift the floating rect only — no setState, so the card's
-  /// contents are not rebuilt per pointer move.
-  void _moveBy(Offset delta) {
-    final rect = _floatRect.value;
-    if (rect == null) return;
-    _floatRect.value = rect.shift(delta);
+  /// One pointer move of the header drag. No setState: the notifier
+  /// repositions the memoized card without re-diffing its subtree (the
+  /// drag-jank fix). The remaining cursor-trail at speed is platform input
+  /// latency, accepted as-is — a velocity-prediction pass was tried and
+  /// reverted because it made the card shiver (#192).
+  void _updateHeaderDrag(Offset delta) {
+    final d = _drag.value;
+    if (d == null) return;
+    _drag.value = _DragRect(d.topLeft + delta, d.size, d.mode);
   }
 
   /// Begin a grip resize from corner [grip]: pin the card's current rect and
@@ -481,7 +505,7 @@ class _ChatOverlayState extends State<ChatOverlay>
     final topLeft = cardBox.localToGlobal(Offset.zero) - origin;
     setState(() {
       _overlaySize = selfBox.size;
-      _floatRect.value = topLeft & cardBox.size;
+      _drag.value = _DragRect(topLeft, cardBox.size, _DragMode.resizing);
       _resizeStartSize = cardBox.size;
       _resizeStartTopLeft = topLeft;
       _resizeDelta = Offset.zero;
@@ -503,68 +527,64 @@ class _ChatOverlayState extends State<ChatOverlay>
       grip: _resizeGrip,
       windowSize: window,
     );
-    // Notifier-only, like _moveBy: the card relayouts to its new size but its
-    // contents keep their widget identity.
-    _floatRect.value = r.topLeft & r.size;
+    // Notifier-only, like _updateHeaderDrag: the card relayouts to its new
+    // size but its contents keep their widget identity.
+    _drag.value = _DragRect(r.topLeft, r.size, _DragMode.resizing);
   }
 
   /// End the resize: report the new size, then glide back to the docked corner.
   void _endResize() {
-    final rect = _floatRect.value;
+    final d = _drag.value;
     final window = _overlaySize;
     _resizeStartSize = null;
     _resizeStartTopLeft = null;
     _resizeDelta = Offset.zero;
-    if (rect == null || window == null) {
+    if (d == null || window == null) {
       _clearDrag();
       return;
     }
-    widget.onResize?.call(rect.size);
-    // setState: the glide is a mode change (hints hide, resize ends) that the
-    // float-rect notifier alone can't signal — its first tick re-emits the
-    // same rect, which a ValueNotifier swallows.
-    setState(() {
-      _snapFrom = rect.topLeft;
-      _snapTo = _cornerTopLeft(widget.corner, rect.size, window);
-    });
+    widget.onResize?.call(d.size);
+    _snapFrom = d.topLeft;
+    _snapTo = _cornerTopLeft(widget.corner, d.size, window);
+    // A fresh _DragRect always notifies, so the mode flip to gliding reaches
+    // the builder even though the placement itself hasn't changed yet.
+    _drag.value = _DragRect(d.topLeft, d.size, _DragMode.gliding);
     _snapCtrl.forward(from: 0);
   }
 
   void _endHeaderDrag() {
-    final rect = _floatRect.value;
+    final d = _drag.value;
     final window = _overlaySize;
-    if (rect == null || window == null) {
+    if (d == null || window == null) {
       _clearDrag();
       return;
     }
     final result = computeSnap(
-      dropTopLeft: rect.topLeft,
-      cardSize: rect.size,
+      dropTopLeft: d.topLeft,
+      cardSize: d.size,
       windowSize: window,
     );
     widget.onSnap(result);
     final corner = result.corner;
-    // setState: hints must hide the moment the drag releases, and the
-    // float-rect notifier can't signal that — its first glide tick re-emits
-    // the same rect, which a ValueNotifier swallows.
-    setState(() {
-      _snapFrom = rect.topLeft;
-      if (corner != null) {
-        // Glide to the docked corner, then settle into the Align placement.
-        _snapTo = _cornerTopLeft(corner, rect.size, window);
-      } else {
-        // Collapse: slide the card off the right edge, then it becomes the
-        // peek tab — so docking to the edge isn't an abrupt disappearance.
-        _snapTo = Offset(window.width, rect.top);
-      }
-    });
+    _snapFrom = d.topLeft;
+    if (corner != null) {
+      // Glide to the docked corner, then settle into the Align placement.
+      _snapTo = _cornerTopLeft(corner, d.size, window);
+    } else {
+      // Collapse: slide the card off the right edge, then it becomes the peek
+      // tab — so docking to the edge isn't an abrupt disappearance.
+      _snapTo = Offset(window.width, d.topLeft.dy);
+    }
+    // A fresh _DragRect always notifies, so the mode flip to gliding hides
+    // the dock hints the moment the drag releases.
+    _drag.value = _DragRect(d.topLeft, d.size, _DragMode.gliding);
     _snapCtrl.forward(from: 0);
   }
 
   Widget _buildCard() => _GlassCard(
     key: _cardKey,
     onHeaderDragStart: _startHeaderDrag,
-    onHeaderDragUpdate: _moveBy,
+    onHeaderDragUpdate: _updateHeaderDrag,
     onHeaderDragEnd: _endHeaderDrag,
     onCollapse: widget.onToggleCollapsed,
     messages: widget.messages,
@@ -588,11 +608,12 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   @override
   Widget build(BuildContext context) {
-    // Active drag, or the post-release snap glide, renders a free-floating
-    // card. Pointer moves and glide ticks write [_floatRect] only — the
-    // ValueListenableBuilder repositions/resizes the card while its contents
-    // (the cached [child]) keep their widget identity, so no bubble rebuilds.
-    if (_floatRect.value != null) {
+    // Active drag/resize, or the post-release snap glide, renders a
+    // free-floating card. Pointer moves and glide ticks write [_drag] only —
+    // the ValueListenableBuilder repositions/resizes the card while its
+    // contents (the cached [child]) keep their widget identity, so no bubble
+    // rebuilds.
+    if (_drag.value != null) {
       // Fill the overlay's box with a plain SizedBox.expand — NOT Positioned.fill.
       // ChatOverlay is mounted under IgnorePointer/AnimatedOpacity (see
       // HomeScreen), not directly inside a Stack, so a Positioned here is a
@@ -605,39 +626,40 @@ class _ChatOverlayState extends State<ChatOverlay>
         // per-frame drag/resize repaints stay local instead of repainting the
         // whole screen.
         child: RepaintBoundary(
-          child: ValueListenableBuilder<Rect?>(
-            valueListenable: _floatRect,
-            builder: (context, rect, card) {
-              if (rect == null) return const SizedBox.shrink();
-              // Dock hints show only during the live move-drag: not the
-              // settling glide (isAnimating), and not during a grip resize
-              // (_resizeStartSize) — the resize reuses this free-floating
-              // render path, where the full-screen hint layer just adds noise
-              // (it's a move affordance, not a resize one).
-              final showHints =
-                  !_snapCtrl.isAnimating &&
-                  _resizeStartSize == null &&
-                  _overlaySize != null;
+          child: ValueListenableBuilder<_DragRect?>(
+            valueListenable: _drag,
+            builder: (context, d, card) {
+              if (d == null) return const SizedBox.shrink();
+              final overlaySize = _overlaySize;
               return Stack(
                 children: [
-                  if (showHints)
+                  // Dock hints show only during the live move-drag: not the
+                  // settling glide, and not during a grip resize — the resize
+                  // reuses this free-floating render path, where the
+                  // full-screen hint layer just adds noise (it's a move
+                  // affordance, not a resize one).
+                  if (d.mode == _DragMode.moving && overlaySize != null)
                     _DropZoneHints(
-                      overlaySize: _overlaySize!,
-                      cardSize: rect.size,
-                      dragTopLeft: rect.topLeft,
+                      overlaySize: overlaySize,
+                      cardSize: d.size,
+                      dragTopLeft: d.topLeft,
                     ),
                   Positioned(
-                    left: rect.left,
-                    top: rect.top,
+                    left: d.topLeft.dx,
+                    top: d.topLeft.dy,
                     child: SizedBox(
-                      width: rect.width,
-                      height: rect.height,
+                      width: d.size.width,
+                      height: d.size.height,
                       child: card,
                     ),
                   ),
                 ],
               );
             },
+            // The memoized card: built here (once per drag, and again on real
+            // content updates when this build method reruns), NOT on every
+            // pointer move or resize tick — the size lives in the SizedBox
+            // above, so even a live resize only relayouts these same widgets.
             child: _buildCard(),
           ),
         ),
