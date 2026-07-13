@@ -37,7 +37,7 @@ class VideoSurface extends StatefulWidget {
   State<VideoSurface> createState() => _VideoSurfaceState();
 }
 
-class _VideoSurfaceState extends State<VideoSurface> {
+class _VideoSurfaceState extends State<VideoSurface> with WindowListener {
   // Owned by the core (created eagerly there so the very first open() has its
   // video output wired). VideoSurface just references it — never disposes it.
   late final VideoController _controller = widget.core.videoController;
@@ -58,6 +58,11 @@ class _VideoSurfaceState extends State<VideoSurface> {
   Timer? _volumeHideTimer;
   double _lastUnmutedVolume = 1.0;
 
+  // Mirrors the window's actual fullscreen state: seeded from
+  // `windowManager.isFullScreen()` on mount (a remounted surface must not
+  // assume "windowed") and kept honest by the enter/leave-full-screen window
+  // events, so the bar's toggle icon can't drift from reality even if
+  // fullscreen changes through some path other than [_toggleFullscreen].
   bool _isFullscreen = false;
 
   static const _seekLinger = Duration(milliseconds: 600);
@@ -68,10 +73,27 @@ class _VideoSurfaceState extends State<VideoSurface> {
   void initState() {
     super.initState();
     _focus.requestFocus();
+    windowManager.addListener(this);
+    unawaited(windowManager.isFullScreen().then((isFullscreen) {
+      if (mounted && isFullscreen != _isFullscreen) {
+        setState(() => _isFullscreen = isFullscreen);
+      }
+    }));
+  }
+
+  @override
+  void onWindowEnterFullScreen() {
+    if (mounted && !_isFullscreen) setState(() => _isFullscreen = true);
+  }
+
+  @override
+  void onWindowLeaveFullScreen() {
+    if (mounted && _isFullscreen) setState(() => _isFullscreen = false);
   }
 
   @override
   void dispose() {
+    windowManager.removeListener(this);
     _seekHideTimer?.cancel();
     _volumeHideTimer?.cancel();
     _ownFocus?.dispose();
@@ -101,8 +123,17 @@ class _VideoSurfaceState extends State<VideoSurface> {
   }
 
   Future<void> _toggleFullscreen() async {
-    _isFullscreen = !_isFullscreen;
-    await windowManager.setFullScreen(_isFullscreen);
+    // Ask the plugin for the real state rather than trusting the local flag —
+    // clicking "enter fullscreen" on a stale flag would otherwise re-enter
+    // instead of exiting. The enter/leave window events flip [_isFullscreen]
+    // once the change lands; the optimistic setState just makes the icon feel
+    // instant.
+    final next = !await windowManager.isFullScreen();
+    if (!mounted) return;
+    setState(() => _isFullscreen = next);
+    await windowManager.setFullScreen(next);
+    if (!mounted) return;
+    _handleUserInteraction();
   }
 
   void _handleTap() {
@@ -286,6 +317,8 @@ class _VideoSurfaceState extends State<VideoSurface> {
                             onTogglePlay: _togglePlay,
                             onToggleMute: _toggleMute,
                             onSetVolume: _setVolume,
+                            isFullscreen: _isFullscreen,
+                            onToggleFullscreen: _toggleFullscreen,
                           ),
                         ),
                       ),

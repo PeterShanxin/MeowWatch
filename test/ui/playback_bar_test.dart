@@ -36,6 +36,8 @@ void main() {
           onTogglePlay: () {},
           onToggleMute: () {},
           onSetVolume: (_) {},
+          isFullscreen: false,
+          onToggleFullscreen: () {},
         ),
       ),
     ));
@@ -62,6 +64,8 @@ void main() {
           onTogglePlay: () {},
           onToggleMute: () {},
           onSetVolume: (_) {},
+          isFullscreen: false,
+          onToggleFullscreen: () {},
         ),
       ),
     ));
@@ -80,6 +84,8 @@ void main() {
           onTogglePlay: () => toggled = true,
           onToggleMute: () {},
           onSetVolume: (_) {},
+          isFullscreen: false,
+          onToggleFullscreen: () {},
         ),
       ),
     ));
@@ -100,6 +106,8 @@ void main() {
           onTogglePlay: () {},
           onToggleMute: () => muted = true,
           onSetVolume: (_) {},
+          isFullscreen: false,
+          onToggleFullscreen: () {},
         ),
       ),
     ));
@@ -121,6 +129,8 @@ void main() {
           onTogglePlay: () {},
           onToggleMute: () {},
           onSetVolume: (v) => set = v,
+          isFullscreen: false,
+          onToggleFullscreen: () {},
         ),
       ),
     ));
@@ -139,6 +149,8 @@ void main() {
             onTogglePlay: () {},
             onToggleMute: () {},
             onSetVolume: (_) {},
+            isFullscreen: false,
+            onToggleFullscreen: () {},
           ),
         ),
       ));
@@ -152,5 +164,39 @@ void main() {
 
     await pumpAt(0.9);
     expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget);
+  });
+
+  testWidgets('fullscreen icon reflects state and button fires callback',
+      (tester) async {
+    var toggled = false;
+    Future<void> pumpAt(bool isFullscreen) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: themeDataFor(MeowThemeId.cozy),
+        home: Scaffold(
+          body: PlaybackBar(
+            state: _sample,
+            onSeek: (_) {},
+            onTogglePlay: () {},
+            onToggleMute: () {},
+            onSetVolume: (_) {},
+            isFullscreen: isFullscreen,
+            onToggleFullscreen: () => toggled = true,
+          ),
+        ),
+      ));
+    }
+
+    await pumpAt(false);
+    expect(find.byIcon(Icons.fullscreen_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.fullscreen_exit_rounded), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.fullscreen_rounded));
+    // Drain the icon's double-tap recognizer countdown timer.
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(toggled, isTrue);
+
+    await pumpAt(true);
+    expect(find.byIcon(Icons.fullscreen_exit_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.fullscreen_rounded), findsNothing);
   });
 }

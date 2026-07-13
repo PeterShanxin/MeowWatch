@@ -10,6 +10,21 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.42.0-alpha] - 2026-07-12
+
+> A fullscreen button on the player bar, and steadier sync on shaky connections.
+
+### Added
+- The player bar now has a fullscreen toggle beside the volume control — click
+  it to switch between windowed and fullscreen. Double-clicking the video still
+  works too.
+
+### Fixed: Steadier sync
+- A brief network latency spike (common on VPNs) no longer makes playback
+  rewind a few seconds every so often to "resync". Sync now ignores one-off
+  latency flaps — including ones in the first moments after connecting — while
+  still adapting to a genuine change in your connection.
+
 ## [0.41.4-alpha] - 2026-07-12
 
 > Chat stays light and smooth, even hours into a movie night.
