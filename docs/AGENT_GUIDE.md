@@ -82,8 +82,10 @@ Installed at `C:\actions-runner`, registered to this repo with the **`self-hoste
     $p = Start-Process powershell -ArgumentList '-NoProfile','-Command', $flutterTestCmd -PassThru
     $mine = New-Object System.Collections.Generic.HashSet[int]
     function Get-DescendantIds($rootId) {
-      $kids = Get-CimInstance Win32_Process -Filter "ParentProcessId=$rootId" | Select-Object -ExpandProperty ProcessId
-      $kids + ($kids | ForEach-Object { Get-DescendantIds $_ })
+      # @(...) forces array context — a single match collapses to a scalar PID
+      # otherwise, and `+` then does integer addition instead of concatenation.
+      $kids = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$rootId" | Select-Object -ExpandProperty ProcessId)
+      $kids + @($kids | ForEach-Object { Get-DescendantIds $_ })
     }
     while (-not $p.HasExited) {
       Get-DescendantIds $p.Id | ForEach-Object { $mine.Add($_) | Out-Null }
