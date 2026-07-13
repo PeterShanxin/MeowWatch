@@ -4,6 +4,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
+import '../../core/chat/chat_store.dart' show appendedMessages;
 import '../../core/sync/peer_state.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
@@ -112,12 +113,11 @@ class _ChatOverlayState extends State<ChatOverlay>
   // re-diffing the card's message list and input on each mouse event — made
   // the card visibly trail the cursor. Only the ValueListenableBuilder in
   // [build] listens, so a move just repositions the already-built card.
+  // Every write is a fresh [_DragRect] instance, so mode changes (drag →
+  // glide) always notify even when the placement itself is unchanged.
   final ValueNotifier<_DragRect?> _drag = ValueNotifier<_DragRect?>(null);
   // Overlay size captured at drag start, used for snap math.
   Size? _overlaySize;
-  // Size the memoized drag-path card (the ValueListenableBuilder child) was
-  // built with; a _DragRect at any other size must rebuild the card.
-  Size? _memoSize;
   final GlobalKey _cardKey = GlobalKey();
 
   // Active resize: rect captured at grip-drag start + accumulated grip delta +
@@ -127,7 +127,7 @@ class _ChatOverlayState extends State<ChatOverlay>
   Offset _resizeDelta = Offset.zero;
   ChatCorner _resizeGrip = ChatCorner.bottomRight;
 
-  // Post-release snap glide: tween _dragTopLeft from where it was dropped to
+  // Post-release snap glide: tween the float rect from where it was dropped to
   // the resting corner, so docking eases in instead of teleporting.
   late final AnimationController _snapCtrl = AnimationController(
     vsync: this,
@@ -168,9 +168,9 @@ class _ChatOverlayState extends State<ChatOverlay>
         if (mounted) setState(() => _dividerIndex = null);
       });
     } else if (!wasUnread && isUnread) {
-      // Pin the divider just before the first unread message. Safe as an
-      // absolute index only because the message list is append-only — existing
-      // indices never shift, so the boundary stays put as more arrive.
+      // Pin the divider just before the first unread message. The list is
+      // append-only until the store's retention cap kicks in; once trims start
+      // shifting indices, didUpdateWidget slides this index along with them.
       _dividerIndex = firstUnreadIndex ?? (widget.messages.length - count);
       _dividerTimer?.cancel();
       _dividerTimer = null;
@@ -232,23 +232,83 @@ class _ChatOverlayState extends State<ChatOverlay>
         if (mounted) _inputFocus.requestFocus();
       });
     }
+    final appended = appendedMessages(old.messages, widget.messages);
+    // Lines the store trimmed off the front this update (only happens once its
+    // retention cap is hit). Slide the pinned divider with the content so it
+    // stays above the same message instead of drifting to a stale index.
+    final trimmed =
+        old.messages.length + appended.length - widget.messages.length;
+    if (trimmed > 0 && _dividerIndex != null) {
+      final oldDivider = _dividerIndex!;
+      final shifted = oldDivider - trimmed;
+      if (shifted >= 0) {
+        // The first unread line survived the trim — just slide the marker down.
+        _dividerIndex = shifted;
+      } else if (_unreadCount > 0) {
+        // The oldest unread line(s) themselves aged out under the cap. Drop
+        // the trimmed unread lines from the badge (otherwise it over-reports
+        // messages that no longer exist) and re-pin the divider to the oldest
+        // unread line still retained. Leaving _unreadCount untouched here also
+        // wedges the divider: a later _setUnreadCount sees wasUnread == true,
+        // so neither pin branch fires and the marker never comes back.
+        var trimmedUnread = 0;
+        final end = trimmed < old.messages.length
+            ? trimmed
+            : old.messages.length;
+        for (var i = oldDivider; i < end; i++) {
+          final m = old.messages[i];
+          if (!m.system && !m.isMine) trimmedUnread++;
+        }
+        final remaining = _unreadCount - trimmedUnread;
+        if (remaining > 0) {
+          int? firstRetainedUnread;
+          for (var i = 0; i < widget.messages.length; i++) {
+            final m = widget.messages[i];
+            if (!m.system && !m.isMine) {
+              firstRetainedUnread = i;
+              break;
+            }
+          }
+          _unreadCount = remaining;
+          _dividerIndex = firstRetainedUnread;
+        } else {
+          // Every counted unread line aged out — clear the marker and badge,
+          // and tell the parent the unread flag dropped (peek pulse, etc.).
+          _unreadCount = 0;
+          _dividerIndex = null;
+          _dividerTimer?.cancel();
+          _dividerTimer = null;
+          final cb = widget.onUnreadChanged;
+          if (cb != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) cb(false);
+            });
+          }
+        }
+      } else {
+        // No active unread run — a lingering (post-read) divider whose message
+        // aged out; just drop it.
+        _dividerIndex = null;
+      }
+    }
+
     // Reopening jumps straight to the latest (messages can pile up while
     // collapsed, when the list is unmounted and a scroll would no-op); a new
     // message while already open animates into view.
     if (justOpened) {
       if (_unreadCount > 0) setState(() => _setUnreadCount(0));
       _scrollToBottom(animate: false);
-    } else if (old.messages.length < widget.messages.length) {
-      final newMsgs = widget.messages.sublist(old.messages.length);
-      final isMyMessage = newMsgs.isNotEmpty && newMsgs.last.isMine;
+    } else if (appended.isNotEmpty) {
+      final isMyMessage = appended.last.isMine;
 
       int newUnread = 0;
       int? firstUnreadIndex;
-      for (int i = 0; i < newMsgs.length; i++) {
-        final m = newMsgs[i];
+      final appendStart = widget.messages.length - appended.length;
+      for (int i = 0; i < appended.length; i++) {
+        final m = appended[i];
         if (!m.system && !m.isMine) {
           newUnread++;
-          firstUnreadIndex ??= old.messages.length + i;
+          firstUnreadIndex ??= appendStart + i;
         }
       }
 
@@ -413,12 +473,12 @@ class _ChatOverlayState extends State<ChatOverlay>
     if (cardBox == null || selfBox == null) return;
     final origin = selfBox.localToGlobal(Offset.zero);
     setState(() {
+      _overlaySize = selfBox.size;
       _drag.value = _DragRect(
         cardBox.localToGlobal(Offset.zero) - origin,
         cardBox.size,
         _DragMode.moving,
       );
-      _overlaySize = selfBox.size;
     });
     widget.onDraggingChanged?.call(true);
   }
@@ -444,8 +504,8 @@ class _ChatOverlayState extends State<ChatOverlay>
     final origin = selfBox.localToGlobal(Offset.zero);
     final topLeft = cardBox.localToGlobal(Offset.zero) - origin;
     setState(() {
-      _drag.value = _DragRect(topLeft, cardBox.size, _DragMode.resizing);
       _overlaySize = selfBox.size;
+      _drag.value = _DragRect(topLeft, cardBox.size, _DragMode.resizing);
       _resizeStartSize = cardBox.size;
       _resizeStartTopLeft = topLeft;
       _resizeDelta = Offset.zero;
@@ -467,6 +527,8 @@ class _ChatOverlayState extends State<ChatOverlay>
       grip: _resizeGrip,
       windowSize: window,
     );
+    // Notifier-only, like _updateHeaderDrag: the card relayouts to its new
+    // size but its contents keep their widget identity.
     _drag.value = _DragRect(r.topLeft, r.size, _DragMode.resizing);
   }
 
@@ -484,6 +546,8 @@ class _ChatOverlayState extends State<ChatOverlay>
     widget.onResize?.call(d.size);
     _snapFrom = d.topLeft;
     _snapTo = _cornerTopLeft(widget.corner, d.size, window);
+    // A fresh _DragRect always notifies, so the mode flip to gliding reaches
+    // the builder even though the placement itself hasn't changed yet.
     _drag.value = _DragRect(d.topLeft, d.size, _DragMode.gliding);
     _snapCtrl.forward(from: 0);
   }
@@ -511,14 +575,14 @@ class _ChatOverlayState extends State<ChatOverlay>
       // tab — so docking to the edge isn't an abrupt disappearance.
       _snapTo = Offset(window.width, d.topLeft.dy);
     }
+    // A fresh _DragRect always notifies, so the mode flip to gliding hides
+    // the dock hints the moment the drag releases.
     _drag.value = _DragRect(d.topLeft, d.size, _DragMode.gliding);
     _snapCtrl.forward(from: 0);
   }
 
-  Widget _buildCard(Size cardSize) => _GlassCard(
+  Widget _buildCard() => _GlassCard(
     key: _cardKey,
-    width: cardSize.width,
-    height: cardSize.height,
     onHeaderDragStart: _startHeaderDrag,
     onHeaderDragUpdate: _updateHeaderDrag,
     onHeaderDragEnd: _endHeaderDrag,
@@ -544,12 +608,12 @@ class _ChatOverlayState extends State<ChatOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context).size;
-
     // Active drag/resize, or the post-release snap glide, renders a
-    // free-floating card.
-    final drag = _drag.value;
-    if (drag != null) {
+    // free-floating card. Pointer moves and glide ticks write [_drag] only —
+    // the ValueListenableBuilder repositions/resizes the card while its
+    // contents (the cached [child]) keep their widget identity, so no bubble
+    // rebuilds.
+    if (_drag.value != null) {
       // Fill the overlay's box with a plain SizedBox.expand — NOT Positioned.fill.
       // ChatOverlay is mounted under IgnorePointer/AnimatedOpacity (see
       // HomeScreen), not directly inside a Stack, so a Positioned here is a
@@ -557,7 +621,6 @@ class _ChatOverlayState extends State<ChatOverlay>
       // composite the whole screen wrong → a translucent pale-white wash for the
       // entire drag (#50; debug tolerated it, release didn't). The inner Stack
       // (below) is the real Stack the card's Positioned belongs to.
-      _memoSize = drag.size;
       return SizedBox.expand(
         // Isolate the moving/resizing card in its own compositor layer so its
         // per-frame drag/resize repaints stay local instead of repainting the
@@ -565,20 +628,8 @@ class _ChatOverlayState extends State<ChatOverlay>
         child: RepaintBoundary(
           child: ValueListenableBuilder<_DragRect?>(
             valueListenable: _drag,
-            // The memoized card: built here (once per drag, and again on real
-            // content updates when this build method reruns), NOT on every
-            // pointer move — re-diffing the message list per mouse event is
-            // what made the card trail the cursor. Its own RepaintBoundary
-            // caches the card's raster so a plain move is compositor-only.
-            child: RepaintBoundary(child: _buildCard(drag.size)),
-            builder: (context, d, memoCard) {
+            builder: (context, d, card) {
               if (d == null) return const SizedBox.shrink();
-              // A resize (and a glide the memo hasn't caught up with) changes
-              // the card's size, so those frames rebuild the card; a move
-              // keeps the size and reuses the memoized child.
-              final card = d.size == _memoSize
-                  ? memoCard!
-                  : RepaintBoundary(child: _buildCard(d.size));
               final overlaySize = _overlaySize;
               return Stack(
                 children: [
@@ -596,16 +647,29 @@ class _ChatOverlayState extends State<ChatOverlay>
                   Positioned(
                     left: d.topLeft.dx,
                     top: d.topLeft.dy,
-                    child: card,
+                    child: SizedBox(
+                      width: d.size.width,
+                      height: d.size.height,
+                      child: card,
+                    ),
                   ),
                 ],
               );
             },
+            // The memoized card: built here (once per drag, and again on real
+            // content updates when this build method reruns), NOT on every
+            // pointer move or resize tick — the size lives in the SizedBox
+            // above, so even a live resize only relayouts these same widgets.
+            // Its own RepaintBoundary keeps the card's pixels cached while the
+            // Positioned above moves it: without it every drag tick repaints
+            // the whole card subtree (bubbles, glass) into the outer layer.
+            child: RepaintBoundary(child: _buildCard()),
           ),
         ),
       );
     }
 
+    final media = MediaQuery.of(context).size;
     // Stored px size, clamped to the current viewport (so it never overflows a
     // small window) but otherwise stable when the window is resized/maximized.
     final cardSize = clampCardSize(
@@ -635,7 +699,11 @@ class _ChatOverlayState extends State<ChatOverlay>
             child: Padding(
               padding: const EdgeInsets.fromLTRB(
                   Spacing.md, Spacing.md, Spacing.md, 64),
-              child: _buildCard(cardSize),
+              child: SizedBox(
+                width: cardSize.width,
+                height: cardSize.height,
+                child: _buildCard(),
+              ),
             ),
           );
     // Same isolation as the drag path: the docked card's own repaints (new
@@ -655,8 +723,6 @@ class _ChatOverlayState extends State<ChatOverlay>
 class _GlassCard extends StatelessWidget {
   const _GlassCard({
     super.key,
-    required this.width,
-    required this.height,
     required this.onHeaderDragStart,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
@@ -677,8 +743,6 @@ class _GlassCard extends StatelessWidget {
     required this.onResizeEnd,
   });
 
-  final double width;
-  final double height;
   final VoidCallback onHeaderDragStart;
   final void Function(Offset delta) onHeaderDragUpdate;
   final VoidCallback onHeaderDragEnd;
@@ -768,8 +832,10 @@ class _GlassCard extends StatelessWidget {
           child: _frosted(
             context,
             Container(
-              width: width,
-              height: height,
+              // Fills the SizedBox the caller wraps the card in — the size
+              // lives outside so a live resize relayouts without a rebuild.
+              width: double.infinity,
+              height: double.infinity,
               decoration: BoxDecoration(
                 color: m.surface,
                 borderRadius: BorderRadius.circular(Radii.lg),
@@ -882,38 +948,30 @@ class _GlassCard extends StatelessWidget {
                               // bubbles become selectable without changing how
                               // they render.
                               SelectionArea(
-                                child: ListView(
+                                // A builder list only constructs the bubbles
+                                // that scroll into view — a children:[...] list
+                                // rebuilt every message widget on every card
+                                // rebuild, which grew with session length.
+                                child: ListView.builder(
                                   controller: scrollController,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: Spacing.xs,
                                   ),
-                                  children: [
-                                    for (int i = 0; i < messages.length; i++) ...[
-                                      if (i == dividerIndex)
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: Spacing.sm, horizontal: Spacing.lg),
-                                          child: Row(
-                                            children: [
-                                              Expanded(child: Divider(color: m.accent.withValues(alpha: Opacities.scrim), thickness: 1)),
-                                              Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
-                                                child: Text(
-                                                  'New Messages',
-                                                  style: context.meowText.caption.copyWith(
-                                                    color: m.accent,
-                                                    fontWeight: TypeScale.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                              Expanded(child: Divider(color: m.accent.withValues(alpha: Opacities.scrim), thickness: 1)),
-                                            ],
-                                          ),
-                                        ),
-                                      ChatBubble(
-                                        message: messages[i],
-                                      ),
-                                    ],
-                                  ],
+                                  itemCount: messages.length,
+                                  itemBuilder: (context, i) {
+                                    final bubble =
+                                        ChatBubble(message: messages[i]);
+                                    if (i != dividerIndex) return bubble;
+                                    return Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        const _NewMessagesDivider(),
+                                        bubble,
+                                      ],
+                                    );
+                                  },
                                 ),
                               ),
                               if (unreadCount > 0)
@@ -988,6 +1046,43 @@ class _GlassCard extends StatelessWidget {
           child: _grip(context, ChatCorner.bottomRight),
         ),
       ],
+    );
+  }
+}
+
+/// The "New Messages" boundary line, rendered just above the first unread
+/// message while the unread marker is pinned.
+class _NewMessagesDivider extends StatelessWidget {
+  const _NewMessagesDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    final line = Divider(
+      color: m.accent.withValues(alpha: Opacities.scrim),
+      thickness: 1,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: Spacing.sm,
+        horizontal: Spacing.lg,
+      ),
+      child: Row(
+        children: [
+          Expanded(child: line),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+            child: Text(
+              'New Messages',
+              style: context.meowText.caption.copyWith(
+                color: m.accent,
+                fontWeight: TypeScale.bold,
+              ),
+            ),
+          ),
+          Expanded(child: line),
+        ],
+      ),
     );
   }
 }

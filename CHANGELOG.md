@@ -10,6 +10,17 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.41.4-alpha] - 2026-07-12
+
+> Chat stays light and smooth, even hours into a movie night.
+
+### Improved: Smoother chat
+- Resizing the chat card is now as light as dragging it, and the message list
+  only draws the messages on screen instead of re-rendering all of them.
+- Chat history is now kept to the most recent 500 lines, so a long session
+  can't make the app progressively heavier. The "New Messages" line and the
+  unread count still point at the right messages when older lines rotate out.
+
 ## [0.41.3-alpha] - 2026-07-12
 
 > Continue watching returns to the room you actually watched in.
@@ -33,6 +44,7 @@ in-app updater reads to show what changed.
 ### Improved
 - Dragging the chat card is lighter: moving it no longer redraws the whole
   chat every frame.
+
 ## [0.41.1-alpha] - 2026-07-10
 
 > Room joins fail clearly when the saved server is stale.
