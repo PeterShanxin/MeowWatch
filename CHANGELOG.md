@@ -10,6 +10,15 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.42.1-alpha] - 2026-07-13
+
+> Hardened the room connection against misbehaving servers.
+
+### Fixed
+- A broken or malicious sync server that streams endless data without ever
+  finishing a message can no longer make the app's memory grow until it
+  crashes. The connection is now dropped and re-established instead (#187).
+
 ## [0.42.0-alpha] - 2026-07-12
 
 > A fullscreen button on the player bar, and steadier sync on shaky connections.

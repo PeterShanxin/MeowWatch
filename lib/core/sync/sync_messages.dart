@@ -3,10 +3,40 @@ import 'dart:convert';
 import 'syncplay_constants.dart';
 import 'peer_state.dart';
 
+/// Thrown by [LineFramer.addChunk] when the peer keeps streaming bytes without
+/// ever terminating a line — the guard against a hostile or broken server
+/// forcing unbounded buffering (#187). The framer clears its buffer before
+/// throwing; the caller should treat the connection as dead.
+class LineOverflowException implements Exception {
+  const LineOverflowException({
+    required this.bufferedBytes,
+    required this.maxLineBytes,
+  });
+
+  final int bufferedBytes;
+  final int maxLineBytes;
+
+  @override
+  String toString() =>
+      'LineOverflowException: line overflow — $bufferedBytes bytes buffered '
+      'with no newline (cap $maxLineBytes)';
+}
+
 /// Buffers raw socket bytes and yields complete lines. The Syncplay protocol
 /// sends one JSON object per line terminated by `\r\n`; we also tolerate a lone
-/// `\n`.
+/// `\n`. A partial line may buffer at most [maxLineBytes] before [addChunk]
+/// throws [LineOverflowException] — real protocol lines are a few KB at most,
+/// so only a hostile or broken peer ever gets near the cap.
 class LineFramer {
+  LineFramer({this.maxLineBytes = defaultMaxLineBytes});
+
+  /// Generous vs. real Syncplay lines (a full room roster with long file names
+  /// is still a few KB), tiny vs. the unbounded growth it prevents.
+  static const int defaultMaxLineBytes = 64 * 1024;
+
+  /// Cap on the unconsumed partial line; injectable for tests.
+  final int maxLineBytes;
+
   final List<int> _buffer = <int>[];
 
   List<String> addChunk(List<int> chunk) {
@@ -25,6 +55,14 @@ class LineFramer {
       }
     }
     _buffer.removeRange(0, start);
+    if (_buffer.length > maxLineBytes) {
+      final buffered = _buffer.length;
+      _buffer.clear();
+      throw LineOverflowException(
+        bufferedBytes: buffered,
+        maxLineBytes: maxLineBytes,
+      );
+    }
     return lines;
   }
 

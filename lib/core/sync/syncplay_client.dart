@@ -272,7 +272,16 @@ class SyncplayClient extends SyncCore {
     sub = plain.listen(
       (chunk) async {
         if (upgraded) return;
-        for (final line in _framer.addChunk(chunk)) {
+        final List<String> lines;
+        try {
+          lines = _framer.addChunk(chunk);
+        } on LineOverflowException catch (e) {
+          if (stale()) return;
+          onLog?.call('tls negotiation protocol error: $e');
+          _onConnectionLost();
+          return;
+        }
+        for (final line in lines) {
           if (line.isEmpty) continue;
           final decoded = decodeServerMessage(
             json.decode(line) as Map<dynamic, dynamic>,
@@ -341,7 +350,18 @@ class SyncplayClient extends SyncCore {
   void _onChunk(List<int> chunk) {
     // Any byte from the server proves the link is alive — reset the watchdog.
     _watchdog.bump();
-    for (final line in _framer.addChunk(chunk)) {
+    final List<String> lines;
+    try {
+      lines = _framer.addChunk(chunk);
+    } on LineOverflowException catch (e) {
+      // A peer streaming bytes without ever ending a line is broken or hostile
+      // (#187) — treat the link as dead rather than buffering toward OOM. The
+      // reconnect path starts over with a fresh framer.
+      onLog?.call('protocol error: $e — dropping connection');
+      _onConnectionLost();
+      return;
+    }
+    for (final line in lines) {
       if (line.isEmpty) continue;
       // Redact before logging — an inbound File message carries a peer's stream
       // URL, whose query string may hold a signed CDN token.
@@ -698,6 +718,11 @@ class SyncplayClient extends SyncCore {
   /// without a socket — e.g. to exercise the fatal-error stop path.
   @visibleForTesting
   void debugHandleMessage(ServerMessage msg) => _handleMessage(msg);
+
+  /// Test hook: feed raw socket bytes through the live-chunk path, e.g. to
+  /// exercise the line-overflow guard (#187) without a real socket.
+  @visibleForTesting
+  void debugReceiveChunk(List<int> chunk) => _onChunk(chunk);
 
   @override
   void sendChat(String text) {
