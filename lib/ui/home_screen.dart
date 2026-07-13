@@ -341,8 +341,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _audioPlayer = VideoEnginePool.instance.audioPlayer;
     _chatSub = _chat.stream.listen((msgs) async {
       if (!mounted) return;
-      final newCount = msgs.length - _messages.length;
-      final isNewMessage = newCount > 0;
+      // Not a length comparison: once the store's retention cap holds the list
+      // at a constant length, a trim+append emission would read as "no new
+      // message" and peek pulses / notifications would silently stop.
+      final isNewMessage = appendedMessages(_messages, msgs).isNotEmpty;
       final lastMsg = isNewMessage ? msgs.last : null;
 
       setState(() => _messages = msgs);
