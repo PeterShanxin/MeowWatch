@@ -5,6 +5,7 @@ import '../core/theme/reduce_motion.dart';
 import '../core/theme/tokens/motion.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
+import '../core/video/playback_bar_view.dart';
 import '../core/video/playback_state.dart';
 import 'instant_tap_icon.dart';
 import 'volume_control.dart';
@@ -24,7 +25,7 @@ import 'volume_control.dart';
 /// windowed/fullscreen toggle. Auto-hide behaviour is owned by the parent.
 class PlaybackBar extends StatefulWidget {
   const PlaybackBar({
-    required this.state,
+    required this.view,
     required this.onSeek,
     required this.onTogglePlay,
     required this.onToggleMute,
@@ -34,7 +35,10 @@ class PlaybackBar extends StatefulWidget {
     super.key,
   });
 
-  final PlaybackState state;
+  /// The displayed slice of playback state, de-duplicated upstream so this
+  /// widget only rebuilds when its visible output actually changes (#196).
+  final PlaybackBarView view;
+
   final ValueChanged<Duration> onSeek;
   final VoidCallback onTogglePlay;
   final VoidCallback onToggleMute;
@@ -60,12 +64,12 @@ class _PlaybackBarState extends State<PlaybackBar> {
   @override
   Widget build(BuildContext context) {
     final m = context.meow;
-    final state = widget.state;
-    final durationMs = state.duration.inMilliseconds;
+    final view = widget.view;
+    final durationMs = view.duration.inMilliseconds;
     final hasDuration = durationMs > 0;
     final positionMs =
-        state.position.inMilliseconds.clamp(0, hasDuration ? durationMs : 1);
-    final isPlaying = state.status == PlaybackStatus.playing;
+        view.position.inMilliseconds.clamp(0, hasDuration ? durationMs : 1);
+    final isPlaying = view.status == PlaybackStatus.playing;
     final reduceMotion = context.reduceMotion;
 
     return Container(
@@ -86,7 +90,7 @@ class _PlaybackBarState extends State<PlaybackBar> {
             semanticLabel: isPlaying ? 'Pause' : 'Play',
             onPressed: widget.onTogglePlay,
           ),
-          Text(_fmt(state.position),
+          Text(_fmt(view.position),
               style: TextStyle(color: m.textPrimary, fontSize: TypeScale.body)),
           Expanded(
             child: TweenAnimationBuilder<double>(
@@ -121,10 +125,10 @@ class _PlaybackBarState extends State<PlaybackBar> {
               },
             ),
           ),
-          Text(_fmt(state.duration),
+          Text(_fmt(view.duration),
               style: TextStyle(color: m.textPrimary, fontSize: TypeScale.body)),
           VolumeControl(
-            volume: state.volume,
+            volume: view.volume,
             onSetVolume: widget.onSetVolume,
             onToggleMute: widget.onToggleMute,
           ),

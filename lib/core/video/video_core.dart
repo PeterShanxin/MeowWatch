@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'playback_bar_view.dart';
 import 'playback_screen_view.dart';
 import 'playback_state.dart';
 
@@ -31,6 +32,16 @@ abstract class VideoCore {
   /// position tick through as a "first" event.
   late final Stream<PlaybackScreenView> screenViewStream =
       stateStream.map(PlaybackScreenView.of).distinct();
+
+  /// Current [PlaybackBarView] projection of [state].
+  PlaybackBarView get barView => PlaybackBarView.of(_state);
+
+  /// [stateStream] narrowed to what the playback bar displays (status,
+  /// whole-second position, duration, volume), de-duplicated — sub-second
+  /// position churn never surfaces here. See [PlaybackBarView] for why (#196).
+  /// Cached for the same reason as [screenViewStream].
+  late final Stream<PlaybackBarView> barViewStream =
+      stateStream.map(PlaybackBarView.of).distinct();
 
   /// True once [dispose] has run (the state stream is closed). Lets callers that
   /// await the stream avoid acting on a torn-down core (e.g. seeking after the

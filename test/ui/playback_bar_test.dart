@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
+import 'package:meowwatch/core/video/playback_bar_view.dart';
 import 'package:meowwatch/core/video/playback_state.dart';
 import 'package:meowwatch/ui/playback_bar.dart';
 
@@ -31,7 +32,7 @@ void main() {
       theme: themeDataFor(MeowThemeId.cozy),
       home: Scaffold(
         body: PlaybackBar(
-          state: _sample,
+          view: PlaybackBarView.of(_sample),
           onSeek: (_) {},
           onTogglePlay: () {},
           onToggleMute: () {},
@@ -59,7 +60,7 @@ void main() {
       theme: themeDataFor(MeowThemeId.cozy),
       home: Scaffold(
         body: PlaybackBar(
-          state: _sample,
+          view: PlaybackBarView.of(_sample),
           onSeek: (_) {},
           onTogglePlay: () {},
           onToggleMute: () {},
@@ -79,7 +80,7 @@ void main() {
       theme: themeDataFor(MeowThemeId.cozy),
       home: Scaffold(
         body: PlaybackBar(
-          state: _sample,
+          view: PlaybackBarView.of(_sample),
           onSeek: (_) {},
           onTogglePlay: () => toggled = true,
           onToggleMute: () {},
@@ -101,7 +102,7 @@ void main() {
       theme: themeDataFor(MeowThemeId.cozy),
       home: Scaffold(
         body: PlaybackBar(
-          state: _sample,
+          view: PlaybackBarView.of(_sample),
           onSeek: (_) {},
           onTogglePlay: () {},
           onToggleMute: () => muted = true,
@@ -124,7 +125,7 @@ void main() {
       theme: themeDataFor(MeowThemeId.cozy),
       home: Scaffold(
         body: PlaybackBar(
-          state: _sample,
+          view: PlaybackBarView.of(_sample),
           onSeek: (_) {},
           onTogglePlay: () {},
           onToggleMute: () {},
@@ -144,7 +145,7 @@ void main() {
         theme: themeDataFor(MeowThemeId.cozy),
         home: Scaffold(
           body: PlaybackBar(
-            state: _sample.copyWith(volume: volume),
+            view: PlaybackBarView.of(_sample.copyWith(volume: volume)),
             onSeek: (_) {},
             onTogglePlay: () {},
             onToggleMute: () {},
@@ -174,7 +175,7 @@ void main() {
         theme: themeDataFor(MeowThemeId.cozy),
         home: Scaffold(
           body: PlaybackBar(
-            state: _sample,
+            view: PlaybackBarView.of(_sample),
             onSeek: (_) {},
             onTogglePlay: () {},
             onToggleMute: () {},
