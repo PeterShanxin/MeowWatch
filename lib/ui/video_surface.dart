@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 import '../core/theme/reduce_motion.dart';
 import '../core/theme/tokens/motion.dart';
 import '../core/video/media_kit_video_core.dart';
+import '../core/video/playback_bar_view.dart';
 import '../core/video/playback_state.dart';
 import 'action_feedback_overlay.dart';
 import 'playback_action.dart';
@@ -290,13 +291,16 @@ class _VideoSurfaceState extends State<VideoSurface> with WindowListener {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                child: StreamBuilder<PlaybackState>(
-                  stream: widget.core.stateStream,
-                  initialData: widget.core.state,
+                // Narrowed, de-duplicated view: mpv's sub-second position
+                // ticks must NOT rebuild the bar's subtree (#196) — only a
+                // displayed change (second flip, status/duration/volume) does.
+                child: StreamBuilder<PlaybackBarView>(
+                  stream: widget.core.barViewStream,
+                  initialData: widget.core.barView,
                   builder: (context, snapshot) {
-                    final state = snapshot.data!;
+                    final view = snapshot.data!;
                     final visible =
-                        !widget.isUiIdle || state.status != PlaybackStatus.playing;
+                        !widget.isUiIdle || view.status != PlaybackStatus.playing;
                     final reduceMotion = context.reduceMotion;
                     final dur = reduceMotion ? Duration.zero : Motion.base;
                     return IgnorePointer(
@@ -312,7 +316,7 @@ class _VideoSurfaceState extends State<VideoSurface> with WindowListener {
                           duration: dur,
                           curve: Motion.standard,
                           child: PlaybackBar(
-                            state: state,
+                            view: view,
                             onSeek: widget.core.seek,
                             onTogglePlay: _togglePlay,
                             onToggleMute: _toggleMute,

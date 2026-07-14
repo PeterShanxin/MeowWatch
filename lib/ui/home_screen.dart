@@ -50,8 +50,8 @@ import '../core/video/source_announce.dart';
 import '../core/video/video_url.dart';
 import 'app_close_hook.dart';
 import 'chat/chat_corner.dart';
-import 'chat/chat_overlay.dart';
 import 'chat/chat_overlay_layout.dart';
+import 'chat/chat_overlay_region.dart';
 import 'drop_target.dart';
 import 'empty_state.dart';
 import 'idle_rearm_throttle.dart';
@@ -199,7 +199,9 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _autoPausedReason;
 
   /// Transient banner when a friend joins/rejoins the room (auto-clears).
-  String? _presenceNotice;
+  /// A notifier, not a plain field: activity/presence notices are hot events
+  /// and must dirty only the banner subtree, not the whole room Stack (#196).
+  final ValueNotifier<String?> _presenceNotice = ValueNotifier<String?>(null);
   Timer? _presenceTimer;
 
   /// The name of the last peer who left the room.
@@ -259,9 +261,14 @@ class _HomeScreenState extends State<HomeScreen> {
     debugLabel: 'home-root',
     skipTraversal: true,
   );
-  List<ChatMessage> _messages = const <ChatMessage>[];
+  // Hot chat-card state: every incoming chat line, typing signal, and peek
+  // pulse used to force a setState that rebuilt the entire room Stack (#196).
+  // As notifiers they dirty only ChatOverlayRegion's subtree instead.
+  final ValueNotifier<List<ChatMessage>> _messages =
+      ValueNotifier<List<ChatMessage>>(const <ChatMessage>[]);
+  final ValueNotifier<String?> _typingLabel = ValueNotifier<String?>(null);
+  final ValueNotifier<bool> _peekPulsing = ValueNotifier<bool>(false);
   late String _username;
-  bool _peekPulsing = false;
   Timer? _peekTimer;
 
   /// Non-null while the load-screen "Press Tab" hint toast is on screen; its
@@ -299,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _uiDeepIdleDelay = Duration(seconds: 3);
 
   bool _chatAutoDim = true;
-  bool _chatHasUnread = false;
+  final ValueNotifier<bool> _chatHasUnread = ValueNotifier<bool>(false);
   bool _chatWakeOnMessage = false;
   double _chatIdleDim = kChatIdleGhostOpacity;
   String _primarySoundId = kDefaultPrimarySoundId;
@@ -344,10 +351,10 @@ class _HomeScreenState extends State<HomeScreen> {
       // Not a length comparison: once the store's retention cap holds the list
       // at a constant length, a trim+append emission would read as "no new
       // message" and peek pulses / notifications would silently stop.
-      final isNewMessage = appendedMessages(_messages, msgs).isNotEmpty;
+      final isNewMessage = appendedMessages(_messages.value, msgs).isNotEmpty;
       final lastMsg = isNewMessage ? msgs.last : null;
 
-      setState(() => _messages = msgs);
+      _messages.value = msgs;
 
       if (_chatLayout.collapsed && isNewMessage) _pulsePeek();
 
@@ -592,18 +599,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _activityThrottleSub = _activityThrottle.stream.listen((a) {
       if (!mounted || !_syncHealthyNow) return;
       final t = syncActivityText(a, selfUsername: _username);
-      setState(() {
-        _showTransientNotice(t.banner);
-        // A peer drove playback while we have no video loaded: the transient
-        // banner is easy to miss on the empty screen, so also pin a persistent
-        // "load a video to join" prompt there (#60).
-        final prompt = peerStartedPlaybackJoinPrompt(
-          localHasFile: _core.state.fileName != null,
-          localUsername: _username,
-          peerUsername: a.username,
-        );
-        if (prompt != null) _joinPrompt = prompt;
-      });
+      // The banner is a notifier write — a scrub burst must not rebuild the
+      // whole Stack (#196). Only the (usually absent) join prompt, which the
+      // empty screen consumes, still needs a setState.
+      _showTransientNotice(t.banner);
+      // A peer drove playback while we have no video loaded: the transient
+      // banner is easy to miss on the empty screen, so also pin a persistent
+      // "load a video to join" prompt there (#60).
+      final prompt = peerStartedPlaybackJoinPrompt(
+        localHasFile: _core.state.fileName != null,
+        localUsername: _username,
+        peerUsername: a.username,
+      );
+      if (prompt != null) setState(() => _joinPrompt = prompt);
       _chat.addSystem(t.chatLine);
     });
     _rosterSub = _sync.initialRoster.listen((members) {
@@ -613,7 +621,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // the chat greeting (easy to miss on the video). Live joins after this are
       // handled by the presence handler above.
       final banner = rosterPresenceBanner(members);
-      if (banner != null) setState(() => _showTransientNotice(banner));
+      if (banner != null) _showTransientNotice(banner);
     });
     _noticeSub = _core.stateStream.listen((s) {
       if (!mounted) return;
@@ -870,6 +878,13 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_activityThrottle.dispose());
     _presenceTimer?.cancel();
     _autoPauseTimer?.cancel();
+    // Notifier teardown: their timers and stream subscriptions are all
+    // cancelled above, so nothing writes them after this point.
+    _messages.dispose();
+    _typingLabel.dispose();
+    _peekPulsing.dispose();
+    _chatHasUnread.dispose();
+    _presenceNotice.dispose();
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
     // Reset, don't dispose: the engines are shared (process-lifetime) and a
@@ -909,27 +924,25 @@ class _HomeScreenState extends State<HomeScreen> {
     // A peer who wasn't typing now is — brighten the collapsed tab the same as
     // a fresh message would, so typing is noticeable without expanding (#53).
     final newlyTyping = e.isTyping && !_typingUsers.contains(e.username);
-    setState(() {
-      _typingTimers[e.username]?.cancel();
-      _typingTimers.remove(e.username);
-      if (e.isTyping) {
-        _typingUsers.add(e.username);
-        _typingTimers[e.username] = Timer(const Duration(seconds: 5), () {
-          if (!mounted) return;
-          setState(() {
-            _typingUsers.remove(e.username);
-            _typingTimers.remove(e.username);
-          });
-        });
-      } else {
+    _typingTimers[e.username]?.cancel();
+    _typingTimers.remove(e.username);
+    if (e.isTyping) {
+      _typingUsers.add(e.username);
+      _typingTimers[e.username] = Timer(const Duration(seconds: 5), () {
+        if (!mounted) return;
         _typingUsers.remove(e.username);
-      }
-    });
+        _typingTimers.remove(e.username);
+        _typingLabel.value = _typingLabelFor();
+      });
+    } else {
+      _typingUsers.remove(e.username);
+    }
+    _typingLabel.value = _typingLabelFor();
     if (newlyTyping && _chatLayout.collapsed) _pulsePeek();
   }
 
   /// "lin is typing…" / "2 people are typing…", or null when nobody is.
-  String? get _typingLabel {
+  String? _typingLabelFor() {
     if (_typingUsers.isEmpty) return null;
     if (_typingUsers.length == 1) return '${_typingUsers.first} is typing…';
     return '${_typingUsers.length} people are typing…';
@@ -978,20 +991,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _pulsePeek() {
-    setState(() => _peekPulsing = true);
+    _peekPulsing.value = true;
     _peekTimer?.cancel();
     _peekTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _peekPulsing = false);
+      if (mounted) _peekPulsing.value = false;
     });
   }
 
   /// Show a transient banner (friend joined/left, or a sync action); auto-clears
-  /// after a few seconds. Call inside setState.
+  /// after a few seconds. Writes the notifier directly — no setState needed;
+  /// only the banner subtree rebuilds (#196).
   void _showTransientNotice(String text) {
-    _presenceNotice = text;
+    _presenceNotice.value = text;
     _presenceTimer?.cancel();
     _presenceTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _presenceNotice = null);
+      if (mounted) _presenceNotice.value = null;
     });
   }
 
@@ -1063,16 +1077,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Banner text shown over the video, or null when nothing to say. Priority:
-  /// a fresh "friend joined" notice, then a file-mismatch warning, then the
-  /// auto-pause reason, then a "friend hasn't loaded a video" heads-up, then the
-  /// plain waiting/connect hint.
+  /// Banner text derived from setState-managed state, or null when nothing to
+  /// say — everything below the transient [_presenceNotice], which is a
+  /// notifier and layered on top in [build] (#196). Priority: a file-mismatch
+  /// warning, then the auto-pause reason, then a "friend hasn't loaded a
+  /// video" heads-up, then the plain waiting/connect hint.
   String? get _banner {
     // Once leaving is committed, suppress every hint — the socket teardown can
     // briefly flip status to "Connecting…/Disconnected" and we don't want that
     // flashing over the video during the leave + route-exit animation.
     if (_leavingRoom) return null;
-    if (_presenceNotice != null) return _presenceNotice;
     final mismatch = _fileMismatchBanner;
     if (mismatch != null) return mismatch;
     if (_autoPausedNotice) {
@@ -1534,16 +1548,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 final videoVisible =
                     state.fileName != null &&
                     state.status != PlaybackStatus.error;
-                final hint = _banner;
-                final chatOpacity = chatOverlayOpacity(
-                  idle: _isUiIdle,
-                  deepIdle: _isUiDeepIdle,
-                  collapsed: _chatLayout.collapsed,
-                  autoDim: _chatAutoDim,
-                  hasUnread: _chatHasUnread,
-                  wakeToFullyVisible: _chatWakeOnMessage,
-                  ghostOpacity: _chatIdleDim,
-                );
                 return Stack(
                   fit: StackFit.expand,
                   // Every child carries a stable key. The conditional children
@@ -1604,64 +1608,71 @@ class _HomeScreenState extends State<HomeScreen> {
                     Align(
                       key: const ValueKey<String>('sync-hint'),
                       alignment: const Alignment(0, -0.8),
-                      child: SyncHintBanner(text: hint),
-                    ),
-                    AnimatedOpacity(
-                      key: const ValueKey<String>('chat-overlay'),
-                      opacity: chatOpacity,
-                      duration: Motion.base,
-                      child: IgnorePointer(
-                        ignoring: chatOpacity == 0.0,
-                        child: ChatOverlay(
-                          messages: _messages,
-                          collapsed: _chatLayout.collapsed,
-                          isUiIdle: _isUiIdle,
-                          corner: _chatLayout.corner,
-                          pulsing: _peekPulsing,
-                          onSend: _chat.send,
-                          typingLabel: _typingLabel,
-                          onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
-                          onToggleCollapsed: _toggleChat,
-                          onSnap: (result) {
-                            setState(
-                              () => _chatLayout = _chatLayout.applySnap(result),
-                            );
-                            if (_chatLayout.collapsed) _restorePlayerFocus();
-                            // Persist the docked corner like the size, so the
-                            // card comes back where it was left. A collapse
-                            // keeps .corner unchanged, so it is always the
-                            // docked corner.
-                            widget.settings.set(
-                              kChatCardCornerSettingKey,
-                              formatCardCorner(_chatLayout.corner),
-                            );
-                          },
-                          onDraggingChanged: (d) =>
-                              setState(() => _chatDragging = d),
-                          onUnreadChanged: (has) =>
-                              setState(() => _chatHasUnread = has),
-                          widthPx: _chatLayout.widthPx,
-                          heightPx: _chatLayout.heightPx,
-                          onResize: (size) {
-                            setState(
-                              () => _chatLayout = _chatLayout.applyResize(size),
-                            );
-                            widget.settings.set(
-                              kChatCardSizeSettingKey,
-                              formatCardSize(
-                                _chatLayout.widthPx!,
-                                _chatLayout.heightPx!,
-                              ),
-                            );
-                          },
-                          onResetSize: () {
-                            setState(
-                              () => _chatLayout = _chatLayout.resetSize(),
-                            );
-                            widget.settings.set(kChatCardSizeSettingKey, '');
-                          },
+                      // Transient notices (join/leave, throttled sync actions)
+                      // are the banner's hottest source; they flow through
+                      // their own notifier so a scrub burst dirties only this
+                      // subtree (#196). A live notice wins over the derived
+                      // banner; _leavingRoom (via _banner's guard) silences
+                      // both.
+                      child: ValueListenableBuilder<String?>(
+                        valueListenable: _presenceNotice,
+                        builder: (context, notice, _) => SyncHintBanner(
+                          text: _leavingRoom || notice == null
+                              ? _banner
+                              : notice,
                         ),
                       ),
+                    ),
+                    ChatOverlayRegion(
+                      key: const ValueKey<String>('chat-overlay'),
+                      messages: _messages,
+                      typingLabel: _typingLabel,
+                      pulsing: _peekPulsing,
+                      hasUnread: _chatHasUnread,
+                      layout: _chatLayout,
+                      isUiIdle: _isUiIdle,
+                      isUiDeepIdle: _isUiDeepIdle,
+                      autoDim: _chatAutoDim,
+                      wakeOnMessage: _chatWakeOnMessage,
+                      idleDimOpacity: _chatIdleDim,
+                      onSend: _chat.send,
+                      onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
+                      onToggleCollapsed: _toggleChat,
+                      onSnap: (result) {
+                        setState(
+                          () => _chatLayout = _chatLayout.applySnap(result),
+                        );
+                        if (_chatLayout.collapsed) _restorePlayerFocus();
+                        // Persist the docked corner like the size, so the
+                        // card comes back where it was left. A collapse
+                        // keeps .corner unchanged, so it is always the
+                        // docked corner.
+                        widget.settings.set(
+                          kChatCardCornerSettingKey,
+                          formatCardCorner(_chatLayout.corner),
+                        );
+                      },
+                      onDraggingChanged: (d) =>
+                          setState(() => _chatDragging = d),
+                      onUnreadChanged: (has) => _chatHasUnread.value = has,
+                      onResize: (size) {
+                        setState(
+                          () => _chatLayout = _chatLayout.applyResize(size),
+                        );
+                        widget.settings.set(
+                          kChatCardSizeSettingKey,
+                          formatCardSize(
+                            _chatLayout.widthPx!,
+                            _chatLayout.heightPx!,
+                          ),
+                        );
+                      },
+                      onResetSize: () {
+                        setState(
+                          () => _chatLayout = _chatLayout.resetSize(),
+                        );
+                        widget.settings.set(kChatCardSizeSettingKey, '');
+                      },
                     ),
                     Positioned(
                       key: const ValueKey<String>('player-menu'),
