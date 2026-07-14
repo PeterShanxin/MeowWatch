@@ -100,6 +100,45 @@ void main() {
       final framer = LineFramer();
       expect(framer.addChunk(utf8.encode('x\ny\n')), ['x', 'y']);
     });
+
+    test('throws when a never-terminated line exceeds the cap', () {
+      // A hostile/broken server can stream bytes without ever sending `\n`;
+      // the framer must error out instead of buffering unboundedly (#187).
+      final framer = LineFramer(maxLineBytes: 16);
+      expect(framer.addChunk(utf8.encode('0123456789')), isEmpty);
+      expect(
+        () => framer.addChunk(utf8.encode('0123456789')),
+        throwsA(isA<LineOverflowException>()),
+      );
+    });
+
+    test('overflow clears the buffer so the framer stays usable', () {
+      final framer = LineFramer(maxLineBytes: 8);
+      expect(
+        () => framer.addChunk(utf8.encode('0123456789')),
+        throwsA(isA<LineOverflowException>()),
+      );
+      expect(framer.addChunk(utf8.encode('ok\r\n')), ['ok']);
+    });
+
+    test('complete lines never trip the cap even in an oversized chunk', () {
+      // The cap guards the UNCONSUMED partial line only — a chunk bigger than
+      // the cap whose lines all terminate is legitimate traffic.
+      final framer = LineFramer(maxLineBytes: 8);
+      expect(framer.addChunk(utf8.encode('aaaa\r\nbbbb\r\ncc')), [
+        'aaaa',
+        'bbbb',
+      ]);
+    });
+
+    test('default cap is finite and generous vs. real protocol lines', () {
+      final framer = LineFramer();
+      final flood = List<int>.filled(LineFramer.defaultMaxLineBytes + 1, 0x41);
+      expect(
+        () => framer.addChunk(flood),
+        throwsA(isA<LineOverflowException>()),
+      );
+    });
   });
 
   group('encoders', () {
