@@ -10,6 +10,18 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.42.2-alpha] - 2026-07-14
+
+> Lighter on your laptop during a movie night.
+
+### Improved: Less busywork
+- Chat messages, typing indicators, and the little status banners no longer
+  make the whole room screen redraw — only the part that actually changed
+  updates. Long watch sessions with a chatty friend now use noticeably less
+  CPU (#196).
+- The player bar now redraws only when what it shows changes (about once a
+  second while playing) instead of on every internal position update.
+
 ## [0.42.1-alpha] - 2026-07-13
 
 > Hardened the room connection against misbehaving servers.
