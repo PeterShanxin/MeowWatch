@@ -342,7 +342,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // Hashed label, never the raw room: a private room's name is its access
     // code, so logging it verbatim would leak the room credential (#146 review).
     appLog('life: enter ${roomLogLabel(widget.config.room)}');
-    _sync = SyncplayClient(onLog: appLog);
+    _sync = SyncplayClient(
+      onLog: appLog,
+      shouldLog: ({required bool verboseOnly}) {
+        final level = appLogInstance?.level;
+        return level == LogLevel.verbose ||
+            (!verboseOnly && level == LogLevel.neat);
+      },
+    );
     _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
     _chat = ChatStore(sync: _sync);
     _audioPlayer = VideoEnginePool.instance.audioPlayer;
@@ -1318,10 +1325,12 @@ class _HomeScreenState extends State<HomeScreen> {
         positionMs: state.position.inMilliseconds,
         durationMs: state.duration.inMilliseconds,
       );
-      appLog(
-        'trace: db updatePosition ${mediaDisplayName(path)} '
-        '@${state.position.inMilliseconds}ms',
-      );
+      if (appLogInstance?.level == LogLevel.verbose) {
+        appLog(
+          'trace: db updatePosition ${mediaDisplayName(path)} '
+          '@${state.position.inMilliseconds}ms',
+        );
+      }
     } catch (e) {
       appLog(
         'db: updatePosition FAILED ${mediaDisplayName(path)}: ${redactUrls('$e')}',

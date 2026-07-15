@@ -116,8 +116,17 @@ Object? _scrubForLog(Object? value) {
 /// untouched. The scheme/host/path stay so the stream is still identifiable in
 /// logs. A credential can ride in any of the three — e.g. `?token=…`,
 /// `user:pass@host`, or `#token=…` — so all three are dropped.
+final RegExp _httpUrlRun = RegExp(r'https?://\S+', caseSensitive: false);
+
 String redactUrlSecrets(String value) {
-  final uri = Uri.tryParse(value.trim());
+  return value.replaceAllMapped(
+    _httpUrlRun,
+    (match) => _redactUrl(match.group(0)!),
+  );
+}
+
+String _redactUrl(String value) {
+  final uri = Uri.tryParse(value);
   if (uri == null) return value;
   if (uri.scheme != 'http' && uri.scheme != 'https') return value;
   if (uri.host.isEmpty) return value;

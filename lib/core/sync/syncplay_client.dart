@@ -19,11 +19,23 @@ import 'sync_messages.dart';
 class SyncplayClient extends SyncCore {
   SyncplayClient({
     this.onLog,
+    this.shouldLog,
     this.livenessTimeout = const Duration(seconds: 12),
   });
 
   /// Optional debug sink for raw protocol traffic and follow decisions.
   final void Function(String line)? onLog;
+
+  /// Live sink probe for avoiding expensive log formatting when a line will be
+  /// dropped. [verboseOnly] distinguishes raw traffic/no-op FOLLOW lines from
+  /// meaningful applied decisions and server errors.
+  ///
+  /// Defaults to enabled when omitted so custom/test sinks retain the original
+  /// full-trace behavior. Production passes the process log's current level.
+  final bool Function({required bool verboseOnly})? shouldLog;
+
+  bool _shouldFormatLog({required bool verboseOnly}) =>
+      onLog != null && (shouldLog?.call(verboseOnly: verboseOnly) ?? true);
 
   /// How long to tolerate silence from the server before presuming the link is
   /// dead (a half-open TCP that never fired onDone/onError). Generous relative
@@ -363,15 +375,18 @@ class SyncplayClient extends SyncCore {
     }
     for (final line in lines) {
       if (line.isEmpty) continue;
-      // Redact before logging — an inbound File message carries a peer's stream
-      // URL, whose query string may hold a signed CDN token.
-      onLog?.call('<< ${redactSecretsForLogText(line)}');
+      late Map<String, Object?> decoded;
       late ServerMessage msg;
       try {
-        msg = decodeServerMessage(
-          json.decode(line) as Map<dynamic, dynamic>,
-          selfRoom: _room,
-        );
+        decoded = json.decode(line) as Map<String, Object?>;
+        // Raw traffic is verbose-only except server Error frames, whose detail
+        // remains useful at neat. Redact the already-decoded object so verbose
+        // logging does not parse every heartbeat a second time.
+        final isError = decoded.containsKey('Error');
+        if (_shouldFormatLog(verboseOnly: !isError)) {
+          onLog?.call('<< ${redactSecretsForLog(decoded)}');
+        }
+        msg = decodeServerMessage(decoded, selfRoom: _room);
       } on FormatException {
         continue;
       }
@@ -531,12 +546,14 @@ class SyncplayClient extends SyncCore {
         username: _username,
         peerStalled: _peerStall.stalled,
       );
-      onLog?.call(
-        'FOLLOW global(pos=${global.positionSeconds}s paused=${global.paused} '
-        'doSeek=${global.doSeek} setBy=${global.setBy}) '
-        'local(pos=${_localPosition.inMilliseconds / 1000}s paused=$_localPaused) '
-        'stalled=${_peerStall.stalled} => apply=${action.shouldApply}',
-      );
+      if (_shouldFormatLog(verboseOnly: !action.shouldApply)) {
+        onLog?.call(
+          'FOLLOW global(pos=${global.positionSeconds}s paused=${global.paused} '
+          'doSeek=${global.doSeek} setBy=${global.setBy}) '
+          'local(pos=${_localPosition.inMilliseconds / 1000}s paused=$_localPaused) '
+          'stalled=${_peerStall.stalled} => apply=${action.shouldApply}',
+        );
+      }
       if (action.shouldApply) {
         // Surface this as a notification BEFORE we overwrite our local snapshot
         // below — the classifier compares the peer's target to where we were.
@@ -601,7 +618,9 @@ class SyncplayClient extends SyncCore {
     final line = json.encode(message);
     // Log a redacted copy — the Hello carries the room password, which must not
     // land in the now-persistent / exportable diagnostic log.
-    onLog?.call('>> ${redactSecretsForLog(message)}');
+    if (_shouldFormatLog(verboseOnly: true)) {
+      onLog?.call('>> ${redactSecretsForLog(message)}');
+    }
     socket.add(utf8.encode('$line\r\n'));
   }
 

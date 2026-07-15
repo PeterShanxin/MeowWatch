@@ -10,6 +10,19 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.42.4-alpha] - 2026-07-16
+
+> Quieter diagnostics stay light during long watch sessions.
+
+### Improved: Lighter diagnostics
+- When diagnostic logging is set to Neat or Off, heartbeat traffic and ignored
+  sync decisions are now discarded before their log text is prepared, reducing
+  steady background work during a watch session (#198).
+
+### Fixed
+- Private access details in links are now scrubbed from diagnostic logs even
+  when the link appears inside a longer server or chat message.
+
 ## [0.42.3-alpha] - 2026-07-15
 
 > Smoother, quieter updates — no frozen window, no console pop-up.
