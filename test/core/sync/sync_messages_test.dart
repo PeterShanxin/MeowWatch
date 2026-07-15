@@ -61,6 +61,15 @@ void main() {
       expect(redacted, contains('#<redacted>'));
       expect(redacted, contains('cdn.example.com/video.mp4'));
     });
+
+    test('redacts a signed URL embedded in freeform text', () {
+      final redacted = redactUrlSecrets(
+        'bad https://user:token@cdn.example/clip.mp4?sig=SECRET',
+      );
+      expect(redacted, contains('bad https://cdn.example/clip.mp4?<redacted>'));
+      expect(redacted, isNot(contains('user:token')));
+      expect(redacted, isNot(contains('SECRET')));
+    });
   });
 
   group('redactSecretsForLogText', () {
