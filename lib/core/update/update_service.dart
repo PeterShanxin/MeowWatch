@@ -61,6 +61,12 @@ enum UpdatePhase {
   updateAvailable,
   downloading,
   readyToInstall,
+
+  /// An `applyUpdate` is in flight. Verify+extract runs in a background
+  /// isolate (#197), so the event loop is live while it works — this phase is
+  /// what lets the dialog hide its Install button and the close handler
+  /// swallow the X-click instead of racing a second apply (#205 review).
+  installing,
   error,
 }
 
@@ -112,16 +118,43 @@ class UpdateService extends ChangeNotifier {
   static final UpdateService instance = UpdateService._();
 
   @visibleForTesting
-  UpdateService.forTest({String? baseUrl, http.Client? client})
-      : _baseUrl = baseUrl ?? updateBaseUrl,
-        _client = client ?? http.Client();
+  UpdateService.forTest({
+    String? baseUrl,
+    http.Client? client,
+    String? publicKeyBase64,
+  })  : _baseUrl = baseUrl ?? updateBaseUrl,
+        _client = client ?? http.Client(),
+        _publicKeyBase64 = publicKeyBase64 ?? releasePublicKeyBase64;
 
   UpdateService._({String? baseUrl, http.Client? client})
       : _baseUrl = baseUrl ?? updateBaseUrl,
-        _client = client ?? http.Client();
+        _client = client ?? http.Client(),
+        _publicKeyBase64 = releasePublicKeyBase64;
 
   final String _baseUrl;
   final http.Client _client;
+
+  /// Release public key updates are verified against. The baked-in key in
+  /// production; tests inject their own so they can sign real payloads.
+  final String _publicKeyBase64;
+
+  /// Test seam for the detached-updater launch — `applyUpdate` would otherwise
+  /// spawn a real process. Null in production.
+  @visibleForTesting
+  Future<void> Function(String executable, List<String> arguments)?
+      debugStartDetached;
+
+  /// Test seam for terminating the process — `applyUpdate` ends in `exit(0)`,
+  /// which would kill the test runner. Null in production.
+  @visibleForTesting
+  void Function(int code)? debugExitApp;
+
+  /// The one in-flight (or completed) apply. Single-flight: verify+extract
+  /// yields to the event loop (#197), so a double-click on Install or the
+  /// window-close path could otherwise start a second apply against the same
+  /// temp dir — racing file writes and launching duplicate updaters (#205
+  /// review). Reset to null on failure so the user can retry.
+  Future<void>? _applyFuture;
 
   UpdateInfo? _latestUpdate;
 
@@ -264,7 +297,8 @@ class UpdateService extends ChangeNotifier {
     // tap, or overlapping network calls race and a stale result can win.
     if (phase == UpdatePhase.checking ||
         phase == UpdatePhase.downloading ||
-        phase == UpdatePhase.readyToInstall) {
+        phase == UpdatePhase.readyToInstall ||
+        phase == UpdatePhase.installing) {
       return;
     }
     _phase = UpdatePhase.checking;
@@ -380,62 +414,91 @@ class UpdateService extends ChangeNotifier {
   ///
   /// Pass [restartAfter] false to swap the files without relaunching — used by
   /// the apply-on-close path (#62), where the user is quitting.
-  Future<void> applyUpdate(String zipPath, {bool restartAfter = true}) async {
-    appLog('update: apply start ${_latestUpdate?.version ?? '?'} (verify+extract)');
-
-    final tempDir = Directory(p.dirname(zipPath));
-    final extractDir = Directory(p.join(tempDir.path, 'extracted'));
-
-    // Verify + extract runs in a background isolate: hashing a tens-of-MB zip,
-    // Ed25519 verify, and unzipping are multi-second synchronous jobs that
-    // froze the window (no repaint) for the whole "Install" (#197 P4). Every
-    // security gate — checksum, signature, zip-slip — still runs, just off the
-    // UI isolate. See [verifyAndExtractUpdateInBackground] for why each gate
-    // exists.
-    await verifyAndExtractUpdateInBackground(
-      zipPath: zipPath,
-      version: _latestUpdate?.version ?? '',
-      expectedSha256: _latestUpdate?.sha256,
-      signature: _latestUpdate?.signature,
-      extractDirPath: extractDir.path,
-    );
-
-    // The app directory is the folder containing the current executable.
-    final appDir = p.dirname(Platform.resolvedExecutable);
-    final scriptPath = p.join(tempDir.path, 'updater.ps1');
-    final vbsPath = p.join(tempDir.path, 'updater.vbs');
-
-    final script = buildUpdaterScript(
-      extractedDir: extractDir.path,
-      appDir: appDir,
-      tempDir: tempDir.path,
-      exeName: p.basename(Platform.resolvedExecutable),
-      restart: restartAfter,
-    );
-
-    await File(scriptPath).writeAsString(script);
-    await File(vbsPath).writeAsString(buildUpdaterVbs(scriptPath: scriptPath));
-
-    // Launch the updater so it OUTLIVES this process. A directly-spawned
-    // detached child stays inside our Windows job object, so the instant we
-    // exit(0) the job's kill-on-close terminates the updater before it runs a
-    // single line — this was the silent auto-update failure (app closed,
-    // nothing happened, version unchanged, no updater.log written). Routing
-    // through cmd's `start` re-parents the child outside our process tree so
-    // it survives our exit. See [buildUpdaterLaunch].
-    final launch = buildUpdaterLaunch(vbsPath: vbsPath);
-    await Process.start(
-      launch.executable,
-      launch.arguments,
-      mode: ProcessStartMode.detached,
-    );
-
-    // Last chance to get the update trace onto disk: exit(0) below kills the
-    // process, so flush the session log before it goes (#140).
-    appLog('update: updater launched; exiting');
-    await appLogInstance?.flush();
-    exit(0);
+  Future<void> applyUpdate(String zipPath, {bool restartAfter = true}) {
+    // Single-flight: a second call (double-clicked Install, or the close path
+    // firing mid-install) shares the in-flight apply instead of racing it.
+    return _applyFuture ??= _applyUpdateImpl(zipPath, restartAfter: restartAfter);
   }
+
+  Future<void> _applyUpdateImpl(
+    String zipPath, {
+    required bool restartAfter,
+  }) async {
+    appLog('update: apply start ${_latestUpdate?.version ?? '?'} (verify+extract)');
+    _phase = UpdatePhase.installing;
+    notifyListeners();
+
+    try {
+      final tempDir = Directory(p.dirname(zipPath));
+      final extractDir = Directory(p.join(tempDir.path, 'extracted'));
+
+      // Verify + extract runs in a background isolate: hashing a tens-of-MB
+      // zip, Ed25519 verify, and unzipping are multi-second synchronous jobs
+      // that froze the window (no repaint) for the whole "Install" (#197 P4).
+      // Every security gate — checksum, signature, zip-slip — still runs, just
+      // off the UI isolate. See [verifyAndExtractUpdateInBackground] for why
+      // each gate exists.
+      await verifyAndExtractUpdateInBackground(
+        zipPath: zipPath,
+        version: _latestUpdate?.version ?? '',
+        expectedSha256: _latestUpdate?.sha256,
+        signature: _latestUpdate?.signature,
+        extractDirPath: extractDir.path,
+        publicKeyBase64: _publicKeyBase64,
+      );
+
+      // The app directory is the folder containing the current executable.
+      final appDir = p.dirname(Platform.resolvedExecutable);
+      final scriptPath = p.join(tempDir.path, 'updater.ps1');
+      final vbsPath = p.join(tempDir.path, 'updater.vbs');
+
+      final script = buildUpdaterScript(
+        extractedDir: extractDir.path,
+        appDir: appDir,
+        tempDir: tempDir.path,
+        exeName: p.basename(Platform.resolvedExecutable),
+        restart: restartAfter,
+      );
+
+      await File(scriptPath).writeAsString(script);
+      await File(vbsPath).writeAsString(buildUpdaterVbs(scriptPath: scriptPath));
+
+      // Launch the updater so it OUTLIVES this process. A directly-spawned
+      // detached child stays inside our Windows job object, so the instant we
+      // exit(0) the job's kill-on-close terminates the updater before it runs a
+      // single line — this was the silent auto-update failure (app closed,
+      // nothing happened, version unchanged, no updater.log written). Routing
+      // through cmd's `start` re-parents the child outside our process tree so
+      // it survives our exit. See [buildUpdaterLaunch].
+      final launch = buildUpdaterLaunch(vbsPath: vbsPath);
+      await (debugStartDetached ?? _startDetachedProcess)(
+        launch.executable,
+        launch.arguments,
+      );
+
+      // Last chance to get the update trace onto disk: exit(0) below kills the
+      // process, so flush the session log before it goes (#140).
+      appLog('update: updater launched; exiting');
+      await appLogInstance?.flush();
+      (debugExitApp ?? exit)(0);
+    } catch (e) {
+      // Clear the single-flight slot so the user can retry, and surface the
+      // failure through the dialog's error body instead of a dead spinner.
+      _applyFuture = null;
+      _errorMessage =
+          'Install failed. The update file may be corrupted — try downloading it again.';
+      _phase = UpdatePhase.error;
+      appLog('update: apply failed (${redactUrls('$e')})');
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  static Future<void> _startDetachedProcess(
+    String executable,
+    List<String> arguments,
+  ) =>
+      Process.start(executable, arguments, mode: ProcessStartMode.detached);
 
   /// Verify [bytes] against the [expected] SHA-256 hex digest.
   ///
