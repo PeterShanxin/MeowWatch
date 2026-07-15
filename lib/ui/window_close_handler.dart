@@ -80,10 +80,14 @@ class WindowCloseHandler with WindowListener {
       _service.phase == UpdatePhase.readyToInstall &&
       _service.downloadedZipPath != null;
 
-  /// Prevent close only while an update is ready or a room is active; otherwise
-  /// let the OS close the window normally (fast, no Dart in the path).
+  bool get _installing => _service.phase == UpdatePhase.installing;
+
+  /// Prevent close only while an update is ready, an install is running, or a
+  /// room is active; otherwise let the OS close the window normally (fast, no
+  /// Dart in the path).
   void _syncPreventClose() {
-    final shouldPrevent = _updateReady || appCloseHook.value != null;
+    final shouldPrevent =
+        _updateReady || _installing || appCloseHook.value != null;
     if (shouldPrevent == _preventing) return;
     _preventing = shouldPrevent;
     unawaited(windowManager.setPreventClose(shouldPrevent));
@@ -99,6 +103,13 @@ class WindowCloseHandler with WindowListener {
   /// user, except the deliberate "cancel" path.
   @visibleForTesting
   Future<void> handleClose() async {
+    // An install is already in flight (Install & Restart clicked): the updater
+    // exits this process itself the moment it launches, and a teardown here
+    // would race the extract still running in the background isolate (#205
+    // review). Swallow the close; if the apply fails instead, the phase flips
+    // to error, prevent-close re-syncs, and closing works normally again.
+    if (_installing) return;
+
     final zip = _service.downloadedZipPath;
     if (_updateReady && zip != null) {
       final ctx = navigatorKey.currentContext;
@@ -110,14 +121,14 @@ class WindowCloseHandler with WindowListener {
 
       if (choice == UpdateCloseChoice.installAndQuit) {
         try {
-          // Show a blocking "installing…" modal so the file swap (a few seconds
-          // of sync I/O before the process exits) doesn't read as a frozen
-          // window. Don't await it — it never pops; applyUpdate exits under it.
+          // Show a blocking "installing…" modal while the background-isolate
+          // verify+extract runs (#197), so the pre-exit wait doesn't read as a
+          // frozen window. Don't await it — it never pops; applyUpdate exits
+          // under it.
           final modalCtx = navigatorKey.currentContext;
           if (modalCtx != null && modalCtx.mounted) {
             unawaited(showInstallingUpdateDialog(modalCtx));
-            // Let the modal paint a frame before the synchronous unzip blocks
-            // the UI isolate.
+            // Let the modal paint a frame before the pre-exit work starts.
             await Future<void>.delayed(const Duration(milliseconds: 80));
           }
           // Tell the room we're leaving before the process exits (#92).

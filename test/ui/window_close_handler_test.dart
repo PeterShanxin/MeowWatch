@@ -8,6 +8,8 @@ import 'package:meowwatch/core/update/update_service.dart';
 import 'package:meowwatch/ui/app_close_hook.dart';
 import 'package:meowwatch/ui/window_close_handler.dart';
 
+import '../core/update/apply_harness.dart';
+
 void main() {
   // Pump a button that opens the close-confirm dialog and records its result.
   Future<UpdateCloseChoice?> openAndPick(
@@ -240,5 +242,33 @@ void main() {
     await handler.handleClose();
 
     expect(order, ['destroy', 'exit']);
+  });
+
+  test('handleClose during an in-flight install swallows the close '
+      '(#205 review)', () async {
+    appCloseHook.value = null;
+    final h = await ApplyHarness.create(holdLauncher: true);
+    addTearDown(h.dispose);
+
+    final apply = h.service.applyUpdate(h.zipPath);
+    expect(h.service.phase, UpdatePhase.installing);
+
+    final order = <String>[];
+    final handler = WindowCloseHandler(
+      navigatorKey: GlobalKey<NavigatorState>(),
+      service: h.service,
+      hideWindow: () async => order.add('hide'),
+      destroyWindow: () async => order.add('destroy'),
+      exitProcess: (_) => order.add('exit'),
+    );
+
+    await handler.handleClose();
+
+    // Nothing torn down: the running install exits the process itself the
+    // moment the updater launches; destroying the window here would race it.
+    expect(order, isEmpty);
+
+    h.launchGate.complete();
+    await apply;
   });
 }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
@@ -35,3 +36,12 @@ List<int>? zipLogFiles(Directory dir) {
   if (archive.isEmpty) return null;
   return ZipEncoder().encode(archive);
 }
+
+/// [zipLogFiles], but off the UI isolate (#197 P4).
+///
+/// Reading and zipping several rotating logs is synchronous, potentially
+/// multi-MB work; called from the gear menu it caused a visible freeze,
+/// potentially mid-playback. Takes a path rather than a [Directory] so the
+/// closure captures only cheaply-sendable state.
+Future<List<int>?> zipLogFilesInBackground(String dirPath) =>
+    Isolate.run(() => zipLogFiles(Directory(dirPath)));

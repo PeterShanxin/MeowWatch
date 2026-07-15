@@ -10,6 +10,23 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.42.3-alpha] - 2026-07-15
+
+> Smoother, quieter updates — no frozen window, no console pop-up.
+
+### Fixed
+- Installing an update no longer freezes the window: the safety checks and
+  unpacking now happen in the background, so the "installing" spinner keeps
+  moving instead of the app appearing to hang (#197).
+- The console window that used to appear while an update installed is gone —
+  the updater now runs fully hidden, like you'd expect (#197).
+- Exporting diagnostic logs no longer causes a brief freeze (it could stutter
+  playback when used mid-session) (#197).
+
+### Improved
+- The update download dialog now refreshes at a steady, readable pace instead
+  of once per network packet (#197).
+
 ## [0.42.2-alpha] - 2026-07-14
 
 > Lighter on your laptop during a movie night.

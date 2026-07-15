@@ -10,6 +10,8 @@ import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/core/update/update_service.dart';
 import 'package:meowwatch/ui/update_dialog.dart';
 
+import '../core/update/apply_harness.dart';
+
 void main() {
   // latest.json reporting the installed version → the dialog lands in the
   // up-to-date phase. Both arch keys so it works on x64 and arm64 hosts.
@@ -186,5 +188,39 @@ void main() {
 
     expect(latestChecks, 1);
     expect(svc.phase, UpdatePhase.upToDate);
+  });
+
+  testWidgets(
+      'installing phase shows a spinner and no longer offers Install '
+      '(#205 review)', (tester) async {
+    // The apply pipeline runs a real background isolate — real async that a
+    // widget test's fake-async zone would deadlock on, so drive it inside
+    // runAsync and only pump between the real-async sections.
+    final (h, apply) = (await tester.runAsync(() async {
+      final h = await ApplyHarness.create(holdLauncher: true);
+      final apply = h.service.applyUpdate(h.zipPath);
+      // Yield until the verify+extract isolate is done and the service is
+      // parked on the held launcher — phase is installing throughout.
+      while (h.launches.isEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      return (h, apply);
+    }))!;
+    // The dialog owns (and disposes) the injected service; only reclaim disk.
+    addTearDown(h.disposeTempDirOnly);
+    expect(h.service.phase, UpdatePhase.installing);
+
+    await tester.pumpWidget(host(h.service));
+    await tester.pump();
+
+    expect(find.textContaining('Installing'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // The double-click path: the button that started the install is gone.
+    expect(find.text('Install & Restart'), findsNothing);
+
+    await tester.runAsync(() async {
+      h.launchGate.complete();
+      await apply;
+    });
   });
 }
