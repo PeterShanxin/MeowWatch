@@ -258,7 +258,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
     // lines (#146 review).
     await appLogInstance?.flush();
     final dir = await resolveAppLogsDir();
-    final zipBytes = zipLogFiles(dir);
+    // Zip in a background isolate so the lobby stays responsive (#197 P4).
+    final zipBytes = await zipLogFilesInBackground(dir.path);
     if (zipBytes == null) {
       _showSnack('No diagnostic logs to export yet.');
       return;

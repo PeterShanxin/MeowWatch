@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
@@ -105,8 +106,8 @@ class UnsafeArchiveEntryException implements Exception {
 ///   1. `checkForUpdate()` → GET `{baseUrl}/releases/latest.json`
 ///   2. Compare remote version to [appVersion]
 ///   3. `downloadUpdate()` → stream zip to temp dir with progress callback
-///   4. `applyUpdate()` → verify SHA-256, extract zip, write updater.ps1,
-///      launch it, exit app
+///   4. `applyUpdate()` → verify + extract in a background isolate, write
+///      updater.ps1 and its hidden-launch VBS shim, start it, exit app
 class UpdateService extends ChangeNotifier {
   static final UpdateService instance = UpdateService._();
 
@@ -292,14 +293,36 @@ class UpdateService extends ChangeNotifier {
     _downloadTotalBytes = null;
     notifyListeners();
 
+    // Notify at most once per whole percent (known total) or per 256 KiB
+    // (unknown total): a ~50 MB zip arrives in thousands of chunks, and a
+    // per-chunk notifyListeners() rebuilt the dialog far above frame rate
+    // (#197 P5). The byte counters above stay exact on every chunk — only the
+    // listener notification is coalesced.
+    var lastNotifiedPercent = -1;
+    var lastNotifiedBytes = -1;
+    const notifyBytesStep = 256 * 1024;
+
     try {
       final path = await downloadUpdate((received, total) {
         _downloadReceivedBytes = received;
         _downloadTotalBytes = total;
         // Only a real fraction when the total is known; otherwise leave progress
         // at 0 and let the UI render an indeterminate bar (#63).
-        _downloadProgress =
-            (total != null && total > 0) ? received / total : 0;
+        final known = total != null && total > 0;
+        _downloadProgress = known ? received / total : 0;
+        if (known) {
+          final percent = received * 100 ~/ total;
+          if (percent == lastNotifiedPercent) return;
+          lastNotifiedPercent = percent;
+        } else {
+          // First chunk always notifies so the byte counter visibly starts
+          // moving; after that, once per step.
+          if (lastNotifiedBytes >= 0 &&
+              received - lastNotifiedBytes < notifyBytesStep) {
+            return;
+          }
+          lastNotifiedBytes = received;
+        }
         notifyListeners();
       });
       _downloadedZipPath = path;
@@ -359,37 +382,28 @@ class UpdateService extends ChangeNotifier {
   /// the apply-on-close path (#62), where the user is quitting.
   Future<void> applyUpdate(String zipPath, {bool restartAfter = true}) async {
     appLog('update: apply start ${_latestUpdate?.version ?? '?'} (verify+extract)');
-    final zipBytes = await File(zipPath).readAsBytes();
-
-    // Integrity gate: confirm the bytes match the hash published in
-    // latest.json before we extract or run anything. A mismatch means the
-    // download was corrupted or tampered with — abort instead of installing.
-    verifyChecksum(zipBytes, _latestUpdate?.sha256);
-
-    // Authenticity gate: the checksum only proves the bytes match latest.json,
-    // which lives in the same bucket as the zip — whoever can swap one can swap
-    // the other. The Ed25519 signature is made with a private key that never
-    // touches R2, GitHub, or this repo, so a poisoned bucket can't forge it. The
-    // signature also binds the advertised version (not just the bytes), so an
-    // old genuinely-signed zip can't be replayed under a faked higher version.
-    // Fail closed: refuse any update we can't verify against the baked-in key.
-    verifyReleaseSignature(
-      _latestUpdate?.version ?? '',
-      zipBytes,
-      _latestUpdate?.signature,
-    );
-
-    final archive = ZipDecoder().decodeBytes(zipBytes);
 
     final tempDir = Directory(p.dirname(zipPath));
     final extractDir = Directory(p.join(tempDir.path, 'extracted'));
-    extractDir.createSync(recursive: true);
 
-    extractArchive(archive, extractDir);
+    // Verify + extract runs in a background isolate: hashing a tens-of-MB zip,
+    // Ed25519 verify, and unzipping are multi-second synchronous jobs that
+    // froze the window (no repaint) for the whole "Install" (#197 P4). Every
+    // security gate — checksum, signature, zip-slip — still runs, just off the
+    // UI isolate. See [verifyAndExtractUpdateInBackground] for why each gate
+    // exists.
+    await verifyAndExtractUpdateInBackground(
+      zipPath: zipPath,
+      version: _latestUpdate?.version ?? '',
+      expectedSha256: _latestUpdate?.sha256,
+      signature: _latestUpdate?.signature,
+      extractDirPath: extractDir.path,
+    );
 
     // The app directory is the folder containing the current executable.
     final appDir = p.dirname(Platform.resolvedExecutable);
     final scriptPath = p.join(tempDir.path, 'updater.ps1');
+    final vbsPath = p.join(tempDir.path, 'updater.vbs');
 
     final script = buildUpdaterScript(
       extractedDir: extractDir.path,
@@ -400,15 +414,16 @@ class UpdateService extends ChangeNotifier {
     );
 
     await File(scriptPath).writeAsString(script);
+    await File(vbsPath).writeAsString(buildUpdaterVbs(scriptPath: scriptPath));
 
     // Launch the updater so it OUTLIVES this process. A directly-spawned
     // detached child stays inside our Windows job object, so the instant we
     // exit(0) the job's kill-on-close terminates the updater before it runs a
     // single line — this was the silent auto-update failure (app closed,
     // nothing happened, version unchanged, no updater.log written). Routing
-    // through cmd's `start` re-parents PowerShell outside our process tree so
+    // through cmd's `start` re-parents the child outside our process tree so
     // it survives our exit. See [buildUpdaterLaunch].
-    final launch = buildUpdaterLaunch(scriptPath: scriptPath);
+    final launch = buildUpdaterLaunch(vbsPath: vbsPath);
     await Process.start(
       launch.executable,
       launch.arguments,
@@ -430,14 +445,8 @@ class UpdateService extends ChangeNotifier {
   /// is case-insensitive, since hex digests may be published in either case,
   /// and the published value is trimmed so stray whitespace (templating or
   /// copy/paste) doesn't reject a valid download.
-  void verifyChecksum(List<int> bytes, String? expected) {
-    final want = expected?.trim();
-    if (want == null || want.isEmpty) return;
-    final actual = sha256.convert(bytes).toString();
-    if (actual.toLowerCase() != want.toLowerCase()) {
-      throw UpdateVerificationException(expected: want, actual: actual);
-    }
-  }
+  void verifyChecksum(List<int> bytes, String? expected) =>
+      verifyUpdateChecksum(bytes, expected);
 
   /// Extract [archive] into [extractDir], rejecting any entry whose resolved
   /// path would land outside [extractDir] (zip-slip). Throws
@@ -485,22 +494,107 @@ class UpdateService extends ChangeNotifier {
   }
 }
 
-/// Build the command that launches the updater script so it survives this
-/// process exiting.
+/// Verify [bytes] against the [expected] SHA-256 hex digest.
 ///
-/// MUST route through `cmd /c start` rather than spawning `powershell`
-/// directly: on Windows the app runs inside a job object, and a detached child
-/// we spawn ourselves stays *in that job*. When we `exit(0)`, the job's
-/// kill-on-close tears the child down before it executes a line — which is
-/// exactly why auto-update appeared to do nothing (the app closed, the version
-/// never changed, and no `updater.log` was ever written). `start` re-parents
-/// PowerShell outside our process tree so it outlives us.
+/// No-op when [expected] is null or empty — older releases may not publish a
+/// hash, and we can only verify against what was provided. When a hash *is*
+/// present, a mismatch throws [UpdateVerificationException]. The comparison
+/// is case-insensitive, since hex digests may be published in either case,
+/// and the published value is trimmed so stray whitespace (templating or
+/// copy/paste) doesn't reject a valid download.
 ///
-/// The empty `''` is `start`'s window-title argument — required, or `start`
-/// would mis-read a quoted path as the title. `-WindowStyle Hidden` keeps the
-/// updater console from flashing on screen during the swap.
+/// Top-level (not a method) so the background isolate's closure captures no
+/// service state (#197 P4).
+void verifyUpdateChecksum(List<int> bytes, String? expected) {
+  final want = expected?.trim();
+  if (want == null || want.isEmpty) return;
+  final actual = sha256.convert(bytes).toString();
+  if (actual.toLowerCase() != want.toLowerCase()) {
+    throw UpdateVerificationException(expected: want, actual: actual);
+  }
+}
+
+/// Run the CPU-heavy verify + extract pipeline in a background isolate.
+///
+/// Reading and SHA-256-hashing a tens-of-MB zip, verifying its Ed25519
+/// signature, and unzipping it are multi-second synchronous jobs; on the UI
+/// isolate they froze the window for the whole "Install" (#197 P4). Parameters
+/// are plain Strings so the closure crosses the isolate boundary cheaply.
+///
+/// The security gates run unchanged, in order, inside the worker:
+///
+/// 1. **Integrity** — the bytes must match the hash published in latest.json,
+///    or the download was corrupted/tampered with.
+/// 2. **Authenticity** — the checksum only proves the bytes match latest.json,
+///    which lives in the same bucket as the zip; the Ed25519 signature is made
+///    with a private key the bucket never sees, binds the advertised version
+///    (anti-rollback), and fails closed.
+/// 3. **Containment** — every zip entry must extract strictly inside
+///    [extractDirPath] (zip-slip rejection).
+///
+/// Throws [UpdateVerificationException], [UpdateSignatureException], or
+/// [UnsafeArchiveEntryException] — all sendable across the isolate boundary.
+Future<void> verifyAndExtractUpdateInBackground({
+  required String zipPath,
+  required String version,
+  required String? expectedSha256,
+  required String? signature,
+  required String extractDirPath,
+  String publicKeyBase64 = releasePublicKeyBase64,
+}) {
+  return Isolate.run(() {
+    final zipBytes = File(zipPath).readAsBytesSync();
+    verifyUpdateChecksum(zipBytes, expectedSha256);
+    verifyReleaseSignature(
+      version,
+      zipBytes,
+      signature,
+      publicKeyBase64: publicKeyBase64,
+    );
+    final archive = ZipDecoder().decodeBytes(zipBytes);
+    final extractDir = Directory(extractDirPath)..createSync(recursive: true);
+    UpdateService.extractArchive(archive, extractDir);
+  });
+}
+
+/// Build the VBScript shim that relaunches the PowerShell updater with a
+/// window that is hidden from its very first frame.
+///
+/// `powershell -WindowStyle Hidden` alone is not enough: the console window is
+/// created visible and PowerShell only hides it once its (slow) startup gets
+/// that far, so users watched a console flash — or sit — on screen during the
+/// update (#197). `WScript.Shell.Run` with window style `0` passes SW_HIDE at
+/// process creation, so the console never appears at all. `False` = don't
+/// wait: wscript exits immediately and the updater runs on alone.
+/// `-WindowStyle Hidden` stays as belt-and-braces.
+String buildUpdaterVbs({required String scriptPath}) {
+  // VBScript escapes a quote inside a double-quoted string by doubling it.
+  final quoted = scriptPath.replaceAll('"', '""');
+  return '''
+' MeowWatch updater launch shim — generated by the app, runs once, deleted by
+' the updater script it starts.
+CreateObject("WScript.Shell").Run "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""$quoted""", 0, False
+''';
+}
+
+/// Build the command that launches the updater VBS shim so the updater
+/// survives this process exiting AND never shows a console window.
+///
+/// MUST route through `cmd /c start` rather than spawning the child directly:
+/// on Windows the app runs inside a job object, and a detached child we spawn
+/// ourselves stays *in that job*. When we `exit(0)`, the job's kill-on-close
+/// tears the child down before it executes a line — which is exactly why
+/// auto-update appeared to do nothing (the app closed, the version never
+/// changed, and no `updater.log` was ever written). `start` re-parents the
+/// child outside our process tree so it outlives us.
+///
+/// `start` on a console app (like powershell) allocates a visible console
+/// window for the whole run (#197); `wscript` is a GUI-subsystem executable,
+/// so no console ever exists in this chain. The empty `''` is `start`'s
+/// window-title argument — required, or `start` would mis-read a quoted path
+/// as the title. `//B` (batch mode) suppresses wscript's script-error popups.
 ({String executable, List<String> arguments}) buildUpdaterLaunch({
-  required String scriptPath,
+  required String vbsPath,
 }) {
   return (
     executable: 'cmd',
@@ -508,13 +602,9 @@ class UpdateService extends ChangeNotifier {
       '/c',
       'start',
       '',
-      'powershell',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-WindowStyle',
-      'Hidden',
-      '-File',
-      scriptPath,
+      'wscript',
+      '//B',
+      vbsPath,
     ],
   );
 }
@@ -591,6 +681,7 @@ $restartBlock
 Start-Sleep -Seconds 2
 Remove-Item -Path "$extractedDir" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "$tempDir\\update.zip" -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$tempDir\\updater.vbs" -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath \$PSCommandPath -Force -ErrorAction SilentlyContinue
 ''';
 }
