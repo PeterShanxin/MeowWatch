@@ -38,4 +38,26 @@ void main() {
     final a = archive.findFile('a.log')!;
     expect(utf8.decode(a.content as List<int>), 'alpha');
   });
+
+  test(
+      'zipLogFilesInBackground zips off the UI isolate and matches the sync '
+      'result (#197 P4)', () async {
+    File(path('a.log')).writeAsStringSync('alpha');
+    File(path('notes.txt')).writeAsStringSync('ignore me');
+
+    final bytes = await zipLogFilesInBackground(dir.path);
+    expect(bytes, isNotNull);
+
+    final archive = ZipDecoder().decodeBytes(bytes!);
+    expect(archive.files.map((f) => f.name).toSet(), <String>{'a.log'});
+    expect(
+      utf8.decode(archive.findFile('a.log')!.content as List<int>),
+      'alpha',
+    );
+  });
+
+  test('zipLogFilesInBackground returns null for a missing directory',
+      () async {
+    expect(await zipLogFilesInBackground(path('does_not_exist')), isNull);
+  });
 }

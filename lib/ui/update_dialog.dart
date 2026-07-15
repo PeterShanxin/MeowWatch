@@ -56,7 +56,12 @@ class _UpdateDialogState extends State<UpdateDialog> {
   Future<void> _install() async {
     final path = _service.downloadedZipPath;
     if (path == null) return;
-    await _service.applyUpdate(path);
+    try {
+      await _service.applyUpdate(path);
+    } on Exception {
+      // The service already recorded the failure (phase → error with a
+      // user-facing message); the dialog rebuilds into the error body.
+    }
   }
 
   @override
@@ -244,6 +249,33 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 ),
                 onPressed: _install,
               ),
+            ),
+            const SizedBox(height: Spacing.sm),
+            Text(
+              'The app will close and reopen with the new version.',
+              style: TextStyle(color: m.textDim as Color, fontSize: TypeScale.caption),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        );
+
+      case UpdatePhase.installing:
+        // No buttons: the apply is single-flight in the service, and hiding
+        // Install here is what makes a double-click impossible (#205 review).
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _statusRow(
+              icon: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: m.accent as Color,
+                ),
+              ),
+              text: 'Installing update…',
+              m: m,
             ),
             const SizedBox(height: Spacing.sm),
             Text(

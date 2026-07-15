@@ -784,7 +784,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // Push the live session's buffered lines to disk first, or the zip would
     // omit the most recent (and most relevant) trace.
     await _syncLog?.flush();
-    final zipBytes = zipLogFiles(dir);
+    // Zip in a background isolate — this can run mid-playback (#197 P4).
+    final zipBytes = await zipLogFilesInBackground(dir.path);
     if (zipBytes == null) {
       _showLogSnack('No diagnostic logs to export yet.');
       return;
