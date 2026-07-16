@@ -155,4 +155,65 @@ void main() {
       );
     });
   });
+
+  group('peerStartedPlaybackPrompt (#121 follow-up)', () {
+    test('keeps the one-click URL when the peer starts playback', () {
+      // The play-triggered prompt must not downgrade an active URL offer:
+      // the button stays, only the wording moves on to "they started".
+      final prompt = peerStartedPlaybackPrompt(
+        localHasFile: false,
+        localUsername: 'meow',
+        peerUsername: 'lin',
+        offeredUrl: 'https://x.test/a.mp4?token=secret',
+      );
+      expect(prompt, isNotNull);
+      expect(prompt!.url, 'https://x.test/a.mp4?token=secret');
+      expect(prompt.message, contains('lin started playback'));
+      // Raw URL (and its token) never leaks into the visible message.
+      expect(prompt.message, isNot(contains('token=secret')));
+    });
+
+    test('matches the classic #60 text-only prompt when no URL is offered', () {
+      final prompt = peerStartedPlaybackPrompt(
+        localHasFile: false,
+        localUsername: 'meow',
+        peerUsername: 'lin',
+        offeredUrl: null,
+      );
+      expect(prompt, isNotNull);
+      expect(prompt!.url, isNull);
+      expect(
+        prompt.message,
+        peerStartedPlaybackJoinPrompt(
+          localHasFile: false,
+          localUsername: 'meow',
+          peerUsername: 'lin',
+        ),
+      );
+    });
+
+    test('is null once we have our own file loaded, even with a URL', () {
+      expect(
+        peerStartedPlaybackPrompt(
+          localHasFile: true,
+          localUsername: 'meow',
+          peerUsername: 'lin',
+          offeredUrl: 'https://x.test/a.mp4',
+        ),
+        isNull,
+      );
+    });
+
+    test('ignores our own echoed playback, even with a URL', () {
+      expect(
+        peerStartedPlaybackPrompt(
+          localHasFile: false,
+          localUsername: 'meow',
+          peerUsername: 'meow',
+          offeredUrl: 'https://x.test/a.mp4',
+        ),
+        isNull,
+      );
+    });
+  });
 }

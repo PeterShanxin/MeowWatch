@@ -60,6 +60,34 @@ class JoinPrompt {
   int get hashCode => Object.hash(message, url);
 }
 
+/// A peer drove playback while we have nothing loaded (#60), as a
+/// [JoinPrompt] that keeps an active one-click URL offer alive (#121
+/// follow-up). Without [offeredUrl] this is exactly the classic
+/// [peerStartedPlaybackJoinPrompt] text. With it — the peer announced a
+/// direct link earlier and has now pressed play — the prompt keeps the URL
+/// (so the "Watch this too" button survives) and only the wording moves on;
+/// their playback starting made the offer *more* urgent, not obsolete, and
+/// downgrading the button to plain text right then was a real UX miss caught
+/// in manual testing.
+JoinPrompt? peerStartedPlaybackPrompt({
+  required bool localHasFile,
+  required String? localUsername,
+  required String peerUsername,
+  String? offeredUrl,
+}) {
+  final message = peerStartedPlaybackJoinPrompt(
+    localHasFile: localHasFile,
+    localUsername: localUsername,
+    peerUsername: peerUsername,
+  );
+  if (message == null) return null;
+  if (offeredUrl == null) return JoinPrompt(message);
+  return JoinPrompt(
+    '$peerUsername started playback — join in one click',
+    url: offeredUrl,
+  );
+}
+
 /// A peer announced a loaded **URL** while we have nothing loaded — the
 /// one-click cousin of [peerLoadedJoinPrompt] (#121, step 2 of #119's
 /// URL-sharing arc; #129 shipped direct-URL playback). Returns null for a

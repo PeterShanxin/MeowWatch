@@ -629,13 +629,17 @@ class _HomeScreenState extends State<HomeScreen> {
       // A peer drove playback while we have no video loaded: the transient
       // banner is easy to miss on the empty screen, so also pin a persistent
       // "load a video to join" prompt there (#60).
-      final message = peerStartedPlaybackJoinPrompt(
+      // Carry an active one-click URL offer through the play-start prompt:
+      // the peer pressing play on the link they announced must not downgrade
+      // the "Watch this too" button to plain text (#121 follow-up).
+      final prompt = peerStartedPlaybackPrompt(
         localHasFile: _core.state.fileName != null,
         localUsername: _username,
         peerUsername: a.username,
+        offeredUrl: _joinPrompt?.url,
       );
-      if (message != null) {
-        setState(() => _joinPrompt = JoinPrompt(message));
+      if (prompt != null) {
+        setState(() => _joinPrompt = prompt);
       }
       _chat.addSystem(t.chatLine);
     });
