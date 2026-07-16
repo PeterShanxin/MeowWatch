@@ -211,8 +211,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// shown on the empty (no-video) screen when a peer controls playback before
   /// we've loaded anything (#60). Cleared once we load a video or the peer
   /// leaves. The reverse direction is handled by the same code running on the
-  /// friend's machine.
-  String? _joinPrompt;
+  /// friend's machine. Carries a one-click [JoinPrompt.url] when the peer's
+  /// announced media is a direct link (#121), so the empty screen can offer a
+  /// "Watch this too" button in addition to the text.
+  JoinPrompt? _joinPrompt;
 
   /// The source path that the *most recent* load actually confirmed open. The
   /// connect/reconnect re-announce gates on this so a still-loading, superseded,
@@ -581,15 +583,29 @@ class _HomeScreenState extends State<HomeScreen> {
         // "load the same video to join" prompt on the empty screen so the side
         // still picking a file knows which one — the mirror of the loader's
         // "hasn't loaded a video yet" heads-up (#116). The play-triggered prompt
-        // below takes over if/when they actually start playback.
-        final prompt = peerLoadedJoinPrompt(
-          localHasFile: _core.state.fileName != null,
-          localUsername: _username,
-          peerUsername: f.username,
-          // Show the short/redacted label — a peer's raw URL (with any signed
-          // token) must never render verbatim in our join prompt.
-          peerFileName: mediaDisplayName(f.name),
-        );
+        // below takes over if/when they actually start playback. When the
+        // peer's media is a direct link, offer a one-click "Watch this too"
+        // load instead of the plain text — same trigger, richer action (#121).
+        final localHasFile = _core.state.fileName != null;
+        JoinPrompt? prompt;
+        if (isHttpUrl(f.name)) {
+          prompt = peerLoadedUrlJoinPrompt(
+            localHasFile: localHasFile,
+            localUsername: _username,
+            peerUsername: f.username,
+            peerFileUrl: f.name,
+          );
+        } else {
+          final message = peerLoadedJoinPrompt(
+            localHasFile: localHasFile,
+            localUsername: _username,
+            peerUsername: f.username,
+            // Show the short/redacted label — a peer's raw URL (with any
+            // signed token) must never render verbatim in our join prompt.
+            peerFileName: mediaDisplayName(f.name),
+          );
+          if (message != null) prompt = JoinPrompt(message);
+        }
         if (prompt != null) _joinPrompt = prompt;
       });
     });
@@ -613,12 +629,14 @@ class _HomeScreenState extends State<HomeScreen> {
       // A peer drove playback while we have no video loaded: the transient
       // banner is easy to miss on the empty screen, so also pin a persistent
       // "load a video to join" prompt there (#60).
-      final prompt = peerStartedPlaybackJoinPrompt(
+      final message = peerStartedPlaybackJoinPrompt(
         localHasFile: _core.state.fileName != null,
         localUsername: _username,
         peerUsername: a.username,
       );
-      if (prompt != null) setState(() => _joinPrompt = prompt);
+      if (message != null) {
+        setState(() => _joinPrompt = JoinPrompt(message));
+      }
       _chat.addSystem(t.chatLine);
     });
     _rosterSub = _sync.initialRoster.listen((members) {
@@ -1580,7 +1598,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         onBrowse: _browse,
                         onLeave: () => unawaited(_leave()),
                         onLoadUrl: (url) => unawaited(_load(url)),
-                        notice: _joinPrompt,
+                        notice: _joinPrompt?.message,
+                        onWatchPeerUrl: _joinPrompt?.url == null
+                            ? null
+                            : () => unawaited(_load(_joinPrompt!.url!)),
                       )
                     else if (state.status == PlaybackStatus.error)
                       VideoErrorState(

@@ -10,6 +10,15 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.44.0-alpha] - 2026-07-16
+
+> When a friend is watching a link, one click loads it for you too.
+
+### Added
+- When your friend is watching a direct video link, you now get a "Watch
+  this too" button — one click loads the same link, no copy-pasting
+  required (#121).
+
 ## [0.42.4-alpha] - 2026-07-16
 
 > Quieter diagnostics stay light during long watch sessions.

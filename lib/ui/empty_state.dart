@@ -13,6 +13,7 @@ class EmptyState extends StatelessWidget {
     this.onLoadUrl,
     this.onLeave,
     this.notice,
+    this.onWatchPeerUrl,
     super.key,
   });
 
@@ -26,6 +27,13 @@ class EmptyState extends StatelessWidget {
   /// Optional heads-up shown above the prompt, e.g. "lin started playback —
   /// load a video to join" when a friend is already watching (#60).
   final String? notice;
+
+  /// One-click "Watch this too" action for a peer-URL join offer (#121): a
+  /// friend loaded a direct link and we haven't loaded anything, so [notice]
+  /// already names the link and this button loads it with no clipboard step.
+  /// Non-null only alongside such a [notice]; the button is hidden otherwise
+  /// (a local-file or play-triggered notice has no in-app action to offer).
+  final VoidCallback? onWatchPeerUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -65,13 +73,30 @@ class EmptyState extends StatelessWidget {
                         borderRadius: BorderRadius.circular(Radii.xl),
                         border: Border.all(color: m.accent),
                       ),
-                      child: Text(
-                        '🐾 $notice',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: m.textPrimary,
-                          fontSize: TypeScale.label,
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '🐾 $notice',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: m.textPrimary,
+                              fontSize: TypeScale.label,
+                            ),
+                          ),
+                          if (onWatchPeerUrl != null) ...[
+                            const SizedBox(height: Spacing.sm),
+                            OutlinedButton(
+                              key: const Key('join-prompt-watch-button'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: m.accent,
+                                side: BorderSide(color: m.accent),
+                              ),
+                              onPressed: onWatchPeerUrl,
+                              child: const Text('Watch this too'),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     const SizedBox(height: 28),
