@@ -47,33 +47,48 @@ String? peerStartedPlaybackJoinPrompt({
 /// action to offer.
 @immutable
 class JoinPrompt {
-  const JoinPrompt(this.message, {this.url});
+  const JoinPrompt(this.message, {this.url, this.peer});
 
   final String message;
   final String? url;
 
-  @override
-  bool operator ==(Object other) =>
-      other is JoinPrompt && other.message == message && other.url == url;
+  /// Username of the peer whose announce produced [url]. Set alongside [url]
+  /// so a later play-start event can tell whether it came from the same peer
+  /// — another peer's activity must never re-caption the button while it
+  /// still loads the original announcer's link (#214 review).
+  final String? peer;
 
   @override
-  int get hashCode => Object.hash(message, url);
+  bool operator ==(Object other) =>
+      other is JoinPrompt &&
+      other.message == message &&
+      other.url == url &&
+      other.peer == peer;
+
+  @override
+  int get hashCode => Object.hash(message, url, peer);
 }
 
 /// A peer drove playback while we have nothing loaded (#60), as a
 /// [JoinPrompt] that keeps an active one-click URL offer alive (#121
-/// follow-up). Without [offeredUrl] this is exactly the classic
-/// [peerStartedPlaybackJoinPrompt] text. With it — the peer announced a
+/// follow-up). Without a matching [activeOffer] this is exactly the classic
+/// [peerStartedPlaybackJoinPrompt] text. With one — the peer announced a
 /// direct link earlier and has now pressed play — the prompt keeps the URL
 /// (so the "Watch this too" button survives) and only the wording moves on;
 /// their playback starting made the offer *more* urgent, not obsolete, and
 /// downgrading the button to plain text right then was a real UX miss caught
 /// in manual testing.
+///
+/// The carry-through requires [activeOffer.peer] to equal [peerUsername]:
+/// in a room with more than two people, Bob starting playback must not
+/// re-caption the button to "Bob started playback" while it still loads
+/// Alice's link (#214 review). A mismatched or text-only prompt falls back
+/// to the classic text.
 JoinPrompt? peerStartedPlaybackPrompt({
   required bool localHasFile,
   required String? localUsername,
   required String peerUsername,
-  String? offeredUrl,
+  JoinPrompt? activeOffer,
 }) {
   final message = peerStartedPlaybackJoinPrompt(
     localHasFile: localHasFile,
@@ -81,10 +96,14 @@ JoinPrompt? peerStartedPlaybackPrompt({
     peerUsername: peerUsername,
   );
   if (message == null) return null;
-  if (offeredUrl == null) return JoinPrompt(message);
+  final url = activeOffer?.url;
+  if (url == null || activeOffer?.peer != peerUsername) {
+    return JoinPrompt(message);
+  }
   return JoinPrompt(
     '$peerUsername started playback — join in one click',
-    url: offeredUrl,
+    url: url,
+    peer: peerUsername,
   );
 }
 
@@ -113,5 +132,6 @@ JoinPrompt? peerLoadedUrlJoinPrompt({
   return JoinPrompt(
     '$peerUsername is watching ${mediaDisplayName(url)} — load it too',
     url: url,
+    peer: peerUsername,
   );
 }

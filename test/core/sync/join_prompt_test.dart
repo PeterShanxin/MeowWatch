@@ -157,28 +157,65 @@ void main() {
   });
 
   group('peerStartedPlaybackPrompt (#121 follow-up)', () {
-    test('keeps the one-click URL when the peer starts playback', () {
+    // An active offer as produced by peerLoadedUrlJoinPrompt: lin announced
+    // a direct link while we had nothing loaded.
+    final linsOffer = peerLoadedUrlJoinPrompt(
+      localHasFile: false,
+      localUsername: 'meow',
+      peerUsername: 'lin',
+      peerFileUrl: 'https://x.test/a.mp4?token=secret',
+    );
+
+    test('keeps the one-click URL when the SAME peer starts playback', () {
       // The play-triggered prompt must not downgrade an active URL offer:
       // the button stays, only the wording moves on to "they started".
       final prompt = peerStartedPlaybackPrompt(
         localHasFile: false,
         localUsername: 'meow',
         peerUsername: 'lin',
-        offeredUrl: 'https://x.test/a.mp4?token=secret',
+        activeOffer: linsOffer,
       );
       expect(prompt, isNotNull);
       expect(prompt!.url, 'https://x.test/a.mp4?token=secret');
+      expect(prompt.peer, 'lin');
       expect(prompt.message, contains('lin started playback'));
       // Raw URL (and its token) never leaks into the visible message.
       expect(prompt.message, isNot(contains('token=secret')));
     });
 
-    test('matches the classic #60 text-only prompt when no URL is offered', () {
+    test(
+      "a DIFFERENT peer starting playback must not hijack the offer's URL "
+      '(#214 review)',
+      () {
+        // Alice's offer is active; Bob starts playback. The prompt must not
+        // read "Bob started playback — join in one click" while the button
+        // silently loads Alice's URL.
+        final prompt = peerStartedPlaybackPrompt(
+          localHasFile: false,
+          localUsername: 'meow',
+          peerUsername: 'bob',
+          activeOffer: linsOffer,
+        );
+        expect(prompt, isNotNull);
+        expect(prompt!.url, isNull);
+        expect(
+          prompt.message,
+          peerStartedPlaybackJoinPrompt(
+            localHasFile: false,
+            localUsername: 'meow',
+            peerUsername: 'bob',
+          ),
+        );
+      },
+    );
+
+    test('matches the classic #60 text-only prompt when no offer is active',
+        () {
       final prompt = peerStartedPlaybackPrompt(
         localHasFile: false,
         localUsername: 'meow',
         peerUsername: 'lin',
-        offeredUrl: null,
+        activeOffer: null,
       );
       expect(prompt, isNotNull);
       expect(prompt!.url, isNull);
@@ -192,25 +229,36 @@ void main() {
       );
     });
 
-    test('is null once we have our own file loaded, even with a URL', () {
+    test('a text-only active prompt (no url) is not carried as an offer', () {
+      final prompt = peerStartedPlaybackPrompt(
+        localHasFile: false,
+        localUsername: 'meow',
+        peerUsername: 'lin',
+        activeOffer: const JoinPrompt('lin loaded "movie.mkv" — join'),
+      );
+      expect(prompt, isNotNull);
+      expect(prompt!.url, isNull);
+    });
+
+    test('is null once we have our own file loaded, even with an offer', () {
       expect(
         peerStartedPlaybackPrompt(
           localHasFile: true,
           localUsername: 'meow',
           peerUsername: 'lin',
-          offeredUrl: 'https://x.test/a.mp4',
+          activeOffer: linsOffer,
         ),
         isNull,
       );
     });
 
-    test('ignores our own echoed playback, even with a URL', () {
+    test('ignores our own echoed playback, even with an offer', () {
       expect(
         peerStartedPlaybackPrompt(
           localHasFile: false,
           localUsername: 'meow',
           peerUsername: 'meow',
-          offeredUrl: 'https://x.test/a.mp4',
+          activeOffer: linsOffer,
         ),
         isNull,
       );

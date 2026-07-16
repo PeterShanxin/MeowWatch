@@ -631,12 +631,14 @@ class _HomeScreenState extends State<HomeScreen> {
       // "load a video to join" prompt there (#60).
       // Carry an active one-click URL offer through the play-start prompt:
       // the peer pressing play on the link they announced must not downgrade
-      // the "Watch this too" button to plain text (#121 follow-up).
+      // the "Watch this too" button to plain text (#121 follow-up). The
+      // function only carries it when the offer came from this same peer
+      // (#214 review).
       final prompt = peerStartedPlaybackPrompt(
         localHasFile: _core.state.fileName != null,
         localUsername: _username,
         peerUsername: a.username,
-        offeredUrl: _joinPrompt?.url,
+        activeOffer: _joinPrompt,
       );
       if (prompt != null) {
         setState(() => _joinPrompt = prompt);
