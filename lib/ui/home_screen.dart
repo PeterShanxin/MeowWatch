@@ -1310,6 +1310,11 @@ class _HomeScreenState extends State<HomeScreen> {
         'db: recordOpen FAILED ${mediaDisplayName(path)}: ${redactUrls('$e')}',
       );
     }
+    // A periodic save may have baselined a snapshot while the stat/DB work
+    // above was in flight, and recordOpen may have partially rewritten that
+    // row — drop the baseline so the next tick re-writes current truth
+    // (#208 review).
+    _resumeSaveGate.reset();
     return size;
   }
 

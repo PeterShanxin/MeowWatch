@@ -172,6 +172,33 @@ void main() {
     );
 
     test(
+      'reset() clears the baseline so the next tick re-writes current truth '
+      '(#208 review)',
+      () async {
+        // A save that lands while recordOpen is still settling can baseline
+        // a snapshot that recordOpen then partially rewrites; HomeScreen
+        // calls reset() once recordOpen finishes so the next tick saves
+        // fresh values unconditionally.
+        final gate = ResumeSaveGate();
+        var writes = 0;
+        Future<void> attempt() => gate.attempt(
+          filePath: '/movie.mp4',
+          positionMs: 1000,
+          durationMs: 60000,
+          write: () async {
+            writes++;
+            return true;
+          },
+        );
+
+        await attempt();
+        gate.reset();
+        await attempt(); // identical snapshot, but the baseline was cleared
+        expect(writes, 2);
+      },
+    );
+
+    test(
       'a throwing write still resets the single-flight guard (finally, not '
       'best-effort)',
       () async {

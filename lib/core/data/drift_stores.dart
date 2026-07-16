@@ -143,7 +143,13 @@ class DriftHistoryStore implements HistoryStore {
         HistoryEntriesCompanion(
           fileName: Value(fileName),
           fileSizeBytes: Value(fileSizeBytes),
-          durationMs: Value(durationMs ?? existing.durationMs),
+          // Same guard as updatePosition: a re-open commits the duration
+          // captured at open time — often 0, mpv hasn't probed yet — and
+          // must never clobber a runtime a periodic save already backfilled
+          // (#208 review).
+          durationMs: (durationMs != null && durationMs > 0)
+              ? Value(durationMs)
+              : Value(existing.durationMs),
           playedAt: Value(DateTime.now()),
           // Keep room metadata when this open isn't in a room.
           room: Value(room ?? existing.room),

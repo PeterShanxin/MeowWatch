@@ -30,6 +30,14 @@ class ResumeSaveGate {
   /// True while a previous [attempt]'s `write` is still running.
   bool get isSaving => _saving;
 
+  /// Forget the last-saved baseline so the next (non-forced) [attempt]
+  /// writes unconditionally. Called after recordOpen settles: a save that
+  /// landed while recordOpen's file-stat/DB work was still in flight may
+  /// have baselined a snapshot recordOpen then partially rewrote, and an
+  /// unchanged (paused) position would otherwise never heal it (#208
+  /// review).
+  void reset() => _lastSaved = null;
+
   Future<void> attempt({
     required String filePath,
     required int positionMs,
