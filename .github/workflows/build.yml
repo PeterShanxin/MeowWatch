@@ -52,7 +52,7 @@ jobs:
     # self-hosted runner. See docs/AGENT_GUIDE.md → CI (runner hangs).
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Flutter (self-hosted, pre-installed via Puro)
         shell: pwsh
@@ -86,7 +86,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 25 # bound hangs; hosted run normally ~12-15m
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Hosted runners download Flutter fresh.
       - name: Setup Flutter (hosted)
@@ -152,7 +152,7 @@ jobs:
     # Bound runaway hangs/builds: a release build is normally ~18m.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Setup Flutter (self-hosted, pre-installed via Puro)
         shell: pwsh
@@ -312,7 +312,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # bound hangs; R2 publish normally ~3m
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download release asset
         env:
