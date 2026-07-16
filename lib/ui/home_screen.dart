@@ -1335,17 +1335,21 @@ class _HomeScreenState extends State<HomeScreen> {
         durationMs: state.duration.inMilliseconds,
         force: force,
         write: () async {
-          await widget.history.updatePosition(
+          // False = no history row yet (recordOpen still in flight); the
+          // gate then retries on the next tick instead of treating the
+          // silent no-op as saved (#208 review).
+          final wrote = await widget.history.updatePosition(
             filePath: path,
             positionMs: state.position.inMilliseconds,
             durationMs: state.duration.inMilliseconds,
           );
-          if (appLogInstance?.level == LogLevel.verbose) {
+          if (wrote && appLogInstance?.level == LogLevel.verbose) {
             appLog(
               'trace: db updatePosition ${mediaDisplayName(path)} '
               '@${state.position.inMilliseconds}ms',
             );
           }
+          return wrote;
         },
       );
     } catch (e) {

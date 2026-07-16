@@ -50,7 +50,13 @@ abstract class HistoryStore {
   /// Also backfills [durationMs] when given — duration is often unknown at
   /// open time (mpv hasn't probed the file yet), so the periodic position save
   /// is where the runtime — and thus the progress bar — gets filled in.
-  Future<void> updatePosition({
+  ///
+  /// Returns whether a row was actually updated. False means the file has no
+  /// history row yet (recordOpen still in flight) — callers coordinating
+  /// saves (ResumeSaveGate) must not treat that as a successful save, or the
+  /// resume point/duration never get backfilled while the position sits
+  /// unchanged (#208 review).
+  Future<bool> updatePosition({
     required String filePath,
     required int positionMs,
     int? durationMs,

@@ -17,7 +17,10 @@ void main() {
         filePath: '/movie.mp4',
         positionMs: 1000,
         durationMs: 60000,
-        write: () async => writes++,
+        write: () async {
+          writes++;
+          return true;
+        },
       );
 
       await attempt();
@@ -33,7 +36,10 @@ void main() {
         filePath: '/movie.mp4',
         positionMs: positionMs,
         durationMs: 60000,
-        write: () async => writes++,
+        write: () async {
+          writes++;
+          return true;
+        },
       );
 
       await attempt(1000);
@@ -49,7 +55,10 @@ void main() {
         filePath: filePath,
         positionMs: 1000,
         durationMs: 60000,
-        write: () async => writes++,
+        write: () async {
+          writes++;
+          return true;
+        },
       );
 
       await attempt('/movie-a.mp4');
@@ -74,6 +83,7 @@ void main() {
             writes++;
             firstWriteStarted.complete();
             await releaseFirstWrite.future;
+            return true;
           },
         );
 
@@ -87,7 +97,10 @@ void main() {
           filePath: '/movie.mp4',
           positionMs: 2000,
           durationMs: 60000,
-          write: () async => writes++,
+          write: () async {
+          writes++;
+          return true;
+        },
         );
         expect(writes, 1);
 
@@ -100,7 +113,10 @@ void main() {
           filePath: '/movie.mp4',
           positionMs: 2000,
           durationMs: 60000,
-          write: () async => writes++,
+          write: () async {
+          writes++;
+          return true;
+        },
         );
         expect(writes, 2);
       },
@@ -114,7 +130,10 @@ void main() {
         positionMs: 1000,
         durationMs: 60000,
         force: force,
-        write: () async => writes++,
+        write: () async {
+          writes++;
+          return true;
+        },
       );
 
       await attempt();
@@ -122,6 +141,35 @@ void main() {
 
       expect(writes, 2);
     });
+
+    test(
+      'a write that hit no row (recordOpen still in flight) is not treated '
+      'as saved (#208 review)',
+      () async {
+        final gate = ResumeSaveGate();
+        var rowExists = false;
+        var realWrites = 0;
+        Future<void> attempt() => gate.attempt(
+          filePath: '/movie.mp4',
+          positionMs: 1000,
+          durationMs: 60000,
+          write: () async {
+            // Mirrors DriftHistoryStore.updatePosition: silently no-ops
+            // (returns false) until _recordOpen has inserted the row.
+            if (!rowExists) return false;
+            realWrites++;
+            return true;
+          },
+        );
+
+        await attempt(); // row missing — must NOT become the saved baseline
+        rowExists = true;
+        await attempt(); // identical snapshot, but nothing was persisted yet
+        expect(realWrites, 1, reason: 'retry must backfill once the row exists');
+        await attempt(); // now genuinely saved — skipped
+        expect(realWrites, 1);
+      },
+    );
 
     test(
       'a throwing write still resets the single-flight guard (finally, not '
@@ -147,7 +195,10 @@ void main() {
           filePath: '/movie.mp4',
           positionMs: 1000,
           durationMs: 60000,
-          write: () async => writes++,
+          write: () async {
+          writes++;
+          return true;
+        },
         );
         expect(writes, 1);
       },

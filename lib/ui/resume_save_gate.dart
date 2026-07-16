@@ -9,8 +9,12 @@
 /// - **Single-flight.** While a previous [attempt]'s `write` is still
 ///   running, a new call is a silent no-op — never a second overlapping
 ///   write.
-/// - **Skip unchanged.** Once a `write` has completed, a later call with the
-///   identical (filePath, positionMs, durationMs) is also a no-op.
+/// - **Skip unchanged.** Once a `write` has completed *and reported that it
+///   actually persisted something* (returned true), a later call with the
+///   identical (filePath, positionMs, durationMs) is also a no-op. A `write`
+///   returning false — the store no-oped because the history row doesn't
+///   exist yet (recordOpen still in flight) — is NOT recorded as saved, so
+///   the next tick retries and backfills once the row appears (#208 review).
 ///
 /// [force] (used by leave/dispose, so the final position is never dropped)
 /// bypasses both checks — it always invokes `write`, matching how the
@@ -30,7 +34,7 @@ class ResumeSaveGate {
     required String filePath,
     required int positionMs,
     required int durationMs,
-    required Future<void> Function() write,
+    required Future<bool> Function() write,
     bool force = false,
   }) async {
     final snapshot = (
@@ -45,8 +49,8 @@ class ResumeSaveGate {
 
     _saving = true;
     try {
-      await write();
-      _lastSaved = snapshot;
+      final wrote = await write();
+      if (wrote) _lastSaved = snapshot;
     } finally {
       // MUST reset unconditionally: a throwing `write` (or a throwing
       // diagnostic log inside it) must never leave saves permanently stuck —
