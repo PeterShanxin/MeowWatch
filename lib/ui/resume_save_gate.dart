@@ -1,0 +1,71 @@
+/// Coordinates periodic resume-position saves against the history DB.
+///
+/// `HomeScreen` ticks a save attempt every few seconds while a source is
+/// open, even while paused. Without this gate that means writing the exact
+/// same (file, position, duration) to SQLite forever, and a slow write can
+/// overlap the next tick (#206). [attempt] fixes both, for a normal
+/// (non-forced) call:
+///
+/// - **Single-flight.** While a previous [attempt]'s `write` is still
+///   running, a new call is a silent no-op — never a second overlapping
+///   write.
+/// - **Skip unchanged.** Once a `write` has completed *and reported that it
+///   actually persisted something* (returned true), a later call with the
+///   identical (filePath, positionMs, durationMs) is also a no-op. A `write`
+///   returning false — the store no-oped because the history row doesn't
+///   exist yet (recordOpen still in flight) — is NOT recorded as saved, so
+///   the next tick retries and backfills once the row appears (#208 review).
+///
+/// [force] (used by leave/dispose, so the final position is never dropped)
+/// bypasses both checks — it always invokes `write`, matching how the
+/// terminal save always ran before this gate existed.
+///
+/// A throwing `write` does not update the "last saved" baseline, so a later
+/// attempt — even an otherwise-unchanged one — retries rather than silently
+/// giving up.
+class ResumeSaveGate {
+  bool _saving = false;
+  ({String filePath, int positionMs, int durationMs})? _lastSaved;
+
+  /// True while a previous [attempt]'s `write` is still running.
+  bool get isSaving => _saving;
+
+  /// Forget the last-saved baseline so the next (non-forced) [attempt]
+  /// writes unconditionally. Called after recordOpen settles: a save that
+  /// landed while recordOpen's file-stat/DB work was still in flight may
+  /// have baselined a snapshot recordOpen then partially rewrote, and an
+  /// unchanged (paused) position would otherwise never heal it (#208
+  /// review).
+  void reset() => _lastSaved = null;
+
+  Future<void> attempt({
+    required String filePath,
+    required int positionMs,
+    required int durationMs,
+    required Future<bool> Function() write,
+    bool force = false,
+  }) async {
+    final snapshot = (
+      filePath: filePath,
+      positionMs: positionMs,
+      durationMs: durationMs,
+    );
+    if (!force) {
+      if (_saving) return;
+      if (snapshot == _lastSaved) return;
+    }
+
+    _saving = true;
+    try {
+      final wrote = await write();
+      if (wrote) _lastSaved = snapshot;
+    } finally {
+      // MUST reset unconditionally: a throwing `write` (or a throwing
+      // diagnostic log inside it) must never leave saves permanently stuck —
+      // that exact class of bug (a guard flag left stuck true by a throwing
+      // path) once froze this app's sync layer for months before it was
+      // traced (see playback_sync_bridge.dart's `_drainingPeerStates`).
+      _saving = false;
+    }
+  }
+}

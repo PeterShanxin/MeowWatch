@@ -10,6 +10,15 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.42.5-alpha] - 2026-07-16
+
+> Less background disk work while a video sits paused.
+
+### Improved: Lighter background saves
+- The resume-position save that runs every few seconds now skips writing when
+  nothing has actually changed, so a paused room no longer repeatedly rewrites
+  the same position to disk (#206).
+
 ## [0.42.4-alpha] - 2026-07-16
 
 > Quieter diagnostics stay light during long watch sessions.
