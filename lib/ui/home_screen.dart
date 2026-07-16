@@ -1577,6 +1577,11 @@ class _HomeScreenState extends State<HomeScreen> {
               initialData: _core.screenView,
               builder: (context, snapshot) {
                 final state = snapshot.data!;
+                // Capture the offered URL from THIS build: the button's tap
+                // closure must load exactly the link the visible notice
+                // describes, even if _joinPrompt is cleared or replaced
+                // before the tap lands (#214 review).
+                final peerOfferUrl = _joinPrompt?.url;
                 // True only while a video surface is actually on screen — not on
                 // the empty/load screen, and not on the load-error screen.
                 final videoVisible =
@@ -1605,9 +1610,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         onLeave: () => unawaited(_leave()),
                         onLoadUrl: (url) => unawaited(_load(url)),
                         notice: _joinPrompt?.message,
-                        onWatchPeerUrl: _joinPrompt?.url == null
+                        onWatchPeerUrl: peerOfferUrl == null
                             ? null
-                            : () => unawaited(_load(_joinPrompt!.url!)),
+                            : () => unawaited(_load(peerOfferUrl)),
                       )
                     else if (state.status == PlaybackStatus.error)
                       VideoErrorState(
