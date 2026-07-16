@@ -9,9 +9,22 @@ import '../core/update/changelog_markup.dart';
 import '../core/update/update_service.dart';
 import 'changelog_markdown.dart';
 
-/// The redesigned "What's new" panel: a highlights hero for the newest version
-/// (A+D) plus a collapsible "earlier updates" list (B), all rendered markdown
-/// with category chips (A). Replaces the old raw-text `_changelogPanel`.
+/// Marks the multi-version catch-up hero container in the widget tree, so
+/// widget tests can scope assertions to just the aggregate summary (as
+/// opposed to the per-version rows below, which repeat some of the same chip
+/// labels by design).
+const changelogCatchUpHeroKey = Key('changelogCatchUpHero');
+
+/// The redesigned "What's new" panel: a highlights hero (A+D) plus a
+/// collapsible "earlier updates" list (B), all rendered markdown with category
+/// chips (A). Replaces the old raw-text `_changelogPanel`.
+///
+/// A single installed version gets the original per-version hero. Several
+/// versions installed at once (a multi-version catch-up jump) instead get an
+/// aggregate hero summarizing everything across the whole span — a combined
+/// chip wrap and a handful of combined highlights — with every version's own
+/// details still available below (issue #190: the old design silently made
+/// only the newest version the hero and buried the rest).
 class ChangelogView extends StatefulWidget {
   const ChangelogView({super.key, required this.entries});
 
@@ -31,13 +44,18 @@ class _ChangelogViewState extends State<ChangelogView> {
   /// (a free-form entry with no `### Added/Fixed/Improved` sections) — one
   /// inferred from its version (patch → Fixed, minor/major → New).
   List<ChangelogChip> _chipsFor(ChangelogEntry e, ParsedNotes p) =>
-      p.chips.isNotEmpty ? p.chips : inferChipsFromVersion(e.version);
+      chipsForVersion(e.version, p);
 
   @override
   Widget build(BuildContext context) {
     if (widget.entries.isEmpty) return const SizedBox.shrink();
     final m = context.meow;
     final parsed = widget.entries.map((e) => parseChangelogNotes(e.notes)).toList();
+    // A single installed version keeps the exact original hero. Several at
+    // once (a catch-up jump) get the aggregate hero instead, with EVERY
+    // version -- including the newest -- then listed below, since there is no
+    // longer a single "the hero version" to exclude from that list.
+    final isCatchUp = widget.entries.length > 1;
 
     return Container(
       width: double.infinity,
@@ -53,11 +71,14 @@ class _ChangelogViewState extends State<ChangelogView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            _hero(m, widget.entries.first, parsed.first),
-            if (widget.entries.length > 1) ...[
+            if (isCatchUp)
+              _catchUpHero(m, widget.entries, parsed)
+            else
+              _hero(m, widget.entries.first, parsed.first),
+            if (isCatchUp) ...[
               const SizedBox(height: 12),
               Text(
-                'EARLIER UPDATES',
+                'ALL UPDATES',
                 style: TextStyle(
                   color: m.textDim,
                   fontSize: 11,
@@ -65,11 +86,90 @@ class _ChangelogViewState extends State<ChangelogView> {
                   letterSpacing: 0.5,
                 ),
               ),
-              for (var i = 1; i < widget.entries.length; i++)
+              for (var i = 0; i < widget.entries.length; i++)
                 _earlierRow(m, i, widget.entries[i], parsed[i]),
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// The multi-version catch-up hero: a "here's everything you just got"
+  /// summary shown instead of the single-version hero when [entries] holds
+  /// more than one version. Combines category chips and a handful of
+  /// highlights across every included version (via
+  /// [combineChips]/[combinedHighlights]) -- the full per-version breakdown
+  /// still lives in the rows below, so this only needs to summarize, not
+  /// repeat the whole changelog.
+  Widget _catchUpHero(
+    MeowColors m,
+    List<ChangelogEntry> entries,
+    List<ParsedNotes> parsed,
+  ) {
+    final chips = combineChips(
+      entries.map((e) => e.version).toList(),
+      parsed,
+    );
+    final highlights = combinedHighlights(parsed);
+    return Container(
+      key: changelogCatchUpHeroKey,
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: m.accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: m.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  "WHAT'S NEW · ${entries.length} UPDATES",
+                  style: TextStyle(
+                    color: m.accent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              Text(
+                _formatDate(entries.first.date),
+                style: TextStyle(color: m.textDim, fontSize: 11),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${entries.length} updates installed',
+            style: TextStyle(
+              color: m.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              height: 1.3,
+            ),
+          ),
+          if (chips.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final c in chips)
+                  ChangelogTagChip(tag: c.tag, label: c.label),
+              ],
+            ),
+          ],
+          if (highlights.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            for (final h in highlights) _bullet(m, h),
+          ],
+        ],
       ),
     );
   }

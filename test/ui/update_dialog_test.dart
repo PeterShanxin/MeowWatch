@@ -38,7 +38,9 @@ void main() {
         home: Scaffold(body: UpdateDialog(service: service)),
       );
 
-  testWidgets('shows the changelog in the up-to-date state', (tester) async {
+  testWidgets(
+      'shows an aggregate catch-up changelog in the up-to-date state',
+      (tester) async {
     final changelog = jsonEncode([
       {'version': '0.1.5-alpha', 'date': '2026-05-31', 'notes': '- shiny thing'},
       {'version': '0.1.4-alpha', 'date': '2026-05-30', 'notes': '- older thing'},
@@ -53,8 +55,11 @@ void main() {
 
     expect(find.text("You're up to date!"), findsOneWidget);
     expect(find.text("What's new"), findsOneWidget);
-    expect(find.text('shiny thing', findRichText: true), findsOneWidget);
-    expect(find.text('older thing'), findsOneWidget); // older entry's summary row
+    expect(find.text('2 updates installed'), findsOneWidget);
+    // Each bullet surfaces once as a combined highlight in the aggregate hero
+    // and once again as its own version's row summary below.
+    expect(find.text('shiny thing', findRichText: true), findsNWidgets(2));
+    expect(find.text('older thing'), findsNWidgets(2));
   });
 
   testWidgets('up-to-date with no changelog hides the "What\'s new" section',

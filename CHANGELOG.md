@@ -10,6 +10,16 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.43.0-alpha] - 2026-07-16
+
+> Big catch-up updates now open with a combined summary of everything you just got.
+
+### Added
+- Updating across several releases at once now shows a combined catch-up
+  summary at the top of the "What's new" screen — shared category tags and a
+  handful of combined highlights spanning every version in the jump — with
+  each version's full details still available below (#190).
+
 ## [0.42.4-alpha] - 2026-07-16
 
 > Quieter diagnostics stay light during long watch sessions.
