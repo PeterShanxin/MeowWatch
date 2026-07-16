@@ -64,11 +64,11 @@ class FakeHistoryStore implements HistoryStore {
   }) async {}
 
   @override
-  Future<void> updatePosition({
+  Future<bool> updatePosition({
     required String filePath,
     required int positionMs,
     int? durationMs,
-  }) async {}
+  }) async => true;
 
   @override
   Future<void> delete(int id) async {
