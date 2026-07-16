@@ -8,9 +8,13 @@ import 'package:meowwatch/core/update/update_service.dart';
 import 'package:meowwatch/ui/changelog_view.dart';
 
 void main() {
-  Widget host(List<ChangelogEntry> entries) => MaterialApp(
+  // catchUp defaults to true here because most of this file exercises the
+  // post-update modal's aggregate rendering; the widget itself defaults to
+  // false (see the '#209 review' group, which constructs it bare).
+  Widget host(List<ChangelogEntry> entries, {bool catchUp = true}) =>
+      MaterialApp(
         theme: themeDataFor(MeowThemeId.cozy),
-        home: Scaffold(body: ChangelogView(entries: entries)),
+        home: Scaffold(body: ChangelogView(entries: entries, catchUp: catchUp)),
       );
 
   const newest = ChangelogEntry(
@@ -174,6 +178,34 @@ void main() {
     await tester.pumpWidget(host(const []));
     expect(find.byType(ChangelogView), findsOneWidget);
     expect(find.textContaining('WHAT'), findsNothing);
+  });
+
+  group('reused outside the post-update modal (#209 review)', () {
+    // UpdateDialog passes the full changelog when already up to date and the
+    // not-yet-installed entries when an update is available — multiple
+    // entries there do NOT mean "you just installed a catch-up span", so the
+    // aggregate "N updates installed" hero must be opt-in (catchUp), not
+    // inferred from entry count.
+    testWidgets(
+        'multiple entries without catchUp keep the original newest-version '
+        'hero and EARLIER UPDATES list', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: themeDataFor(MeowThemeId.cozy),
+        // Deliberately no catchUp argument: this pins the widget's default.
+        home: const Scaffold(body: ChangelogView(entries: [newest, older])),
+      ));
+
+      expect(find.byKey(changelogCatchUpHeroKey), findsNothing);
+      expect(find.textContaining('updates installed'), findsNothing);
+      expect(find.text('EARLIER UPDATES'), findsOneWidget);
+      expect(find.text('ALL UPDATES'), findsNothing);
+      // Original layout: newest renders only as the hero (one New chip), the
+      // older entry only as a collapsed row (one inferred Fixed chip).
+      expect(find.text('New'), findsOneWidget);
+      expect(find.text('Fixed'), findsOneWidget);
+      expect(find.text('a shiny hero thing', findRichText: true),
+          findsOneWidget);
+    });
   });
 
   group('multi-version catch-up hero (#190)', () {

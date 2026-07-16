@@ -19,16 +19,31 @@ const changelogCatchUpHeroKey = Key('changelogCatchUpHero');
 /// collapsible "earlier updates" list (B), all rendered markdown with category
 /// chips (A). Replaces the old raw-text `_changelogPanel`.
 ///
-/// A single installed version gets the original per-version hero. Several
-/// versions installed at once (a multi-version catch-up jump) instead get an
-/// aggregate hero summarizing everything across the whole span — a combined
-/// chip wrap and a handful of combined highlights — with every version's own
-/// details still available below (issue #190: the old design silently made
-/// only the newest version the hero and buried the rest).
+/// In [catchUp] mode — the post-update "what's new" modal, where [entries]
+/// are versions the user *just installed* — several entries get an aggregate
+/// hero summarizing everything across the whole span (a combined chip wrap
+/// and a handful of combined highlights), with every version's own details
+/// still available below (issue #190: the old design silently made only the
+/// newest version the hero and buried the rest). A single entry keeps the
+/// original per-version hero even in catch-up mode.
+///
+/// Without [catchUp] (the default — UpdateDialog's up-to-date and
+/// update-available phases, where multiple entries just mean "here's the
+/// changelog", not "you just installed all of these"), the original layout
+/// renders: newest-version hero plus a collapsed EARLIER UPDATES list.
+/// "N updates installed" copy would be a lie there, so it's opt-in, never
+/// inferred from entry count (#209 review).
 class ChangelogView extends StatefulWidget {
-  const ChangelogView({super.key, required this.entries});
+  const ChangelogView({
+    super.key,
+    required this.entries,
+    this.catchUp = false,
+  });
 
   final List<ChangelogEntry> entries;
+
+  /// True only when [entries] are versions the user just installed at once.
+  final bool catchUp;
 
   @override
   State<ChangelogView> createState() => _ChangelogViewState();
@@ -54,8 +69,9 @@ class _ChangelogViewState extends State<ChangelogView> {
     // A single installed version keeps the exact original hero. Several at
     // once (a catch-up jump) get the aggregate hero instead, with EVERY
     // version -- including the newest -- then listed below, since there is no
-    // longer a single "the hero version" to exclude from that list.
-    final isCatchUp = widget.entries.length > 1;
+    // longer a single "the hero version" to exclude from that list. Gated on
+    // widget.catchUp, never inferred from entry count alone (#209 review).
+    final isCatchUp = widget.catchUp && widget.entries.length > 1;
 
     return Container(
       width: double.infinity,
@@ -87,6 +103,21 @@ class _ChangelogViewState extends State<ChangelogView> {
                 ),
               ),
               for (var i = 0; i < widget.entries.length; i++)
+                _earlierRow(m, i, widget.entries[i], parsed[i]),
+            ] else if (widget.entries.length > 1) ...[
+              // Non-catch-up (UpdateDialog): the original layout — the newest
+              // version is the hero above, so it stays out of this list.
+              const SizedBox(height: 12),
+              Text(
+                'EARLIER UPDATES',
+                style: TextStyle(
+                  color: m.textDim,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              for (var i = 1; i < widget.entries.length; i++)
                 _earlierRow(m, i, widget.entries[i], parsed[i]),
             ],
           ],
