@@ -95,4 +95,53 @@ void main() {
     expect(find.textContaining('Drop a video'), findsOneWidget);
     expect(find.text('Browse…'), findsOneWidget);
   });
+
+  testWidgets(
+    'shows a one-click "Watch this too" button on a peer-URL offer (#121)',
+    (tester) async {
+      var watchTapped = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: themeDataFor(MeowThemeId.cozy),
+          home: Scaffold(
+            body: EmptyState(
+              onBrowse: () {},
+              notice: 'lin is watching cdn.example.com/…/movie.mp4 — load it too',
+              onWatchPeerUrl: () => watchTapped = true,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('is watching'), findsOneWidget);
+      final button = find.byKey(const Key('join-prompt-watch-button'));
+      expect(button, findsOneWidget);
+
+      await tester.tap(button);
+      await tester.pump();
+      expect(watchTapped, isTrue);
+    },
+  );
+
+  testWidgets(
+    'hides the "Watch this too" button when onWatchPeerUrl is null',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: themeDataFor(MeowThemeId.cozy),
+          home: Scaffold(
+            body: EmptyState(
+              onBrowse: () {},
+              notice: 'lin loaded "movie.mkv" — load the same video to join',
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('join-prompt-watch-button')),
+        findsNothing,
+      );
+    },
+  );
 }

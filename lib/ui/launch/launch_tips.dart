@@ -14,6 +14,7 @@ const List<String> kLaunchTips = <String>[
   'Go fullscreen from the player bar — or double-click the video.',
   'MeowWatch keeps itself up to date.',
   'No name? Leave it blank — the dice picks you a cute one.',
+  'Friend watching a link? One click loads it for you too.',
 ];
 
 /// The tip for [index], wrapping around the list so any seed is valid.
