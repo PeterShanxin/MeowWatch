@@ -61,6 +61,7 @@ import 'paste_link_dialog.dart';
 import 'player_menu_button.dart';
 import 'reactions/floating_reactions.dart';
 import 'reactions/reaction_bar.dart';
+import 'resume_save_gate.dart';
 import 'sync_activity_text.dart';
 import 'sync_hint_banner.dart';
 import 'video_error_state.dart';
@@ -277,6 +278,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// value re-keys [_FadingToast] so each show replays the fade animation.
   int? _chatHintToken;
   Timer? _historyTimer;
+  // Serializes the periodic resume-position save and skips a write whose
+  // (file, position, duration) match the last one that succeeded, so a
+  // paused room doesn't hammer SQLite with identical values every 5s (#206).
+  final _resumeSaveGate = ResumeSaveGate();
   StreamSubscription<List<ChatMessage>>? _chatSub;
   StreamSubscription<ReactionEvent>? _reactionSub;
   StreamSubscription<TypingEvent>? _typingSub;
@@ -889,7 +894,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _uiIdleTimer?.cancel();
     _uiDeepIdleTimer?.cancel();
     _historyTimer?.cancel();
-    unawaited(_saveResumePosition());
+    unawaited(_saveResumePosition(force: true));
     _peekTimer?.cancel();
     unawaited(_chatSub?.cancel());
     unawaited(_reactionSub?.cancel());
@@ -1329,10 +1334,19 @@ class _HomeScreenState extends State<HomeScreen> {
         'db: recordOpen FAILED ${mediaDisplayName(path)}: ${redactUrls('$e')}',
       );
     }
+    // A periodic save may have baselined a snapshot while the stat/DB work
+    // above was in flight, and recordOpen may have partially rewritten that
+    // row — drop the baseline so the next tick re-writes current truth
+    // (#208 review).
+    _resumeSaveGate.reset();
     return size;
   }
 
-  Future<void> _saveResumePosition() async {
+  /// [force] always writes (used by leave/dispose so the final position is
+  /// never dropped); a normal periodic tick goes through [_resumeSaveGate],
+  /// which serializes writes and skips one that would just repeat the last
+  /// successful save (#206).
+  Future<void> _saveResumePosition({bool force = false}) async {
     final state = _core.state;
     final path = state.filePath;
     if (path == null) return;
@@ -1344,17 +1358,29 @@ class _HomeScreenState extends State<HomeScreen> {
     // `trace:` — this runs every few seconds, so it's firehose kept only at
     // verbose; neat drops it (#140).
     try {
-      await widget.history.updatePosition(
+      await _resumeSaveGate.attempt(
         filePath: path,
         positionMs: state.position.inMilliseconds,
         durationMs: state.duration.inMilliseconds,
+        force: force,
+        write: () async {
+          // False = no history row yet (recordOpen still in flight); the
+          // gate then retries on the next tick instead of treating the
+          // silent no-op as saved (#208 review).
+          final wrote = await widget.history.updatePosition(
+            filePath: path,
+            positionMs: state.position.inMilliseconds,
+            durationMs: state.duration.inMilliseconds,
+          );
+          if (wrote && appLogInstance?.level == LogLevel.verbose) {
+            appLog(
+              'trace: db updatePosition ${mediaDisplayName(path)} '
+              '@${state.position.inMilliseconds}ms',
+            );
+          }
+          return wrote;
+        },
       );
-      if (appLogInstance?.level == LogLevel.verbose) {
-        appLog(
-          'trace: db updatePosition ${mediaDisplayName(path)} '
-          '@${state.position.inMilliseconds}ms',
-        );
-      }
     } catch (e) {
       appLog(
         'db: updatePosition FAILED ${mediaDisplayName(path)}: ${redactUrls('$e')}',
@@ -1375,7 +1401,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _historyTimer?.cancel();
     if (isPlaybackOpen(_core.state)) {
       try {
-        await _saveResumePosition().timeout(const Duration(milliseconds: 600));
+        await _saveResumePosition(
+          force: true,
+        ).timeout(const Duration(milliseconds: 600));
       } on Object catch (e) {
         appLog('life: leave resume-save skipped: ${redactUrls('$e')}');
       }

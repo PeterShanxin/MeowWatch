@@ -165,6 +165,114 @@ void main() {
     });
   });
 
+  group('chipsForVersion', () {
+    test('returns the entry\'s authored chips when it has any', () {
+      final p = parseChangelogNotes('### Fixed\n- a bug');
+      expect(chipsForVersion('0.33.0-alpha', p),
+          const [ChangelogChip(ChangelogTag.fixed)]);
+    });
+
+    test('falls back to inferring from the version when there are none', () {
+      final p = parseChangelogNotes('- a free-form line, no headings');
+      expect(chipsForVersion('0.31.2-alpha', p),
+          const [ChangelogChip(ChangelogTag.fixed)]); // patch → Fixed
+    });
+  });
+
+  group('combineChips', () {
+    test('gathers chips across every version, newest first, deduped', () {
+      final parsed = [
+        parseChangelogNotes('### Added\n- newest'),
+        parseChangelogNotes('### Fixed\n- older'),
+      ];
+      final chips =
+          combineChips(['0.33.0-alpha', '0.32.0-alpha'], parsed);
+      expect(chips, const [
+        ChangelogChip(ChangelogTag.added),
+        ChangelogChip(ChangelogTag.fixed),
+      ]);
+    });
+
+    test('a free-form version with no ### sections still contributes its '
+        'inferred chip', () {
+      final parsed = [
+        parseChangelogNotes('### Added\n- newest'),
+        parseChangelogNotes('- an older free-form line'), // patch → Fixed
+      ];
+      final chips =
+          combineChips(['0.33.0-alpha', '0.31.2-alpha'], parsed);
+      expect(chips, const [
+        ChangelogChip(ChangelogTag.added),
+        ChangelogChip(ChangelogTag.fixed),
+      ]);
+    });
+
+    test('the same chip repeated across versions collapses to one', () {
+      final parsed = [
+        parseChangelogNotes('### Fixed\n- a'),
+        parseChangelogNotes('### Fixed\n- b'),
+      ];
+      final chips =
+          combineChips(['0.33.1-alpha', '0.33.0-alpha'], parsed);
+      expect(chips, const [ChangelogChip(ChangelogTag.fixed)]);
+    });
+
+    test('a custom label keeps its own chip distinct from the bare category',
+        () {
+      final parsed = [
+        parseChangelogNotes('### Improved: Snappier lobby\n- a'),
+        parseChangelogNotes('### Improved\n- b'),
+      ];
+      final chips =
+          combineChips(['0.33.1-alpha', '0.33.0-alpha'], parsed);
+      expect(chips, const [
+        ChangelogChip(ChangelogTag.improved, 'Snappier lobby'),
+        ChangelogChip(ChangelogTag.improved),
+      ]);
+    });
+
+    test('empty input yields no chips', () {
+      expect(combineChips(const [], const []), isEmpty);
+    });
+  });
+
+  group('combinedHighlights', () {
+    test('round-robins one bullet per version before taking a second from '
+        'any', () {
+      final parsed = [
+        parseChangelogNotes('### Added\n- v3 first\n- v3 second'),
+        parseChangelogNotes('### Fixed\n- v2 first\n- v2 second'),
+      ];
+      final combined = combinedHighlights(parsed, max: 3);
+      expect(
+        combined.map(spansToPlainText).toList(),
+        ['v3 first', 'v2 first', 'v3 second'],
+      );
+    });
+
+    test('caps at max even when more bullets are available', () {
+      final parsed = [parseChangelogNotes('### Added\n- a\n- b\n- c\n- d\n- e')];
+      expect(combinedHighlights(parsed, max: 4), hasLength(4));
+    });
+
+    test('defaults to a max of 4', () {
+      final parsed = [parseChangelogNotes('### Added\n- a\n- b\n- c\n- d\n- e')];
+      expect(combinedHighlights(parsed), hasLength(4));
+    });
+
+    test('returns fewer than max when there are not enough bullets total', () {
+      final parsed = [
+        parseChangelogNotes('### Added\n- only one'),
+        parseChangelogNotes('Fixed something with no bullets.'),
+      ];
+      expect(combinedHighlights(parsed), hasLength(1));
+    });
+
+    test('empty input yields no highlights', () {
+      expect(combinedHighlights(const []), isEmpty);
+    });
+  });
+
   group('inferChipsFromVersion', () {
     test('a patch release (non-zero 3rd digit) infers Fixed', () {
       expect(inferChipsFromVersion('0.31.2-alpha'),

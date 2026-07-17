@@ -214,6 +214,62 @@ List<ChangelogChip> inferChipsFromVersion(String version) {
       : const [ChangelogChip(ChangelogTag.added)];
 }
 
+/// Category chips to show for one version: its authored chips, or — when it
+/// has none (a free-form entry with no `### Added/Fixed/Improved` sections) —
+/// one inferred from [version]. Shared by the single-version hero/row display
+/// and by [combineChips] for the multi-version catch-up hero.
+List<ChangelogChip> chipsForVersion(String version, ParsedNotes parsed) =>
+    parsed.chips.isNotEmpty ? parsed.chips : inferChipsFromVersion(version);
+
+/// Category chips gathered across every included version, in the given
+/// (newest-first) order, deduplicated by (tag, label) — the same rule
+/// [parseChangelogNotes] applies within one entry. Powers the multi-version
+/// catch-up hero's combined chip wrap, so a custom-labeled chip from an older
+/// version still earns its own pill instead of collapsing into the bare
+/// category word. [versions] and [parsed] must be the same length, index-
+/// aligned. Total; empty input yields no chips.
+List<ChangelogChip> combineChips(
+  List<String> versions,
+  List<ParsedNotes> parsed,
+) {
+  final chips = <ChangelogChip>[];
+  final seen = <ChangelogChip>{};
+  for (var i = 0; i < parsed.length; i++) {
+    for (final c in chipsForVersion(versions[i], parsed[i])) {
+      if (seen.add(c)) chips.add(c);
+    }
+  }
+  return chips;
+}
+
+/// Up to [max] highlights summarizing every included version's [parsed]
+/// (newest-first) bullets: round-robin across each version's bullet list so a
+/// multi-version catch-up shows one bullet from several versions rather than
+/// several bullets from just the newest — "here's everything you just got",
+/// not a re-run of the newest version's own highlights. Total; returns fewer
+/// than [max] when there simply aren't that many bullets across every
+/// included version (never pads with anything else).
+List<List<NoteSpan>> combinedHighlights(
+  List<ParsedNotes> parsed, {
+  int max = 4,
+}) {
+  final combined = <List<NoteSpan>>[];
+  var round = 0;
+  while (combined.length < max) {
+    var addedAny = false;
+    for (final p in parsed) {
+      if (round < p.highlights.length) {
+        combined.add(p.highlights[round]);
+        addedAny = true;
+        if (combined.length >= max) break;
+      }
+    }
+    if (!addedAny) break;
+    round++;
+  }
+  return combined;
+}
+
 /// Parse one entry's raw markdown `notes` into a render-ready [ParsedNotes].
 /// Total: never throws.
 ParsedNotes parseChangelogNotes(String notes) {

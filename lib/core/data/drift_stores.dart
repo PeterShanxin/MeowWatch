@@ -143,7 +143,13 @@ class DriftHistoryStore implements HistoryStore {
         HistoryEntriesCompanion(
           fileName: Value(fileName),
           fileSizeBytes: Value(fileSizeBytes),
-          durationMs: Value(durationMs ?? existing.durationMs),
+          // Same guard as updatePosition: a re-open commits the duration
+          // captured at open time — often 0, mpv hasn't probed yet — and
+          // must never clobber a runtime a periodic save already backfilled
+          // (#208 review).
+          durationMs: (durationMs != null && durationMs > 0)
+              ? Value(durationMs)
+              : Value(existing.durationMs),
           playedAt: Value(DateTime.now()),
           // Keep room metadata when this open isn't in a room.
           room: Value(room ?? existing.room),
@@ -156,20 +162,23 @@ class DriftHistoryStore implements HistoryStore {
   }
 
   @override
-  Future<void> updatePosition({
+  Future<bool> updatePosition({
     required String filePath,
     required int positionMs,
     int? durationMs,
-  }) =>
-      (_db.update(_db.historyEntries)..where((t) => t.filePath.equals(filePath)))
-          .write(HistoryEntriesCompanion(
-        lastPositionMs: Value(positionMs),
-        // Only write a real, positive runtime — never clobber a known duration
-        // with a 0 from a not-yet-probed frame.
-        durationMs: (durationMs != null && durationMs > 0)
-            ? Value(durationMs)
-            : const Value.absent(),
-      ));
+  }) async {
+    final rows = await (_db.update(_db.historyEntries)
+          ..where((t) => t.filePath.equals(filePath)))
+        .write(HistoryEntriesCompanion(
+      lastPositionMs: Value(positionMs),
+      // Only write a real, positive runtime — never clobber a known duration
+      // with a 0 from a not-yet-probed frame.
+      durationMs: (durationMs != null && durationMs > 0)
+          ? Value(durationMs)
+          : const Value.absent(),
+    ));
+    return rows > 0;
+  }
 
   @override
   Future<void> delete(int id) =>

@@ -82,9 +82,37 @@ void main() {
     expect(single.durationMs, 600000);
   });
 
-  test('updatePosition on an unknown path is a no-op', () async {
-    await store.updatePosition(filePath: r'D:\nope.mkv', positionMs: 100);
+  test('recordOpen never clobbers a known duration with 0 (#208 review)',
+      () async {
+    await store.recordOpen(
+        filePath: 'a', fileName: 'a', fileSizeBytes: 1, durationMs: 0);
+    // A periodic tick backfilled the real runtime while recordOpen's slow
+    // file-stat was still in flight…
+    await store.updatePosition(
+        filePath: 'a', positionMs: 1000, durationMs: 600000);
+    // …then a re-open commits with the duration captured at open time (0).
+    // The known runtime must survive, like updatePosition's own guard.
+    await store.recordOpen(
+        filePath: 'a', fileName: 'a', fileSizeBytes: 1, durationMs: 0);
+    final single = (await store.watchRecent().first).single;
+    expect(single.durationMs, 600000);
+  });
+
+  test('updatePosition on an unknown path is a no-op and reports it', () async {
+    // False lets ResumeSaveGate know nothing was persisted, so the periodic
+    // save retries instead of baselining a silent no-op (#208 review).
+    expect(
+      await store.updatePosition(filePath: r'D:\nope.mkv', positionMs: 100),
+      isFalse,
+    );
     expect(await store.watchRecent().first, isEmpty);
+
+    await store.recordOpen(
+        filePath: r'D:\nope.mkv', fileName: 'nope.mkv', fileSizeBytes: 1);
+    expect(
+      await store.updatePosition(filePath: r'D:\nope.mkv', positionMs: 100),
+      isTrue,
+    );
   });
 
   test('watchRecent orders newest first and honors limit', () async {

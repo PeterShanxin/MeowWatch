@@ -50,14 +50,15 @@ void main() {
     expect(find.text('a shiny hero thing', findRichText: true), findsOneWidget);
   });
 
-  testWidgets('catch-up modal lists every version since last seen',
+  testWidgets('catch-up modal aggregates every version installed since last seen',
       (tester) async {
     await tester.pumpWidget(app(show: true, entries: const [entry, older]));
     await settleDialog(tester);
     expect(find.byType(WhatsNewDialog), findsOneWidget);
-    // Newest is the hero; the older one tucks into "Earlier updates".
-    expect(find.text('a shiny hero thing', findRichText: true), findsOneWidget);
-    expect(find.text('EARLIER UPDATES'), findsOneWidget);
+    // An aggregate catch-up hero replaces the single-version hero...
+    expect(find.text('2 updates installed'), findsOneWidget);
+    // ...and each version, including the newest, still has its own row below.
+    expect(find.text('ALL UPDATES'), findsOneWidget);
     expect(find.textContaining('v0.32.0-alpha'), findsOneWidget);
   });
 

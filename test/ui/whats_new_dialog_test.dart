@@ -43,14 +43,18 @@ void main() {
     expect(find.text('Got it'), findsOneWidget);
   });
 
-  testWidgets('multiple versions: newest is hero, rest under Earlier updates',
-      (tester) async {
+  testWidgets(
+      'multiple versions: shows an aggregate catch-up hero, with every '
+      'version still listed below', (tester) async {
     await tester.pumpWidget(host(const [entry, older]));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    expect(find.text('a shiny hero thing', findRichText: true), findsOneWidget);
-    expect(find.text('EARLIER UPDATES'), findsOneWidget);
+    // An aggregate hero replaces the single-version hero...
+    expect(find.text('2 updates installed'), findsOneWidget);
+    // ...and each version, including the newest, still has its own row below.
+    expect(find.text('ALL UPDATES'), findsOneWidget);
+    expect(find.text('EARLIER UPDATES'), findsNothing);
     expect(find.textContaining('v0.32.0-alpha'), findsOneWidget);
   });
 

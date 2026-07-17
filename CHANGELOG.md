@@ -19,6 +19,25 @@ in-app updater reads to show what changed.
   this too" button — one click loads the same link, no copy-pasting
   required (#121).
 
+## [0.43.0-alpha] - 2026-07-16
+
+> Big catch-up updates now open with a combined summary of everything you just got.
+
+### Added
+- Updating across several releases at once now shows a combined catch-up
+  summary at the top of the "What's new" screen — shared category tags and a
+  handful of combined highlights spanning every version in the jump — with
+  each version's full details still available below (#190).
+
+## [0.42.5-alpha] - 2026-07-16
+
+> Less background disk work while a video sits paused.
+
+### Improved: Lighter background saves
+- The resume-position save that runs every few seconds now skips writing when
+  nothing has actually changed, so a paused room no longer repeatedly rewrites
+  the same position to disk (#206).
+
 ## [0.42.4-alpha] - 2026-07-16
 
 > Quieter diagnostics stay light during long watch sessions.
