@@ -72,25 +72,30 @@ class _FloatingReactionsOverlayState extends State<FloatingReactionsOverlay> {
 
   @override
   Widget build(BuildContext context) {
+    // RepaintBoundary: bursts animate every frame; without it each frame
+    // dirties the full-screen layer this overlay sits above (#199).
     return IgnorePointer(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Stack(
-            children: [
-              for (final r in _active)
-                _FloatingEmoji(
-                  key: ValueKey<int>(r.id),
-                  emoji: r.emoji,
-                  startLeft: constraints.maxWidth * r.lane,
-                  riseBy: constraints.maxHeight * 0.45,
-                  // Lanes left of centre drift left, right drift right — a gentle
-                  // fountain spread instead of every burst rising dead straight.
-                  arcDrift: (r.lane - 0.5) * constraints.maxWidth * 0.30,
-                  onDone: () => _remove(r.id),
-                ),
-            ],
-          );
-        },
+      child: RepaintBoundary(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Stack(
+              children: [
+                for (final r in _active)
+                  _FloatingEmoji(
+                    key: ValueKey<int>(r.id),
+                    emoji: r.emoji,
+                    startLeft: constraints.maxWidth * r.lane,
+                    riseBy: constraints.maxHeight * 0.45,
+                    // Lanes left of centre drift left, right drift right — a
+                    // gentle fountain spread instead of every burst rising
+                    // dead straight.
+                    arcDrift: (r.lane - 0.5) * constraints.maxWidth * 0.30,
+                    onDone: () => _remove(r.id),
+                  ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -126,6 +131,7 @@ class _FloatingEmoji extends StatefulWidget {
 class _FloatingEmojiState extends State<_FloatingEmoji>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  late final Animation<double> _fade;
 
   @override
   void initState() {
@@ -137,6 +143,14 @@ class _FloatingEmojiState extends State<_FloatingEmoji>
     _controller.addStatusListener((s) {
       if (s == AnimationStatus.completed) widget.onDone();
     });
+    // Hold fully opaque until 85% of the rise, then fade linearly out — the
+    // same shape the old per-frame `Opacity(opacity: …)` math produced, but
+    // driven through FadeTransition so the compositor animates the layer's
+    // alpha instead of a fresh Opacity widget forcing a saveLayer per emoji
+    // per frame (#199).
+    _fade = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.85, 1.0)),
+    );
   }
 
   @override
@@ -160,27 +174,25 @@ class _FloatingEmojiState extends State<_FloatingEmoji>
     }
     return AnimatedBuilder(
       animation: _controller,
-      builder: (context, _) {
+      builder: (context, child) {
         final t = _controller.value;
-        // Rise straight up, drift sideways along an arc, fade out near the end,
-        // and pop in with an elastic overshoot (the one squash-&-stretch beat).
+        // Rise straight up, drift sideways along an arc, and pop in with an
+        // elastic overshoot (the one squash-&-stretch beat). The end-of-rise
+        // fade lives in the static [_fade]-driven child below.
         final rise = widget.riseBy * t;
         final drift = reactionArcX(t, widget.arcDrift);
-        final opacity = t < 0.85 ? 1.0 : (1.0 - (t - 0.85) / 0.15);
         final scale = reactionPopScale(t);
         return Positioned(
           left: widget.startLeft + drift,
           bottom: 90 + rise,
-          child: Opacity(
-            opacity: opacity.clamp(0.0, 1.0),
-            child: Transform.scale(
-              scale: scale,
-              child:
-                  Text(widget.emoji, style: const TextStyle(fontSize: Glyphs.burst)),
-            ),
-          ),
+          child: Transform.scale(scale: scale, child: child),
         );
       },
+      child: FadeTransition(
+        opacity: _fade,
+        child:
+            Text(widget.emoji, style: const TextStyle(fontSize: Glyphs.burst)),
+      ),
     );
   }
 }
