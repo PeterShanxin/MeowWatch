@@ -8,9 +8,13 @@ import 'package:meowwatch/core/update/update_service.dart';
 import 'package:meowwatch/ui/changelog_view.dart';
 
 void main() {
-  Widget host(List<ChangelogEntry> entries) => MaterialApp(
+  // catchUp defaults to true here because most of this file exercises the
+  // post-update modal's aggregate rendering; the widget itself defaults to
+  // false (see the '#209 review' group, which constructs it bare).
+  Widget host(List<ChangelogEntry> entries, {bool catchUp = true}) =>
+      MaterialApp(
         theme: themeDataFor(MeowThemeId.cozy),
-        home: Scaffold(body: ChangelogView(entries: entries)),
+        home: Scaffold(body: ChangelogView(entries: entries, catchUp: catchUp)),
       );
 
   const newest = ChangelogEntry(
@@ -25,19 +29,27 @@ void main() {
   );
 
   testWidgets(
-      'hero shows authored chip; older free-form row infers one from its version',
-      (tester) async {
+      'multi-version: aggregate hero combines the authored + version-inferred '
+      'chips; the older row still infers its own', (tester) async {
     await tester.pumpWidget(host(const [newest, older]));
 
-    // Hero highlight + its authored New chip.
-    expect(find.text('a shiny hero thing', findRichText: true), findsOneWidget);
-    expect(find.text('New'), findsOneWidget);
-    // The older entry has no ### headings, so its chip is inferred from the
-    // version: 0.31.2 is a patch → Fixed.
-    expect(find.text('Fixed'), findsOneWidget);
-    // Earlier row summary is visible…
+    final hero = find.byKey(changelogCatchUpHeroKey);
+    expect(hero, findsOneWidget);
+    // Newest's authored "New" (### Added) and older's version-inferred "Fixed"
+    // (0.31.2 is a patch, and it has no ### headings of its own) both surface
+    // in the aggregate hero's combined chip row.
+    expect(find.descendant(of: hero, matching: find.text('New')),
+        findsOneWidget);
+    expect(find.descendant(of: hero, matching: find.text('Fixed')),
+        findsOneWidget);
+    // Each also still appears on its own version's row below (in "ALL
+    // UPDATES") — the per-version breakdown isn't erased by the summary, so
+    // each label legitimately shows up twice in total.
+    expect(find.text('New'), findsNWidgets(2));
+    expect(find.text('Fixed'), findsNWidgets(2));
+    // The older row's collapsed summary is visible…
     expect(find.text('an older summary line.'), findsOneWidget);
-    // …but the older entry's full detail is collapsed (only the summary shows).
+    // …but its full detail stays collapsed (only the summary shows).
     expect(find.text('with more detail.', findRichText: true), findsNothing);
   });
 
@@ -54,7 +66,9 @@ void main() {
     expect(find.text('Improved'), findsNothing); // not the generic word
   });
 
-  testWidgets('a minor free-form earlier row infers a New chip', (tester) async {
+  testWidgets(
+      'multi-version: a free-form version still infers its own chip on its row',
+      (tester) async {
     await tester.pumpWidget(host(const [
       ChangelogEntry(
         version: '0.34.0-alpha',
@@ -67,23 +81,39 @@ void main() {
         notes: '- a feature with no headings.',
       ),
     ]));
-    // Hero authored Fixed + earlier inferred New.
-    expect(find.text('Fixed'), findsOneWidget);
-    expect(find.text('New'), findsOneWidget);
+    final hero = find.byKey(changelogCatchUpHeroKey);
+    // Aggregate hero combines the authored Fixed + the inferred New.
+    expect(find.descendant(of: hero, matching: find.text('Fixed')),
+        findsOneWidget);
+    expect(find.descendant(of: hero, matching: find.text('New')),
+        findsOneWidget);
+    // Both chips also surface again on their own version's row below.
+    expect(find.text('Fixed'), findsNWidgets(2));
+    expect(find.text('New'), findsNWidgets(2));
   });
 
   testWidgets('tapping an older row expands its rendered notes', (tester) async {
     await tester.pumpWidget(host(const [newest, older]));
-    await tester.tap(find.text('an older summary line.'));
-    await tester.pumpAndSettle();
+    // The aggregate hero already surfaces this bullet as one of its combined
+    // highlights, so it's visible once even before the row is expanded.
     expect(
       find.text('an older summary line. with more detail.', findRichText: true),
       findsOneWidget,
     );
+    await tester.ensureVisible(find.text('an older summary line.'));
+    await tester.tap(find.text('an older summary line.'));
+    await tester.pumpAndSettle();
+    // After expanding, the same text legitimately renders twice: once as the
+    // hero's combined highlight, once in the row's own expanded body.
+    expect(
+      find.text('an older summary line. with more detail.', findRichText: true),
+      findsNWidgets(2),
+    );
   });
 
-  testWidgets('expanded earlier row shows its chip once, not duplicated',
-      (tester) async {
+  testWidgets(
+      'expanded earlier row still shows its own chip exactly once (not '
+      'duplicated by the expanded body)', (tester) async {
     await tester.pumpWidget(host(const [
       ChangelogEntry(
         version: '0.34.1-alpha',
@@ -100,20 +130,31 @@ void main() {
             '- the row detail',
       ),
     ]));
-    // The row chip is in its collapsed header.
-    expect(find.text('Glide reflow'), findsOneWidget);
-    // Expanding must reveal the body bullet WITHOUT re-printing the chip — the
-    // expanded section heading is suppressed (the chip already sits in the row
-    // header), so the label stays at exactly one.
-    await tester.tap(find.text('Glide reflow'));
-    await tester.pumpAndSettle();
+    // Each custom label surfaces once in the aggregate hero's combined chips
+    // and once on its own row's collapsed header — two total, not three.
+    expect(find.text('Modal fix'), findsNWidgets(2));
+    expect(find.text('Glide reflow'), findsNWidgets(2));
+    // The aggregate hero already surfaces "the row detail" bullet as one of
+    // its combined highlights, so it's visible once even before this row is
+    // expanded.
     expect(find.text('the row detail', findRichText: true), findsOneWidget);
-    expect(find.text('Glide reflow'), findsOneWidget);
-    expect(find.text('Modal fix'), findsOneWidget); // hero chip unaffected
+    // Expanding the older row (targeted by its version, since "Glide reflow"
+    // itself now appears twice) must reveal the body bullet WITHOUT
+    // re-printing the chip a third time — the expanded section heading is
+    // suppressed (the chip already sits in the row header), so the chip
+    // count doesn't grow, even though the bullet text now legitimately
+    // renders a second time (hero's summary + the row's own expanded body).
+    await tester.ensureVisible(find.textContaining('v0.34.0-alpha'));
+    await tester.tap(find.textContaining('v0.34.0-alpha'));
+    await tester.pumpAndSettle();
+    expect(find.text('the row detail', findRichText: true), findsNWidgets(2));
+    expect(find.text('Glide reflow'), findsNWidgets(2));
+    expect(find.text('Modal fix'), findsNWidgets(2)); // hero + row, unaffected
   });
 
-  testWidgets('collapsed earlier row shows its category chips (not just hero)',
-      (tester) async {
+  testWidgets(
+      'collapsed earlier row shows its category chips (not just the '
+      'aggregate hero)', (tester) async {
     await tester.pumpWidget(host(const [
       ChangelogEntry(
         version: '0.33.0-alpha',
@@ -126,16 +167,149 @@ void main() {
         notes: '### Fixed\n- an old bug',
       ),
     ]));
-    // The older row's "Fixed" chip is visible while still collapsed, alongside
-    // the hero's "New" chip — categories are scannable without expanding.
-    expect(find.text('Fixed'), findsOneWidget);
-    expect(find.text('New'), findsOneWidget); // hero chip
+    // The older row's own "Fixed" chip is visible while still collapsed, and
+    // the aggregate hero above also shows both categories once each in its
+    // combined chip row — two apiece in total.
+    expect(find.text('Fixed'), findsNWidgets(2));
+    expect(find.text('New'), findsNWidgets(2));
   });
 
   testWidgets('empty entries renders nothing', (tester) async {
     await tester.pumpWidget(host(const []));
     expect(find.byType(ChangelogView), findsOneWidget);
     expect(find.textContaining('WHAT'), findsNothing);
+  });
+
+  group('reused outside the post-update modal (#209 review)', () {
+    // UpdateDialog passes the full changelog when already up to date and the
+    // not-yet-installed entries when an update is available — multiple
+    // entries there do NOT mean "you just installed a catch-up span", so the
+    // aggregate "N updates installed" hero must be opt-in (catchUp), not
+    // inferred from entry count.
+    testWidgets(
+        'multiple entries without catchUp keep the original newest-version '
+        'hero and EARLIER UPDATES list', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: themeDataFor(MeowThemeId.cozy),
+        // Deliberately no catchUp argument: this pins the widget's default.
+        home: const Scaffold(body: ChangelogView(entries: [newest, older])),
+      ));
+
+      expect(find.byKey(changelogCatchUpHeroKey), findsNothing);
+      expect(find.textContaining('updates installed'), findsNothing);
+      expect(find.text('EARLIER UPDATES'), findsOneWidget);
+      expect(find.text('ALL UPDATES'), findsNothing);
+      // Original layout: newest renders only as the hero (one New chip), the
+      // older entry only as a collapsed row (one inferred Fixed chip).
+      expect(find.text('New'), findsOneWidget);
+      expect(find.text('Fixed'), findsOneWidget);
+      expect(find.text('a shiny hero thing', findRichText: true),
+          findsOneWidget);
+    });
+  });
+
+  group('multi-version catch-up hero (#190)', () {
+    // Two versions have two bullets each so the 4-highlight cap meaningfully
+    // excludes their second bullet — proving the hero summarizes rather than
+    // reprinting the whole catch-up span.
+    const v4 = ChangelogEntry(
+      version: '0.36.0-alpha',
+      date: '2026-06-25',
+      notes: '### Added\n- feature four\n- feature four b',
+    );
+    const v3 = ChangelogEntry(
+      version: '0.35.0-alpha',
+      date: '2026-06-24',
+      notes: '### Added\n- feature three\n- feature three b',
+    );
+    const v2 = ChangelogEntry(
+      version: '0.34.1-alpha',
+      date: '2026-06-23',
+      notes: '### Fixed\n- fix two',
+    );
+    const v1 = ChangelogEntry(
+      version: '0.34.0-alpha',
+      date: '2026-06-22',
+      notes: '### Improved: Snappier lobby\n- improve one',
+    );
+
+    testWidgets(
+        'shows a count header and an ALL UPDATES section, not the '
+        'single-version EARLIER UPDATES label', (tester) async {
+      await tester.pumpWidget(host(const [v4, v3, v2, v1]));
+      expect(find.byKey(changelogCatchUpHeroKey), findsOneWidget);
+      expect(find.text('4 updates installed'), findsOneWidget);
+      expect(find.text('ALL UPDATES'), findsOneWidget);
+      expect(find.text('EARLIER UPDATES'), findsNothing);
+    });
+
+    testWidgets('combines every category across all included versions, deduped',
+        (tester) async {
+      await tester.pumpWidget(host(const [v4, v3, v2, v1]));
+      final hero = find.byKey(changelogCatchUpHeroKey);
+      // v4 & v3 both authored ### Added → one "New" chip in the hero, not two.
+      expect(find.descendant(of: hero, matching: find.text('New')),
+          findsOneWidget);
+      expect(find.descendant(of: hero, matching: find.text('Fixed')),
+          findsOneWidget);
+      expect(find.descendant(of: hero, matching: find.text('Snappier lobby')),
+          findsOneWidget);
+    });
+
+    testWidgets(
+        'shows at most 4 combined highlights, round-robin across versions '
+        'before repeating any one version', (tester) async {
+      await tester.pumpWidget(host(const [v4, v3, v2, v1]));
+      final hero = find.byKey(changelogCatchUpHeroKey);
+      // Each version's FIRST bullet is pulled in before any version's second.
+      expect(
+          find.descendant(
+              of: hero, matching: find.text('feature four', findRichText: true)),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: hero,
+              matching: find.text('feature three', findRichText: true)),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: hero, matching: find.text('fix two', findRichText: true)),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: hero, matching: find.text('improve one', findRichText: true)),
+          findsOneWidget);
+      // The second bullets of v4/v3 didn't make the 4-item cut.
+      expect(
+          find.descendant(
+              of: hero,
+              matching: find.text('feature four b', findRichText: true)),
+          findsNothing);
+      expect(
+          find.descendant(
+              of: hero,
+              matching: find.text('feature three b', findRichText: true)),
+          findsNothing);
+    });
+
+    testWidgets(
+        'every included version, including the newest, still gets its own '
+        'row below', (tester) async {
+      await tester.pumpWidget(host(const [v4, v3, v2, v1]));
+      expect(find.textContaining('v0.36.0-alpha'), findsOneWidget);
+      expect(find.textContaining('v0.35.0-alpha'), findsOneWidget);
+      expect(find.textContaining('v0.34.1-alpha'), findsOneWidget);
+      expect(find.textContaining('v0.34.0-alpha'), findsOneWidget);
+    });
+
+    testWidgets('a single version keeps the original hero exactly as-is',
+        (tester) async {
+      await tester.pumpWidget(host(const [v4]));
+      expect(find.byKey(changelogCatchUpHeroKey), findsNothing);
+      expect(find.text('ALL UPDATES'), findsNothing);
+      expect(find.text('EARLIER UPDATES'), findsNothing);
+      expect(find.text("WHAT'S NEW · v0.36.0-alpha"), findsOneWidget);
+    });
   });
 
   group('hero renders the authored > summary as a headline', () {

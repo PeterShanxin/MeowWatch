@@ -69,7 +69,10 @@ class WhatsNewDialog extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: Spacing.md),
-              ChangelogView(entries: entries),
+              // catchUp: these entries are exactly the versions the user just
+              // installed, the one surface where the aggregate "N updates
+              // installed" hero is true (#209 review).
+              ChangelogView(entries: entries, catchUp: true),
               const SizedBox(height: Spacing.lg),
               Align(
                 alignment: Alignment.centerRight,

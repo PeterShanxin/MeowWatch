@@ -55,6 +55,10 @@ void main() {
     expect(find.text("What's new"), findsOneWidget);
     expect(find.text('shiny thing', findRichText: true), findsOneWidget);
     expect(find.text('older thing'), findsOneWidget); // older entry's summary row
+    // Not the post-update modal: two changelog entries here just mean "here's
+    // the changelog", so the aggregate "installed" hero must NOT render
+    // (#209 review).
+    expect(find.textContaining('updates installed'), findsNothing);
   });
 
   testWidgets('up-to-date with no changelog hides the "What\'s new" section',

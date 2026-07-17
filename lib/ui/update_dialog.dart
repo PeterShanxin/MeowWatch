@@ -75,7 +75,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
       ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 380, minWidth: 320),
-        child: Padding(
+        // Scrollable, not just padded: a multi-version catch-up changelog can
+        // legitimately be tall (up to ChangelogView's own internal cap), and
+        // this dialog otherwise has no headroom to grow into on a modest
+        // screen — better to scroll than to silently overflow (#190).
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(Spacing.xxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
