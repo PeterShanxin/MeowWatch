@@ -612,7 +612,15 @@ class SyncplayClient extends SyncCore {
   }
 
   void _send(Map<String, Object?> message) {
-    if (kDebugMode) _debugSentMessages.add(message);
+    if (kDebugMode) {
+      _debugSentMessages.add(message);
+      // A long debug session sends a State heartbeat every second; unbounded
+      // recording is a slow, steady leak (#199). Keep only the newest entries.
+      if (_debugSentMessages.length > debugSentMessagesCap) {
+        _debugSentMessages.removeRange(
+            0, _debugSentMessages.length - debugSentMessagesCap);
+      }
+    }
     final socket = _socket;
     if (socket == null) return;
     final line = json.encode(message);
@@ -623,6 +631,11 @@ class SyncplayClient extends SyncCore {
     }
     socket.add(utf8.encode('$line\r\n'));
   }
+
+  /// Most-recent outbound messages kept in [debugSentMessages]; older entries
+  /// are dropped so debug builds don't leak over a long session.
+  @visibleForTesting
+  static const int debugSentMessagesCap = 200;
 
   final List<Map<String, Object?>> _debugSentMessages = [];
 
