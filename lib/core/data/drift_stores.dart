@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'app_database.dart';
 import 'history_collapse.dart';
@@ -34,31 +35,36 @@ class DriftProfileStore implements ProfileStore {
     required String room,
     required String username,
     String? password,
-  }) async {
-    final existing = await (_db.select(_db.profiles)
-          ..where((t) =>
-              t.server.equals(server) &
-              t.port.equals(port) &
-              t.room.equals(room) &
-              t.username.equals(username)))
-        .getSingleOrNull();
-
-    final companion = ProfilesCompanion(
-      name: Value(name),
-      server: Value(server),
-      port: Value(port),
-      room: Value(room),
-      username: Value(username),
-      password: Value(password),
-      lastUsedAt: Value(DateTime.now()),
-    );
-
-    if (existing == null) {
-      await _db.into(_db.profiles).insert(companion);
-    } else {
-      await (_db.update(_db.profiles)..where((t) => t.id.equals(existing.id)))
-          .write(companion);
-    }
+  }) {
+    // Single-statement upsert on the (server, port, room, username) unique
+    // key — one round trip instead of select-then-insert/update (#199). The
+    // conflict branch writes exactly what the old update path wrote: name,
+    // password (null clears it), and lastUsedAt; isDefault stays untouched.
+    final now = DateTime.now();
+    return _db.into(_db.profiles).insert(
+          ProfilesCompanion.insert(
+            name: name,
+            server: server,
+            port: port,
+            room: room,
+            username: username,
+            password: Value(password),
+            lastUsedAt: Value(now),
+          ),
+          onConflict: DoUpdate(
+            (old) => ProfilesCompanion(
+              name: Value(name),
+              password: Value(password),
+              lastUsedAt: Value(now),
+            ),
+            target: [
+              _db.profiles.server,
+              _db.profiles.port,
+              _db.profiles.room,
+              _db.profiles.username,
+            ],
+          ),
+        );
   }
 
   @override
@@ -82,6 +88,15 @@ class DriftHistoryStore implements HistoryStore {
 
   final AppDatabase _db;
 
+  /// SQL cap on the latestPerRoom scan (#199). Collapsing needs to read past
+  /// duplicates, so the scan must exceed the requested `limit` — but reading
+  /// the WHOLE table made every watch emission a full-table read+map as
+  /// history grew. 200 newest rows is generous headroom for the UI's
+  /// single-digit limits: the 6th distinct room would only fall outside it if
+  /// one room alone filled ~195 newer rows.
+  @visibleForTesting
+  static const int latestPerRoomScanCap = 200;
+
   @override
   Stream<List<HistoryEntry>> watchRecent({
     int limit = 6,
@@ -98,8 +113,10 @@ class DriftHistoryStore implements HistoryStore {
       query.limit(limit);
       return query.watch().map((rows) => rows.map(_toModel).toList());
     }
-    // latestPerRoom: collapse the full ordered set first, THEN take `limit` —
-    // a limit-then-collapse could under-fill when one room has many entries.
+    // latestPerRoom: collapse a bounded ordered scan first, THEN take `limit`
+    // — a limit-then-collapse could under-fill when one room has many
+    // entries, so the scan stays deliberately far wider than `limit`.
+    query.limit(latestPerRoomScanCap);
     return query.watch().map(
           (rows) => collapseHistory(rows.map(_toModel).toList(), mode)
               .take(limit)
@@ -117,48 +134,46 @@ class DriftHistoryStore implements HistoryStore {
     String? username,
     String? server,
     int? port,
-  }) async {
-    final existing = await (_db.select(_db.historyEntries)
-          ..where((t) => t.filePath.equals(filePath)))
-        .getSingleOrNull();
-
-    if (existing == null) {
-      await _db.into(_db.historyEntries).insert(
-            HistoryEntriesCompanion.insert(
-              filePath: filePath,
-              fileName: fileName,
-              fileSizeBytes: Value(fileSizeBytes),
-              durationMs: Value(durationMs),
-              playedAt: DateTime.now(),
-              room: Value(room),
-              username: Value(username),
-              server: Value(server),
-              port: Value(port),
+  }) {
+    // Single-statement upsert on the unique filePath — one round trip instead
+    // of select-then-insert/update (#199). The conflict branch mirrors the
+    // old update path column-for-column; `old.<column>` keeps the stored
+    // value, and lastPositionMs is never listed so a re-open can't touch a
+    // saved resume point.
+    final now = DateTime.now();
+    return _db.into(_db.historyEntries).insert(
+          HistoryEntriesCompanion.insert(
+            filePath: filePath,
+            fileName: fileName,
+            fileSizeBytes: Value(fileSizeBytes),
+            durationMs: Value(durationMs),
+            playedAt: now,
+            room: Value(room),
+            username: Value(username),
+            server: Value(server),
+            port: Value(port),
+          ),
+          onConflict: DoUpdate(
+            (old) => HistoryEntriesCompanion.custom(
+              fileName: Variable(fileName),
+              fileSizeBytes: Variable(fileSizeBytes),
+              // Same guard as updatePosition: a re-open commits the duration
+              // captured at open time — often 0, mpv hasn't probed yet — and
+              // must never clobber a runtime a periodic save already
+              // backfilled (#208 review).
+              durationMs: (durationMs != null && durationMs > 0)
+                  ? Variable(durationMs)
+                  : old.durationMs,
+              playedAt: Variable(now),
+              // Keep room metadata when this open isn't in a room.
+              room: room != null ? Variable(room) : old.room,
+              username: username != null ? Variable(username) : old.username,
+              server: server != null ? Variable(server) : old.server,
+              port: port != null ? Variable(port) : old.port,
             ),
-          );
-    } else {
-      await (_db.update(_db.historyEntries)
-            ..where((t) => t.id.equals(existing.id)))
-          .write(
-        HistoryEntriesCompanion(
-          fileName: Value(fileName),
-          fileSizeBytes: Value(fileSizeBytes),
-          // Same guard as updatePosition: a re-open commits the duration
-          // captured at open time — often 0, mpv hasn't probed yet — and
-          // must never clobber a runtime a periodic save already backfilled
-          // (#208 review).
-          durationMs: (durationMs != null && durationMs > 0)
-              ? Value(durationMs)
-              : Value(existing.durationMs),
-          playedAt: Value(DateTime.now()),
-          // Keep room metadata when this open isn't in a room.
-          room: Value(room ?? existing.room),
-          username: Value(username ?? existing.username),
-          server: Value(server ?? existing.server),
-          port: Value(port ?? existing.port),
-        ),
-      );
-    }
+            target: [_db.historyEntries.filePath],
+          ),
+        );
   }
 
   @override

@@ -161,6 +161,39 @@ void main() {
     expect(all.map((e) => e.fileName).toList(), ['b', 'a']);
   });
 
+  test('latestPerRoom scan is SQL-bounded: rows beyond the cap stay unread',
+      () async {
+    // Perf guard (#199): latestPerRoom used to read the WHOLE table on every
+    // invalidation. The query now carries a generous SQL cap applied before
+    // the collapse, so history growth can't turn each watch emission into a
+    // full-table scan.
+    final cap = DriftHistoryStore.latestPerRoomScanCap;
+    for (var i = 0; i < cap + 5; i++) {
+      // Distinct rooms so nothing collapses — every scanned row survives,
+      // making the result length a direct probe of the SQL scan bound.
+      // playedAt ties at whole-second resolution; id desc breaks the tie, so
+      // later inserts are unambiguously newer without needing delays.
+      await store.recordOpen(
+          filePath: 'f$i', fileName: 'f$i', fileSizeBytes: 1, room: 'room$i');
+    }
+
+    final unbounded = await store
+        .watchRecent(limit: cap + 5, mode: HistoryMode.latestPerRoom)
+        .first;
+    // Only the newest `cap` rows were scanned — the 5 oldest never left SQL.
+    expect(unbounded, hasLength(cap));
+    expect(unbounded.first.fileName, 'f${cap + 4}');
+    expect(unbounded.last.fileName, 'f5');
+
+    // The realistic small-limit path is untouched: newest rooms, newest first.
+    final recent =
+        await store.watchRecent(mode: HistoryMode.latestPerRoom).first;
+    expect(
+      recent.map((e) => e.fileName).toList(),
+      List.generate(6, (i) => 'f${cap + 4 - i}'),
+    );
+  });
+
   test('latestPerRoom keeps room-less entries and fills limit after collapse',
       () async {
     // cozy x2 (collapses to 1) + two solo files → limit:2 should yield 2 rows.
