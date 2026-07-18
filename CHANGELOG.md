@@ -10,6 +10,16 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.44.2-alpha] - 2026-07-17
+
+> Reaction bursts render lighter, and watch history stays quick as it grows.
+
+### Improved: Performance
+- Emoji reaction bursts now take less rendering work per frame, so a flurry
+  of reactions stays smooth over the video (#199).
+- Watch-history lookups stay fast no matter how large your history grows
+  (#199).
+
 ## [0.44.1-alpha] - 2026-07-17
 
 > A little internal tidy-up — everything looks and works exactly as before.

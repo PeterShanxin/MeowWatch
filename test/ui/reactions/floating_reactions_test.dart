@@ -47,6 +47,66 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+      'fade rides a FadeTransition, never a per-frame Opacity (#199 saveLayer)',
+      (tester) async {
+    final controller = StreamController<String>.broadcast();
+    addTearDown(controller.close);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: FloatingReactionsOverlay(emojis: controller.stream),
+      ),
+    ));
+
+    controller.add('🎉');
+    await tester.pump(); // process stream event, start the animation
+    // Mid-fade: t = 2220/2400 = 0.925 → old math gave 1-(0.925-0.85)/0.15 = 0.5.
+    await tester.pump(const Duration(milliseconds: 2220));
+
+    final overlay = find.byType(FloatingReactionsOverlay);
+    final fade = tester.widget<FadeTransition>(
+      find.descendant(of: overlay, matching: find.byType(FadeTransition)),
+    );
+    expect(fade.opacity.value, closeTo(0.5, 0.01),
+        reason: 'fade curve must match the old hold-then-linear-fade shape');
+    // A raw Opacity widget rebuilt per frame forces a saveLayer per emoji per
+    // frame during the fade — the regression this test guards against.
+    expect(find.descendant(of: overlay, matching: find.byType(Opacity)),
+        findsNothing);
+
+    // Before the fade window opens the glyph must be fully opaque.
+    controller.add('😹');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final fades = tester
+        .widgetList<FadeTransition>(
+            find.descendant(of: overlay, matching: find.byType(FadeTransition)))
+        .toList();
+    expect(fades.map((f) => f.opacity.value), contains(closeTo(1.0, 0.001)));
+  });
+
+  testWidgets('overlay repaints behind its own RepaintBoundary', (tester) async {
+    final controller = StreamController<String>.broadcast();
+    addTearDown(controller.close);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: FloatingReactionsOverlay(emojis: controller.stream),
+      ),
+    ));
+
+    // Bursts animate every frame; without a boundary they dirty the
+    // full-screen layer above the video (#199).
+    expect(
+      find.descendant(
+        of: find.byType(FloatingReactionsOverlay),
+        matching: find.byType(RepaintBoundary),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('reduce motion: the burst is static — no rise, drift, or fade',
       (tester) async {
     final controller = StreamController<String>.broadcast();
