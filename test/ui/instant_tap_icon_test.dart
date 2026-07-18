@@ -24,25 +24,69 @@ void main() {
       expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
     });
 
-    testWidgets('fires onPressed on pointer down (no arena wait)',
+    testWidgets('fires onPressed on pointer up, not down (#218)',
         (tester) async {
-      var pressed = false;
+      var pressed = 0;
       await tester.pumpWidget(_wrap(InstantTapIcon(
         icon: Icons.play_arrow_rounded,
-        onPressed: () => pressed = true,
+        onPressed: () => pressed++,
       )));
 
-      // Press down only — the callback must fire before pointer-up, proving it
-      // does not wait for the gesture arena to resolve.
-      final gesture =
-          await tester.startGesture(tester.getCenter(find.byType(InstantTapIcon)));
-      expect(pressed, isTrue);
+      final gesture = await tester
+          .startGesture(tester.getCenter(find.byType(InstantTapIcon)));
+      await tester.pump();
+      expect(pressed, 0, reason: 'must not fire while the button is held');
 
+      // Fires synchronously on release — no gesture-arena wait needed.
       await gesture.up();
+      expect(pressed, 1,
+          reason: 'must fire on release without waiting for the arena');
       await tester.pump(const Duration(milliseconds: 400));
+      expect(pressed, 1);
     });
 
-    testWidgets('squashes on press, restores on release, still fires on down',
+    testWidgets('dragging off the button before release cancels the press',
+        (tester) async {
+      var pressed = 0;
+      await tester.pumpWidget(_wrap(InstantTapIcon(
+        icon: Icons.play_arrow_rounded,
+        onPressed: () => pressed++,
+      )));
+
+      final gesture = await tester
+          .startGesture(tester.getCenter(find.byType(InstantTapIcon)));
+      await tester.pump();
+      // Drag well outside the 48px tap target, then release.
+      await gesture.moveBy(const Offset(200, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(pressed, 0, reason: 'release outside the button must not fire');
+    });
+
+    testWidgets(
+        'dragging off and back onto the button before release still fires',
+        (tester) async {
+      var pressed = 0;
+      await tester.pumpWidget(_wrap(InstantTapIcon(
+        icon: Icons.play_arrow_rounded,
+        onPressed: () => pressed++,
+      )));
+
+      final center = tester.getCenter(find.byType(InstantTapIcon));
+      final gesture = await tester.startGesture(center);
+      await gesture.moveBy(const Offset(200, 0));
+      await tester.pump();
+      await gesture.moveTo(center);
+      await tester.pump();
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(pressed, 1);
+    });
+
+    testWidgets('squashes on press, restores on release, fires on up',
         (tester) async {
       var pressed = 0;
       await tester.pumpWidget(_wrap(InstantTapIcon(
@@ -54,16 +98,36 @@ void main() {
       final gesture = await tester
           .startGesture(tester.getCenter(find.byType(InstantTapIcon)));
       await tester.pump();
-      expect(pressed, 1); // fired on down, no arena wait
-      expect(_scale(tester), lessThan(1.0)); // squashed
+      expect(pressed, 0);
+      expect(_scale(tester), lessThan(1.0)); // squashed instantly on down
 
       await gesture.up();
       await tester.pump();
+      expect(pressed, 1);
       expect(_scale(tester), 1.0); // restored
       await tester.pumpAndSettle(); // drain the scale animation
     });
 
-    testWidgets('reduce motion: fires on down with no squash', (tester) async {
+    testWidgets('un-squashes while dragged off the button', (tester) async {
+      await tester.pumpWidget(_wrap(InstantTapIcon(
+        icon: Icons.play_arrow_rounded,
+        onPressed: () {},
+      )));
+
+      final gesture = await tester
+          .startGesture(tester.getCenter(find.byType(InstantTapIcon)));
+      await tester.pump();
+      expect(_scale(tester), lessThan(1.0));
+
+      await gesture.moveBy(const Offset(200, 0));
+      await tester.pump();
+      expect(_scale(tester), 1.0, reason: 'off the button = press abandoned');
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('reduce motion: fires on up with no squash', (tester) async {
       var pressed = 0;
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -82,9 +146,10 @@ void main() {
       final gesture = await tester
           .startGesture(tester.getCenter(find.byType(InstantTapIcon)));
       await tester.pump();
-      expect(pressed, 1);
+      expect(pressed, 0);
       expect(_scale(tester), 1.0); // no squash under reduce motion
       await gesture.up();
+      expect(pressed, 1);
       await tester.pumpAndSettle();
     });
 

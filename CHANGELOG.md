@@ -10,6 +10,17 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.44.4-alpha] - 2026-07-19
+
+> Play-bar buttons now click like real buttons — action on release, and
+> slipping off before letting go cancels it.
+
+### Fixed
+- The play/pause, mute, and fullscreen buttons fired the moment you pressed
+  the mouse button down. They now act on release, like every other desktop
+  button, and dragging the cursor off before releasing cancels the click.
+  (#218)
+
 ## [0.44.3-alpha] - 2026-07-18
 
 > A round of library refreshes under the hood — playback, windowing, and
