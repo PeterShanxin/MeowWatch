@@ -20,6 +20,15 @@ in-app updater reads to show what changed.
 - Watch-history lookups stay fast no matter how large your history grows
   (#199).
 
+## [0.44.1-alpha] - 2026-07-17
+
+> A little internal tidy-up — everything looks and works exactly as before.
+
+### Improved: Under the hood
+- Tidied up the room screen's internals into smaller, focused pieces so
+  future fixes and features land faster and safer. Nothing visible changes
+  (#182).
+
 ## [0.44.0-alpha] - 2026-07-16
 
 > When a friend is watching a link, one click loads it for you too.
