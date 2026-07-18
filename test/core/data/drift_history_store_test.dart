@@ -240,4 +240,76 @@ void main() {
     // newest-first c(cozy), b(solo), a(cozy→hidden) → collapse → [c, b] → take 2.
     expect(list.map((e) => e.fileName).toList(), ['c', 'b']);
   });
+
+  test(
+      'latestPerRoom merges exotic-whitespace-padded room aliases before '
+      'limiting (PR #216 review)', () async {
+    // A pasted share code can drag a tab or NBSP into the room name. Dart's
+    // trim() strips those, so collapseHistory treats "cozy", "\tcozy\t" and
+    // NBSP-padded "cozy" as ONE room — the SQL grouping key must agree, or
+    // the LIMIT eats slots on aliases and the post-pass can't pull in the
+    // next older distinct room (under-filled Continue Watching).
+    for (var i = 0; i < 5; i++) {
+      await store.recordOpen(
+          filePath: 'old$i',
+          fileName: 'old$i',
+          fileSizeBytes: 1,
+          room: 'oldroom$i');
+    }
+    await store.recordOpen(
+        filePath: 'clean', fileName: 'clean', fileSizeBytes: 1, room: 'cozy');
+    await store.recordOpen(
+        filePath: 'tabbed',
+        fileName: 'tabbed',
+        fileSizeBytes: 1,
+        room: '\tcozy\t');
+    await store.recordOpen(
+        filePath: 'nbsp',
+        fileName: 'nbsp',
+        fileSizeBytes: 1,
+        room: '\u00A0cozy\u00A0');
+
+    final list =
+        await store.watchRecent(mode: HistoryMode.latestPerRoom).first;
+    // One card for the cozy trio (its newest entry), then every older room.
+    expect(
+      list.map((e) => e.fileName).toList(),
+      ['nbsp', 'old4', 'old3', 'old2', 'old1', 'old0'],
+    );
+  });
+
+  test(
+      'a room of pure exotic whitespace counts as roomless — every entry kept '
+      '(PR #216 review)', () async {
+    // Dart trim() reduces a pure-NBSP room to '', i.e. "not in a room", and
+    // roomless entries are never collapsed. The SQL room_key must agree.
+    await store.recordOpen(
+        filePath: 'g1', fileName: 'g1', fileSizeBytes: 1, room: '\u00A0');
+    await store.recordOpen(
+        filePath: 'g2', fileName: 'g2', fileSizeBytes: 1, room: '\u00A0');
+
+    final list =
+        await store.watchRecent(mode: HistoryMode.latestPerRoom).first;
+    expect(list.map((e) => e.fileName).toList(), ['g2', 'g1']);
+  });
+
+  test('kDartTrimWhitespace matches String.trim exactly across the BMP', () {
+    // The SQL TRIM(x, kDartTrimWhitespace) key is only correct if the char
+    // set is EXACTLY what Dart's String.trim() strips. Sweep every BMP code
+    // point and compare against the running SDK — if a Dart release ever
+    // shifts its whitespace set, this fails loudly instead of silently
+    // splitting room groups.
+    final set = kDartTrimWhitespace.codeUnits.toSet();
+    final mismatches = <String>[];
+    for (var c = 0; c <= 0xFFFF; c++) {
+      if (c >= 0xD800 && c <= 0xDFFF) continue; // lone surrogates
+      final dartTrims = String.fromCharCode(c).trim().isEmpty;
+      if (dartTrims != set.contains(c)) {
+        mismatches.add(
+            'U+${c.toRadixString(16).padLeft(4, '0').toUpperCase()} '
+            'dart:$dartTrims set:${set.contains(c)}');
+      }
+    }
+    expect(mismatches, isEmpty);
+  });
 }

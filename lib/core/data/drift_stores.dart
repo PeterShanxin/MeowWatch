@@ -82,6 +82,32 @@ class DriftProfileStore implements ProfileStore {
       );
 }
 
+/// Every code point Dart's [String.trim] strips: the Unicode White_Space set
+/// (U+0009–U+000D, U+0020, U+0085, U+00A0, U+1680, U+2000–U+200A, U+2028,
+/// U+2029, U+202F, U+205F, U+3000) plus the BOM U+FEFF, per the String.trim
+/// SDK docs. Passed to SQLite's two-argument TRIM(X, Y) so the SQL room key
+/// in [DriftHistoryStore.watchRecent] matches `room?.trim()` exactly —
+/// single-argument TRIM only strips ASCII spaces, which would split e.g. an
+/// NBSP-padded room (pasted share code) into a phantom second room (PR #216
+/// review). An exhaustive BMP sweep in drift_history_store_test.dart keeps
+/// this list verifiably in sync with the running SDK. Built from code points
+/// rather than escape literals so no invisible characters live in source.
+final String kDartTrimWhitespace = String.fromCharCodes(const <int>[
+  0x0009, 0x000A, 0x000B, 0x000C, 0x000D, // tab, LF, VT, FF, CR
+  0x0020, // space
+  0x0085, // next line (NEL)
+  0x00A0, // no-break space
+  0x1680, // ogham space mark
+  0x2000, 0x2001, 0x2002, 0x2003, 0x2004, // en quad..three-per-em space
+  0x2005, 0x2006, 0x2007, 0x2008, 0x2009, // four-per-em..thin space
+  0x200A, // hair space
+  0x2028, 0x2029, // line / paragraph separator
+  0x202F, // narrow no-break space
+  0x205F, // medium mathematical space
+  0x3000, // ideographic space
+  0xFEFF, // BOM (zero-width no-break space)
+]);
+
 class DriftHistoryStore implements HistoryStore {
   DriftHistoryStore(this._db);
 
@@ -114,25 +140,30 @@ class DriftHistoryStore implements HistoryStore {
     // single window pass here runs inside SQLite's engine and hands Dart at
     // most `limit` rows.
     //
-    // TRIM/COALESCE mirror collapseHistory's grouping key (null/blank room =
-    // "not in a room", kept always). SQL TRIM only strips ASCII spaces where
-    // Dart trim() strips all Unicode whitespace; the collapseHistory
-    // post-pass below re-applies the exact Dart key over the (tiny) selected
-    // set, so any residue merges the way the original full scan did.
+    // TRIM(x, kDartTrimWhitespace)/COALESCE mirror collapseHistory's grouping
+    // key exactly (null/blank room = "not in a room", kept always) — the
+    // two-argument TRIM strips the same Unicode whitespace Dart's trim()
+    // does, so whitespace-padded aliases of one room can't split into
+    // phantom groups and eat LIMIT slots (PR #216 review). The
+    // collapseHistory post-pass below is a true no-op safety net over the
+    // (tiny) selected set.
     final rows = _db.customSelect(
       'SELECT * FROM ('
       'SELECT h.*, '
-      "TRIM(COALESCE(h.room, '')) AS room_key, "
+      "TRIM(COALESCE(h.room, ''), ?1) AS room_key, "
       'ROW_NUMBER() OVER ('
-      "PARTITION BY TRIM(COALESCE(h.room, '')) "
+      "PARTITION BY TRIM(COALESCE(h.room, ''), ?1) "
       'ORDER BY h.played_at DESC, h.id DESC'
       ') AS room_rank '
       'FROM history_entries h'
       ') '
       "WHERE room_rank = 1 OR room_key = '' "
       'ORDER BY played_at DESC, id DESC '
-      'LIMIT ?',
-      variables: [Variable<int>(limit)],
+      'LIMIT ?2',
+      variables: [
+        Variable<String>(kDartTrimWhitespace),
+        Variable<int>(limit),
+      ],
       readsFrom: {_db.historyEntries},
     );
     return rows.watch().map(
