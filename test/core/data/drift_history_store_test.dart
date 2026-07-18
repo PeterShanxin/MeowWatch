@@ -161,36 +161,66 @@ void main() {
     expect(all.map((e) => e.fileName).toList(), ['b', 'a']);
   });
 
-  test('latestPerRoom scan is SQL-bounded: rows beyond the cap stay unread',
+  test('latestPerRoom keeps the full-scan contract across a large history',
       () async {
-    // Perf guard (#199): latestPerRoom used to read the WHOLE table on every
-    // invalidation. The query now carries a generous SQL cap applied before
-    // the collapse, so history growth can't turn each watch emission into a
-    // full-table scan.
-    final cap = DriftHistoryStore.latestPerRoomScanCap;
-    for (var i = 0; i < cap + 5; i++) {
-      // Distinct rooms so nothing collapses — every scanned row survives,
-      // making the result length a direct probe of the SQL scan bound.
+    // Perf work (#199) must not change the store contract: every distinct
+    // room's latest entry stays reachable however large the table grows. The
+    // SQL collapses per-room before rows ever reach Dart, so only `limit`
+    // rows are materialized per invalidation — but the *result* matches the
+    // original full scan exactly.
+    for (var i = 0; i < 205; i++) {
       // playedAt ties at whole-second resolution; id desc breaks the tie, so
       // later inserts are unambiguously newer without needing delays.
       await store.recordOpen(
           filePath: 'f$i', fileName: 'f$i', fileSizeBytes: 1, room: 'room$i');
     }
 
-    final unbounded = await store
-        .watchRecent(limit: cap + 5, mode: HistoryMode.latestPerRoom)
+    // Every distinct room is reachable — no truncation before the collapse.
+    final all = await store
+        .watchRecent(limit: 300, mode: HistoryMode.latestPerRoom)
         .first;
-    // Only the newest `cap` rows were scanned — the 5 oldest never left SQL.
-    expect(unbounded, hasLength(cap));
-    expect(unbounded.first.fileName, 'f${cap + 4}');
-    expect(unbounded.last.fileName, 'f5');
+    expect(all, hasLength(205));
+    expect(all.first.fileName, 'f204');
+    expect(all.last.fileName, 'f0');
 
-    // The realistic small-limit path is untouched: newest rooms, newest first.
+    // The realistic small-limit path: newest rooms, newest first.
     final recent =
         await store.watchRecent(mode: HistoryMode.latestPerRoom).first;
     expect(
       recent.map((e) => e.fileName).toList(),
-      List.generate(6, (i) => 'f${cap + 4 - i}'),
+      List.generate(6, (i) => 'f${204 - i}'),
+    );
+  });
+
+  test(
+      'latestPerRoom surfaces older distinct rooms when one room dominates '
+      'recent history (PR #216 review)', () async {
+    // Older distinct rooms + a solo watch…
+    for (var i = 0; i < 4; i++) {
+      await store.recordOpen(
+          filePath: 'old$i',
+          fileName: 'old$i',
+          fileSizeBytes: 1,
+          room: 'oldroom$i');
+    }
+    await store.recordOpen(
+        filePath: 'solo', fileName: 'solo', fileSizeBytes: 1);
+    // …then a flood of newer entries ALL in one room. A cap that truncates
+    // the scan before collapsing would only ever see this room and shrink
+    // Continue Watching to a single card.
+    for (var i = 0; i < 210; i++) {
+      await store.recordOpen(
+          filePath: 'flood$i',
+          fileName: 'flood$i',
+          fileSizeBytes: 1,
+          room: 'hot');
+    }
+
+    final list =
+        await store.watchRecent(mode: HistoryMode.latestPerRoom).first;
+    expect(
+      list.map((e) => e.fileName).toList(),
+      ['flood209', 'solo', 'old3', 'old2', 'old1', 'old0'],
     );
   });
 

@@ -1,5 +1,4 @@
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'app_database.dart';
 import 'history_collapse.dart';
@@ -88,39 +87,59 @@ class DriftHistoryStore implements HistoryStore {
 
   final AppDatabase _db;
 
-  /// SQL cap on the latestPerRoom scan (#199). Collapsing needs to read past
-  /// duplicates, so the scan must exceed the requested `limit` — but reading
-  /// the WHOLE table made every watch emission a full-table read+map as
-  /// history grew. 200 newest rows is generous headroom for the UI's
-  /// single-digit limits: the 6th distinct room would only fall outside it if
-  /// one room alone filled ~195 newer rows.
-  @visibleForTesting
-  static const int latestPerRoomScanCap = 200;
-
   @override
   Stream<List<HistoryEntry>> watchRecent({
     int limit = 6,
     HistoryMode mode = HistoryMode.everyVideo,
   }) {
-    // playedAt ties at whole-second resolution; id desc is the stable
-    // tie-break so the newest write wins.
-    final query = _db.select(_db.historyEntries)
-      ..orderBy([
-        (t) => OrderingTerm(expression: t.playedAt, mode: OrderingMode.desc),
-        (t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc),
-      ]);
     if (mode == HistoryMode.everyVideo) {
-      query.limit(limit);
+      // playedAt ties at whole-second resolution; id desc is the stable
+      // tie-break so the newest write wins.
+      final query = _db.select(_db.historyEntries)
+        ..orderBy([
+          (t) => OrderingTerm(expression: t.playedAt, mode: OrderingMode.desc),
+          (t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc),
+        ])
+        ..limit(limit);
       return query.watch().map((rows) => rows.map(_toModel).toList());
     }
-    // latestPerRoom: collapse a bounded ordered scan first, THEN take `limit`
-    // — a limit-then-collapse could under-fill when one room has many
-    // entries, so the scan stays deliberately far wider than `limit`.
-    query.limit(latestPerRoomScanCap);
-    return query.watch().map(
-          (rows) => collapseHistory(rows.map(_toModel).toList(), mode)
-              .take(limit)
-              .toList(),
+    // latestPerRoom: SQL selects the collapsed set directly — the latest
+    // entry per room (ROW_NUMBER over the trimmed room key, newest-first by
+    // playedAt then id) plus every roomless entry — so older distinct rooms
+    // still surface when one room dominates recent history (#199, PR #216
+    // review; a pre-collapse LIMIT is NOT equivalent — it starves older
+    // rooms). Work per invalidation stays bounded where it actually hurt:
+    // the old implementation materialized the whole table into Dart
+    // (row → HistoryEntry mapping + list churn per emission), while the
+    // single window pass here runs inside SQLite's engine and hands Dart at
+    // most `limit` rows.
+    //
+    // TRIM/COALESCE mirror collapseHistory's grouping key (null/blank room =
+    // "not in a room", kept always). SQL TRIM only strips ASCII spaces where
+    // Dart trim() strips all Unicode whitespace; the collapseHistory
+    // post-pass below re-applies the exact Dart key over the (tiny) selected
+    // set, so any residue merges the way the original full scan did.
+    final rows = _db.customSelect(
+      'SELECT * FROM ('
+      'SELECT h.*, '
+      "TRIM(COALESCE(h.room, '')) AS room_key, "
+      'ROW_NUMBER() OVER ('
+      "PARTITION BY TRIM(COALESCE(h.room, '')) "
+      'ORDER BY h.played_at DESC, h.id DESC'
+      ') AS room_rank '
+      'FROM history_entries h'
+      ') '
+      "WHERE room_rank = 1 OR room_key = '' "
+      'ORDER BY played_at DESC, id DESC '
+      'LIMIT ?',
+      variables: [Variable<int>(limit)],
+      readsFrom: {_db.historyEntries},
+    );
+    return rows.watch().map(
+          (raw) => collapseHistory(
+            raw.map((r) => _toModel(_db.historyEntries.map(r.data))).toList(),
+            mode,
+          ).take(limit).toList(),
         );
   }
 
