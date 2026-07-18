@@ -10,6 +10,16 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.44.3-alpha] - 2026-07-18
+
+> A round of library refreshes under the hood — playback, windowing, and
+> storage stay solid on the latest tooling.
+
+### Improved: Under the hood
+- Updated the video playback engine's rendering layer and several supporting
+  libraries (window handling, drag-and-drop, local storage) to their latest
+  versions for better stability and future compatibility.
+
 ## [0.44.2-alpha] - 2026-07-17
 
 > Reaction bursts render lighter, and watch history stays quick as it grows.
