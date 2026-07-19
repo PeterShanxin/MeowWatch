@@ -9,12 +9,12 @@ import 'package:meowwatch/core/resolve/resolved_media.dart';
 /// [ResolvedMedia]. The process spawn is an injectable seam ([ProcessRunner])
 /// so tests never touch a real binary.
 
-/// Seam for spawning the yt-dlp process; the default wraps [Process.run].
+/// Test seam for running yt-dlp: given the exe + args, yield its
+/// [ProcessResult]. Only injected by tests — the production path uses
+/// [Process.start] directly so a hung process can be killed (see
+/// [_runWithTimeout]).
 typedef ProcessRunner = Future<ProcessResult> Function(
     String exe, List<String> args);
-
-Future<ProcessResult> _defaultRunner(String exe, List<String> args) =>
-    Process.run(exe, args, stdoutEncoding: utf8, stderrEncoding: utf8);
 
 /// Resolves a page URL (YouTube, Bilibili, …) into playable stream URLs by
 /// invoking yt-dlp with a fixed, research-vetted argument list.
@@ -23,11 +23,17 @@ class YtDlpResolver {
     required this.exePath,
     ProcessRunner? runner,
     this.timeout = const Duration(seconds: 60),
-  }) : _runner = runner ?? _defaultRunner;
+    // Public param stays `runner`; the field is private, so an initializing
+    // formal can't be used here.
+    // ignore: prefer_initializing_formals
+  }) : _runner = runner;
 
   final String exePath;
   final Duration timeout;
-  final ProcessRunner _runner;
+
+  /// When set (tests), used instead of spawning a real process. Null in
+  /// production, where [_runWithTimeout] owns a killable [Process].
+  final ProcessRunner? _runner;
 
   /// Resolve [pageUrl]; throws [ResolveException] on any failure.
   Future<ResolvedMedia> resolve(String pageUrl) async {
@@ -57,19 +63,47 @@ class YtDlpResolver {
   }
 
   Future<ProcessResult> _runWithTimeout(List<String> args) async {
-    final run = _runner(exePath, args);
-    final result = await Future.any<ProcessResult?>([
-      run,
-      Future<ProcessResult?>.delayed(timeout, () => null),
+    // Test path: no real OS process, so the timeout is a plain race with
+    // nothing to kill.
+    final runner = _runner;
+    if (runner != null) {
+      final result = await Future.any<ProcessResult?>([
+        runner(exePath, args),
+        Future<ProcessResult?>.delayed(timeout, () => null),
+      ]);
+      if (result == null) throw _timeoutException();
+      return result;
+    }
+
+    // Production path: own the process so a hung yt-dlp is terminated on
+    // timeout, not left running in the background (Codex P2). Process.run gives
+    // back only a ProcessResult after completion, so it can't be killed.
+    final process = await Process.start(exePath, args);
+    // Drain both pipes eagerly; an unread stdout/stderr buffer can itself wedge
+    // the child once it fills.
+    final stdoutFuture = process.stdout.transform(utf8.decoder).join();
+    final stderrFuture = process.stderr.transform(utf8.decoder).join();
+    final exit = await Future.any<int?>([
+      process.exitCode,
+      Future<int?>.delayed(timeout, () => null),
     ]);
-    if (result == null) {
-      throw ResolveException(
+    if (exit == null) {
+      process.kill(ProcessSignal.sigkill);
+      // Reap the exit + drain so no pipe/process handle is leaked.
+      unawaited(process.exitCode);
+      unawaited(stdoutFuture);
+      unawaited(stderrFuture);
+      throw _timeoutException();
+    }
+    final stdout = await stdoutFuture;
+    final stderr = await stderrFuture;
+    return ProcessResult(process.pid, exit, stdout, stderr);
+  }
+
+  ResolveException _timeoutException() => ResolveException(
         ResolveErrorKind.timeout,
         'yt-dlp did not finish within ${timeout.inSeconds}s',
       );
-    }
-    return result;
-  }
 
   ResolvedMedia _parse(String pageUrl, String stdout) {
     final Object? decoded;

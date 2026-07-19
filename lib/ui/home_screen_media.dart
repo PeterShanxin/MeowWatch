@@ -74,6 +74,12 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
       resolved = await _resolvePageUrl(path, gen);
       // Failed or superseded — surfaced inside _resolvePageUrl.
       if (resolved == null) return false;
+      // Resolving can await for many seconds (first-run tool download + the
+      // network resolve). The user may have left the room in that window, and
+      // dispose() does NOT bump _loadGeneration — so also honor `mounted`
+      // before touching the process-shared player, or a completed resolve would
+      // reopen the abandoned room's media into the next session (Codex P1).
+      if (!mounted || gen != _loadGeneration) return false;
     }
     // Invalidate the accepted-source marker until this load is confirmed, so a
     // reconnect mid-load can't re-announce the previous source.
