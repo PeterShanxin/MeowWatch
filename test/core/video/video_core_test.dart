@@ -157,5 +157,14 @@ void main() {
       expect(core.state.fileName, 'demo.mkv');
       expect(core.state.errorMessage, isNull);
     });
+
+    test('replaces a stale error so Retry points at the newest bad source', () {
+      final c = FakeVideoCore();
+      c.failSource('https://first.test/bad', 'first failure');
+      c.failSource('https://second.test/bad', 'second failure');
+      expect(c.state.status, PlaybackStatus.error);
+      expect(c.state.filePath, 'https://second.test/bad');
+      expect(c.state.errorMessage, 'second failure');
+    });
   });
 }

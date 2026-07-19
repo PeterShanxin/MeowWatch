@@ -89,11 +89,14 @@ abstract class VideoCore {
   /// page-URL resolve failure): emit an error state that carries the source as
   /// [PlaybackState.fileName]/[PlaybackState.filePath], because the error
   /// screen only mounts when a fileName is present — [failLoad] alone would
-  /// leave the user staring at the empty screen with no explanation. Same
-  /// no-clobber guard as [failLoad]: never overwrite a genuinely open video or
-  /// an existing error.
+  /// leave the user staring at the empty screen with no explanation.
+  ///
+  /// Refuses only a genuinely open playback (never nuke a playing video over a
+  /// failed paste). Unlike [failLoad] it *does* replace an existing error: a
+  /// second bad link must show its own message and point Retry at the source
+  /// the user just pasted, not the previous failure's stale source.
   void failSource(String source, String message) {
-    if (isPlaybackOpen(_state) || _state.status == PlaybackStatus.error) return;
+    if (isPlaybackOpen(_state)) return;
     emit(_state.copyWith(
       status: PlaybackStatus.error,
       fileName: source,
