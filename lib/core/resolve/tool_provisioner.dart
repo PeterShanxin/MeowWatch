@@ -27,8 +27,10 @@ class ToolProvisioner {
   ToolProvisioner({
     required this.toolsDir,
     http.Client? client,
+    String? ytDlpSha256,
     String? denoSha256,
   })  : _client = client ?? http.Client(),
+        _ytDlpSha256 = ytDlpSha256 ?? _kYtDlpSha256,
         _denoSha256 = denoSha256 ?? _kDenoZipSha256;
 
   /// Directory the tools are installed into (created on demand).
@@ -36,11 +38,28 @@ class ToolProvisioner {
 
   final http.Client _client;
 
+  /// Expected SHA-256 of the pinned yt-dlp.exe; overridable only for tests.
+  final String _ytDlpSha256;
+
   /// Expected SHA-256 of the pinned Deno zip; overridable only for tests.
   final String _denoSha256;
 
-  static const _ytDlpBase =
-      'https://github.com/yt-dlp/yt-dlp/releases/latest/download';
+  // yt-dlp is pinned to a specific version and verified against a hash baked
+  // into the app, NOT fetched from `releases/latest` with a same-release
+  // `SHA2-256SUMS`: that checksum lives in the very release it verifies, so a
+  // compromised release could ship a malicious exe AND a matching sum and pass.
+  // The app *executes* yt-dlp, so first install must be fail-closed against a
+  // compromised release channel — the same bar the pinned Deno hash meets
+  // (Codex #223 P1). Staying current is not sacrificed: yt-dlp rots without
+  // updates, so issue #124 keeps it fresh via yt-dlp's own `-U` self-update
+  // (its native, signed-per-release update path) after this trusted first
+  // install. Bump the version + hash together when advancing the baseline.
+  static const _kYtDlpVersion = '2026.07.04';
+  static const _kYtDlpSha256 =
+      '52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8';
+  static const _ytDlpUrl =
+      'https://github.com/yt-dlp/yt-dlp/releases/download/$_kYtDlpVersion/'
+      'yt-dlp.exe';
 
   // Deno is pinned to a specific version and verified against a hash baked into
   // the app (not `releases/latest`): yt-dlp auto-discovers and *executes* the
@@ -96,9 +115,8 @@ class ToolProvisioner {
     if (!exe.existsSync()) {
       await toolsDir.create(recursive: true);
       onStatus?.call('Setting up the video finder…');
-      final bytes = await _download('$_ytDlpBase/yt-dlp.exe');
-      final sums = await _download('$_ytDlpBase/SHA2-256SUMS');
-      _verifySha256(bytes, String.fromCharCodes(sums), 'yt-dlp.exe');
+      final bytes = await _download(_ytDlpUrl);
+      _verifyHash(bytes, _ytDlpSha256, 'yt-dlp.exe');
       await _writeAtomically(exe, bytes);
     }
 
@@ -134,29 +152,15 @@ class ToolProvisioner {
     return response.bodyBytes;
   }
 
-  /// Check [bytes] against the entry for [assetName] in a yt-dlp
-  /// `SHA2-256SUMS` file (`<hex>  <name>` per line). Fails closed: a missing
-  /// entry is as fatal as a mismatch — these bytes get executed.
-  void _verifySha256(List<int> bytes, String sumsText, String assetName) {
-    String? expected;
-    for (final line in sumsText.split('\n')) {
-      final parts = line.trim().split(RegExp(r'\s+'));
-      if (parts.length == 2 && parts[1] == assetName) {
-        expected = parts[0].toLowerCase();
-        break;
-      }
-    }
-    if (expected == null) {
-      throw ResolveException(
-        ResolveErrorKind.toolMissing,
-        'no SHA2-256SUMS entry for $assetName',
-      );
-    }
+  /// Verify [bytes] against the baked-in [expectedHex] SHA-256. Fails closed
+  /// with [ResolveErrorKind.toolMissing]: these bytes get executed, so a
+  /// mismatch must abort the install.
+  void _verifyHash(List<int> bytes, String expectedHex, String name) {
     final actual = sha256.convert(bytes).toString();
-    if (actual != expected) {
+    if (actual != expectedHex.toLowerCase()) {
       throw ResolveException(
         ResolveErrorKind.toolMissing,
-        '$assetName checksum mismatch: expected $expected got $actual',
+        '$name checksum mismatch: expected $expectedHex got $actual',
       );
     }
   }
@@ -207,13 +211,7 @@ class ToolProvisioner {
     final zipBytes = await _download(_denoZipUrl);
     // Fail closed: only the exact pinned Deno build may be installed, since
     // yt-dlp will execute it. A tampered/rebuilt asset never reaches disk.
-    final actual = sha256.convert(zipBytes).toString();
-    if (actual != _denoSha256.toLowerCase()) {
-      throw ResolveException(
-        ResolveErrorKind.toolMissing,
-        'deno zip checksum mismatch: expected $_denoSha256 got $actual',
-      );
-    }
+    _verifyHash(zipBytes, _denoSha256, 'deno zip');
     final archive = ZipDecoder().decodeBytes(zipBytes);
     ArchiveFile? entry;
     for (final file in archive) {

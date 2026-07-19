@@ -24,17 +24,17 @@ void main() {
     ..setRange(0, 2, 'MZ'.codeUnits);
   final ytDlpSha = sha256.convert(ytDlpBytes).toString();
 
-  // Build the fake deno zip once so its bytes (and therefore its hash) are
-  // stable across the test — the provisioner now verifies the zip against a
-  // pinned hash, so tests pass this zip's own hash via `denoSha256`.
+  // Build the fake deno zip once so its bytes (and hash) are stable — the
+  // provisioner verifies both tools against pinned hashes, so tests pass the
+  // fakes' own hashes via ytDlpSha256 / denoSha256.
   final denoZipBytes = ZipEncoder().encode(
     Archive()..addFile(ArchiveFile('deno.exe', 4, [0x4D, 0x5A, 0x00, 0x01])),
   );
   final denoZipSha = sha256.convert(denoZipBytes).toString();
 
+  /// A client serving the fake yt-dlp.exe and deno zip at the pinned URLs.
   MockClient happyClient({
     bool denoFails = false,
-    String? sumsOverride,
     void Function(Uri uri)? onRequest,
   }) {
     return MockClient((request) async {
@@ -42,11 +42,6 @@ void main() {
       final path = request.url.path;
       if (path.endsWith('/yt-dlp.exe')) {
         return http.Response.bytes(ytDlpBytes, 200);
-      }
-      if (path.endsWith('/SHA2-256SUMS')) {
-        final sums = sumsOverride ??
-            'deadbeef  yt-dlp\n$ytDlpSha  yt-dlp.exe\ncafef00d  yt-dlp_x86.exe\n';
-        return http.Response(sums, 200);
       }
       if (path.endsWith('.zip')) {
         if (denoFails) return http.Response('server error', 500);
@@ -56,23 +51,30 @@ void main() {
     });
   }
 
+  /// A provisioner pre-wired with the fakes' hashes so the pinned-hash checks
+  /// accept the test payloads.
+  ToolProvisioner provisioner(http.Client client, {String? ytSha}) =>
+      ToolProvisioner(
+        toolsDir: tempDir,
+        client: client,
+        ytDlpSha256: ytSha ?? ytDlpSha,
+        denoSha256: denoZipSha,
+      );
+
   test('fresh dir downloads yt-dlp (verified) and deno, returns exe path',
       () async {
     final statuses = <String>[];
-    final provisioner = ToolProvisioner(
-        toolsDir: tempDir, client: happyClient(), denoSha256: denoZipSha);
-    final exePath = await provisioner.ensureYtDlp(onStatus: statuses.add);
+    final exePath = await provisioner(happyClient())
+        .ensureYtDlp(onStatus: statuses.add);
 
     expect(exePath, p.join(tempDir.path, 'yt-dlp.exe'));
     expect(File(exePath).readAsBytesSync(), ytDlpBytes);
     expect(File(p.join(tempDir.path, 'deno.exe')).existsSync(), isTrue);
     expect(statuses, isNotEmpty);
-    // No stray partial files left behind.
     expect(
-      tempDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.part')),
+      tempDir.listSync().whereType<File>().where(
+            (f) => f.path.endsWith('.part'),
+          ),
       isEmpty,
     );
   });
@@ -83,64 +85,57 @@ void main() {
     final throwingClient = MockClient((request) async {
       fail('network call made for ${request.url}');
     });
-    final provisioner =
-        ToolProvisioner(toolsDir: tempDir, client: throwingClient);
-    final exePath = await provisioner.ensureYtDlp();
+    final exePath = await provisioner(throwingClient).ensureYtDlp();
     expect(exePath, p.join(tempDir.path, 'yt-dlp.exe'));
   });
 
-  test('checksum mismatch throws toolMissing and leaves no exe behind',
+  test('yt-dlp failing the pinned hash throws toolMissing, no exe behind',
       () async {
-    final provisioner = ToolProvisioner(
-      toolsDir: tempDir,
-      client: happyClient(
-        sumsOverride: '${'0' * 64}  yt-dlp.exe\n',
-      ),
-    );
+    // The downloaded bytes don't match the baked hash (wrong pin / tampered
+    // release) — fail closed, install nothing.
+    final prov = provisioner(happyClient(), ytSha: '0' * 64);
     await expectLater(
-      provisioner.ensureYtDlp(),
+      prov.ensureYtDlp(),
       throwsA(isA<ResolveException>()
           .having((e) => e.kind, 'kind', ResolveErrorKind.toolMissing)),
     );
     expect(File(p.join(tempDir.path, 'yt-dlp.exe')).existsSync(), isFalse);
     expect(
-      tempDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.part')),
+      tempDir.listSync().whereType<File>().where(
+            (f) => f.path.endsWith('.part'),
+          ),
       isEmpty,
-    );
-  });
-
-  test('missing SUMS entry for yt-dlp.exe throws toolMissing', () async {
-    final provisioner = ToolProvisioner(
-      toolsDir: tempDir,
-      client: happyClient(sumsOverride: 'deadbeef  something-else.exe\n'),
-    );
-    await expectLater(
-      provisioner.ensureYtDlp(),
-      throwsA(isA<ResolveException>()
-          .having((e) => e.kind, 'kind', ResolveErrorKind.toolMissing)),
     );
   });
 
   test('deno download failure is non-fatal: yt-dlp path still returned',
       () async {
-    final provisioner =
-        ToolProvisioner(toolsDir: tempDir, client: happyClient(denoFails: true));
-    final exePath = await provisioner.ensureYtDlp();
+    final exePath =
+        await provisioner(happyClient(denoFails: true)).ensureYtDlp();
     expect(File(exePath).existsSync(), isTrue);
     expect(File(p.join(tempDir.path, 'deno.exe')).existsSync(), isFalse);
   });
 
-  test('network failure downloading yt-dlp maps to network kind', () async {
-    final provisioner = ToolProvisioner(
+  test('deno zip failing the pinned hash is skipped (non-fatal), no deno.exe',
+      () async {
+    // A real _kDenoZipSha256 ≠ the fake zip's hash, so deno is rejected but
+    // yt-dlp still succeeds.
+    final prov = ToolProvisioner(
       toolsDir: tempDir,
-      client: MockClient(
-          (request) async => throw const SocketException('no route')),
+      client: happyClient(),
+      ytDlpSha256: ytDlpSha, // deno hash left at the baked default
+    );
+    final exePath = await prov.ensureYtDlp();
+    expect(File(exePath).readAsBytesSync(), ytDlpBytes);
+    expect(File(p.join(tempDir.path, 'deno.exe')).existsSync(), isFalse);
+  });
+
+  test('network failure downloading yt-dlp maps to network kind', () async {
+    final prov = provisioner(
+      MockClient((request) async => throw const SocketException('no route')),
     );
     await expectLater(
-      provisioner.ensureYtDlp(),
+      prov.ensureYtDlp(),
       throwsA(isA<ResolveException>()
           .having((e) => e.kind, 'kind', ResolveErrorKind.network)),
     );
@@ -155,22 +150,15 @@ void main() {
     final client = MockClient((request) async {
       final path = request.url.path;
       if (path.endsWith('/yt-dlp.exe')) {
-        // The "other process" installs the real target before we write ours.
         File(p.join(tempDir.path, 'yt-dlp.exe')).writeAsBytesSync(theirBytes);
         return http.Response.bytes(ytDlpBytes, 200);
-      }
-      if (path.endsWith('/SHA2-256SUMS')) {
-        return http.Response('$ytDlpSha  yt-dlp.exe\n', 200);
       }
       if (path.endsWith('.zip')) {
         return http.Response.bytes(denoZipBytes, 200);
       }
       return http.Response('nope', 404);
     });
-    final provisioner = ToolProvisioner(
-        toolsDir: tempDir, client: client, denoSha256: denoZipSha);
-    final exePath = await provisioner.ensureYtDlp();
-    // Their file stands; no leftover .part from our discarded temp.
+    final exePath = await provisioner(client).ensureYtDlp();
     expect(File(exePath).readAsBytesSync(), theirBytes);
     expect(
       tempDir.listSync().whereType<File>().where(
@@ -187,48 +175,29 @@ void main() {
       final path = request.url.path;
       if (path.endsWith('/yt-dlp.exe')) {
         ytDlpDownloads++;
-        // Small delay so the second call starts while this one is in flight.
         await Future<void>.delayed(const Duration(milliseconds: 20));
         return http.Response.bytes(ytDlpBytes, 200);
-      }
-      if (path.endsWith('/SHA2-256SUMS')) {
-        return http.Response('$ytDlpSha  yt-dlp.exe\n', 200);
       }
       if (path.endsWith('.zip')) {
         return http.Response.bytes(denoZipBytes, 200);
       }
       return http.Response('nope', 404);
     });
-    final provisioner = ToolProvisioner(
-        toolsDir: tempDir, client: client, denoSha256: denoZipSha);
+    final prov = provisioner(client);
     final results = await Future.wait([
-      provisioner.ensureYtDlp(),
-      provisioner.ensureYtDlp(),
+      prov.ensureYtDlp(),
+      prov.ensureYtDlp(),
     ]);
     expect(results[0], results[1]);
     expect(ytDlpDownloads, 1, reason: 'must not download yt-dlp twice');
     expect(File(results[0]).existsSync(), isTrue);
   });
 
-  test('deno zip failing the pinned hash is skipped (non-fatal), no deno.exe',
-      () async {
-    // A tampered/rebuilt deno asset does not match the baked hash, so it must
-    // never be written — deno is best-effort, so yt-dlp still succeeds.
-    final provisioner = ToolProvisioner(
-      toolsDir: tempDir,
-      client: happyClient(), // real _kDenoZipSha256 ≠ fake zip's hash
-    );
-    final exePath = await provisioner.ensureYtDlp();
-    expect(File(exePath).readAsBytesSync(), ytDlpBytes);
-    expect(File(p.join(tempDir.path, 'deno.exe')).existsSync(), isFalse);
-  });
-
   test('a hash-matching deno zip still cannot overwrite the verified yt-dlp',
       () async {
-    // Even a zip that passes the pinned hash must yield only its deno.exe: the
-    // extractor writes nothing but deno.exe, so a smuggled yt-dlp.exe entry
-    // can't clobber the checksum-verified one. Pass the hostile zip's own hash
-    // to isolate the extract-scope guard from the hash guard.
+    // Even a zip that passes the pinned hash must yield only its deno.exe: a
+    // smuggled yt-dlp.exe entry can't clobber the verified one. Pass the
+    // hostile zip's own hash to isolate the extract-scope guard.
     final hostileZip = ZipEncoder().encode(
       Archive()
         ..addFile(ArchiveFile('deno.exe', 4, [0x4D, 0x5A, 0x00, 0x01]))
@@ -239,22 +208,18 @@ void main() {
       if (path.endsWith('/yt-dlp.exe')) {
         return http.Response.bytes(ytDlpBytes, 200);
       }
-      if (path.endsWith('/SHA2-256SUMS')) {
-        return http.Response('$ytDlpSha  yt-dlp.exe\n', 200);
-      }
       if (path.endsWith('.zip')) {
         return http.Response.bytes(hostileZip, 200);
       }
       return http.Response('nope', 404);
     });
-    final provisioner = ToolProvisioner(
+    final prov = ToolProvisioner(
       toolsDir: tempDir,
       client: client,
+      ytDlpSha256: ytDlpSha,
       denoSha256: sha256.convert(hostileZip).toString(),
     );
-    final exePath = await provisioner.ensureYtDlp();
-
-    // yt-dlp keeps its verified bytes, not the zip's planted 0x66 bytes.
+    final exePath = await prov.ensureYtDlp();
     expect(File(exePath).readAsBytesSync(), ytDlpBytes);
     expect(File(p.join(tempDir.path, 'deno.exe')).existsSync(), isTrue);
   });
@@ -262,12 +227,8 @@ void main() {
   test('existing yt-dlp but missing deno fetches only deno', () async {
     File(p.join(tempDir.path, 'yt-dlp.exe')).writeAsBytesSync([1, 2, 3]);
     final requested = <Uri>[];
-    final provisioner = ToolProvisioner(
-      toolsDir: tempDir,
-      client: happyClient(onRequest: requested.add),
-      denoSha256: denoZipSha,
-    );
-    final exePath = await provisioner.ensureYtDlp();
+    final exePath =
+        await provisioner(happyClient(onRequest: requested.add)).ensureYtDlp();
     expect(exePath, p.join(tempDir.path, 'yt-dlp.exe'));
     expect(File(p.join(tempDir.path, 'deno.exe')).existsSync(), isTrue);
     expect(
