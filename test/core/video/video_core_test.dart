@@ -138,4 +138,24 @@ void main() {
       await c.dispose();
     });
   });
+
+  group('failSource', () {
+    test('errors an idle core carrying the source, so the error screen mounts',
+        () {
+      final c = FakeVideoCore();
+      c.failSource('https://youtube.com/watch?v=x', 'DRM-protected');
+      expect(c.state.status, PlaybackStatus.error);
+      expect(c.state.fileName, 'https://youtube.com/watch?v=x');
+      expect(c.state.filePath, 'https://youtube.com/watch?v=x');
+      expect(c.state.errorMessage, 'DRM-protected');
+    });
+
+    test('is a no-op while a video is genuinely open', () async {
+      await core.load('demo.mkv');
+      core.failSource('https://youtube.com/watch?v=x', 'nope');
+      expect(core.state.status, PlaybackStatus.paused);
+      expect(core.state.fileName, 'demo.mkv');
+      expect(core.state.errorMessage, isNull);
+    });
+  });
 }

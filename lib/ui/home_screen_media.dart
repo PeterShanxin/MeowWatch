@@ -30,6 +30,17 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
   /// newer load now owns.
   int _loadGeneration = 0;
 
+  /// Live "Finding the video…" progress while a page URL is being resolved
+  /// through yt-dlp. A notifier so only the banner subtree rebuilds (same
+  /// rationale as [_presenceNotice], #196); null = nothing in flight.
+  final ValueNotifier<String?> _resolveNotice = ValueNotifier<String?>(null);
+
+  /// Seam for tests: swap the real yt-dlp pipeline for a fake.
+  @visibleForTesting
+  ResolveFlow? debugResolveFlow;
+
+  ResolveFlow get _resolveFlow => debugResolveFlow ??= ResolveFlow();
+
   Timer? _historyTimer;
   // Serializes the periodic resume-position save and skips a write whose
   // (file, position, duration) match the last one that succeeded, so a
@@ -53,6 +64,17 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
     // line with no matching "opened"/"open failed" line localizes a load-time
     // freeze (#139) the old sync-only log couldn't see (#140).
     appLog('video: load ${mediaDisplayName(path)}');
+    // Page URLs (YouTube, Bilibili, …) resolve to real streams via yt-dlp
+    // BEFORE the core or any announce state is touched: a failed resolve leaves
+    // whatever was playing (and its room announce) fully intact, and the room
+    // only ever sees the stable page URL — each peer resolves locally, because
+    // extracted stream links are signed, short-lived, and often IP-bound.
+    ResolvedMedia? resolved;
+    if (needsResolver(path)) {
+      resolved = await _resolvePageUrl(path, gen);
+      // Failed or superseded — surfaced inside _resolvePageUrl.
+      if (resolved == null) return false;
+    }
     // Invalidate the accepted-source marker until this load is confirmed, so a
     // reconnect mid-load can't re-announce the previous source.
     _loadedSource = null;
@@ -64,7 +86,11 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
     if (_localFileSizeBytes != null && mounted) {
       setState(() => _localFileSizeBytes = null);
     }
-    await _core.load(path);
+    if (resolved != null) {
+      await _core.loadResolved(resolved);
+    } else {
+      await _core.load(path);
+    }
     // A source can fail asynchronously — mpv reports an unreachable / non-video
     // / expired URL, *and* a moved or unreadable local file, on its error stream
     // after load() returns. Don't record it to history, announce it to the room,
@@ -123,6 +149,43 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
       setState(() => _showTransientNotice(notice));
     }
     return true;
+  }
+
+  /// Resolve a page URL through yt-dlp, driving the [_resolveNotice] banner
+  /// while it runs. Returns null when the resolve failed or this load was
+  /// superseded — failures are surfaced here: while a video is already open we
+  /// show a transient notice (never nuke live playback over a bad paste), on
+  /// the empty/load screen we drive the error surface via [VideoCore.failSource]
+  /// so the user gets recovery buttons, not a silent nothing.
+  Future<ResolvedMedia?> _resolvePageUrl(String pageUrl, int gen) async {
+    _resolveNotice.value = 'Finding the video…';
+    try {
+      final resolved = await _resolveFlow.run(
+        pageUrl,
+        onStatus: (status) {
+          if (gen == _loadGeneration) _resolveNotice.value = status;
+        },
+      );
+      if (gen != _loadGeneration) return null;
+      appLog('video: resolved ${mediaDisplayName(pageUrl)}');
+      return resolved;
+    } on ResolveException catch (e) {
+      if (gen != _loadGeneration) return null;
+      // Kind only — e.detail can embed the URL's signed token; never log it.
+      appLog(
+        'video: resolve failed ${mediaDisplayName(pageUrl)} (${e.kind.name})',
+      );
+      final message = friendlyResolveError(e.kind);
+      if (isPlaybackOpen(_core.state)) {
+        if (mounted) setState(() => _showTransientNotice(message));
+      } else {
+        _core.failSource(pageUrl, message);
+      }
+      return null;
+    } finally {
+      // A newer load owns the notice now; only clear it if we still do.
+      if (gen == _loadGeneration) _resolveNotice.value = null;
+    }
   }
 
   /// Append a "Loaded …" system line to chat. Shows "in sync!" when the peer's

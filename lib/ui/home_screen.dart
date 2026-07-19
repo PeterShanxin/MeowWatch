@@ -39,6 +39,10 @@ import '../core/theme/tokens/motion.dart';
 import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
+import '../core/resolve/resolve_error.dart';
+import '../core/resolve/resolve_flow.dart';
+import '../core/resolve/resolved_media.dart';
+import '../core/resolve/url_classifier.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/video_engine_pool.dart';
 import '../core/video/await_open_result.dart';
@@ -431,6 +435,7 @@ class _HomeScreenState extends _HomeScreenStateBase
     _peekPulsing.dispose();
     _chatHasUnread.dispose();
     _presenceNotice.dispose();
+    _resolveNotice.dispose();
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
     // Reset, don't dispose: the engines are shared (process-lifetime) and a

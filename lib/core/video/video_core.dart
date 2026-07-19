@@ -85,6 +85,23 @@ abstract class VideoCore {
     ));
   }
 
+  /// Surface a source that failed *before* any backend load began (e.g. a
+  /// page-URL resolve failure): emit an error state that carries the source as
+  /// [PlaybackState.fileName]/[PlaybackState.filePath], because the error
+  /// screen only mounts when a fileName is present — [failLoad] alone would
+  /// leave the user staring at the empty screen with no explanation. Same
+  /// no-clobber guard as [failLoad]: never overwrite a genuinely open video or
+  /// an existing error.
+  void failSource(String source, String message) {
+    if (isPlaybackOpen(_state) || _state.status == PlaybackStatus.error) return;
+    emit(_state.copyWith(
+      status: PlaybackStatus.error,
+      fileName: source,
+      filePath: source,
+      errorMessage: message,
+    ));
+  }
+
   Future<void> play();
   Future<void> pause();
   Future<void> seek(Duration position);
