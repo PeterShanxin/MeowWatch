@@ -9,7 +9,6 @@ class ResolvedMedia {
     required this.videoUrl,
     this.audioUrl,
     this.httpHeaders = const {},
-    this.audioHeaders = const {},
     this.title,
   });
 
@@ -22,14 +21,10 @@ class ResolvedMedia {
   /// Second stream when yt-dlp returned split video+audio formats.
   final String? audioUrl;
 
-  /// Headers required by the video CDN (e.g. Bilibili needs Referer or it 403s).
+  /// Headers required by the CDN (e.g. Bilibili needs Referer or it 403s).
+  /// Applied to the video request; the external audio stream inherits them via
+  /// mpv's persisted global `http-header-fields` (see `loadResolved`).
   final Map<String, String> httpHeaders;
-
-  /// Headers for the separate [audioUrl] stream. Split CDNs gate the audio
-  /// request on the same Referer as the video, so these must be applied when
-  /// the external audio track is added — falls back to [httpHeaders] when the
-  /// audio format did not carry its own. Empty when the media is muxed.
-  final Map<String, String> audioHeaders;
 
   /// Video title when the extractor provided one.
   final String? title;

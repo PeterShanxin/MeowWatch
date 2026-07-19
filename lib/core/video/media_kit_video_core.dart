@@ -224,17 +224,15 @@ class MediaKitVideoCore extends VideoCore {
     if (audioUrl != null &&
         state.filePath == pageUrl &&
         state.status != PlaybackStatus.error) {
-      // AudioTrack.uri has no header parameter, so the external audio request
-      // would go out bare and the CDN would 403 it (Bilibili gates audio on
-      // the same Referer as the video). media_kit's load hook applies headers
-      // by looking the loaded URI up in the Media cache, so registering a
-      // Media for the audio URL with its headers first makes the hook attach
-      // them to the audio-add request too (Codex #223 P1).
-      final audioHeaders =
-          media.audioHeaders.isEmpty ? media.httpHeaders : media.audioHeaders;
-      if (audioHeaders.isNotEmpty) {
-        Media(audioUrl, httpHeaders: audioHeaders);
-      }
+      // Split-format audio needs the same CDN headers as the video (Bilibili
+      // gates it on the video's Referer). AudioTrack.uri has no header
+      // parameter, but it doesn't need one: media_kit sets mpv's *global*
+      // `http-header-fields` from the video Media during its `on_load` hook,
+      // and `audio-add` does NOT re-fire `on_load`, so that global value
+      // persists and the external-audio request inherits the video's headers.
+      // (media_kit has no per-track header API; audio requiring headers that
+      // differ from the video's is an unsupported edge — not our case, where
+      // the two streams share an origin.)
       await _player.setAudioTrack(AudioTrack.uri(audioUrl));
     }
   }
