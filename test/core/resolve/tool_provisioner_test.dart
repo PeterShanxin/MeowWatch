@@ -27,7 +27,7 @@ void main() {
   List<int> denoZipBytes() {
     final archive = Archive()
       ..addFile(ArchiveFile('deno.exe', 4, [0x4D, 0x5A, 0x00, 0x01]));
-    return ZipEncoder().encode(archive)!;
+    return ZipEncoder().encode(archive);
   }
 
   MockClient happyClient({
