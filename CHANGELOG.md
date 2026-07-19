@@ -10,6 +10,20 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.45.0-alpha] - 2026-07-19
+
+> Paste a YouTube or Bilibili link — the video just plays.
+
+### Added
+- Paste a page link (YouTube, Bilibili, and many more) and MeowWatch finds the
+  actual video behind it (#123). Your room mate gets the same one-click "Watch
+  this too" — their app finds the video on their side, so shared links never
+  go stale or break for the other person.
+- First use sets up a small helper (yt-dlp) automatically in the background —
+  nothing to install, and a "Finding the video…" note keeps you posted.
+- Clear, friendly messages when a link can't play: unsupported site, protected
+  (DRM) video, region-blocked, private/removed, or a connection problem.
+
 ## [0.44.4-alpha] - 2026-07-19
 
 > Play-bar buttons now click like real buttons — action on release, and
