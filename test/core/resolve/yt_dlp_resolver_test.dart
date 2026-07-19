@@ -96,7 +96,27 @@ void main() {
         'Referer': 'https://www.bilibili.com/',
         'User-Agent': 'Mozilla/5.0',
       });
+      // The audio stream carries its own headers so the CDN doesn't 403 it.
+      expect(media.audioHeaders, {'Referer': 'https://www.bilibili.com/'});
       expect(media.title, 'Bilibili video');
+    });
+
+    test('audio headers fall back to the video headers when absent', () async {
+      final resolver = YtDlpResolver(
+        exePath: 'yt-dlp',
+        runner: (_, _) async => _ok({
+          'requested_formats': [
+            {
+              'url': 'https://cdn.example.com/video',
+              'vcodec': 'vp9',
+              'http_headers': {'Referer': 'https://site/'},
+            },
+            {'url': 'https://cdn.example.com/audio', 'vcodec': 'none'},
+          ],
+        }),
+      );
+      final media = await resolver.resolve(pageUrl);
+      expect(media.audioHeaders, {'Referer': 'https://site/'});
     });
 
     test('picks the vcodec != none entry as video even when order is swapped',

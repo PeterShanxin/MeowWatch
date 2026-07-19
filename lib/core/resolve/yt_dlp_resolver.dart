@@ -182,11 +182,18 @@ class YtDlpResolver {
         break;
       }
     }
+    final videoHeaders = _headers(video['http_headers']);
+    // The audio stream is a separate CDN request and needs its own headers
+    // (Bilibili gates it on the same Referer); fall back to the video's when
+    // the audio format didn't carry them (they share an origin).
+    final audioHeaders =
+        audio == null ? const <String, String>{} : _headers(audio['http_headers']);
     return ResolvedMedia(
       pageUrl: pageUrl,
       videoUrl: videoUrl,
       audioUrl: audio?['url'] as String?,
-      httpHeaders: _headers(video['http_headers']),
+      httpHeaders: videoHeaders,
+      audioHeaders: audioHeaders.isEmpty ? videoHeaders : audioHeaders,
       title: title,
     );
   }

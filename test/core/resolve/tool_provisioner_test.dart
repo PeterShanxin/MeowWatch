@@ -148,6 +148,35 @@ void main() {
     );
   });
 
+  test('concurrent first-use calls share one download (single-flight)',
+      () async {
+    var ytDlpDownloads = 0;
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/yt-dlp.exe')) {
+        ytDlpDownloads++;
+        // Small delay so the second call starts while this one is in flight.
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        return http.Response.bytes(ytDlpBytes, 200);
+      }
+      if (path.endsWith('/SHA2-256SUMS')) {
+        return http.Response('$ytDlpSha  yt-dlp.exe\n', 200);
+      }
+      if (path.endsWith('.zip')) {
+        return http.Response.bytes(denoZipBytes(), 200);
+      }
+      return http.Response('nope', 404);
+    });
+    final provisioner = ToolProvisioner(toolsDir: tempDir, client: client);
+    final results = await Future.wait([
+      provisioner.ensureYtDlp(),
+      provisioner.ensureYtDlp(),
+    ]);
+    expect(results[0], results[1]);
+    expect(ytDlpDownloads, 1, reason: 'must not download yt-dlp twice');
+    expect(File(results[0]).existsSync(), isTrue);
+  });
+
   test('existing yt-dlp but missing deno fetches only deno', () async {
     File(p.join(tempDir.path, 'yt-dlp.exe')).writeAsBytesSync([1, 2, 3]);
     final requested = <Uri>[];

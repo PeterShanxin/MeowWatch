@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
@@ -48,7 +49,25 @@ class ToolProvisioner {
   /// Throws [ResolveException] with [ResolveErrorKind.network] when the
   /// download could not complete and [ResolveErrorKind.toolMissing] when the
   /// downloaded bytes failed checksum verification.
-  Future<String> ensureYtDlp({void Function(String status)? onStatus}) async {
+  /// In-flight provisioning per tools directory, process-wide. Two page-URL
+  /// loads started before the first-use download finishes would otherwise both
+  /// enter the download branch and race on the same `yt-dlp.exe.part` — one
+  /// renaming/deleting it under the other. Sharing a single future serializes
+  /// them: the second caller awaits the first's result.
+  static final Map<String, Future<String>> _inFlight = {};
+
+  Future<String> ensureYtDlp({void Function(String status)? onStatus}) {
+    final key = toolsDir.path;
+    final pending = _inFlight[key];
+    if (pending != null) return pending;
+    final future = _ensureYtDlp(onStatus: onStatus);
+    _inFlight[key] = future;
+    // Clear on settle (success or failure) so a later load can retry after a
+    // failed download; use whenComplete so the removal can't swallow the value.
+    return future.whenComplete(() => _inFlight.remove(key));
+  }
+
+  Future<String> _ensureYtDlp({void Function(String status)? onStatus}) async {
     final exePath = p.join(toolsDir.path, 'yt-dlp.exe');
     final exe = File(exePath);
     final deno = File(p.join(toolsDir.path, 'deno.exe'));

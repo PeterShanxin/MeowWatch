@@ -224,6 +224,17 @@ class MediaKitVideoCore extends VideoCore {
     if (audioUrl != null &&
         state.filePath == pageUrl &&
         state.status != PlaybackStatus.error) {
+      // AudioTrack.uri has no header parameter, so the external audio request
+      // would go out bare and the CDN would 403 it (Bilibili gates audio on
+      // the same Referer as the video). media_kit's load hook applies headers
+      // by looking the loaded URI up in the Media cache, so registering a
+      // Media for the audio URL with its headers first makes the hook attach
+      // them to the audio-add request too (Codex #223 P1).
+      final audioHeaders =
+          media.audioHeaders.isEmpty ? media.httpHeaders : media.audioHeaders;
+      if (audioHeaders.isNotEmpty) {
+        Media(audioUrl, httpHeaders: audioHeaders);
+      }
       await _player.setAudioTrack(AudioTrack.uri(audioUrl));
     }
   }
