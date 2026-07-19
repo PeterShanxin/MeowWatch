@@ -83,21 +83,39 @@ class YtDlpResolver {
       throw const ResolveException(
           ResolveErrorKind.unknown, 'unexpected yt-dlp JSON shape');
     }
+    // Series/episode pages (e.g. bilibili.tv `/play/<id>`) come back wrapped in
+    // a one-entry playlist even under `--no-playlist`/`-I 1`. The entry itself
+    // holds the same video object shape as a bare single video, so resolve it
+    // rather than rejecting — that's what unlocks those URLs. A genuinely empty
+    // playlist has nothing to play.
     if (decoded['_type'] == 'playlist') {
-      throw const ResolveException(ResolveErrorKind.unknown, 'playlist URL');
+      final entries = decoded['entries'];
+      if (entries is List && entries.isNotEmpty) {
+        final first = entries.first;
+        if (first is Map<String, dynamic>) {
+          return _fromVideoObject(pageUrl, first);
+        }
+      }
+      throw const ResolveException(ResolveErrorKind.unknown, 'empty playlist');
     }
+    return _fromVideoObject(pageUrl, decoded);
+  }
 
-    final title = decoded['title'] as String?;
-    final formats = decoded['requested_formats'];
+  /// Parse a yt-dlp single-video object (top-level, or one playlist entry) into
+  /// a [ResolvedMedia]. Prefers split `requested_formats`; falls back to a
+  /// muxed top-level `url`.
+  ResolvedMedia _fromVideoObject(String pageUrl, Map<String, dynamic> video) {
+    final title = video['title'] as String?;
+    final formats = video['requested_formats'];
     if (formats is List && formats.isNotEmpty) {
       return _fromSplitFormats(pageUrl, title, formats);
     }
-    final url = decoded['url'];
+    final url = video['url'];
     if (url is String && url.isNotEmpty) {
       return ResolvedMedia(
         pageUrl: pageUrl,
         videoUrl: url,
-        httpHeaders: _headers(decoded['http_headers']),
+        httpHeaders: _headers(video['http_headers']),
         title: title,
       );
     }

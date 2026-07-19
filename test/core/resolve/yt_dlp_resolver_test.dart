@@ -115,7 +115,7 @@ void main() {
       expect(media.audioUrl, 'https://cdn.example.com/audio');
     });
 
-    test('playlist JSON throws unknown with a playlist detail', () async {
+    test('empty playlist JSON throws unknown with a playlist detail', () async {
       final resolver = YtDlpResolver(
         exePath: 'yt-dlp',
         runner: (_, _) async => _ok({
@@ -128,6 +128,65 @@ void main() {
         throwsA(isA<ResolveException>()
             .having((e) => e.kind, 'kind', ResolveErrorKind.unknown)
             .having((e) => e.detail, 'detail', contains('playlist'))),
+      );
+    });
+
+    test('single-entry playlist (series /play/ URL) resolves the entry',
+        () async {
+      // bilibili.tv /play/<id> and other series/episode pages come back as a
+      // one-entry playlist even under --no-playlist; the entry itself carries
+      // the real split video+audio formats with CDN headers.
+      final resolver = YtDlpResolver(
+        exePath: 'yt-dlp',
+        runner: (_, _) async => _ok({
+          '_type': 'playlist',
+          'title': 'A Series',
+          'entries': [
+            {
+              'title': 'E1 - Conviction',
+              'requested_formats': [
+                {
+                  'vcodec': 'hev1.1',
+                  'acodec': 'none',
+                  'url': 'https://cdn.bstar/v.m4s',
+                  'http_headers': {'Referer': 'https://www.bilibili.tv/'},
+                },
+                {
+                  'vcodec': 'none',
+                  'acodec': 'mp4a.40.2',
+                  'url': 'https://cdn.bstar/a.m4s',
+                  'http_headers': {'Referer': 'https://www.bilibili.tv/'},
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      final media = await resolver.resolve(pageUrl);
+      expect(media.videoUrl, 'https://cdn.bstar/v.m4s');
+      expect(media.audioUrl, 'https://cdn.bstar/a.m4s');
+      expect(media.httpHeaders['Referer'], 'https://www.bilibili.tv/');
+      // Prefers the entry's own title over the playlist title.
+      expect(media.title, 'E1 - Conviction');
+      // The page URL the room shares stays the pasted one, never a stream URL.
+      expect(media.pageUrl, pageUrl);
+    });
+
+    test('playlist whose first entry has no playable stream throws unknown',
+        () async {
+      final resolver = YtDlpResolver(
+        exePath: 'yt-dlp',
+        runner: (_, _) async => _ok({
+          '_type': 'playlist',
+          'entries': [
+            {'title': 'no formats'},
+          ],
+        }),
+      );
+      await expectLater(
+        resolver.resolve(pageUrl),
+        throwsA(isA<ResolveException>()
+            .having((e) => e.kind, 'kind', ResolveErrorKind.unknown)),
       );
     });
 
