@@ -146,6 +146,40 @@ void main() {
     );
   });
 
+  test('another process installing mid-download wins; we reuse theirs',
+      () async {
+    // Simulate a second MeowWatch process finishing first: the target yt-dlp
+    // appears (with different bytes) while our download is in flight. Our
+    // atomic install must detect it and reuse theirs, not clobber it.
+    final theirBytes = [9, 9, 9, 9];
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/yt-dlp.exe')) {
+        // The "other process" installs the real target before we write ours.
+        File(p.join(tempDir.path, 'yt-dlp.exe')).writeAsBytesSync(theirBytes);
+        return http.Response.bytes(ytDlpBytes, 200);
+      }
+      if (path.endsWith('/SHA2-256SUMS')) {
+        return http.Response('$ytDlpSha  yt-dlp.exe\n', 200);
+      }
+      if (path.endsWith('.zip')) {
+        return http.Response.bytes(denoZipBytes, 200);
+      }
+      return http.Response('nope', 404);
+    });
+    final provisioner = ToolProvisioner(
+        toolsDir: tempDir, client: client, denoSha256: denoZipSha);
+    final exePath = await provisioner.ensureYtDlp();
+    // Their file stands; no leftover .part from our discarded temp.
+    expect(File(exePath).readAsBytesSync(), theirBytes);
+    expect(
+      tempDir.listSync().whereType<File>().where(
+            (f) => f.path.endsWith('.part'),
+          ),
+      isEmpty,
+    );
+  });
+
   test('concurrent first-use calls share one download (single-flight)',
       () async {
     var ytDlpDownloads = 0;

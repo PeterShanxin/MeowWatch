@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
@@ -55,6 +56,10 @@ class ToolProvisioner {
       'deno-x86_64-pc-windows-msvc.zip';
 
   static const _downloadTimeout = Duration(minutes: 5);
+
+  /// Randomizes the per-process temp file name (with the pid) so concurrent
+  /// processes never collide on the same `.part`.
+  static final _rng = Random();
 
   /// Path to a ready `yt-dlp.exe`, downloading it (and best-effort `deno.exe`)
   /// on first call. Later calls are a pure existence check — no network, no
@@ -156,13 +161,35 @@ class ToolProvisioner {
     }
   }
 
-  /// Write [bytes] via a `.part` sibling then rename, so a crash mid-write
-  /// never leaves a truncated exe that would shadow a future retry.
+  /// Install [bytes] at [target] atomically and safely across processes.
+  ///
+  /// Writes to a **process-unique** `.part` sibling (pid + random) so two
+  /// MeowWatch processes sharing this tools dir — the documented two-instance
+  /// co-watch on one PC, or a dev build beside the installed app — never write
+  /// or rename the *same* temp and make one another's provisioning fail
+  /// (Codex #223 P2). Whoever renames first wins; a loser that finds [target]
+  /// already present discards its temp and reuses the installed copy. The
+  /// unique temp also keeps a crash mid-write from shadowing a future retry.
   Future<void> _writeAtomically(File target, List<int> bytes) async {
-    final part = File('${target.path}.part');
+    final part = File('${target.path}.$pid.${_rng.nextInt(1 << 32)}.part');
     try {
       await part.writeAsBytes(bytes, flush: true);
-      await part.rename(target.path);
+      // Another process already installed it — discard ours, reuse theirs.
+      if (target.existsSync()) {
+        await part.delete();
+        return;
+      }
+      try {
+        await part.rename(target.path);
+      } on FileSystemException {
+        // Lost the rename race: [target] appeared between the check and the
+        // rename (Windows rename onto an existing file throws). Reuse theirs.
+        if (target.existsSync()) {
+          if (part.existsSync()) await part.delete();
+          return;
+        }
+        rethrow;
+      }
     } on FileSystemException {
       if (part.existsSync()) part.deleteSync();
       rethrow;
