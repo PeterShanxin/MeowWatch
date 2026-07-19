@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../debug/app_log.dart';
 import '../debug/log_redact.dart';
+import '../resolve/resolved_media.dart';
 import 'await_open_result.dart';
 import 'playback_state.dart';
 import 'position_guard.dart';
@@ -196,6 +197,42 @@ class MediaKitVideoCore extends VideoCore {
   /// file and the full link for a URL (the Syncplay convention).
   @override
   Future<void> load(String source) async {
+    await _beginLoad(source);
+    await _player.open(Media(source), play: false);
+    await _forceDecodeToConfirmOpen(source);
+  }
+
+  /// Open a yt-dlp-resolved page: play [ResolvedMedia.videoUrl] (with the
+  /// CDN's required headers — Bilibili 403s without Referer) while the state
+  /// carries the *page* URL, so the room announces a link every peer can
+  /// resolve on their side and the short-lived stream URL never leaves this
+  /// machine. When yt-dlp returned split formats, the audio stream is attached
+  /// as an external audio track once the video confirmed open.
+  @override
+  Future<void> loadResolved(ResolvedMedia media) async {
+    final pageUrl = media.pageUrl;
+    await _beginLoad(pageUrl);
+    await _player.open(
+      Media(
+        media.videoUrl,
+        httpHeaders: media.httpHeaders.isEmpty ? null : media.httpHeaders,
+      ),
+      play: false,
+    );
+    await _forceDecodeToConfirmOpen(pageUrl);
+    final audioUrl = media.audioUrl;
+    if (audioUrl != null &&
+        state.filePath == pageUrl &&
+        state.status != PlaybackStatus.error) {
+      await _player.setAudioTrack(AudioTrack.uri(audioUrl));
+    }
+  }
+
+  /// Shared pre-open sequence for [load]/[loadResolved]: wait out an in-flight
+  /// leave-room [reset], re-arm the per-load guards, and emit the `loading`
+  /// state keyed on [source] (the load's identity — the page URL for a
+  /// resolved load).
+  Future<void> _beginLoad(String source) async {
     // Let any in-flight leave-room [reset] finish first: the engine is shared
     // across rooms, so a fast re-join must not open a new source only for the
     // previous room's trailing stop() to unload it mid-load (#143 review).
@@ -220,8 +257,6 @@ class MediaKitVideoCore extends VideoCore {
         opened: false,
       ),
     );
-    await _player.open(Media(source), play: false);
-    await _forceDecodeToConfirmOpen(source);
   }
 
   /// Force the just-opened [source] to decode so it can confirm it opened.

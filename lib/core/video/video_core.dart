@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../resolve/resolved_media.dart';
 import 'playback_bar_view.dart';
 import 'playback_screen_view.dart';
 import 'playback_state.dart';
@@ -58,6 +59,12 @@ abstract class VideoCore {
   }
 
   Future<void> load(String filePath);
+
+  /// Open a yt-dlp-resolved page ([ResolvedMedia]): play the stream URL(s) but
+  /// present/announce the page URL. Default delegates to [load] with the page
+  /// URL so fakes and non-streaming backends need no override; backends that
+  /// can open a stream with headers (e.g. [MediaKitVideoCore]) override this.
+  Future<void> loadResolved(ResolvedMedia media) => load(media.pageUrl);
 
   /// Force the in-flight load into the error state with [message]. Used when a
   /// load hangs past a caller's timeout with no backend error, so the UI can
