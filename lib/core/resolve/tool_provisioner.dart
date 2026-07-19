@@ -23,18 +23,35 @@ import 'resolve_error.dart';
 /// is ever executed; the download fails closed. Deno is best-effort: a failed
 /// deno download degrades YouTube quality but must never block resolving.
 class ToolProvisioner {
-  ToolProvisioner({required this.toolsDir, http.Client? client})
-      : _client = client ?? http.Client();
+  ToolProvisioner({
+    required this.toolsDir,
+    http.Client? client,
+    String? denoSha256,
+  })  : _client = client ?? http.Client(),
+        _denoSha256 = denoSha256 ?? _kDenoZipSha256;
 
   /// Directory the tools are installed into (created on demand).
   final Directory toolsDir;
 
   final http.Client _client;
 
+  /// Expected SHA-256 of the pinned Deno zip; overridable only for tests.
+  final String _denoSha256;
+
   static const _ytDlpBase =
       'https://github.com/yt-dlp/yt-dlp/releases/latest/download';
+
+  // Deno is pinned to a specific version and verified against a hash baked into
+  // the app (not `releases/latest`): yt-dlp auto-discovers and *executes* the
+  // deno beside it, so an unverified or floating download would be an
+  // arbitrary-code-execution path. A pinned version + baked hash is fail-closed
+  // even against a compromised deno release channel (Codex #223 P1). Bump both
+  // together when moving Deno versions.
+  static const _kDenoVersion = 'v2.9.3';
+  static const _kDenoZipSha256 =
+      '60343461ac5fe3a31f4ef12667f2946bb852e20655c8610aeb7e751e87f7df3a';
   static const _denoZipUrl =
-      'https://github.com/denoland/deno/releases/latest/download/'
+      'https://github.com/denoland/deno/releases/download/$_kDenoVersion/'
       'deno-x86_64-pc-windows-msvc.zip';
 
   static const _downloadTimeout = Duration(minutes: 5);
@@ -161,6 +178,15 @@ class ToolProvisioner {
   /// that is not a Windows executable (`MZ` magic).
   Future<void> _provisionDeno(File deno) async {
     final zipBytes = await _download(_denoZipUrl);
+    // Fail closed: only the exact pinned Deno build may be installed, since
+    // yt-dlp will execute it. A tampered/rebuilt asset never reaches disk.
+    final actual = sha256.convert(zipBytes).toString();
+    if (actual != _denoSha256.toLowerCase()) {
+      throw ResolveException(
+        ResolveErrorKind.toolMissing,
+        'deno zip checksum mismatch: expected $_denoSha256 got $actual',
+      );
+    }
     final archive = ZipDecoder().decodeBytes(zipBytes);
     ArchiveFile? entry;
     for (final file in archive) {
