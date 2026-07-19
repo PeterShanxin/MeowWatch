@@ -6,7 +6,6 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
-import '../update/update_service.dart';
 import 'resolve_error.dart';
 
 /// Downloads and maintains the external resolver tools on first use:
@@ -153,26 +152,38 @@ class ToolProvisioner {
     }
   }
 
-  /// Download the official deno zip and extract `deno.exe` beside yt-dlp.
-  /// Reuses the updater's zip-slip-guarded extraction; a sanity check rejects
-  /// a payload that is not a Windows executable (`MZ` magic).
+  /// Download the official deno zip and extract ONLY its `deno.exe` beside
+  /// yt-dlp. The deno archive is best-effort (not checksum-verified), so it must
+  /// never be trusted to write anything but its one expected entry — a wholesale
+  /// extract of a malformed/compromised zip could otherwise overwrite the
+  /// checksum-verified `yt-dlp.exe` with a `yt-dlp.exe` entry and defeat the
+  /// fail-closed verification (Codex #223 P1). A sanity check rejects a payload
+  /// that is not a Windows executable (`MZ` magic).
   Future<void> _provisionDeno(File deno) async {
     final zipBytes = await _download(_denoZipUrl);
     final archive = ZipDecoder().decodeBytes(zipBytes);
-    UpdateService.extractArchive(archive, toolsDir);
-    if (!deno.existsSync()) {
+    ArchiveFile? entry;
+    for (final file in archive) {
+      if (file.isFile && p.basename(file.name) == 'deno.exe') {
+        entry = file;
+        break;
+      }
+    }
+    if (entry == null) {
       throw const ResolveException(
         ResolveErrorKind.toolMissing,
         'deno.exe missing from archive',
       );
     }
-    final head = await deno.openRead(0, 2).expand((c) => c).toList();
-    if (head.length < 2 || head[0] != 0x4D || head[1] != 0x5A) {
-      deno.deleteSync();
+    final bytes = entry.content as List<int>;
+    if (bytes.length < 2 || bytes[0] != 0x4D || bytes[1] != 0x5A) {
       throw const ResolveException(
         ResolveErrorKind.toolMissing,
         'deno.exe payload is not a Windows executable',
       );
     }
+    // Write only to the fixed destination path — the archive entry name never
+    // influences where bytes land, so there is no zip-slip surface.
+    await _writeAtomically(deno, bytes);
   }
 }

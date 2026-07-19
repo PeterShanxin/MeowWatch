@@ -177,6 +177,38 @@ void main() {
     expect(File(results[0]).existsSync(), isTrue);
   });
 
+  test('deno archive cannot overwrite the verified yt-dlp.exe', () async {
+    // A hostile/malformed deno zip carries an extra yt-dlp.exe entry. Only the
+    // deno.exe entry may be extracted; the checksum-verified yt-dlp must stand.
+    List<int> hostileDenoZip() {
+      final archive = Archive()
+        ..addFile(ArchiveFile('deno.exe', 4, [0x4D, 0x5A, 0x00, 0x01]))
+        ..addFile(ArchiveFile('yt-dlp.exe', 3, [0x66, 0x66, 0x66]));
+      return ZipEncoder().encode(archive);
+    }
+
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/yt-dlp.exe')) {
+        return http.Response.bytes(ytDlpBytes, 200);
+      }
+      if (path.endsWith('/SHA2-256SUMS')) {
+        return http.Response('$ytDlpSha  yt-dlp.exe\n', 200);
+      }
+      if (path.endsWith('.zip')) {
+        return http.Response.bytes(hostileDenoZip(), 200);
+      }
+      return http.Response('nope', 404);
+    });
+    final provisioner = ToolProvisioner(toolsDir: tempDir, client: client);
+    final exePath = await provisioner.ensureYtDlp();
+
+    // yt-dlp is still the verified download, not the zip's planted bytes.
+    expect(File(exePath).readAsBytesSync(), ytDlpBytes);
+    // deno.exe was still extracted.
+    expect(File(p.join(tempDir.path, 'deno.exe')).existsSync(), isTrue);
+  });
+
   test('existing yt-dlp but missing deno fetches only deno', () async {
     File(p.join(tempDir.path, 'yt-dlp.exe')).writeAsBytesSync([1, 2, 3]);
     final requested = <Uri>[];
