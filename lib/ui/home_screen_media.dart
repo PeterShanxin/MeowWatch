@@ -169,7 +169,9 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
       final resolved = await _resolveFlow.run(
         pageUrl,
         onStatus: (status) {
-          if (gen == _loadGeneration) _resolveNotice.value = status;
+          // dispose() bumps the generation and disposes the notifier; guard
+          // both so a late status callback never writes a disposed notifier.
+          if (mounted && gen == _loadGeneration) _resolveNotice.value = status;
         },
       );
       if (gen != _loadGeneration) return null;
@@ -189,8 +191,9 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
       }
       return null;
     } finally {
-      // A newer load owns the notice now; only clear it if we still do.
-      if (gen == _loadGeneration) _resolveNotice.value = null;
+      // A newer load (or teardown) owns the notice now; only clear it if we
+      // still do and the notifier is still alive.
+      if (mounted && gen == _loadGeneration) _resolveNotice.value = null;
     }
   }
 

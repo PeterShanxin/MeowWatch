@@ -401,6 +401,11 @@ class _HomeScreenState extends _HomeScreenStateBase
   @override
   void dispose() {
     appLog('life: dispose home (tearing down room)');
+    // Invalidate any in-flight load so an async resolve/provision that is still
+    // running (a page URL the user pasted right before leaving) abandons at its
+    // next generation check instead of touching the now-disposed player or
+    // writing the about-to-be-disposed _resolveNotice (Codex #223 P1/P2).
+    _loadGeneration++;
     // Drop the window-close hook (only if it's still ours) so a closed room
     // doesn't keep preventing the OS fast-close path.
     if (identical(appCloseHook.value, _closeHook)) appCloseHook.value = null;
