@@ -10,6 +10,14 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.45.1-alpha] - 2026-07-20
+
+> Routine under-the-hood library refresh.
+
+### Improved: Housekeeping
+- Refreshed an internal build tool to its latest release (#224). Nothing changes
+  in how the app looks or behaves.
+
 ## [0.45.0-alpha] - 2026-07-19
 
 > Paste a YouTube or Bilibili link — the video just plays.
