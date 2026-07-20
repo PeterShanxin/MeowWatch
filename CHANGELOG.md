@@ -10,6 +10,20 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.46.0-alpha] - 2026-07-20
+
+> The video finder now keeps itself up to date on its own.
+
+### Improved: Always-fresh video finder
+- The video finder behind pasted links (#124) now quietly updates itself in the
+  background — sites like YouTube change constantly, and this keeps links
+  working months after you installed, with zero maintenance on your end.
+- If finding a video fails because the finder is out of date, MeowWatch
+  updates it and retries once automatically — you'll see "The video finder
+  needed an update — retrying…" instead of a dead end.
+- Playback is never delayed by an update check, and being offline never shows
+  an error — the check just waits for another day.
+
 ## [0.45.0-alpha] - 2026-07-19
 
 > Paste a YouTube or Bilibili link — the video just plays.
