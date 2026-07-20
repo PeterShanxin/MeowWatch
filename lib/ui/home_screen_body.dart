@@ -136,13 +136,20 @@ mixin _HomeBody
                       // subtree (#196). A live notice wins over the derived
                       // banner; _leavingRoom (via _banner's guard) silences
                       // both.
+                      // An in-flight page-URL resolve ("Finding the video…")
+                      // outranks presence notices: it is the only feedback the
+                      // user has that their paste is being worked on.
                       child: ValueListenableBuilder<String?>(
-                        valueListenable: _presenceNotice,
-                        builder: (context, notice, _) => SyncHintBanner(
-                          text: _leavingRoom || notice == null
-                              ? _banner
-                              : notice,
-                        ),
+                        valueListenable: _resolveNotice,
+                        builder: (context, resolving, _) =>
+                            ValueListenableBuilder<String?>(
+                              valueListenable: _presenceNotice,
+                              builder: (context, notice, _) => SyncHintBanner(
+                                text: _leavingRoom
+                                    ? _banner
+                                    : resolving ?? notice ?? _banner,
+                              ),
+                            ),
                       ),
                     ),
                     ChatOverlayRegion(

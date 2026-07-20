@@ -39,6 +39,10 @@ import '../core/theme/tokens/motion.dart';
 import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
+import '../core/resolve/resolve_error.dart';
+import '../core/resolve/resolve_flow.dart';
+import '../core/resolve/resolved_media.dart';
+import '../core/resolve/url_classifier.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/video_engine_pool.dart';
 import '../core/video/await_open_result.dart';
@@ -397,6 +401,11 @@ class _HomeScreenState extends _HomeScreenStateBase
   @override
   void dispose() {
     appLog('life: dispose home (tearing down room)');
+    // Invalidate any in-flight load so an async resolve/provision that is still
+    // running (a page URL the user pasted right before leaving) abandons at its
+    // next generation check instead of touching the now-disposed player or
+    // writing the about-to-be-disposed _resolveNotice (Codex #223 P1/P2).
+    _loadGeneration++;
     // Drop the window-close hook (only if it's still ours) so a closed room
     // doesn't keep preventing the OS fast-close path.
     if (identical(appCloseHook.value, _closeHook)) appCloseHook.value = null;
@@ -431,6 +440,7 @@ class _HomeScreenState extends _HomeScreenStateBase
     _peekPulsing.dispose();
     _chatHasUnread.dispose();
     _presenceNotice.dispose();
+    _resolveNotice.dispose();
     unawaited(_bridge.dispose());
     unawaited(_sync.dispose());
     // Reset, don't dispose: the engines are shared (process-lifetime) and a

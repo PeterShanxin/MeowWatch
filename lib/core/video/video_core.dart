@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../resolve/resolved_media.dart';
 import 'playback_bar_view.dart';
 import 'playback_screen_view.dart';
 import 'playback_state.dart';
@@ -59,6 +60,12 @@ abstract class VideoCore {
 
   Future<void> load(String filePath);
 
+  /// Open a yt-dlp-resolved page ([ResolvedMedia]): play the stream URL(s) but
+  /// present/announce the page URL. Default delegates to [load] with the page
+  /// URL so fakes and non-streaming backends need no override; backends that
+  /// can open a stream with headers (e.g. [MediaKitVideoCore]) override this.
+  Future<void> loadResolved(ResolvedMedia media) => load(media.pageUrl);
+
   /// Force the in-flight load into the error state with [message]. Used when a
   /// load hangs past a caller's timeout with no backend error, so the UI can
   /// show its recovery screen instead of a frozen loading surface. No-op once the
@@ -74,6 +81,26 @@ abstract class VideoCore {
     if (isPlaybackOpen(_state) || _state.status == PlaybackStatus.error) return;
     emit(_state.copyWith(
       status: PlaybackStatus.error,
+      errorMessage: message,
+    ));
+  }
+
+  /// Surface a source that failed *before* any backend load began (e.g. a
+  /// page-URL resolve failure): emit an error state that carries the source as
+  /// [PlaybackState.fileName]/[PlaybackState.filePath], because the error
+  /// screen only mounts when a fileName is present — [failLoad] alone would
+  /// leave the user staring at the empty screen with no explanation.
+  ///
+  /// Refuses only a genuinely open playback (never nuke a playing video over a
+  /// failed paste). Unlike [failLoad] it *does* replace an existing error: a
+  /// second bad link must show its own message and point Retry at the source
+  /// the user just pasted, not the previous failure's stale source.
+  void failSource(String source, String message) {
+    if (isPlaybackOpen(_state)) return;
+    emit(_state.copyWith(
+      status: PlaybackStatus.error,
+      fileName: source,
+      filePath: source,
       errorMessage: message,
     ));
   }
