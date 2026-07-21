@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:meowwatch/core/resolve/installed_versions.dart';
 import 'package:meowwatch/core/resolve/resolve_error.dart';
 import 'package:meowwatch/core/resolve/tool_provisioner.dart';
 import 'package:path/path.dart' as p;
@@ -166,6 +167,20 @@ void main() {
           ),
       isEmpty,
     );
+    // The bytes on disk are the other process's, and the two co-watch copies
+    // on one PC are routinely different builds sharing one tools dir — so its
+    // pin may differ from ours. Claiming our pin here would let ToolUpdater
+    // see a matching record and skip reconciliation forever, stranding the
+    // older resolver (Codex #225 P2).
+    expect(InstalledVersions(tempDir)[InstalledVersions.ytDlp], isNull);
+  });
+
+  test('records the pin when this process actually installed the tool',
+      () async {
+    await provisioner(happyClient()).ensureYtDlp();
+    final versions = InstalledVersions(tempDir);
+    expect(versions[InstalledVersions.ytDlp], ToolProvisioner.ytDlpVersion);
+    expect(versions[InstalledVersions.deno], ToolProvisioner.denoVersion);
   });
 
   test('concurrent first-use calls share one download (single-flight)',

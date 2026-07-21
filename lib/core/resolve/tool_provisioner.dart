@@ -158,9 +158,17 @@ class ToolProvisioner {
     await toolsDir.create(recursive: true);
     final bytes = await _download(_ytDlpUrl);
     _verifyHash(bytes, _ytDlpSha256, 'yt-dlp.exe');
-    await _writeAtomically(File(p.join(toolsDir.path, 'yt-dlp.exe')), bytes,
+    final installed = await _writeAtomically(
+        File(p.join(toolsDir.path, 'yt-dlp.exe')), bytes,
         replace: replace);
-    InstalledVersions(toolsDir).record(InstalledVersions.ytDlp, ytDlpVersion);
+    // Only claim the pin when these bytes actually landed. Losing the race
+    // means the file belongs to another process, whose build may pin a
+    // different version — recording ours would make ToolUpdater see a match
+    // and skip reconciliation forever (Codex #225 P2). Recording nothing
+    // leaves it drifted, so the next check re-provisions with replace: true.
+    if (installed) {
+      InstalledVersions(toolsDir).record(InstalledVersions.ytDlp, ytDlpVersion);
+    }
   }
 
   /// Download, verify and install the pinned `deno.exe`. See [installYtDlp]
@@ -212,7 +220,9 @@ class ToolProvisioner {
   /// (Codex #223 P2). Whoever renames first wins; a loser that finds [target]
   /// already present discards its temp and reuses the installed copy. The
   /// unique temp also keeps a crash mid-write from shadowing a future retry.
-  Future<void> _writeAtomically(File target, List<int> bytes,
+  /// Returns whether *these* bytes ended up at [target]; false means another
+  /// process won the race and its copy was kept.
+  Future<bool> _writeAtomically(File target, List<int> bytes,
       {bool replace = false}) async {
     final part = File('${target.path}.$pid.${_rng.nextInt(1 << 32)}.part');
     try {
@@ -221,7 +231,7 @@ class ToolProvisioner {
         if (!replace) {
           // Another process already installed it — discard ours, reuse theirs.
           await part.delete();
-          return;
+          return false;
         }
         // Deliberate upgrade onto the new pin. Windows cannot rename onto an
         // existing file, and a delete-then-rename would leave a window with no
@@ -242,7 +252,7 @@ class ToolProvisioner {
         } on FileSystemException {
           // Ignored by contract; see above.
         }
-        return;
+        return true;
       }
       try {
         await part.rename(target.path);
@@ -251,10 +261,11 @@ class ToolProvisioner {
         // rename (Windows rename onto an existing file throws). Reuse theirs.
         if (target.existsSync()) {
           if (part.existsSync()) await part.delete();
-          return;
+          return false;
         }
         rethrow;
       }
+      return true;
     } on FileSystemException {
       if (part.existsSync()) part.deleteSync();
       rethrow;
@@ -262,7 +273,7 @@ class ToolProvisioner {
   }
 
   /// Download the official deno zip and extract ONLY its `deno.exe` beside
-  /// yt-dlp. The deno archive is best-effort (not checksum-verified), so it must
+  /// yt-dlp. The archive must
   /// never be trusted to write anything but its one expected entry — a wholesale
   /// extract of a malformed/compromised zip could otherwise overwrite the
   /// checksum-verified `yt-dlp.exe` with a `yt-dlp.exe` entry and defeat the
@@ -296,7 +307,8 @@ class ToolProvisioner {
     }
     // Write only to the fixed destination path — the archive entry name never
     // influences where bytes land, so there is no zip-slip surface.
-    await _writeAtomically(deno, bytes, replace: replace);
-    InstalledVersions(toolsDir).record(InstalledVersions.deno, denoVersion);
+    if (await _writeAtomically(deno, bytes, replace: replace)) {
+      InstalledVersions(toolsDir).record(InstalledVersions.deno, denoVersion);
+    }
   }
 }
