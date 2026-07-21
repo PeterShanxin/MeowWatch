@@ -15,8 +15,8 @@ void main() {
   ResolveFlow flow({
     Future<String> Function()? provision,
     Future<ResolvedMedia> Function(String pageUrl)? resolve,
-    Future<void> Function(String exe)? backgroundUpdate,
-    Future<bool> Function(String exe)? updateNow,
+    Future<void> Function()? backgroundUpdate,
+    Future<bool> Function()? updateNow,
   }) {
     return ResolveFlow(
       toolsDirProvider: () async => Directory.systemTemp,
@@ -26,8 +26,8 @@ void main() {
       },
       resolve: (exe, pageUrl) =>
           resolve != null ? resolve(pageUrl) : Future.value(resolved),
-      backgroundUpdate: backgroundUpdate ?? (_) async {},
-      updateNow: updateNow ?? (_) async => false,
+      backgroundUpdate: backgroundUpdate ?? () async {},
+      updateNow: updateNow ?? () async => false,
     );
   }
 
@@ -82,17 +82,17 @@ void main() {
     );
   });
 
-  test('kicks off a background update with the provisioned exe', () async {
-    String? seen;
-    await flow(backgroundUpdate: (exe) async => seen = exe)
+  test('kicks off a background update check', () async {
+    var called = false;
+    await flow(backgroundUpdate: () async => called = true)
         .run(resolved.pageUrl);
-    expect(seen, 'C:/tools/yt-dlp.exe');
+    expect(called, isTrue);
   });
 
   test('a never-finishing background update does not block the resolve',
       () async {
     final result = await flow(
-      backgroundUpdate: (_) => Completer<void>().future,
+      backgroundUpdate: () => Completer<void>().future,
     ).run(resolved.pageUrl).timeout(const Duration(seconds: 5));
     expect(result.videoUrl, resolved.videoUrl);
   });
@@ -110,7 +110,7 @@ void main() {
         }
         return resolved;
       },
-      updateNow: (_) async => true,
+      updateNow: () async => true,
     ).run(resolved.pageUrl, onStatus: statuses.add);
     expect(result.videoUrl, resolved.videoUrl);
     expect(attempts, 2);
@@ -131,7 +131,7 @@ void main() {
           throw const ResolveException(
               ResolveErrorKind.unsupportedSite, 'broke');
         },
-        updateNow: (_) async {
+        updateNow: () async {
           updateCalls++;
           return false;
         },
@@ -154,7 +154,7 @@ void main() {
         }
         return resolved;
       },
-      updateNow: (_) async => true,
+      updateNow: () async => true,
     ).run(resolved.pageUrl);
     expect(result.videoUrl, resolved.videoUrl);
     expect(attempts, 2);
@@ -166,7 +166,7 @@ void main() {
       flow(
         resolve: (_) =>
             throw const ResolveException(ResolveErrorKind.network, 'down'),
-        updateNow: (_) async {
+        updateNow: () async {
           updateCalls++;
           return true;
         },
@@ -187,7 +187,7 @@ void main() {
           throw const ResolveException(
               ResolveErrorKind.unsupportedSite, 'still broke');
         },
-        updateNow: (_) async {
+        updateNow: () async {
           updateCalls++;
           return true;
         },

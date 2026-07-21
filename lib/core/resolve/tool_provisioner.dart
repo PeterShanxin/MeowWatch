@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
+import 'installed_versions.dart';
 import 'resolve_error.dart';
 
 /// Downloads and maintains the external resolver tools on first use:
@@ -15,14 +16,16 @@ import 'resolve_error.dart';
 /// it in its own directory automatically).
 ///
 /// The tools live in `<app data dir>/tools`, NOT next to the app exe and NOT
-/// inside the release zip: the app updater's robocopy would overwrite a
-/// self-updated `yt-dlp.exe` with a stale bundled copy on every app update,
-/// and bundling would grow every update download by ~17 MB. A user-writable
-/// directory we own is also what `yt-dlp -U` self-update (issue #124) needs.
+/// inside the release zip: bundling would grow every app update download by
+/// ~17 MB for a file that changes on its own schedule. A user-writable
+/// directory the app owns is also what re-provisioning onto a newer pin
+/// (issue #124) needs.
 ///
-/// yt-dlp is verified against the release's published `SHA2-256SUMS` before it
-/// is ever executed; the download fails closed. Deno is best-effort: a failed
-/// deno download degrades YouTube quality but must never block resolving.
+/// Both tools are verified against a SHA-256 baked into the app before they are
+/// ever executed; a download that does not match fails closed. Deno is
+/// best-effort in the sense that a *failed* deno download degrades YouTube
+/// quality rather than blocking resolving — never in the sense of skipping
+/// verification.
 class ToolProvisioner {
   ToolProvisioner({
     required this.toolsDir,
@@ -48,30 +51,40 @@ class ToolProvisioner {
   // into the app, NOT fetched from `releases/latest` with a same-release
   // `SHA2-256SUMS`: that checksum lives in the very release it verifies, so a
   // compromised release could ship a malicious exe AND a matching sum and pass.
-  // The app *executes* yt-dlp, so first install must be fail-closed against a
+  // The app *executes* yt-dlp, so every install must be fail-closed against a
   // compromised release channel — the same bar the pinned Deno hash meets
-  // (Codex #223 P1). Staying current is not sacrificed: yt-dlp rots without
-  // updates, so issue #124 keeps it fresh via yt-dlp's own `-U` self-update
-  // (its native, signed-per-release update path) after this trusted first
-  // install. Bump the version + hash together when advancing the baseline.
-  static const _kYtDlpVersion = '2026.07.04';
+  // (Codex #223 P1).
+  //
+  // Staying current is not sacrificed, and notably is NOT delegated to
+  // `yt-dlp -U`: that path fetches `SHA2-256SUMS` from the very release it is
+  // installing (and skips verification with a warning when the hash is
+  // absent), so it would re-open exactly the hole this pin closes, leaving the
+  // pin protective for only about a day (Codex #225 P1). Instead the pin
+  // itself is the update channel: each app release bakes a newer version+hash,
+  // and [ToolUpdater] re-provisions through this verified path when the
+  // installed copy no longer matches (#124). The app's own updates are
+  // Ed25519-signed (#189), so the trust root for every executed byte is a key
+  // shipped with the app. Bump version + hash together.
+  static const ytDlpVersion = '2026.07.04';
   static const _kYtDlpSha256 =
       '52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8';
   static const _ytDlpUrl =
-      'https://github.com/yt-dlp/yt-dlp/releases/download/$_kYtDlpVersion/'
+      'https://github.com/yt-dlp/yt-dlp/releases/download/$ytDlpVersion/'
       'yt-dlp.exe';
 
   // Deno is pinned to a specific version and verified against a hash baked into
   // the app (not `releases/latest`): yt-dlp auto-discovers and *executes* the
   // deno beside it, so an unverified or floating download would be an
   // arbitrary-code-execution path. A pinned version + baked hash is fail-closed
-  // even against a compromised deno release channel (Codex #223 P1). Bump both
+  // even against a compromised deno release channel (Codex #223 P1). Updates
+  // ride the pin for the same reason yt-dlp's do — `deno upgrade` would install
+  // whatever its endpoint serves, unverified (Codex #225 P1). Bump both
   // together when moving Deno versions.
-  static const _kDenoVersion = 'v2.9.3';
+  static const denoVersion = 'v2.9.3';
   static const _kDenoZipSha256 =
       '60343461ac5fe3a31f4ef12667f2946bb852e20655c8610aeb7e751e87f7df3a';
   static const _denoZipUrl =
-      'https://github.com/denoland/deno/releases/download/$_kDenoVersion/'
+      'https://github.com/denoland/deno/releases/download/$denoVersion/'
       'deno-x86_64-pc-windows-msvc.zip';
 
   static const _downloadTimeout = Duration(minutes: 5);
@@ -113,24 +126,49 @@ class ToolProvisioner {
     final deno = File(p.join(toolsDir.path, 'deno.exe'));
 
     if (!exe.existsSync()) {
-      await toolsDir.create(recursive: true);
       onStatus?.call('Setting up the video finder…');
-      final bytes = await _download(_ytDlpUrl);
-      _verifyHash(bytes, _ytDlpSha256, 'yt-dlp.exe');
-      await _writeAtomically(exe, bytes);
+      await installYtDlp();
     }
 
     if (!deno.existsSync()) {
       // Best-effort: deno only improves YouTube format availability.
       try {
         onStatus?.call('Setting up YouTube support…');
-        await _provisionDeno(deno);
+        await installDeno();
       } on Exception {
         // Non-fatal by design; resolving proceeds without deno.
       }
     }
 
     return exePath;
+  }
+
+  /// Download, verify and install the pinned `yt-dlp.exe`. Records the version
+  /// only after the hash check passes, so the record can never claim a version
+  /// the app did not verify.
+  ///
+  /// [replace] separates the two callers. First install leaves it false: if a
+  /// second process installed the tool while this one was downloading, that
+  /// copy is kept and ours discarded (Codex #223 P2) — clobbering a binary
+  /// another instance may be executing buys nothing when both copies are the
+  /// same verified bytes. The upgrade path ([ToolUpdater], moving onto a pin a
+  /// new app release advanced) sets it true, because there replacing what is
+  /// on disk is the entire point.
+  Future<void> installYtDlp({bool replace = false}) async {
+    await toolsDir.create(recursive: true);
+    final bytes = await _download(_ytDlpUrl);
+    _verifyHash(bytes, _ytDlpSha256, 'yt-dlp.exe');
+    await _writeAtomically(File(p.join(toolsDir.path, 'yt-dlp.exe')), bytes,
+        replace: replace);
+    InstalledVersions(toolsDir).record(InstalledVersions.ytDlp, ytDlpVersion);
+  }
+
+  /// Download, verify and install the pinned `deno.exe`. See [installYtDlp]
+  /// for what [replace] separates.
+  Future<void> installDeno({bool replace = false}) async {
+    await toolsDir.create(recursive: true);
+    await _provisionDeno(File(p.join(toolsDir.path, 'deno.exe')),
+        replace: replace);
   }
 
   /// Fetch [url] fully into memory, mapping transport failures to
@@ -174,13 +212,36 @@ class ToolProvisioner {
   /// (Codex #223 P2). Whoever renames first wins; a loser that finds [target]
   /// already present discards its temp and reuses the installed copy. The
   /// unique temp also keeps a crash mid-write from shadowing a future retry.
-  Future<void> _writeAtomically(File target, List<int> bytes) async {
+  Future<void> _writeAtomically(File target, List<int> bytes,
+      {bool replace = false}) async {
     final part = File('${target.path}.$pid.${_rng.nextInt(1 << 32)}.part');
     try {
       await part.writeAsBytes(bytes, flush: true);
-      // Another process already installed it — discard ours, reuse theirs.
       if (target.existsSync()) {
-        await part.delete();
+        if (!replace) {
+          // Another process already installed it — discard ours, reuse theirs.
+          await part.delete();
+          return;
+        }
+        // Deliberate upgrade onto the new pin. Windows cannot rename onto an
+        // existing file, and a delete-then-rename would leave a window with no
+        // tool at all for a concurrent resolve, so swing the old copy aside
+        // first and put it back if the swap fails.
+        final aside = File('${target.path}.$pid.old');
+        await target.rename(aside.path);
+        try {
+          await part.rename(target.path);
+        } on FileSystemException {
+          await aside.rename(target.path);
+          rethrow;
+        }
+        // Best-effort: a locked leftover is harmless and gets cleaned up by a
+        // later upgrade, whereas failing here would undo a good install.
+        try {
+          await aside.delete();
+        } on FileSystemException {
+          // Ignored by contract; see above.
+        }
         return;
       }
       try {
@@ -207,7 +268,7 @@ class ToolProvisioner {
   /// checksum-verified `yt-dlp.exe` with a `yt-dlp.exe` entry and defeat the
   /// fail-closed verification (Codex #223 P1). A sanity check rejects a payload
   /// that is not a Windows executable (`MZ` magic).
-  Future<void> _provisionDeno(File deno) async {
+  Future<void> _provisionDeno(File deno, {bool replace = false}) async {
     final zipBytes = await _download(_denoZipUrl);
     // Fail closed: only the exact pinned Deno build may be installed, since
     // yt-dlp will execute it. A tampered/rebuilt asset never reaches disk.
@@ -235,6 +296,7 @@ class ToolProvisioner {
     }
     // Write only to the fixed destination path — the archive entry name never
     // influences where bytes land, so there is no zip-slip surface.
-    await _writeAtomically(deno, bytes);
+    await _writeAtomically(deno, bytes, replace: replace);
+    InstalledVersions(toolsDir).record(InstalledVersions.deno, denoVersion);
   }
 }

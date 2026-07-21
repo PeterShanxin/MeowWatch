@@ -15,15 +15,18 @@ in-app updater reads to show what changed.
 > The video finder now keeps itself up to date on its own.
 
 ### Improved: Always-fresh video finder
-- The video finder behind pasted links (#124) now quietly updates itself in the
-  background — sites like YouTube change constantly, and this keeps links
-  working months after you installed, with zero maintenance on your end.
-- If finding a video fails because the finder is out of date, MeowWatch
-  updates it and retries once automatically — you'll see "The video finder
-  needed an update — retrying…" instead of a dead end.
-- Playback is never delayed by an update check, an error never waits on one it
-  has already done, and being offline never shows an error — the check just
-  waits for another day.
+- The video finder behind pasted links (#124) now refreshes itself whenever a
+  MeowWatch update brings a newer one — sites like YouTube change constantly,
+  and this keeps pasted links working months after you installed, with zero
+  maintenance on your end.
+- Each refreshed copy is checked against a fingerprint that ships inside the
+  app update itself, so the finder can only ever be replaced by a version
+  MeowWatch vouches for.
+- If finding a video fails and a newer finder is waiting, MeowWatch installs it
+  and retries once automatically — you'll see "The video finder needed an
+  update — retrying…" instead of a dead end.
+- Playback is never delayed by the check, and when nothing needs refreshing an
+  error appears straight away instead of waiting.
 
 ## [0.45.1-alpha] - 2026-07-20
 

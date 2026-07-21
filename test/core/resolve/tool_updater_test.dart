@@ -2,329 +2,179 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:meowwatch/core/resolve/installed_versions.dart';
+import 'package:meowwatch/core/resolve/tool_provisioner.dart';
 import 'package:meowwatch/core/resolve/tool_updater.dart';
-import 'package:path/path.dart' as p;
 
 void main() {
   late Directory toolsDir;
-  late List<List<String>> calls;
+  late List<String> installed;
+  late List<String> logs;
 
   setUp(() async {
     toolsDir = await Directory.systemTemp.createTemp('tool_updater_test');
-    calls = [];
+    installed = [];
+    logs = [];
   });
 
   tearDown(() async {
     if (toolsDir.existsSync()) await toolsDir.delete(recursive: true);
   });
 
-  String exePath() => p.join(toolsDir.path, 'yt-dlp.exe');
-
-  /// Fake runner scripted per (basename, first arg) — records every call.
-  Future<ProcessResult> Function(String, List<String>) runner({
-    List<String> versions = const ['2026.07.04', '2026.08.01'],
-    bool failUpdate = false,
-    bool throwAll = false,
-  }) {
-    var versionCall = 0;
-    return (exe, args) async {
-      calls.add([p.basename(exe), ...args]);
-      if (throwAll) throw const ProcessException('yt-dlp.exe', ['-U']);
-      if (p.basename(exe) == 'deno.exe') {
-        return ProcessResult(1, 0, '', '');
-      }
-      if (args.first == '--version') {
-        final v = versions[versionCall.clamp(0, versions.length - 1)];
-        versionCall++;
-        return ProcessResult(1, 0, '$v\n', '');
-      }
-      // -U
-      if (failUpdate) return ProcessResult(1, 1, '', 'update failed');
-      return ProcessResult(1, 0, 'Updated yt-dlp\n', '');
-    };
+  /// Pretend the tools dir already holds [ytDlp] / [deno].
+  void recordInstalled({String? ytDlp, String? deno}) {
+    final versions = InstalledVersions(toolsDir);
+    if (ytDlp != null) versions.record(InstalledVersions.ytDlp, ytDlp);
+    if (deno != null) versions.record(InstalledVersions.deno, deno);
   }
 
   ToolUpdater updater({
-    Future<ProcessResult> Function(String, List<String>)? run,
-    DateTime Function()? now,
-    void Function(String)? log,
+    Future<void> Function()? installYtDlp,
+    Future<void> Function()? installDeno,
+    bool denoPresent = false,
   }) {
+    if (denoPresent) {
+      File('${toolsDir.path}/deno.exe').writeAsBytesSync([0x4D, 0x5A]);
+    }
     return ToolUpdater(
       toolsDir: toolsDir,
-      runner: run ?? runner(),
-      now: now,
-      log: log ?? (_) {},
+      installYtDlp: installYtDlp ??
+          () async {
+            installed.add('ytdlp');
+            recordInstalled(ytDlp: ToolProvisioner.ytDlpVersion);
+          },
+      installDeno: installDeno ??
+          () async {
+            installed.add('deno');
+            recordInstalled(deno: ToolProvisioner.denoVersion);
+          },
+      log: logs.add,
     );
   }
 
-  test('first check runs version probe, -U, version probe, writes stamp',
-      () async {
-    await updater().maybeUpdate(exePath());
-    expect(calls, [
-      ['yt-dlp.exe', '--version'],
-      ['yt-dlp.exe', '-U'],
-      ['yt-dlp.exe', '--version'],
-    ]);
-    expect(File(p.join(toolsDir.path, '.update-stamp')).existsSync(), isTrue);
-  });
-
-  test('fresh stamp skips the check entirely', () async {
-    final u = updater();
-    await u.maybeUpdate(exePath());
-    calls.clear();
-    await u.maybeUpdate(exePath());
-    expect(calls, isEmpty);
-  });
-
-  test('stale stamp re-runs the check', () async {
-    var current = DateTime(2026, 7, 20);
-    final u = updater(now: () => current);
-    await u.maybeUpdate(exePath());
-    calls.clear();
-    current = current.add(const Duration(hours: 25));
-    await u.maybeUpdate(exePath());
-    expect(calls, isNotEmpty);
-  });
-
-  test('offline (runner throws) is silent and still stamps', () async {
-    await updater(run: runner(throwAll: true)).maybeUpdate(exePath());
-    expect(File(p.join(toolsDir.path, '.update-stamp')).existsSync(), isTrue);
-  });
-
-  test('updateNow returns true when the version changed', () async {
-    final changed = await updater().updateNow(exePath());
-    expect(changed, isTrue);
-  });
-
-  test('updateNow returns false when already up to date', () async {
-    final changed = await updater(
-      run: runner(versions: ['2026.08.01', '2026.08.01']),
-    ).updateNow(exePath());
-    expect(changed, isFalse);
-  });
-
-  test('updateNow returns false when the runner throws', () async {
-    final changed =
-        await updater(run: runner(throwAll: true)).updateNow(exePath());
-    expect(changed, isFalse);
-  });
-
-  test('updateNow ignores a fresh on-disk stamp', () async {
-    // A stamp written by an earlier process (or an attempt that never got an
-    // answer) suppresses the *background* check only. A site that just broke
-    // still deserves an off-schedule check, so updateNow must run.
-    File(p.join(toolsDir.path, '.update-stamp'))
-        .writeAsStringSync('${DateTime.now().millisecondsSinceEpoch}');
-    final changed = await updater().updateNow(exePath());
-    expect(changed, isTrue);
-    expect(calls, isNotEmpty);
-  });
-
-  test('runs deno upgrade when deno.exe sits beside yt-dlp', () async {
-    File(p.join(toolsDir.path, 'deno.exe')).writeAsBytesSync([0x4D, 0x5A]);
-    await updater().maybeUpdate(exePath());
-    expect(calls, anyElement(equals(['deno.exe', 'upgrade', '-q'])));
-  });
-
-  test('skips deno upgrade when deno.exe is absent', () async {
-    await updater().maybeUpdate(exePath());
-    expect(calls.where((c) => c.first == 'deno.exe'), isEmpty);
-  });
-
-  test('a deno upgrade failure never fails the yt-dlp update', () async {
-    File(p.join(toolsDir.path, 'deno.exe')).writeAsBytesSync([0x4D, 0x5A]);
-    await updater(run: (exe, args) async {
-      calls.add([p.basename(exe), ...args]);
-      if (p.basename(exe) == 'deno.exe') {
-        throw const ProcessException('deno.exe', ['upgrade']);
-      }
-      return ProcessResult(1, 0, '2026.08.01\n', '');
-    }).maybeUpdate(exePath());
-    // yt-dlp calls all completed despite the deno throw.
-    expect(calls.where((c) => c.first == 'yt-dlp.exe'), hasLength(3));
-  });
-
-  test('concurrent maybeUpdate calls share one in-flight run', () async {
-    final gate = Completer<void>();
-    final u = updater(run: (exe, args) async {
-      calls.add([p.basename(exe), ...args]);
-      await gate.future;
-      return ProcessResult(1, 0, '2026.08.01\n', '');
+  group('drift detection', () {
+    test('does nothing when the installed version matches the pin', () async {
+      recordInstalled(ytDlp: ToolProvisioner.ytDlpVersion);
+      await updater().maybeUpdate();
+      expect(installed, isEmpty);
     });
-    final first = u.maybeUpdate(exePath());
-    final second = u.maybeUpdate(exePath());
-    gate.complete();
-    await Future.wait([first, second]);
-    expect(calls.where((c) => c.contains('-U')), hasLength(1));
-  });
 
-  test('a hung runner is abandoned after the timeout without throwing',
-      () async {
-    final u = ToolUpdater(
-      toolsDir: toolsDir,
-      runner: (exe, args) => Completer<ProcessResult>().future,
-      timeout: const Duration(milliseconds: 20),
-      log: (_) {},
-    );
-    await u.maybeUpdate(exePath()).timeout(const Duration(seconds: 5));
-  });
-
-  test('logs the version transition', () async {
-    final lines = <String>[];
-    await updater(log: lines.add).maybeUpdate(exePath());
-    expect(
-      lines,
-      contains(contains('yt-dlp 2026.07.04 → 2026.08.01')),
-    );
-  });
-
-  group('recheck window', () {
-    test('updateNow skips the cycle right after a check confirmed current',
-        () async {
-      final u = updater(
-        run: runner(versions: ['2026.07.04', '2026.07.04']),
+    test('re-provisions when an app update advanced the pin', () async {
+      recordInstalled(ytDlp: '2020.01.01');
+      await updater().maybeUpdate();
+      expect(installed, contains('ytdlp'));
+      expect(
+        logs,
+        contains(contains('yt-dlp 2020.01.01 → ${ToolProvisioner.ytDlpVersion}')),
       );
-      await u.maybeUpdate(exePath());
-      calls.clear();
-      final changed = await u.updateNow(exePath());
-      expect(changed, isFalse);
-      expect(calls, isEmpty,
-          reason: 'a failing resolve must not re-pay the ~8s update cycle '
-              'seconds after we already confirmed we are current');
     });
 
-    test('updateNow runs again once the recheck window lapses', () async {
-      var current = DateTime(2026, 7, 21, 14, 31);
-      final u = ToolUpdater(
-        toolsDir: toolsDir,
-        runner: runner(versions: ['2026.07.04', '2026.07.04']),
-        now: () => current,
-        log: (_) {},
-      );
-      await u.maybeUpdate(exePath());
-      calls.clear();
-      current = current.add(const Duration(hours: 2));
-      await u.updateNow(exePath());
-      expect(calls, isNotEmpty);
+    test('re-provisions when nothing is recorded', () async {
+      // No record: the copy on disk came from somewhere this app cannot vouch
+      // for (an older build that let yt-dlp update itself), so re-establish
+      // the verified baseline rather than trusting it.
+      await updater().maybeUpdate();
+      expect(installed, contains('ytdlp'));
     });
 
-    test('a failed -U does not suppress the next updateNow', () async {
-      final u = updater(run: runner(failUpdate: true));
-      await u.maybeUpdate(exePath());
-      calls.clear();
-      await u.updateNow(exePath());
-      expect(calls, isNotEmpty,
-          reason: 'a cycle whose -U failed proves nothing about freshness');
-    });
-
-    test('a completed cycle records its confirmation in the stamp file',
-        () async {
-      await updater().maybeUpdate(exePath());
-      final parts = File(p.join(toolsDir.path, '.update-stamp'))
-          .readAsStringSync()
-          .trim()
-          .split(' ');
-      expect(parts, hasLength(2),
-          reason: 'the confirmation must outlive the process, so it belongs '
-              'on disk beside the attempt time — an in-process memo dies with '
-              'the app and leaves the next session paying the full cycle');
-      expect(int.tryParse(parts[1]), isNotNull);
-    });
-
-    test('honors a confirmation left by an earlier app session', () async {
-      // Written by hand: nothing ran in THIS process, so only a persisted
-      // confirmation can suppress the cycle. This is the exact real-world path
-      // — app restarts, daily stamp still fresh so the background check is
-      // skipped, then the first failing resolve used to re-pay the ~8s cycle.
-      final now = DateTime.now().millisecondsSinceEpoch;
-      File(p.join(toolsDir.path, '.update-stamp'))
-          .writeAsStringSync('$now $now');
-      final changed = await updater().updateNow(exePath());
-      expect(changed, isFalse);
-      expect(calls, isEmpty);
-    });
-
-    test('treats a future-dated confirmation as stale', () async {
-      // A clock corrected backward (or a stamp written while it was set ahead)
-      // leaves a timestamp in the future, making the age negative — which is
-      // "less than the window" by naive comparison and would suppress every
-      // check until wall-clock time catches up (Codex P2).
-      final ahead =
-          DateTime.now().add(const Duration(days: 30)).millisecondsSinceEpoch;
-      File(p.join(toolsDir.path, '.update-stamp'))
-          .writeAsStringSync('$ahead $ahead');
-      await updater().updateNow(exePath());
-      expect(calls, isNotEmpty);
-    });
-
-    test('treats a future-dated attempt stamp as stale', () async {
-      final ahead =
-          DateTime.now().add(const Duration(days: 30)).millisecondsSinceEpoch;
-      File(p.join(toolsDir.path, '.update-stamp'))
-          .writeAsStringSync('$ahead 0');
-      await updater().maybeUpdate(exePath());
-      expect(calls, isNotEmpty);
-    });
-
-    test('ignores an expired confirmation left by an earlier session',
-        () async {
-      final now = DateTime.now();
-      final stale =
-          now.subtract(const Duration(hours: 3)).millisecondsSinceEpoch;
-      File(p.join(toolsDir.path, '.update-stamp'))
-          .writeAsStringSync('$stale $stale');
-      await updater().updateNow(exePath());
-      expect(calls, isNotEmpty);
-    });
-
-    test('a fresh stamp alone never counts as a confirmation', () async {
-      // A stamp with no recorded confirmation (an attempt that went offline,
-      // or one written by an older build) must not suppress updateNow.
-      File(p.join(toolsDir.path, '.update-stamp'))
-          .writeAsStringSync('${DateTime.now().millisecondsSinceEpoch}');
-      await updater().updateNow(exePath());
-      expect(calls, isNotEmpty);
-    });
-
-    test('a confirmation older than the window does not suppress', () async {
-      var current = DateTime(2026, 7, 21, 15, 7);
-      ToolUpdater at(DateTime t) => ToolUpdater(
-            toolsDir: toolsDir,
-            runner: runner(versions: ['2026.07.04', '2026.07.04']),
-            now: () => t,
-            log: (_) {},
-          );
-      await at(current).maybeUpdate(exePath());
-      calls.clear();
-      current = current.add(const Duration(hours: 3));
-      await at(current).updateNow(exePath());
-      expect(calls, isNotEmpty);
+    test('a second check after a successful install is a no-op', () async {
+      recordInstalled(ytDlp: '2020.01.01');
+      final u = updater();
+      await u.maybeUpdate();
+      installed.clear();
+      await u.maybeUpdate();
+      expect(installed, isEmpty);
     });
   });
 
-  group('-U failure reporting', () {
-    test('a non-zero -U exit is logged as a failure, not "up to date"',
-        () async {
-      final lines = <String>[];
-      await updater(run: runner(failUpdate: true), log: lines.add)
-          .maybeUpdate(exePath());
-      expect(lines, contains(contains('update failed')));
-      expect(lines, isNot(contains(contains('up to date'))));
+  group('deno', () {
+    test('re-provisions a drifted deno when it is installed', () async {
+      recordInstalled(ytDlp: ToolProvisioner.ytDlpVersion, deno: 'v1.0.0');
+      await updater(denoPresent: true).maybeUpdate();
+      expect(installed, contains('deno'));
     });
 
-    test('a failed -U reports no change from updateNow', () async {
-      final changed =
-          await updater(run: runner(failUpdate: true)).updateNow(exePath());
-      expect(changed, isFalse);
+    test('leaves deno alone when it was never installed', () async {
+      recordInstalled(ytDlp: ToolProvisioner.ytDlpVersion);
+      await updater().maybeUpdate();
+      expect(installed, isEmpty);
     });
 
-    test('a successful -U still logs the plain up-to-date line', () async {
-      final lines = <String>[];
+    test('a failing deno install never breaks the yt-dlp update', () async {
+      recordInstalled(ytDlp: '2020.01.01', deno: 'v1.0.0');
       await updater(
-        run: runner(versions: ['2026.07.04', '2026.07.04']),
-        log: lines.add,
-      ).maybeUpdate(exePath());
-      expect(lines, contains(contains('up to date (2026.07.04)')));
+        denoPresent: true,
+        installDeno: () async => throw const SocketException('down'),
+      ).maybeUpdate();
+      expect(installed, contains('ytdlp'));
+    });
+  });
+
+  group('failure contract', () {
+    test('a failed install never throws out of maybeUpdate', () async {
+      recordInstalled(ytDlp: '2020.01.01');
+      await updater(
+        installYtDlp: () async => throw const SocketException('offline'),
+      ).maybeUpdate();
+      expect(logs, contains(contains('update failed')));
+    });
+
+    test('a failed install leaves the pin drifted so it retries later',
+        () async {
+      recordInstalled(ytDlp: '2020.01.01');
+      final u = updater(
+        installYtDlp: () async => throw const SocketException('offline'),
+      );
+      await u.maybeUpdate();
+      installed.clear();
+      await ToolUpdater(
+        toolsDir: toolsDir,
+        installYtDlp: () async => installed.add('ytdlp'),
+        installDeno: () async {},
+        log: logs.add,
+      ).maybeUpdate();
+      expect(installed, contains('ytdlp'));
+    });
+
+    test('concurrent calls share one install', () async {
+      recordInstalled(ytDlp: '2020.01.01');
+      final gate = Completer<void>();
+      final u = updater(installYtDlp: () async {
+        installed.add('ytdlp');
+        await gate.future;
+        recordInstalled(ytDlp: ToolProvisioner.ytDlpVersion);
+      });
+      final first = u.maybeUpdate();
+      final second = u.maybeUpdate();
+      gate.complete();
+      await Future.wait([first, second]);
+      expect(installed, hasLength(1));
+    });
+  });
+
+  group('updateNow', () {
+    test('returns false without doing work when already on the pin', () async {
+      recordInstalled(ytDlp: ToolProvisioner.ytDlpVersion);
+      final changed = await updater().updateNow();
+      expect(changed, isFalse);
+      expect(installed, isEmpty,
+          reason: 'a failed resolve must surface its error immediately when '
+              'no newer pinned resolver exists to try');
+    });
+
+    test('returns true after installing a newer pin', () async {
+      recordInstalled(ytDlp: '2020.01.01');
+      final changed = await updater().updateNow();
+      expect(changed, isTrue);
+      expect(installed, contains('ytdlp'));
+    });
+
+    test('returns false when the install fails', () async {
+      recordInstalled(ytDlp: '2020.01.01');
+      final changed = await updater(
+        installYtDlp: () async => throw const SocketException('offline'),
+      ).updateNow();
+      expect(changed, isFalse);
     });
   });
 }

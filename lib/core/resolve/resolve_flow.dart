@@ -24,14 +24,13 @@ typedef ResolvePage = Future<ResolvedMedia> Function(
   String pageUrl,
 );
 
-/// Fire-and-forget background update check for the tools at [exePath]. Seam
-/// for tests; defaults to [ToolUpdater.maybeUpdate] (#124).
-typedef BackgroundUpdate = Future<void> Function(String exePath);
+/// Fire-and-forget check that the tools match this build's pinned versions.
+/// Seam for tests; defaults to [ToolUpdater.maybeUpdate] (#124).
+typedef BackgroundUpdate = Future<void> Function();
 
-/// Blocking update for the stale-retry path; resolves to whether yt-dlp's
-/// version actually changed. Seam for tests; defaults to
-/// [ToolUpdater.updateNow] (#124).
-typedef UpdateNow = Future<bool> Function(String exePath);
+/// Blocking reconcile for the stale-retry path; resolves to whether yt-dlp was
+/// actually replaced. Seam for tests; defaults to [ToolUpdater.updateNow].
+typedef UpdateNow = Future<bool> Function();
 
 /// Orchestrates the page-URL resolve pipeline for a load: locate/provision the
 /// tools, run yt-dlp, normalize failures. UI-free so the whole flow — statuses,
@@ -84,10 +83,11 @@ class ResolveFlow {
   /// error) is normalized to [ResolveErrorKind.unknown] so callers have exactly
   /// one error type to map to user copy.
   ///
-  /// Two update hooks ride along (#124): a fire-and-forget daily background
-  /// check that never delays the resolve, and — when the resolve fails in a
-  /// site-broke way — one blocking update + single retry, since a stale yt-dlp
-  /// is the most likely cause of a site suddenly failing to extract.
+  /// Two update hooks ride along (#124): a fire-and-forget check that never
+  /// delays the resolve, and — when the resolve fails in a site-broke way —
+  /// one blocking reconcile + single retry, since a yt-dlp left behind by an
+  /// app update is a likely cause of a site suddenly failing to extract. Both
+  /// are cheap when nothing drifted: a small file read, no network.
   Future<ResolvedMedia> run(
     String pageUrl, {
     void Function(String status)? onStatus,
@@ -98,15 +98,15 @@ class ResolveFlow {
       final updater = ToolUpdater(toolsDir: dir);
       // Background freshness check with the binary we already have — the
       // resolve below never waits on it.
-      unawaited((_backgroundUpdate ?? updater.maybeUpdate)(exe));
+      unawaited((_backgroundUpdate ?? updater.maybeUpdate)());
       onStatus?.call('Finding the video…');
       try {
         return await _resolve(exe, pageUrl);
       } on ResolveException catch (e) {
         if (!_updateWorthRetry(e.kind)) rethrow;
-        // Site-broke shape: a stale extractor is the prime suspect. Update
-        // through yt-dlp's own channel; retry once only if the version moved.
-        final changed = await (_updateNow ?? updater.updateNow)(exe);
+        // Site-broke shape: a resolver left behind by an app update is the
+        // prime suspect. Retry once only if it was actually replaced.
+        final changed = await (_updateNow ?? updater.updateNow)();
         if (!changed) rethrow;
         onStatus?.call('The video finder needed an update — retrying…');
         return await _resolve(exe, pageUrl);
@@ -119,8 +119,8 @@ class ResolveFlow {
   }
 
   /// Only failure shapes a newer extractor could plausibly fix. Network, geo,
-  /// DRM, login walls, and timeouts are not staleness — updating would burn
-  /// two minutes for nothing.
+  /// DRM, login walls, and timeouts are not staleness — re-provisioning would
+  /// download 17 MB to change nothing.
   static bool _updateWorthRetry(ResolveErrorKind kind) =>
       kind == ResolveErrorKind.unsupportedSite ||
       kind == ResolveErrorKind.unknown;
