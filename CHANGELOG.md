@@ -10,7 +10,7 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
-## [0.46.0-alpha] - 2026-07-20
+## [0.46.0-alpha] - 2026-07-21
 
 > The video finder now keeps itself up to date on its own.
 
@@ -24,6 +24,14 @@ in-app updater reads to show what changed.
 - Playback is never delayed by an update check, an error never waits on one it
   has already done, and being offline never shows an error — the check just
   waits for another day.
+
+## [0.45.1-alpha] - 2026-07-20
+
+> Routine under-the-hood library refresh.
+
+### Improved: Housekeeping
+- Refreshed an internal build tool to its latest release (#224). Nothing changes
+  in how the app looks or behaves.
 
 ## [0.45.0-alpha] - 2026-07-19
 
