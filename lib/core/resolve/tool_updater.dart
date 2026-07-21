@@ -122,10 +122,7 @@ class ToolUpdater {
   /// reported "already current" only delays the error the user is waiting on.
   /// Returns whether yt-dlp's reported version actually changed. Never throws.
   Future<bool> updateNow(String exePath) async {
-    final confirmed = _readStamp().confirmed;
-    if (confirmed != null && _now().difference(confirmed) < recheckWindow) {
-      return false;
-    }
+    if (_within(_readStamp().confirmed, recheckWindow)) return false;
     try {
       return await _joinOrStart(exePath);
     } catch (e) {
@@ -143,10 +140,22 @@ class ToolUpdater {
     return future.whenComplete(() => _inFlight.remove(key));
   }
 
-  bool _stampFresh() {
-    final attempt = _readStamp().attempt;
-    return attempt != null && _now().difference(attempt) < checkInterval;
+  /// Whether [stamp] falls inside [window] ending now.
+  ///
+  /// A *future* stamp counts as stale, not fresh. The clock moves backward in
+  /// practice — an NTP correction, a manual fix, a dead CMOS battery — and a
+  /// stamp written while it was ahead leaves a negative age, which a naive
+  /// `age < window` reads as fresh and would keep reading as fresh until
+  /// wall-clock time catches up. That could pin a stale yt-dlp for days
+  /// (Codex #225 P2). Erring toward one extra check costs seconds; erring the
+  /// other way silently disables updating.
+  bool _within(DateTime? stamp, Duration window) {
+    if (stamp == null) return false;
+    final age = _now().difference(stamp);
+    return !age.isNegative && age < window;
   }
+
+  bool _stampFresh() => _within(_readStamp().attempt, checkInterval);
 
   Future<bool> _update(String exePath) async {
     // Record the attempt *before* running anything: an offline or crashing

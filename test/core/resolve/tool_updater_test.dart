@@ -244,6 +244,28 @@ void main() {
       expect(calls, isEmpty);
     });
 
+    test('treats a future-dated confirmation as stale', () async {
+      // A clock corrected backward (or a stamp written while it was set ahead)
+      // leaves a timestamp in the future, making the age negative — which is
+      // "less than the window" by naive comparison and would suppress every
+      // check until wall-clock time catches up (Codex P2).
+      final ahead =
+          DateTime.now().add(const Duration(days: 30)).millisecondsSinceEpoch;
+      File(p.join(toolsDir.path, '.update-stamp'))
+          .writeAsStringSync('$ahead $ahead');
+      await updater().updateNow(exePath());
+      expect(calls, isNotEmpty);
+    });
+
+    test('treats a future-dated attempt stamp as stale', () async {
+      final ahead =
+          DateTime.now().add(const Duration(days: 30)).millisecondsSinceEpoch;
+      File(p.join(toolsDir.path, '.update-stamp'))
+          .writeAsStringSync('$ahead 0');
+      await updater().maybeUpdate(exePath());
+      expect(calls, isNotEmpty);
+    });
+
     test('ignores an expired confirmation left by an earlier session',
         () async {
       final now = DateTime.now();
