@@ -109,17 +109,13 @@ void main() {
     expect(changed, isFalse);
   });
 
-  test('updateNow ignores a fresh stamp', () async {
-    // Four version probes: maybeUpdate sees 07.04 → 08.01, the later
-    // updateNow sees 08.01 → 09.01 (a second real update landing).
-    final u = updater(
-      run: runner(
-        versions: ['2026.07.04', '2026.08.01', '2026.08.01', '2026.09.01'],
-      ),
-    );
-    await u.maybeUpdate(exePath());
-    calls.clear();
-    final changed = await u.updateNow(exePath());
+  test('updateNow ignores a fresh on-disk stamp', () async {
+    // A stamp written by an earlier process (or an attempt that never got an
+    // answer) suppresses the *background* check only. A site that just broke
+    // still deserves an off-schedule check, so updateNow must run.
+    File(p.join(toolsDir.path, '.update-stamp'))
+        .writeAsStringSync('${DateTime.now().millisecondsSinceEpoch}');
+    final changed = await updater().updateNow(exePath());
     expect(changed, isTrue);
     expect(calls, isNotEmpty);
   });
@@ -180,5 +176,71 @@ void main() {
       lines,
       contains(contains('yt-dlp 2026.07.04 → 2026.08.01')),
     );
+  });
+
+  group('recheck window', () {
+    test('updateNow skips the cycle right after a check confirmed current',
+        () async {
+      final u = updater(
+        run: runner(versions: ['2026.07.04', '2026.07.04']),
+      );
+      await u.maybeUpdate(exePath());
+      calls.clear();
+      final changed = await u.updateNow(exePath());
+      expect(changed, isFalse);
+      expect(calls, isEmpty,
+          reason: 'a failing resolve must not re-pay the ~8s update cycle '
+              'seconds after we already confirmed we are current');
+    });
+
+    test('updateNow runs again once the recheck window lapses', () async {
+      var current = DateTime(2026, 7, 21, 14, 31);
+      final u = ToolUpdater(
+        toolsDir: toolsDir,
+        runner: runner(versions: ['2026.07.04', '2026.07.04']),
+        now: () => current,
+        log: (_) {},
+      );
+      await u.maybeUpdate(exePath());
+      calls.clear();
+      current = current.add(const Duration(hours: 2));
+      await u.updateNow(exePath());
+      expect(calls, isNotEmpty);
+    });
+
+    test('a failed -U does not suppress the next updateNow', () async {
+      final u = updater(run: runner(failUpdate: true));
+      await u.maybeUpdate(exePath());
+      calls.clear();
+      await u.updateNow(exePath());
+      expect(calls, isNotEmpty,
+          reason: 'a cycle whose -U failed proves nothing about freshness');
+    });
+  });
+
+  group('-U failure reporting', () {
+    test('a non-zero -U exit is logged as a failure, not "up to date"',
+        () async {
+      final lines = <String>[];
+      await updater(run: runner(failUpdate: true), log: lines.add)
+          .maybeUpdate(exePath());
+      expect(lines, contains(contains('update failed')));
+      expect(lines, isNot(contains(contains('up to date'))));
+    });
+
+    test('a failed -U reports no change from updateNow', () async {
+      final changed =
+          await updater(run: runner(failUpdate: true)).updateNow(exePath());
+      expect(changed, isFalse);
+    });
+
+    test('a successful -U still logs the plain up-to-date line', () async {
+      final lines = <String>[];
+      await updater(
+        run: runner(versions: ['2026.07.04', '2026.07.04']),
+        log: lines.add,
+      ).maybeUpdate(exePath());
+      expect(lines, contains(contains('up to date (2026.07.04)')));
+    });
   });
 }

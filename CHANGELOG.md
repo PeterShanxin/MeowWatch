@@ -21,8 +21,9 @@ in-app updater reads to show what changed.
 - If finding a video fails because the finder is out of date, MeowWatch
   updates it and retries once automatically — you'll see "The video finder
   needed an update — retrying…" instead of a dead end.
-- Playback is never delayed by an update check, and being offline never shows
-  an error — the check just waits for another day.
+- Playback is never delayed by an update check, an error never waits on one it
+  has already done, and being offline never shows an error — the check just
+  waits for another day.
 
 ## [0.45.0-alpha] - 2026-07-19
 
