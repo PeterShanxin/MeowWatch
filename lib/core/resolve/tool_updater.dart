@@ -61,14 +61,48 @@ class ToolUpdater {
   /// the same exe (same single-flight shape as ToolProvisioner).
   static final Map<String, Future<bool>> _inFlight = {};
 
-  /// When a full cycle last *completed* per tools dir — i.e. `-U` actually ran
-  /// and we know the installed version is current. Deliberately in-process and
-  /// separate from the on-disk stamp: the stamp throttles *attempts* (an
-  /// offline try counts), whereas this records a *confirmed* answer, and only
-  /// a confirmed answer may suppress the failure-triggered [updateNow].
-  static final Map<String, DateTime> _confirmedCurrent = {};
-
   File get _stamp => File(p.join(toolsDir.path, '.update-stamp'));
+
+  /// The stamp file holds two epoch-millisecond fields, `<attempt> <confirmed>`:
+  ///
+  /// * **attempt** — when a check was last *tried*, written before the tools
+  ///   run. Offline and crashed tries count, which is what stops an offline
+  ///   user retrying on every single resolve. Gates [maybeUpdate].
+  /// * **confirmed** — when a cycle last *completed*, i.e. `-U` actually ran
+  ///   and the installed version is known current. Gates [updateNow].
+  ///
+  /// Both live on disk rather than in memory because both questions outlive
+  /// the process: the app restarts constantly, and an in-process memo meant
+  /// the first failing resolve of every new session re-paid the full ~8s
+  /// cycle to re-derive an answer the previous session already had. On-disk
+  /// also makes it correct across the two co-watch instances sharing a tools
+  /// dir. A legacy one-field stamp parses as an attempt with no confirmation.
+  ({DateTime? attempt, DateTime? confirmed}) _readStamp() {
+    try {
+      final fields = _stamp.readAsStringSync().trim().split(' ');
+      DateTime? at(int i) {
+        if (i >= fields.length) return null;
+        final millis = int.tryParse(fields[i]);
+        return millis == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(millis);
+      }
+
+      return (attempt: at(0), confirmed: at(1));
+    } on FileSystemException {
+      return (attempt: null, confirmed: null); // No stamp yet — due.
+    }
+  }
+
+  void _writeStampFields({DateTime? attempt, DateTime? confirmed}) {
+    try {
+      final a = attempt?.millisecondsSinceEpoch ?? 0;
+      final c = confirmed?.millisecondsSinceEpoch ?? 0;
+      _stamp.writeAsStringSync('$a $c');
+    } on FileSystemException {
+      // A missing stamp only means the next check runs early — harmless.
+    }
+  }
 
   /// Background daily check: skip when the stamp is fresh, otherwise run the
   /// update. Never throws; all failures are logged and swallowed.
@@ -88,7 +122,7 @@ class ToolUpdater {
   /// reported "already current" only delays the error the user is waiting on.
   /// Returns whether yt-dlp's reported version actually changed. Never throws.
   Future<bool> updateNow(String exePath) async {
-    final confirmed = _confirmedCurrent[toolsDir.path];
+    final confirmed = _readStamp().confirmed;
     if (confirmed != null && _now().difference(confirmed) < recheckWindow) {
       return false;
     }
@@ -110,29 +144,17 @@ class ToolUpdater {
   }
 
   bool _stampFresh() {
-    try {
-      final raw = _stamp.readAsStringSync().trim();
-      final millis = int.tryParse(raw);
-      if (millis == null) return false;
-      final last = DateTime.fromMillisecondsSinceEpoch(millis);
-      return _now().difference(last) < checkInterval;
-    } on FileSystemException {
-      return false; // No stamp yet — due.
-    }
-  }
-
-  /// Stamp *before* the attempt: an offline or crashing attempt must not
-  /// retry-spam on every resolve — one quiet try per interval.
-  void _writeStamp() {
-    try {
-      _stamp.writeAsStringSync('${_now().millisecondsSinceEpoch}');
-    } on FileSystemException {
-      // A missing stamp only means the next check runs early — harmless.
-    }
+    final attempt = _readStamp().attempt;
+    return attempt != null && _now().difference(attempt) < checkInterval;
   }
 
   Future<bool> _update(String exePath) async {
-    _writeStamp();
+    // Record the attempt *before* running anything: an offline or crashing
+    // attempt must not retry-spam on every resolve — one quiet try per
+    // interval. The previous confirmation is carried over so a failed attempt
+    // never discards a still-valid answer.
+    final priorConfirmed = _readStamp().confirmed;
+    _writeStampFields(attempt: _now(), confirmed: priorConfirmed);
     final before = await _version(exePath);
     final update = await _run(exePath, const ['-U']);
     if (update.exitCode != 0) {
@@ -152,8 +174,8 @@ class ToolUpdater {
         ? 'resolver: yt-dlp $before → $after'
         : 'resolver: yt-dlp up to date ($after)');
     // Only a cycle that actually ran `-U` earns the right to short-circuit
-    // the next failure-triggered check.
-    _confirmedCurrent[toolsDir.path] = _now();
+    // the next failure-triggered check — including one in a later session.
+    _writeStampFields(attempt: _now(), confirmed: _now());
     await _upgradeDenoBestEffort();
     return changed;
   }

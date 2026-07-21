@@ -216,6 +216,68 @@ void main() {
       expect(calls, isNotEmpty,
           reason: 'a cycle whose -U failed proves nothing about freshness');
     });
+
+    test('a completed cycle records its confirmation in the stamp file',
+        () async {
+      await updater().maybeUpdate(exePath());
+      final parts = File(p.join(toolsDir.path, '.update-stamp'))
+          .readAsStringSync()
+          .trim()
+          .split(' ');
+      expect(parts, hasLength(2),
+          reason: 'the confirmation must outlive the process, so it belongs '
+              'on disk beside the attempt time — an in-process memo dies with '
+              'the app and leaves the next session paying the full cycle');
+      expect(int.tryParse(parts[1]), isNotNull);
+    });
+
+    test('honors a confirmation left by an earlier app session', () async {
+      // Written by hand: nothing ran in THIS process, so only a persisted
+      // confirmation can suppress the cycle. This is the exact real-world path
+      // — app restarts, daily stamp still fresh so the background check is
+      // skipped, then the first failing resolve used to re-pay the ~8s cycle.
+      final now = DateTime.now().millisecondsSinceEpoch;
+      File(p.join(toolsDir.path, '.update-stamp'))
+          .writeAsStringSync('$now $now');
+      final changed = await updater().updateNow(exePath());
+      expect(changed, isFalse);
+      expect(calls, isEmpty);
+    });
+
+    test('ignores an expired confirmation left by an earlier session',
+        () async {
+      final now = DateTime.now();
+      final stale =
+          now.subtract(const Duration(hours: 3)).millisecondsSinceEpoch;
+      File(p.join(toolsDir.path, '.update-stamp'))
+          .writeAsStringSync('$stale $stale');
+      await updater().updateNow(exePath());
+      expect(calls, isNotEmpty);
+    });
+
+    test('a fresh stamp alone never counts as a confirmation', () async {
+      // A stamp with no recorded confirmation (an attempt that went offline,
+      // or one written by an older build) must not suppress updateNow.
+      File(p.join(toolsDir.path, '.update-stamp'))
+          .writeAsStringSync('${DateTime.now().millisecondsSinceEpoch}');
+      await updater().updateNow(exePath());
+      expect(calls, isNotEmpty);
+    });
+
+    test('a confirmation older than the window does not suppress', () async {
+      var current = DateTime(2026, 7, 21, 15, 7);
+      ToolUpdater at(DateTime t) => ToolUpdater(
+            toolsDir: toolsDir,
+            runner: runner(versions: ['2026.07.04', '2026.07.04']),
+            now: () => t,
+            log: (_) {},
+          );
+      await at(current).maybeUpdate(exePath());
+      calls.clear();
+      current = current.add(const Duration(hours: 3));
+      await at(current).updateNow(exePath());
+      expect(calls, isNotEmpty);
+    });
   });
 
   group('-U failure reporting', () {
