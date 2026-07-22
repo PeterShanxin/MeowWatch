@@ -162,12 +162,18 @@ class MediaKitVideoCore extends VideoCore {
       _player.stream.audioParams.listen((p) {
         if (p.sampleRate != null) _markOpened();
       }),
-      // Every libmpv failure line, not just the few media_kit promotes to its
-      // error stream — that subset drops the `ffmpeg` line naming *why* an open
-      // failed and leaves only mpv's generic summary (#228). Log-only: the
-      // error stream below still owns the state transition, so an unguarded
-      // line here can't error out a source it doesn't belong to.
+      // Every libmpv failure line during the OPEN window, not just the few
+      // media_kit promotes to its error stream — that subset drops the `ffmpeg`
+      // line naming *why* an open failed and leaves only mpv's generic summary
+      // (#228). Gated on `!state.opened`: once a source is confirmed open,
+      // error-level chatter is benign playback noise — a YouTube DASH stream
+      // hops CDN hosts mid-play and mpv logs "Cannot reuse HTTP connection…" at
+      // error level dozens of times per minute while playing perfectly. That is
+      // not a failure and must not flood the log. Log-only: the error stream
+      // below still owns the state transition, so an unguarded line here can't
+      // error out a source it doesn't belong to.
       _player.stream.log.listen((entry) {
+        if (state.opened) return;
         final line = formatMpvLogLine(
           prefix: entry.prefix,
           level: entry.level,
