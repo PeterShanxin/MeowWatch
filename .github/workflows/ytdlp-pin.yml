@@ -90,6 +90,26 @@ jobs:
           # dispatch happened to be started from.
           ref: main
 
+      # Fail fast — and BEFORE any branch is pushed — if the repo setting this
+      # job depends on is off (Codex P1). Without this the run resolves,
+      # downloads 18 MB, pushes `ci/ytdlp-…`, and only then 403s on
+      # `gh pr create`, leaving an orphan branch and a cryptic failure every
+      # week. This does not replace enabling the setting; it makes its absence
+      # self-explanatory and stops the job doing throwaway work. Skipped on a
+      # dry run, which never opens a PR.
+      - name: Preflight — Actions may open PRs
+        if: inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          allowed=$(gh api "repos/$GITHUB_REPOSITORY/actions/permissions/workflow" \
+            --jq '.can_approve_pull_request_reviews')
+          if [ "$allowed" != "true" ]; then
+            echo "::error::Settings → Actions → General → Workflow permissions → 'Allow GitHub Actions to create and approve pull requests' is OFF. Enable it (permissions: on the workflow cannot override this repo-level setting), or this job can push a branch but never open its PR."
+            exit 1
+          fi
+
       # Single decision step: everything below is gated on its `bump` output, so
       # there is exactly one place that decides whether a PR is warranted.
       - name: Resolve the current pin and the newest soaked release
