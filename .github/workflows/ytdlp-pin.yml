@@ -1,0 +1,397 @@
+name: yt-dlp pin
+
+# Watches yt-dlp for new releases and opens a PR that advances the pinned
+# version + SHA-256 in lib/core/resolve/tool_provisioner.dart (#229).
+#
+# Why this exists: #124 / #225 made yt-dlp updates *safe* — the app installs
+# only the exact version whose hash is baked into the release it is running, and
+# re-provisions when an app release advances that pin. Nothing *advanced* the
+# pin, though: a human had to notice an upstream release and hand-edit two
+# constants, so yt-dlp rotted safely rather than not rotting. This job automates
+# the *noticing* only. The new hash still lands through a reviewed PR and an
+# Ed25519-signed release, so the trust boundary from #223 / #189 is unchanged.
+#
+# Deliberate choices:
+#   * Hosted `ubuntu-latest` — the work is two API calls and one ~18 MB
+#     download. The self-hosted Windows runner shares the maintainer's PC and is
+#     reserved for the expensive Flutter builds; a weekly cron has no business
+#     occupying it.
+#   * No third-party actions for the PR — this repo ships signed updates and
+#     baked binary hashes, so the branch is pushed and the PR opened with `gh`
+#     and the built-in GITHUB_TOKEN rather than by granting a marketplace action
+#     write access to the repo that owns that trust root.
+#   * Weekly, plus a soak window — yt-dlp ships roughly weekly, so a run per
+#     upstream release would be noise, and the newest release is exactly the one
+#     most likely to be yanked or hot-fixed. `SOAK_DAYS` (default 3) makes the
+#     job pick the newest release that has been out at least that long, giving
+#     upstream regressions a few days to surface before we pin one.
+#   * yt-dlp only — `denoVersion` in the same file has the same manual gap but
+#     rots far slower; folding it in here doubles the review surface of every
+#     generated PR for little gain. Left as a follow-up.
+#
+# KNOWN CAVEAT — CI does not start itself on the PR this job opens.
+# GitHub deliberately does not fire workflow triggers for events created with
+# the default GITHUB_TOKEN, so `Analyze & Test` (build.yml) — the required check
+# on `main` — will NOT run on the bump PR, and the PR stays blocked with no
+# pending run to wait for. A human has to kick it: close and reopen the PR, or
+# push an empty commit to the branch. The generated PR body repeats this so the
+# reviewer does not have to remember it.
+#
+# Repo setting this depends on: Settings -> Actions -> General -> Workflow
+# permissions -> "Allow GitHub Actions to create and approve pull requests".
+# If that box is unchecked, every step here succeeds and only `gh pr create`
+# fails with a 403 ("GitHub Actions is not permitted to create ... pull
+# requests"). Check it with:
+#   gh api repos/PeterShanxin/MeowWatch/actions/permissions/workflow
+
+on:
+  schedule:
+    # Mondays, 06:17 UTC. Off the hour on purpose: scheduled runs pile up (and
+    # get delayed) at :00.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      soak_days:
+        description: 'Only consider releases published at least this many days ago'
+        required: false
+        default: '3'
+      dry_run:
+        description: 'Resolve + download + rewrite, but push nothing and open no PR'
+        type: boolean
+        required: false
+        default: false
+
+# Least privilege: enough to push a branch and open a PR, nothing else.
+permissions:
+  contents: write
+  pull-requests: write
+
+# One bump at a time — a manual dispatch racing the weekly cron would otherwise
+# push the same branch twice. Queue rather than cancel; runs are short.
+concurrency:
+  group: ytdlp-pin
+  cancel-in-progress: false
+
+env:
+  PIN_FILE: lib/core/resolve/tool_provisioner.dart
+  UPSTREAM_REPO: yt-dlp/yt-dlp
+
+jobs:
+  bump:
+    name: Check for a newer yt-dlp
+    # Forks inherit the cron but have no business opening PRs here.
+    if: github.repository == 'PeterShanxin/MeowWatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The pin we compare against is the one on main, not on whatever ref a
+          # dispatch happened to be started from.
+          ref: main
+
+      # Fail fast — and BEFORE any branch is pushed — if the repo setting this
+      # job depends on is off (Codex P1). Without this the run resolves,
+      # downloads 18 MB, pushes `ci/ytdlp-…`, and only then 403s on
+      # `gh pr create`, leaving an orphan branch and a cryptic failure every
+      # week. This does not replace enabling the setting; it makes its absence
+      # self-explanatory and stops the job doing throwaway work. Skipped on a
+      # dry run, which never opens a PR.
+      - name: Preflight — Actions may open PRs
+        if: inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          allowed=$(gh api "repos/$GITHUB_REPOSITORY/actions/permissions/workflow" \
+            --jq '.can_approve_pull_request_reviews')
+          if [ "$allowed" != "true" ]; then
+            echo "::error::Settings → Actions → General → Workflow permissions → 'Allow GitHub Actions to create and approve pull requests' is OFF. Enable it (permissions: on the workflow cannot override this repo-level setting), or this job can push a branch but never open its PR."
+            exit 1
+          fi
+
+      # Single decision step: everything below is gated on its `bump` output, so
+      # there is exactly one place that decides whether a PR is warranted.
+      - name: Resolve the current pin and the newest soaked release
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # `inputs` is null on the cron trigger, so this is the default cadence
+          # knob as well as the dispatch override.
+          SOAK_DAYS: ${{ inputs.soak_days || '3' }}
+        run: |
+          set -euo pipefail
+
+          CURRENT=$(sed -n "s/^[[:space:]]*static const ytDlpVersion = '\([^']*\)';.*/\1/p" "$PIN_FILE")
+          if [ -z "$CURRENT" ]; then
+            echo "::error::could not read ytDlpVersion from $PIN_FILE — did the constant move or change shape?"
+            exit 1
+          fi
+          echo "Pinned version on main: $CURRENT"
+
+          # Newest non-draft, non-prerelease release that has already soaked for
+          # SOAK_DAYS. Sorted explicitly rather than trusting the API's order.
+          CUTOFF=$(date -u -d "$SOAK_DAYS days ago" +%s)
+          TARGET=$(gh api "repos/$UPSTREAM_REPO/releases?per_page=20" --jq "
+            [ .[]
+              | select(.draft == false and .prerelease == false)
+              | {tag: .tag_name, ts: (.published_at | fromdateiso8601)}
+              | select(.ts <= $CUTOFF)
+            ] | sort_by(.ts) | last | .tag // empty")
+          if [ -z "$TARGET" ]; then
+            echo "::warning::no $UPSTREAM_REPO release older than $SOAK_DAYS day(s) in the last 20 — nothing to do."
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Newest soaked upstream release: $TARGET"
+
+          # This value came off the network and is about to be interpolated into
+          # a download URL, a branch name and a commit message. yt-dlp's stable
+          # tags are calendar versions (2026.07.04, occasionally with a fourth
+          # component), so anything else is a surprise worth failing on.
+          if ! printf '%s' "$TARGET" | grep -Eq '^[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$'; then
+            echo "::error::upstream tag '$TARGET' is not the expected yt-dlp calendar-version shape — refusing to use it."
+            exit 1
+          fi
+
+          if [ "$TARGET" = "$CURRENT" ]; then
+            echo "Pin is already at $CURRENT — nothing to do."
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+            echo "- Pin already current at \`$CURRENT\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Guard against walking the pin backwards: a maintainer may have
+          # hand-pinned a release that is newer than the soak window allows.
+          NEWEST=$(printf '%s\n%s\n' "$CURRENT" "$TARGET" | sort -V | tail -n1)
+          if [ "$NEWEST" != "$TARGET" ]; then
+            echo "::notice::pinned $CURRENT is newer than the soaked candidate $TARGET — leaving the pin alone."
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BRANCH="ci/ytdlp-$TARGET"
+
+          # Idempotency. `--state all` on purpose: if a maintainer *closed* a
+          # bump PR for this version (rejected the release), re-opening it every
+          # Monday would be exactly the noise this job is supposed to avoid.
+          EXISTING=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state all \
+            --json number,state --jq '.[] | "#\(.number) (\(.state))"' | head -n1)
+          if [ -n "$EXISTING" ]; then
+            echo "::notice::$BRANCH already has a PR: $EXISTING — nothing to do."
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api "repos/$UPSTREAM_REPO/releases/tags/$TARGET" --jq '.body // ""' > upstream-notes.md
+
+          {
+            echo "bump=true"
+            echo "current=$CURRENT"
+            echo "version=$TARGET"
+            echo "branch=$BRANCH"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download yt-dlp.exe and hash it
+        id: download
+        if: steps.resolve.outputs.bump == 'true'
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Same URL shape the app builds from the pin, so the hash we compute is
+          # the hash of the exact bytes the app will later verify.
+          URL="https://github.com/$UPSTREAM_REPO/releases/download/$VERSION/yt-dlp.exe"
+          curl -fsSL --retry 3 --retry-delay 5 -o yt-dlp.exe "$URL"
+          # The real asset is ~18 MB. A few hundred bytes means we hashed an
+          # error page, and baking that hash would ship a pin nothing matches.
+          SIZE=$(stat -c%s yt-dlp.exe)
+          if [ "$SIZE" -lt 1000000 ]; then
+            echo "::error::yt-dlp.exe for $VERSION is only $SIZE bytes — refusing to hash it."
+            exit 1
+          fi
+          SHA=$(sha256sum yt-dlp.exe | cut -d' ' -f1)
+          echo "Downloaded $SIZE bytes from $URL"
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          rm -f yt-dlp.exe
+
+      - name: Rewrite the two constants
+        if: steps.resolve.outputs.bump == 'true'
+        env:
+          NEW_VERSION: ${{ steps.resolve.outputs.version }}
+          NEW_SHA: ${{ steps.download.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, re, sys
+
+          path = pathlib.Path(os.environ['PIN_FILE'])
+          src = path.read_text(encoding='utf-8')
+          version = os.environ['NEW_VERSION']
+          sha = os.environ['NEW_SHA']
+
+          # Fail closed rather than baking a malformed hash: an empty or odd
+          # value here would produce a pin that nothing can ever satisfy, and
+          # the app would refuse to provision yt-dlp at all.
+          if not re.fullmatch(r'[0-9a-f]{64}', sha):
+              sys.exit(f"::error::computed SHA-256 {sha!r} is not 64 lowercase hex characters")
+
+          src, n_ver = re.subn(
+              r"(static const ytDlpVersion = ')[^']+(';)",
+              lambda m: m.group(1) + version + m.group(2), src, count=1)
+          # The hash lives on its own continuation line under the declaration,
+          # so this pattern has to span the newline.
+          src, n_sha = re.subn(
+              r"(static const _kYtDlpSha256 =\n\s*')[0-9a-f]{64}(';)",
+              lambda m: m.group(1) + sha + m.group(2), src, count=1)
+
+          if n_ver != 1 or n_sha != 1:
+              sys.exit(
+                  f"::error::pin rewrite failed (version={n_ver}, sha={n_sha}) — the "
+                  f"constants in {path} no longer match the shape this workflow expects; "
+                  "update .github/workflows/ytdlp-pin.yml alongside them.")
+
+          path.write_text(src, encoding='utf-8')
+          PY
+
+          # Belt and braces: this job must never touch anything but those two
+          # lines in that one file.
+          # numstat is tab-separated; awk re-joins with single spaces so the
+          # comparison does not depend on literal tabs surviving this file.
+          CHANGED=$(git diff --numstat | awk '{print $1, $2, $3}')
+          echo "$CHANGED"
+          if [ "$CHANGED" != "2 2 $PIN_FILE" ]; then
+            echo "::error::unexpected diff — expected exactly 2 changed lines in $PIN_FILE."
+            git diff
+            exit 1
+          fi
+
+      - name: Push the branch and open the PR
+        if: steps.resolve.outputs.bump == 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.resolve.outputs.branch }}
+          CURRENT: ${{ steps.resolve.outputs.current }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          NEW_SHA: ${{ steps.download.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$BRANCH"
+          git add "$PIN_FILE"
+          git commit -m "chore: bump yt-dlp pin to $VERSION" -m \
+            "Advances ytDlpVersion $CURRENT -> $VERSION and the matching baked SHA-256. Hash computed from the upstream release asset; see the workflow run for the download log."
+          # Force: the resolve step already established that no PR exists for
+          # this branch, so a leftover ref can only be a previous run that died
+          # before opening one. The content is deterministic (same base, same
+          # two edits), so replacing it loses nothing.
+          git push --force origin "HEAD:$BRANCH"
+
+          python3 - <<'PY'
+          import os, pathlib
+
+          version = os.environ['VERSION']
+          current = os.environ['CURRENT']
+          sha = os.environ['NEW_SHA']
+          pin_file = os.environ['PIN_FILE']
+          repo = os.environ['GITHUB_REPOSITORY']
+          run_url = f"https://github.com/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          upstream = os.environ['UPSTREAM_REPO']
+          release_url = f"https://github.com/{upstream}/releases/tag/{version}"
+
+          notes = pathlib.Path('upstream-notes.md').read_text(encoding='utf-8').strip()
+          lines = notes.splitlines()
+          truncated = len(lines) > 80
+          # Upstream release notes are third-party text. They go inside a fence so
+          # they render as inert text rather than as active markdown/HTML in our
+          # PR — reviewers (human and bot) read this body. The fence is long
+          # enough that ordinary code blocks in the notes cannot break out of it.
+          fence = '`' * 8
+          body_notes = '\n'.join(lines[:80]) if notes else '(upstream published no release notes)'
+
+          body = f"""## What this does
+
+          Advances the yt-dlp pin in `{pin_file}`:
+
+          | | before | after |
+          |---|---|---|
+          | `ytDlpVersion` | `{current}` | `{version}` |
+          | `_kYtDlpSha256` | *(previous)* | `{sha}` |
+
+          Opened automatically by [`.github/workflows/ytdlp-pin.yml`]\
+          (https://github.com/{repo}/blob/main/.github/workflows/ytdlp-pin.yml) (#229). \
+          The hash was computed on a hosted runner by downloading \
+          `https://github.com/{upstream}/releases/download/{version}/yt-dlp.exe` and running \
+          `sha256sum` — see the [workflow run]({run_url}) for the log.
+
+          Nothing else changed: no app-code, test, `pubspec.yaml`, `app_version.dart` or \
+          `CHANGELOG.md` edits. The job rewrites exactly two constants and refuses to \
+          push if the diff is anything else.
+
+          ## What a reviewer should check
+
+          - [ ] **Kick CI by hand.** A PR opened with the default `GITHUB_TOKEN` does not \
+          trigger other workflows, so `Analyze & Test` will **not** start on its own and \
+          this PR will sit blocked with no pending run. Close and reopen the PR (or push \
+          an empty commit) to fire it.
+          - [ ] **Confirm the hash independently** if you want a second pair of eyes on \
+          the trust root — the whole point of the pin is that this value is right:
+            ```
+            curl -fsSL -o yt-dlp.exe https://github.com/{upstream}/releases/download/{version}/yt-dlp.exe
+            sha256sum yt-dlp.exe   # expect {sha}
+            ```
+          - [ ] **Skim the upstream notes below** for anything that changes how the app \
+          drives yt-dlp (CLI flag removals, output-format changes, a new minimum Python \
+          or Deno requirement).
+          - [ ] **This is a behaviour-changing bump, so it needs a version bump in \
+          lockstep** — `pubspec.yaml`, `lib/core/app_version.dart` and `CHANGELOG.md` — \
+          before it is released. The job deliberately does not touch those: it cannot \
+          know what else is in flight, and guessing a version number would collide with \
+          any concurrent release.
+          - [ ] **Smoke-test resolving** after merging: paste a YouTube link and confirm \
+          it still resolves and plays (the provisioner re-downloads on the version \
+          change, so this exercises the new binary end to end).
+
+          Deno is intentionally out of scope — `denoVersion` has the same manual gap but \
+          rots far slower, and folding it in would double the review surface of every one \
+          of these PRs. Follow-up.
+
+          ## Upstream release notes
+
+          [{upstream} {version}]({release_url}){' — truncated to the first 80 lines' if truncated else ''}
+
+          {fence}
+          {body_notes}
+          {fence}
+          """
+          pathlib.Path('pr-body.md').write_text(body, encoding='utf-8')
+          PY
+
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore: bump yt-dlp to $VERSION" \
+            --body-file pr-body.md
+
+      - name: Summary
+        if: always() && steps.resolve.outputs.bump == 'true'
+        env:
+          CURRENT: ${{ steps.resolve.outputs.current }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          NEW_SHA: ${{ steps.download.outputs.sha256 }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo "### yt-dlp pin"
+            echo
+            echo "- pinned: \`$CURRENT\`"
+            echo "- candidate: \`$VERSION\`"
+            echo "- sha256: \`$NEW_SHA\`"
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "- dry run: no branch pushed, no PR opened"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
