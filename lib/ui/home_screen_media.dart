@@ -53,7 +53,11 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
   /// Returns `true` only if *this* load opened and is still the current source —
   /// callers (e.g. resume) can then act on it; a `false` means it failed, timed
   /// out, or was superseded by a newer load.
-  Future<bool> _load(String path) async {
+  ///
+  /// [isResolveRetry] marks the one automatic re-run this method grants itself
+  /// when a yt-dlp-resolved link is rejected by mpv (#228) — it exists only to
+  /// stop that retry from retrying. Callers never pass it.
+  Future<bool> _load(String path, {bool isResolveRetry = false}) async {
     // We now have a video, so the "load a video to join" prompt is moot (#60).
     if (_joinPrompt != null && mounted) setState(() => _joinPrompt = null);
     // This load's generation. A newer load bumps it; we abandon at every await
@@ -71,7 +75,11 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
     // extracted stream links are signed, short-lived, and often IP-bound.
     ResolvedMedia? resolved;
     if (needsResolver(path)) {
-      resolved = await _resolvePageUrl(path, gen);
+      resolved = await _resolvePageUrl(
+        path,
+        gen,
+        retryNotice: isResolveRetry ? kResolvedOpenRetryNotice : null,
+      );
       // Failed or superseded — surfaced inside _resolvePageUrl.
       if (resolved == null) return false;
       // Resolving can await for many seconds (first-run tool download + the
@@ -111,15 +119,40 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
       return false;
     }
     if (!opened) {
-      appLog('video: open failed ${mediaDisplayName(path)} (timed out)');
+      // A signed CDN link that yt-dlp resolved cleanly and mpv then refused
+      // outright: re-resolve once and open the fresh link — exactly what the
+      // user was doing by hand with "Try again" (#228). Only for a hard
+      // rejection, only once, only for a page URL (see [shouldRetryResolvedOpen]).
+      // The recursive call bumps the generation, becoming the current load, so
+      // it owns the outcome from here.
+      if (mounted &&
+          _core.state.filePath == path &&
+          shouldRetryResolvedOpen(
+            wasResolved: resolved != null,
+            alreadyRetried: isResolveRetry,
+            status: _core.state.status,
+          )) {
+        appLog('video: open rejected ${mediaDisplayName(path)} — re-resolving');
+        return _load(path, isResolveRetry: true);
+      }
+      // Distinguish the two ways an open fails to confirm: mpv rejecting the
+      // source (error) versus never answering at all (a real hang). The old
+      // line called both a timeout.
+      final rejected = _core.state.status == PlaybackStatus.error;
+      appLog(
+        'video: open failed ${mediaDisplayName(path)} '
+        '(${rejected ? 'rejected' : 'timed out'})',
+      );
       // A load that never confirmed open must be surfaced as an error, or the
       // user is stuck on a frozen surface with no recovery buttons (those only
       // show on PlaybackStatus.error). This covers both a plain `loading` hang
       // and a source forced to `playing`/`paused` over a never-opened URL (e.g. a
       // peer heartbeat applying play() while we were still loading). Guard on the
       // path so we never force the error onto a different source, and `failLoad`
-      // itself no-ops if the source did genuinely open.
-      if (_core.state.filePath == path) {
+      // itself no-ops if the source did genuinely open. A rejection already sits
+      // in the error state with mpv's own message, so only the hang needs the
+      // synthesized timeout copy.
+      if (!rejected && _core.state.filePath == path) {
         _core.failLoad('Timed out waiting for the video to open.');
       }
       return false;
@@ -163,8 +196,14 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
   /// show a transient notice (never nuke live playback over a bad paste), on
   /// the empty/load screen we drive the error surface via [VideoCore.failSource]
   /// so the user gets recovery buttons, not a silent nothing.
-  Future<ResolvedMedia?> _resolvePageUrl(String pageUrl, int gen) async {
-    _resolveNotice.value = 'Finding the video…';
+  Future<ResolvedMedia?> _resolvePageUrl(
+    String pageUrl,
+    int gen, {
+    String? retryNotice,
+  }) async {
+    // On the automatic re-resolve (#228) the banner says why we're going round
+    // again; the first attempt just says we're looking.
+    _resolveNotice.value = retryNotice ?? 'Finding the video…';
     try {
       final resolved = await _resolveFlow.run(
         pageUrl,

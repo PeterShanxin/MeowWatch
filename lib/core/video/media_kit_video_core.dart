@@ -8,6 +8,7 @@ import '../debug/app_log.dart';
 import '../debug/log_redact.dart';
 import '../resolve/resolved_media.dart';
 import 'await_open_result.dart';
+import 'mpv_log_filter.dart';
 import 'playback_state.dart';
 import 'position_guard.dart';
 import 'video_core.dart';
@@ -161,15 +162,29 @@ class MediaKitVideoCore extends VideoCore {
       _player.stream.audioParams.listen((p) {
         if (p.sampleRate != null) _markOpened();
       }),
+      // Every libmpv failure line, not just the few media_kit promotes to its
+      // error stream — that subset drops the `ffmpeg` line naming *why* an open
+      // failed and leaves only mpv's generic summary (#228). Log-only: the
+      // error stream below still owns the state transition, so an unguarded
+      // line here can't error out a source it doesn't belong to.
+      _player.stream.log.listen((entry) {
+        final line = formatMpvLogLine(
+          prefix: entry.prefix,
+          level: entry.level,
+          text: entry.text,
+        );
+        if (line != null) appLog(line);
+      }),
       _player.stream.error.listen((err) {
         // Same boundary guard as duration: with the engine reused across rooms
         // (#137), a late error from the source we left must not error out the
         // next room. A real error for this source arrives after its START_FILE
         // reset; a hung/failed load is still caught by the load() open-timeout.
         if (!_paramsResetSeen) return;
-        // Redact any signed token in a URL the mpv message embeds before it
-        // hits disk (#140). Neat-kept: a real playback error is a key event.
-        appLog('video: mpv error: ${redactUrls(err.toString())}');
+        // The text itself is already on disk via the log listener above (with
+        // its mpv prefix, and redacted) — this line records that we *acted* on
+        // it, which the raw mpv line can't say.
+        appLog('video: mpv error: source failed');
         emit(
           state.copyWith(
             status: PlaybackStatus.error,

@@ -10,6 +10,20 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.46.1-alpha] - 2026-07-22
+
+> Pasted YouTube links that used to need a "Try again" now just play.
+
+### Fixed: Pasted links open first try
+- A pasted YouTube link would sometimes resolve fine and then refuse to open,
+  leaving you to click **Try again** once or twice before it played (#228). The
+  link handed over is signed and short-lived, and certain copies are rejected
+  the instant they're used. MeowWatch now fetches a fresh one and retries the
+  open itself, so that stumble stays invisible — you only see an error if the
+  second attempt also fails.
+- When a link really can't be opened, the log now records exactly why (the
+  server's own reason), which the previous "timed out" catch-all hid.
+
 ## [0.46.0-alpha] - 2026-07-21
 
 > The video finder now keeps itself up to date on its own.

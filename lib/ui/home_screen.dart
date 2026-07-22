@@ -39,6 +39,7 @@ import '../core/theme/tokens/motion.dart';
 import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
+import '../core/resolve/open_retry.dart';
 import '../core/resolve/resolve_error.dart';
 import '../core/resolve/resolve_flow.dart';
 import '../core/resolve/resolved_media.dart';
