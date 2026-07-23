@@ -118,4 +118,42 @@ void main() {
     );
     expect(result, isFalse);
   });
+
+  test('ignores a lingering previous source until this load emits, then '
+      'honors ours (fast room-switch-then-load)', () async {
+    // The engine is reused across rooms: when a load starts right after leaving
+    // a room, _beginLoad awaits the previous room's reset before emitting our
+    // `loading`, so at first `core.state` is still the PREVIOUS video. That must
+    // not read as a supersede and fail our load before it has begun.
+    core.emitLoadingFor('https://youtu.be/PREVIOUS');
+    final future = coordinateOpen(
+      core,
+      source: src,
+      startLoad: () async {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        core.emitLoadingFor(src); // our loading finally emits
+      },
+    );
+    var settled = false;
+    unawaited(future.then((_) => settled = true));
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    expect(settled, isFalse,
+        reason: 'must not supersede on the lingering previous-room state');
+
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    core.emitOpened(); // our source opens for real
+    expect(await future, isTrue);
+  });
+
+  test('a different source taking over AFTER ours appeared is a real supersede',
+      () async {
+    final future = coordinateOpen(
+      core,
+      source: src,
+      startLoad: () async => core.emitLoadingFor(src),
+    );
+    await Future<void>.delayed(Duration.zero); // let ours register
+    core.emitLoadingFor('https://youtu.be/NEWER'); // a newer load overtakes
+    expect(await future, isFalse);
+  });
 }
