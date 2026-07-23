@@ -8,6 +8,7 @@ import '../debug/app_log.dart';
 import '../debug/log_redact.dart';
 import '../resolve/resolved_media.dart';
 import 'await_open_result.dart';
+import 'mpv_log_filter.dart';
 import 'playback_state.dart';
 import 'position_guard.dart';
 import 'video_core.dart';
@@ -52,6 +53,15 @@ class MediaKitVideoCore extends VideoCore {
   /// can't open a new source only for the previous room's trailing `stop()` to
   /// unload it (#143 review).
   Future<void>? _pendingReset;
+
+  /// Monotonic per-attempt id, bumped in [_beginLoad]. The #228 re-resolve retry
+  /// reopens the *same* page URL, so `state.filePath` can no longer tell an
+  /// abandoned attempt from its successor — both carry the identical URL. Each
+  /// load captures its token and every ownership check ([_forceDecodeToConfirmOpen],
+  /// the split-audio step) gates on it, so a stalled attempt's late cleanup
+  /// (pause/seek/unmute/failLoad) can never clobber the attempt that superseded
+  /// it. A newer load always wins because it bumps this first.
+  int _loadToken = 0;
 
   Player get player => _player;
 
@@ -161,15 +171,35 @@ class MediaKitVideoCore extends VideoCore {
       _player.stream.audioParams.listen((p) {
         if (p.sampleRate != null) _markOpened();
       }),
+      // Every libmpv failure line during the OPEN window, not just the few
+      // media_kit promotes to its error stream — that subset drops the `ffmpeg`
+      // line naming *why* an open failed and leaves only mpv's generic summary
+      // (#228). Gated on `!state.opened`: once a source is confirmed open,
+      // error-level chatter is benign playback noise — a YouTube DASH stream
+      // hops CDN hosts mid-play and mpv logs "Cannot reuse HTTP connection…" at
+      // error level dozens of times per minute while playing perfectly. That is
+      // not a failure and must not flood the log. Log-only: the error stream
+      // below still owns the state transition, so an unguarded line here can't
+      // error out a source it doesn't belong to.
+      _player.stream.log.listen((entry) {
+        if (state.opened) return;
+        final line = formatMpvLogLine(
+          prefix: entry.prefix,
+          level: entry.level,
+          text: entry.text,
+        );
+        if (line != null) appLog(line);
+      }),
       _player.stream.error.listen((err) {
         // Same boundary guard as duration: with the engine reused across rooms
         // (#137), a late error from the source we left must not error out the
         // next room. A real error for this source arrives after its START_FILE
         // reset; a hung/failed load is still caught by the load() open-timeout.
         if (!_paramsResetSeen) return;
-        // Redact any signed token in a URL the mpv message embeds before it
-        // hits disk (#140). Neat-kept: a real playback error is a key event.
-        appLog('video: mpv error: ${redactUrls(err.toString())}');
+        // The text itself is already on disk via the log listener above (with
+        // its mpv prefix, and redacted) — this line records that we *acted* on
+        // it, which the raw mpv line can't say.
+        appLog('video: mpv error: source failed');
         emit(
           state.copyWith(
             status: PlaybackStatus.error,
@@ -197,9 +227,9 @@ class MediaKitVideoCore extends VideoCore {
   /// file and the full link for a URL (the Syncplay convention).
   @override
   Future<void> load(String source) async {
-    await _beginLoad(source);
+    final token = await _beginLoad(source);
     await _player.open(Media(source), play: false);
-    await _forceDecodeToConfirmOpen(source);
+    await _forceDecodeToConfirmOpen(source, token);
   }
 
   /// Open a yt-dlp-resolved page: play [ResolvedMedia.videoUrl] (with the
@@ -211,7 +241,7 @@ class MediaKitVideoCore extends VideoCore {
   @override
   Future<void> loadResolved(ResolvedMedia media) async {
     final pageUrl = media.pageUrl;
-    await _beginLoad(pageUrl);
+    final token = await _beginLoad(pageUrl);
     await _player.open(
       Media(
         media.videoUrl,
@@ -219,10 +249,10 @@ class MediaKitVideoCore extends VideoCore {
       ),
       play: false,
     );
-    await _forceDecodeToConfirmOpen(pageUrl);
+    await _forceDecodeToConfirmOpen(pageUrl, token);
     final audioUrl = media.audioUrl;
     if (audioUrl != null &&
-        state.filePath == pageUrl &&
+        _loadToken == token &&
         state.status != PlaybackStatus.error) {
       // Split-format audio needs the same CDN headers as the video (Bilibili
       // gates it on the video's Referer). AudioTrack.uri has no header
@@ -241,7 +271,11 @@ class MediaKitVideoCore extends VideoCore {
   /// leave-room [reset], re-arm the per-load guards, and emit the `loading`
   /// state keyed on [source] (the load's identity — the page URL for a
   /// resolved load).
-  Future<void> _beginLoad(String source) async {
+  Future<int> _beginLoad(String source) async {
+    // Claim this attempt's token BEFORE any await, so a load that starts while
+    // an earlier one is still suspended immediately owns the engine and the
+    // earlier attempt's token is already stale by the time it resumes.
+    final token = ++_loadToken;
     // Let any in-flight leave-room [reset] finish first: the engine is shared
     // across rooms, so a fast re-join must not open a new source only for the
     // previous room's trailing stop() to unload it mid-load (#143 review).
@@ -266,6 +300,7 @@ class MediaKitVideoCore extends VideoCore {
         opened: false,
       ),
     );
+    return token;
   }
 
   /// Force the just-opened [source] to decode so it can confirm it opened.
@@ -292,8 +327,8 @@ class MediaKitVideoCore extends VideoCore {
   /// (not a second stacked one); if the source never confirms within it we
   /// [failLoad] here so the coordinator's [awaitOpenResult] short-circuits rather
   /// than waiting the full budget again.
-  Future<void> _forceDecodeToConfirmOpen(String source) async {
-    if (state.filePath != source) return; // superseded by a newer load
+  Future<void> _forceDecodeToConfirmOpen(String source, int token) async {
+    if (_loadToken != token) return; // superseded by a newer load
     if (isPlaybackOpen(state) || state.status == PlaybackStatus.error) return;
 
     final platform = _player.platform;
@@ -301,14 +336,15 @@ class MediaKitVideoCore extends VideoCore {
 
     // Subscribe BEFORE playing so a near-instant open event can't slip past
     // between play() and the listen. Resolves true on confirmed open, false on an
-    // error or a newer load superseding this source.
+    // error or a newer load superseding this attempt (token bumped — the retry
+    // reuses the same URL, so filePath can't be the discriminator).
     final proven = Completer<bool>();
     void settle(bool opened) {
       if (!proven.isCompleted) proven.complete(opened);
     }
 
     final sub = stateStream.listen((s) {
-      if (s.filePath != source || s.status == PlaybackStatus.error) {
+      if (_loadToken != token || s.status == PlaybackStatus.error) {
         settle(false);
       } else if (isPlaybackOpen(s)) {
         settle(true);
@@ -327,8 +363,11 @@ class MediaKitVideoCore extends VideoCore {
       opened = false; // timed out or the stream closed
     } finally {
       await sub.cancel();
+      // Own the engine only while this exact attempt is still current. A stalled
+      // attempt whose token was bumped by a newer load must not pause, seek,
+      // failLoad, or unmute the source that superseded it (same URL, #228).
       bool ownsSource() =>
-          state.filePath == source && state.status != PlaybackStatus.error;
+          _loadToken == token && state.status != PlaybackStatus.error;
       if (ownsSource()) {
         // Stop the probe's playback in BOTH outcomes — including the timeout —
         // BEFORE surfacing anything. Otherwise a source that only recovers
@@ -347,7 +386,7 @@ class MediaKitVideoCore extends VideoCore {
           failLoad('Timed out waiting for the video to open.');
         }
       }
-      if (state.filePath == source) {
+      if (_loadToken == token) {
         await native?.setProperty('mute', 'no');
       }
     }
