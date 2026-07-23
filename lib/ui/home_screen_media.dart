@@ -60,6 +60,12 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
   Future<bool> _load(String path, {bool isResolveRetry = false}) async {
     // We now have a video, so the "load a video to join" prompt is moot (#60).
     if (_joinPrompt != null && mounted) setState(() => _joinPrompt = null);
+    // Canonicalize a page URL before it becomes this load's identity: strip the
+    // ?si= share token, drop &t=/&list=, so both co-watchers announce an
+    // identical link and the resolver sees one clean URL (#228). Only page URLs
+    // — a direct stream URL's signed query is load-bearing, and needsResolver is
+    // false for it. Idempotent, so the retry re-entry is a no-op here.
+    if (needsResolver(path)) path = normalizePageUrl(path);
     // This load's generation. A newer load bumps it; we abandon at every await
     // boundary below once we're no longer current, so a stale/slow load can't act
     // on a core state that now belongs to a different source.
@@ -100,18 +106,25 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
     if (_localFileSizeBytes != null && mounted) {
       setState(() => _localFileSizeBytes = null);
     }
-    if (resolved != null) {
-      await _core.loadResolved(resolved);
-    } else {
-      await _core.load(path);
-    }
     // A source can fail asynchronously — mpv reports an unreachable / non-video
     // / expired URL, *and* a moved or unreadable local file, on its error stream
     // after load() returns. Don't record it to history, announce it to the room,
     // or post a "Loaded …" chat line until it actually opens, or a failed source
     // would surface to peers and history as loaded while we show the error
     // screen. Applies to local files too, not just URLs.
-    final opened = await awaitOpenResult(_core, source: path);
+    //
+    // The backend load is kicked off but NOT awaited before we watch for the
+    // outcome: on a hard open-rejection media_kit reports the error on a separate
+    // stream while `Player.open` can stay pending forever, so awaiting it here
+    // would suspend this method before the retry/fallback below ever ran — the
+    // #228 bug where the auto-retry silently never fired. [coordinateOpen] races
+    // the backend against the source-scoped open/error state instead.
+    final opened = await coordinateOpen(
+      _core,
+      source: path,
+      startLoad: () =>
+          resolved != null ? _core.loadResolved(resolved) : _core.load(path),
+    );
     // Superseded while we awaited: a newer load owns the core now, so do nothing
     // here (no failLoad, no announce) — the newer load reports its own outcome.
     if (gen != _loadGeneration) {

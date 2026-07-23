@@ -54,6 +54,15 @@ class MediaKitVideoCore extends VideoCore {
   /// unload it (#143 review).
   Future<void>? _pendingReset;
 
+  /// Monotonic per-attempt id, bumped in [_beginLoad]. The #228 re-resolve retry
+  /// reopens the *same* page URL, so `state.filePath` can no longer tell an
+  /// abandoned attempt from its successor — both carry the identical URL. Each
+  /// load captures its token and every ownership check ([_forceDecodeToConfirmOpen],
+  /// the split-audio step) gates on it, so a stalled attempt's late cleanup
+  /// (pause/seek/unmute/failLoad) can never clobber the attempt that superseded
+  /// it. A newer load always wins because it bumps this first.
+  int _loadToken = 0;
+
   Player get player => _player;
 
   /// Configure libmpv decode and sync properties. Reads [Platform.environment]
@@ -218,9 +227,9 @@ class MediaKitVideoCore extends VideoCore {
   /// file and the full link for a URL (the Syncplay convention).
   @override
   Future<void> load(String source) async {
-    await _beginLoad(source);
+    final token = await _beginLoad(source);
     await _player.open(Media(source), play: false);
-    await _forceDecodeToConfirmOpen(source);
+    await _forceDecodeToConfirmOpen(source, token);
   }
 
   /// Open a yt-dlp-resolved page: play [ResolvedMedia.videoUrl] (with the
@@ -232,7 +241,7 @@ class MediaKitVideoCore extends VideoCore {
   @override
   Future<void> loadResolved(ResolvedMedia media) async {
     final pageUrl = media.pageUrl;
-    await _beginLoad(pageUrl);
+    final token = await _beginLoad(pageUrl);
     await _player.open(
       Media(
         media.videoUrl,
@@ -240,10 +249,10 @@ class MediaKitVideoCore extends VideoCore {
       ),
       play: false,
     );
-    await _forceDecodeToConfirmOpen(pageUrl);
+    await _forceDecodeToConfirmOpen(pageUrl, token);
     final audioUrl = media.audioUrl;
     if (audioUrl != null &&
-        state.filePath == pageUrl &&
+        _loadToken == token &&
         state.status != PlaybackStatus.error) {
       // Split-format audio needs the same CDN headers as the video (Bilibili
       // gates it on the video's Referer). AudioTrack.uri has no header
@@ -262,7 +271,11 @@ class MediaKitVideoCore extends VideoCore {
   /// leave-room [reset], re-arm the per-load guards, and emit the `loading`
   /// state keyed on [source] (the load's identity — the page URL for a
   /// resolved load).
-  Future<void> _beginLoad(String source) async {
+  Future<int> _beginLoad(String source) async {
+    // Claim this attempt's token BEFORE any await, so a load that starts while
+    // an earlier one is still suspended immediately owns the engine and the
+    // earlier attempt's token is already stale by the time it resumes.
+    final token = ++_loadToken;
     // Let any in-flight leave-room [reset] finish first: the engine is shared
     // across rooms, so a fast re-join must not open a new source only for the
     // previous room's trailing stop() to unload it mid-load (#143 review).
@@ -287,6 +300,7 @@ class MediaKitVideoCore extends VideoCore {
         opened: false,
       ),
     );
+    return token;
   }
 
   /// Force the just-opened [source] to decode so it can confirm it opened.
@@ -313,8 +327,8 @@ class MediaKitVideoCore extends VideoCore {
   /// (not a second stacked one); if the source never confirms within it we
   /// [failLoad] here so the coordinator's [awaitOpenResult] short-circuits rather
   /// than waiting the full budget again.
-  Future<void> _forceDecodeToConfirmOpen(String source) async {
-    if (state.filePath != source) return; // superseded by a newer load
+  Future<void> _forceDecodeToConfirmOpen(String source, int token) async {
+    if (_loadToken != token) return; // superseded by a newer load
     if (isPlaybackOpen(state) || state.status == PlaybackStatus.error) return;
 
     final platform = _player.platform;
@@ -322,14 +336,15 @@ class MediaKitVideoCore extends VideoCore {
 
     // Subscribe BEFORE playing so a near-instant open event can't slip past
     // between play() and the listen. Resolves true on confirmed open, false on an
-    // error or a newer load superseding this source.
+    // error or a newer load superseding this attempt (token bumped — the retry
+    // reuses the same URL, so filePath can't be the discriminator).
     final proven = Completer<bool>();
     void settle(bool opened) {
       if (!proven.isCompleted) proven.complete(opened);
     }
 
     final sub = stateStream.listen((s) {
-      if (s.filePath != source || s.status == PlaybackStatus.error) {
+      if (_loadToken != token || s.status == PlaybackStatus.error) {
         settle(false);
       } else if (isPlaybackOpen(s)) {
         settle(true);
@@ -348,8 +363,11 @@ class MediaKitVideoCore extends VideoCore {
       opened = false; // timed out or the stream closed
     } finally {
       await sub.cancel();
+      // Own the engine only while this exact attempt is still current. A stalled
+      // attempt whose token was bumped by a newer load must not pause, seek,
+      // failLoad, or unmute the source that superseded it (same URL, #228).
       bool ownsSource() =>
-          state.filePath == source && state.status != PlaybackStatus.error;
+          _loadToken == token && state.status != PlaybackStatus.error;
       if (ownsSource()) {
         // Stop the probe's playback in BOTH outcomes — including the timeout —
         // BEFORE surfacing anything. Otherwise a source that only recovers
@@ -368,7 +386,7 @@ class MediaKitVideoCore extends VideoCore {
           failLoad('Timed out waiting for the video to open.');
         }
       }
-      if (state.filePath == source) {
+      if (_loadToken == token) {
         await native?.setProperty('mute', 'no');
       }
     }
