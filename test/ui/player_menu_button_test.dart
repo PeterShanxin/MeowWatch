@@ -20,7 +20,6 @@ PlayerMenuButton _button({
   String? nowPlaying = 'Bocchi the Rock - 01.mkv',
   ValueChanged<MeowThemeId>? onThemeChanged,
   VoidCallback? onLoadVideo,
-  VoidCallback? onPasteLink,
   VoidCallback? onLeave,
   List<String>? members,
   String myUsername = 'me',
@@ -50,7 +49,6 @@ PlayerMenuButton _button({
   currentTheme: MeowThemeId.cozy,
   onThemeChanged: onThemeChanged ?? (_) {},
   onLoadVideo: onLoadVideo ?? () {},
-  onPasteLink: onPasteLink ?? () {},
   onLeave: onLeave ?? () {},
   chatAutoDim: chatAutoDim,
   onChatAutoDimChanged: onChatAutoDimChanged ?? (_) {},
@@ -146,16 +144,15 @@ void main() {
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 
-  testWidgets('tapping Paste link fires onPasteLink and closes the menu',
-      (tester) async {
-    var pasted = false;
-    await tester.pumpWidget(_host(_button(onPasteLink: () => pasted = true)));
+  testWidgets('offers one load entry, not a separate paste-link item (#222)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_host(_button()));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('player-menu-paste-link')));
-    await tester.pumpAndSettle();
-    expect(pasted, isTrue);
-    expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
+    expect(find.byKey(const Key('player-menu-load')), findsOneWidget);
+    expect(find.byKey(const Key('player-menu-paste-link')), findsNothing);
+    expect(find.text('Load a video…'), findsOneWidget);
   });
 
   testWidgets('lists room members with "(you)" for self', (tester) async {

@@ -3,9 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/empty_state.dart';
+import 'package:meowwatch/ui/load_video_choices.dart';
 
 void main() {
-  testWidgets('shows prompt text and Browse button', (tester) async {
+  testWidgets('offers the local-file half of the load choice', (tester) async {
     var browseCalled = false;
     await tester.pumpWidget(
       MaterialApp(
@@ -14,13 +15,36 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('Drop a video'), findsOneWidget);
-    expect(find.text('Browse…'), findsOneWidget);
+    expect(find.text(kLoadVideoTitle), findsOneWidget);
+    expect(find.text(kLoadFromComputerLabel), findsOneWidget);
+    // Drop still works anywhere, so it stays discoverable as a hint.
+    expect(find.textContaining('drop a video file'), findsOneWidget);
 
-    await tester.tap(find.text('Browse…'));
+    await tester.tap(find.byKey(const Key('load-video-from-computer')));
     await tester.pump();
     expect(browseCalled, isTrue);
   });
+
+  testWidgets(
+    'both sources sit under one heading, as one feature (#222)',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: themeDataFor(MeowThemeId.cozy),
+          home: Scaffold(body: EmptyState(onBrowse: () {}, onLoadUrl: (_) {})),
+        ),
+      );
+
+      // One heading, then the two peers under it — no second "or paste a
+      // direct video link" sub-prompt framing the link as a separate feature.
+      expect(find.text(kLoadVideoTitle), findsOneWidget);
+      expect(find.byKey(const Key('load-video-from-computer')), findsOneWidget);
+      expect(find.byKey(const Key('url-input-field')), findsOneWidget);
+      expect(find.text('or paste a direct video link'), findsNothing);
+      // The link half names what it now accepts (page URLs since #123).
+      expect(find.text(kLoadLinkCaption), findsOneWidget);
+    },
+  );
 
   testWidgets('paste-a-link field loads a valid URL', (tester) async {
     String? loaded;
@@ -72,7 +96,7 @@ void main() {
       ),
     );
     expect(find.byKey(const Key('url-input-field')), findsNothing);
-    expect(find.text('Browse…'), findsOneWidget);
+    expect(find.text(kLoadFromComputerLabel), findsOneWidget);
   });
 
   testWidgets('shows a join notice above the prompt when provided (#60)', (
@@ -91,9 +115,9 @@ void main() {
     );
 
     expect(find.textContaining('started playback'), findsOneWidget);
-    // The usual prompt + Browse button still render.
-    expect(find.textContaining('Drop a video'), findsOneWidget);
-    expect(find.text('Browse…'), findsOneWidget);
+    // The usual heading + load choice still render.
+    expect(find.text(kLoadVideoTitle), findsOneWidget);
+    expect(find.text(kLoadFromComputerLabel), findsOneWidget);
   });
 
   testWidgets(

@@ -91,4 +91,18 @@ void main() {
       expect(file, isNotEmpty);
     });
   });
+
+  group('shortPlaybackError', () {
+    test('fits one banner row and still says what failed (#232)', () {
+      final url = shortPlaybackError(isUrl: true);
+      final file = shortPlaybackError(isUrl: false);
+      expect(url, contains('link'));
+      expect(file, isNot(contains('link')));
+      // The banner is a single row — keep it far shorter than the surface copy.
+      expect(url.length, lessThan(friendlyPlaybackError(isUrl: true).length));
+      expect(file.length, lessThan(friendlyPlaybackError(isUrl: false).length));
+      expect(url, isNot(contains('\n')));
+      expect(file, isNot(contains('\n')));
+    });
+  });
 }

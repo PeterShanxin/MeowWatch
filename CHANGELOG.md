@@ -10,6 +10,23 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.47.0-alpha] - 2026-08-01
+
+> One "Load a video" choice instead of two — and a failed link now says so.
+
+### Improved: One way to load
+- Loading a file and pasting a link were two separate-looking features sitting
+  side by side. They are now one choice — **From my computer** or a link —
+  under a single **Load a video** heading, with the same two options behind the
+  one **Load a video…** item in the gear menu and on the error screen (#222).
+- The link box says what it actually takes now: a YouTube or Bilibili page, or
+  a direct video link.
+
+### Fixed: A failed link no longer looks ignored
+- Pasting a second link that also failed could leave the screen looking exactly
+  as it did before, so there was no way to tell whether it had failed, was still
+  loading, or had been ignored. Every failed attempt now announces itself (#232).
+
 ## [0.46.1-alpha] - 2026-07-23
 
 > Pasted YouTube links that used to need a "Try again" now just play.

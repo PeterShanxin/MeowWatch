@@ -6,15 +6,16 @@ import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 import '../core/video/video_url.dart';
 
-/// A text field + "Load" button for pasting a direct video link. Validates with
+/// A text field + "Load" button for pasting a video link. Validates with
 /// [videoUrlError] before firing [onSubmit]; an invalid entry shows an inline
-/// message and is never forwarded. Used on the empty/load screen and inside the
-/// paste-link dialog so both share the same rules and chrome.
+/// message and is never forwarded. Used by [LoadVideoChoices], so the card on
+/// the load screen and the chooser dialog share the same rules and chrome.
 class UrlInputField extends StatefulWidget {
   const UrlInputField({
     required this.onSubmit,
     this.autofocus = false,
     this.fillColor,
+    this.hintText = 'https://…/video.mp4',
     super.key,
   });
 
@@ -26,6 +27,9 @@ class UrlInputField extends StatefulWidget {
   /// contrasting color (e.g. the page background) when the field sits on a
   /// surface-colored card so it doesn't blend in.
   final Color? fillColor;
+
+  /// Placeholder shown in the empty field.
+  final String hintText;
 
   @override
   State<UrlInputField> createState() => _UrlInputFieldState();
@@ -76,7 +80,7 @@ class _UrlInputFieldState extends State<UrlInputField> {
                 },
                 onSubmitted: (_) => _submit(),
                 decoration: InputDecoration(
-                  hintText: 'https://…/video.mp4',
+                  hintText: widget.hintText,
                   hintStyle: TextStyle(color: m.textDim),
                   filled: true,
                   fillColor: widget.fillColor ?? m.surface,
