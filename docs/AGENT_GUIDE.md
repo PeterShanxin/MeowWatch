@@ -25,6 +25,7 @@ MeowWatch is a Flutter **desktop** (Windows-first) co-watch app: load a local vi
 - **`prefer_initializing_formals` false-positive:** private fields initialized from named params can't use initializing formals (named params can't start with `_`). Suppress per-file with `// ignore_for_file: prefer_initializing_formals` rather than restructuring.
 - **Release builds must NOT `AttachConsole(ATTACH_PARENT_PROCESS)` — it adopts the updater's PowerShell console (#97).** The auto-updater relaunches us from inside its PowerShell process, so on startup the *parent* console is PowerShell's. The stock Flutter runner (`windows/runner/main.cpp`) calls `AttachConsole(ATTACH_PARENT_PROCESS)` to show `flutter run` logs — but in a shipped build that means the relaunched app **adopts PowerShell's console and keeps it alive after PowerShell exits**, leaving an empty console window lingering for the whole app session, whose **X button sends `CTRL_CLOSE_EVENT` straight to the app and kills it**. Fix: the `AttachConsole`/`CreateAndAttachConsole` block is guarded behind `#ifndef NDEBUG`, so it runs only in debug (`flutter run` logs preserved) and Release never adopts a parent console. Don't remove the guard to "get logs in release" — Release has no useful stdout and you'll resurrect the lingering-window + kill-switch bug. Pairs with `bringToFront()` in `lib/main.dart`: an updater-relaunched window also can't beat Windows' foreground-lock (it's launched by a background process), so it lands behind other windows; the `alwaysOnTop` true→false bump (`HWND_TOPMOST`, needs no foreground rights) raises it without pinning. Both are app-side, so they take effect on the *next* update, not the hop onto the fixed version's predecessor.
 - **The auto-updater must be launched OUTSIDE the app's job object, or it dies on `exit(0)`.** The app runs inside a Windows job object; a detached child we spawn ourselves stays in that job, so the job's kill-on-close terminates it the instant the app exits — before it runs a single line. Symptom: clicking Install closes the app, nothing happens, version unchanged, no `updater.log` written. `applyUpdate` routes through `cmd /c start "" powershell …` (see `buildUpdaterLaunch`) so PowerShell is re-parented outside our process tree. Do NOT "simplify" this back to `Process.start('powershell', …)`. Verified by repro: detached powershell + immediate `exit(0)` ⇒ child killed; via `cmd start` ⇒ survives.
+- **`jq` is NOT installed on this dev PC — use `gh`'s built-in `--jq` instead.** Piping `gh ... --json` into `jq` silently produces empty output (the shell reports `jq: command not found` into a stream nobody reads), so a watcher loop built that way reports "still waiting" forever while the thing it watches has already finished. `gh run view <id> --json status --jq '.status'` needs no external binary. PowerShell's `ConvertFrom-Json` is the other safe option.
 - **`gh` CLI authentication failure:** AI sandbox environment injects invalid `GITHUB_TOKEN` environment variable. `gh` tool prioritize environment variable and ignore valid credentials in user system keyring. Always clear `GITHUB_TOKEN` before run `gh` command (e.g., `powershell -Command '$env:GITHUB_TOKEN=$null; gh ...'`).
 
 
@@ -168,6 +169,15 @@ draw from the `Motion.*` tokens: `fadeUpRoute` (`lib/ui/motion/fade_up_route.dar
 is the rise+fade room push, and `StaggeredReveal`
 (`lib/ui/motion/staggered_reveal.dart`) is the cold-start card cascade (both lobby
 columns ripple in together) — both go instant under reduce motion.
+
+**Degrading an `AnimatedSize` under reduce motion means dropping it, not
+zeroing it.** `duration: Duration.zero` looks like the obvious degraded form and
+is what a reviewer will suggest, but a zero-duration `AnimatedSize` re-dirties
+itself inside its own `performLayout` and throws *"A RenderAnimatedSize was
+mutated in its own performLayout implementation"*. Return the child directly
+instead (see `_ExpandSize` in `lib/ui/player_menu_button.dart`). Zero duration is
+fine for `AnimatedRotation`, `AnimatedOpacity`, and route transitions — it is
+specifically the layout-animating widget that breaks.
 
 The reveal shows one rotating tip under the wordmark, drawn from `kLaunchTips`
 in `lib/ui/launch/launch_tips.dart` (the reveal picks one per launch by a
