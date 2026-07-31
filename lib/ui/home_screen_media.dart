@@ -30,6 +30,12 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
   /// newer load now owns.
   int _loadGeneration = 0;
 
+  /// How many loads have failed in this room. Only ever read as an identity
+  /// for the error surface's reveal: a repeat failure from an already-failed
+  /// state renders a visually identical screen, so without a changing token the
+  /// user gets no sign their new attempt was even tried (#232).
+  int _loadFailures = 0;
+
   /// Live "Finding the video…" progress while a page URL is being resolved
   /// through yt-dlp. A notifier so only the banner subtree rebuilds (same
   /// rationale as [_presenceNotice], #196); null = nothing in flight.
@@ -168,6 +174,7 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
       if (!rejected && _core.state.filePath == path) {
         _core.failLoad('Timed out waiting for the video to open.');
       }
+      _signalLoadFailure(shortPlaybackError(isUrl: isHttpUrl(path)));
       return false;
     }
     if (!mounted || _core.state.filePath != path) return false;
@@ -236,17 +243,31 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
         'video: resolve failed ${mediaDisplayName(pageUrl)} (${e.kind.name})',
       );
       final message = friendlyResolveError(e.kind);
-      if (isPlaybackOpen(_core.state)) {
-        if (mounted) setState(() => _showTransientNotice(message));
-      } else {
-        _core.failSource(pageUrl, message);
-      }
+      // Never nuke live playback over a bad paste — while a video is open the
+      // notice alone carries the failure. With nothing playing, also drive the
+      // error surface so the user gets recovery buttons.
+      if (!isPlaybackOpen(_core.state)) _core.failSource(pageUrl, message);
+      _signalLoadFailure(message);
       return null;
     } finally {
       // A newer load (or teardown) owns the notice now; only clear it if we
       // still do and the notifier is still alive.
       if (mounted && gen == _loadGeneration) _resolveNotice.value = null;
     }
+  }
+
+  /// Make a failed load unmistakable (#232).
+  ///
+  /// The error surface leads with a *generic* headline, so a second bad link
+  /// repaints the same pixels as the first and reads as "nothing happened".
+  /// Bumping [_loadFailures] re-plays that surface's reveal, and the transient
+  /// banner names the failure — together they say "we tried, and it failed"
+  /// even when the screen underneath is unchanged. [message] is the short form:
+  /// the banner is one line, the full explanation stays on the surface.
+  void _signalLoadFailure(String message) {
+    if (!mounted) return;
+    _showTransientNotice(message);
+    setState(() => _loadFailures++);
   }
 
   /// Append a "Loaded …" system line to chat. Shows "in sync!" when the peer's
@@ -527,11 +548,21 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
         .catchError((_) => false);
   }
 
-  /// Prompt for a direct video link and load it through the same path as a
-  /// local file. The URL is validated inside the dialog before it resolves.
-  Future<void> _promptPasteLink() async {
-    final url = await showPasteLinkDialog(context);
-    if (url != null) await _load(url);
+  /// The single "Load a video" entry (#222) for the surfaces with no room for
+  /// the full card — the gear menu and the load-error screen. Offers the same
+  /// two sources the load screen shows inline, then runs the existing flow for
+  /// whichever the user picked.
+  Future<void> _promptLoadVideo() async {
+    final choice = await showLoadVideoDialog(context);
+    if (choice == null || !mounted) return;
+    switch (choice.source) {
+      case LoadVideoSource.computer:
+        await _browse();
+      case LoadVideoSource.link:
+        // Non-null for a link choice — the dialog only pops one with a
+        // validated URL.
+        await _load(choice.url!);
+    }
   }
 
   void _handleDropped(String path) {

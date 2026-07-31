@@ -101,8 +101,10 @@ mixin _HomeBody
                           isUrl: isHttpUrl(state.filePath ?? ''),
                         ),
                         detail: state.errorMessage,
-                        onBrowse: _browse,
-                        onPasteLink: () => unawaited(_promptPasteLink()),
+                        onLoadVideo: () => unawaited(_promptLoadVideo()),
+                        // A repeat failure repaints an identical surface, so
+                        // the attempt count is what makes it re-announce (#232).
+                        attempt: _loadFailures,
                         onRetry: state.filePath != null
                             ? () => unawaited(_load(state.filePath!))
                             : null,
@@ -249,8 +251,10 @@ mixin _HomeBody
                               appLog('settings: theme=${theme.name}');
                               widget.onThemeChanged(theme);
                             },
-                            onLoadVideo: _browse,
-                            onPasteLink: () => unawaited(_promptPasteLink()),
+                            // Inline inside the gear — picking a source here
+                            // shouldn't throw a modal over the menu (#222).
+                            onBrowse: () => unawaited(_browse()),
+                            onLoadUrl: (url) => unawaited(_load(url)),
                             onLeave: _leave,
                             chatAutoDim: _chatAutoDim,
                             onChatAutoDimChanged: (val) {

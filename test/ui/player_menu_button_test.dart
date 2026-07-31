@@ -5,6 +5,7 @@ import 'package:meowwatch/core/app_version.dart';
 import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/debug/log_level.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
+import 'package:meowwatch/core/theme/reduce_motion.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/core/update/update_availability.dart';
 import 'package:meowwatch/ui/player_menu_button.dart';
@@ -19,8 +20,8 @@ PlayerMenuButton _button({
   ValueChanged<HistoryMode>? onHistoryModeChanged,
   String? nowPlaying = 'Bocchi the Rock - 01.mkv',
   ValueChanged<MeowThemeId>? onThemeChanged,
-  VoidCallback? onLoadVideo,
-  VoidCallback? onPasteLink,
+  VoidCallback? onBrowse,
+  void Function(String url)? onLoadUrl,
   VoidCallback? onLeave,
   List<String>? members,
   String myUsername = 'me',
@@ -49,8 +50,8 @@ PlayerMenuButton _button({
   myDisplayName: myDisplayName ?? myUsername,
   currentTheme: MeowThemeId.cozy,
   onThemeChanged: onThemeChanged ?? (_) {},
-  onLoadVideo: onLoadVideo ?? () {},
-  onPasteLink: onPasteLink ?? () {},
+  onBrowse: onBrowse ?? () {},
+  onLoadUrl: onLoadUrl ?? (_) {},
   onLeave: onLeave ?? () {},
   chatAutoDim: chatAutoDim,
   onChatAutoDimChanged: onChatAutoDimChanged ?? (_) {},
@@ -133,28 +134,95 @@ void main() {
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 
-  testWidgets('tapping Load video fires onLoadVideo and closes the menu', (
+  testWidgets('Load a video expands in place instead of opening a modal (#222)',
+      (tester) async {
+    await tester.pumpWidget(_host(_button()));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    // One entry, and its sources stay hidden until it's expanded.
+    expect(find.byKey(const Key('player-menu-load')), findsOneWidget);
+    expect(find.byKey(const Key('player-menu-paste-link')), findsNothing);
+    expect(find.byKey(const Key('load-video-from-computer')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('player-menu-load')));
+    await tester.pumpAndSettle();
+
+    // Choices appear inside the still-open menu — no dialog was pushed.
+    expect(find.byKey(const Key('load-video-from-computer')), findsOneWidget);
+    expect(find.byKey(const Key('url-input-field')), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byKey(const Key('theme-swatch-noir')), findsOneWidget);
+  });
+
+  testWidgets(
+    'reduce motion expands the load section instantly (#235 review)',
+    (tester) async {
+      // OS "reduce animations" on: no AnimatedSize growth, no chevron spin —
+      // one pump and the choices are simply there.
+      await tester.pumpWidget(
+        _host(ReduceMotionScope(reduceMotion: true, child: _button())),
+      );
+      await tester.tap(find.byKey(const Key('player-menu-gear')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('player-menu-load')));
+      await tester.pump();
+
+      expect(find.byKey(const Key('load-video-from-computer')), findsOneWidget);
+      expect(
+        tester
+            .widget<AnimatedRotation>(
+              find.descendant(
+                of: find.byKey(const Key('player-menu-load')),
+                matching: find.byType(AnimatedRotation),
+              ),
+            )
+            .duration,
+        Duration.zero,
+      );
+    },
+  );
+
+  testWidgets('picking a local file fires onBrowse and closes the menu', (
     tester,
   ) async {
-    var loaded = false;
-    await tester.pumpWidget(_host(_button(onLoadVideo: () => loaded = true)));
+    var browsed = false;
+    await tester.pumpWidget(_host(_button(onBrowse: () => browsed = true)));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('player-menu-load')));
     await tester.pumpAndSettle();
-    expect(loaded, isTrue);
+    await tester.ensureVisible(find.byKey(const Key('load-video-from-computer')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('load-video-from-computer')));
+    await tester.pumpAndSettle();
+
+    expect(browsed, isTrue);
+    // Closed, or the menu's FocusScope keeps trapping the player's keys.
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 
-  testWidgets('tapping Paste link fires onPasteLink and closes the menu',
-      (tester) async {
-    var pasted = false;
-    await tester.pumpWidget(_host(_button(onPasteLink: () => pasted = true)));
+  testWidgets('submitting a link fires onLoadUrl and closes the menu', (
+    tester,
+  ) async {
+    String? loaded;
+    await tester.pumpWidget(_host(_button(onLoadUrl: (u) => loaded = u)));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('player-menu-paste-link')));
+    await tester.tap(find.byKey(const Key('player-menu-load')));
     await tester.pumpAndSettle();
-    expect(pasted, isTrue);
+    await tester.enterText(
+      find.byKey(const Key('url-input-field')),
+      'https://x.test/a.mp4',
+    );
+    // The popover scrolls on a short window; bring the button into view or the
+    // tap lands on the barrier behind it.
+    await tester.ensureVisible(find.byKey(const Key('url-load-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('url-load-button')));
+    await tester.pumpAndSettle();
+
+    expect(loaded, 'https://x.test/a.mp4');
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 

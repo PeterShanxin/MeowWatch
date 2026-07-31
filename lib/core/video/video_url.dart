@@ -65,3 +65,10 @@ String friendlyPlaybackError({required bool isUrl}) {
   return "Couldn't play that video. The file may be missing, moved, or in a "
       'format this player cannot read.';
 }
+
+/// One-line form of [friendlyPlaybackError] for the transient banner, which
+/// gets a single row — the full explanation stays on the error surface. Used to
+/// announce *that* an attempt failed when the surface underneath it can't
+/// (#232).
+String shortPlaybackError({required bool isUrl}) =>
+    isUrl ? "Couldn't play that link" : "Couldn't play that video";

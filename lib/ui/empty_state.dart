@@ -5,7 +5,7 @@ import '../core/theme/tokens/radii.dart';
 import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 import 'idle_mascot.dart';
-import 'url_input_field.dart';
+import 'load_video_choices.dart';
 
 class EmptyState extends StatelessWidget {
   const EmptyState({
@@ -20,8 +20,9 @@ class EmptyState extends StatelessWidget {
   final VoidCallback onBrowse;
   final VoidCallback? onLeave;
 
-  /// Loads a pasted direct video link. When non-null an "or paste a link" field
-  /// is shown beneath Browse; omitted (e.g. in the design gallery) it's hidden.
+  /// Loads a pasted link. When non-null the link half of the load choice is
+  /// shown beneath the local-file button; omitted (e.g. in the design gallery)
+  /// it's hidden.
   final void Function(String url)? onLoadUrl;
 
   /// Optional heads-up shown above the prompt, e.g. "lin started playback —
@@ -103,49 +104,44 @@ class EmptyState extends StatelessWidget {
                   ],
                   const IdleMascot(size: 104),
                   const SizedBox(height: Spacing.xl),
+                  // One heading over both choices: picking a file and pasting a
+                  // link are two sources for the *same* action, not two separate
+                  // features (#222).
                   Text(
-                    'Drop a video file to start',
+                    kLoadVideoTitle,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: m.textPrimary,
                       fontSize: TypeScale.title,
                     ),
                   ),
-                  const SizedBox(height: Spacing.xxl),
-                  OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: m.accent,
-                      side: BorderSide(color: m.accent),
+                  const SizedBox(height: Spacing.xl),
+                  LoadVideoChoices(
+                    onBrowse: onBrowse,
+                    onSubmitUrl: onLoadUrl,
+                    // Page-background fill so the field stands out against the
+                    // surface-colored card instead of blending into it.
+                    urlFillColor: m.background,
+                  ),
+                  const SizedBox(height: Spacing.lg),
+                  // Drop works anywhere in the room (VideoDropTarget), so it's a
+                  // hint rather than a third choice competing with the two above.
+                  Text(
+                    '…or drop a video file anywhere',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: m.textDim,
+                      fontSize: TypeScale.body,
                     ),
-                    onPressed: onBrowse,
-                    child: const Text('Browse…'),
                   ),
                   if (onLeave != null) ...[
-                    const SizedBox(height: Spacing.md),
+                    const SizedBox(height: Spacing.lg),
                     TextButton.icon(
                       key: const Key('empty-state-leave'),
                       style: TextButton.styleFrom(foregroundColor: m.textDim),
                       onPressed: onLeave,
                       icon: const Icon(Icons.logout, size: 18),
                       label: const Text('Leave room'),
-                    ),
-                  ],
-                  if (onLoadUrl != null) ...[
-                    const SizedBox(height: Spacing.xl),
-                    Text(
-                      'or paste a direct video link',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: m.textDim,
-                        fontSize: TypeScale.body,
-                      ),
-                    ),
-                    const SizedBox(height: Spacing.md),
-                    // Page-background fill so the field stands out against the
-                    // surface-colored card instead of blending into it.
-                    UrlInputField(
-                      onSubmit: onLoadUrl!,
-                      fillColor: m.background,
                     ),
                   ],
                 ],
