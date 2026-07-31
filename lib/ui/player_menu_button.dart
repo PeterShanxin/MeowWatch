@@ -327,10 +327,7 @@ class _MenuPanelState extends State<_MenuPanel> {
                 expanded: _loadOpen,
                 onTap: () => setState(() => _loadOpen = !_loadOpen),
               ),
-              AnimatedSize(
-                duration: Motion.base,
-                curve: Motion.symmetric,
-                alignment: Alignment.topCenter,
+              _ExpandSize(
                 child: _loadOpen
                     ? Padding(
                         padding: const EdgeInsets.only(
@@ -373,10 +370,7 @@ class _MenuPanelState extends State<_MenuPanel> {
                 expanded: _settingsOpen,
                 onTap: () => setState(() => _settingsOpen = !_settingsOpen),
               ),
-              AnimatedSize(
-                duration: Motion.base,
-                curve: Motion.symmetric,
-                alignment: Alignment.topCenter,
+              _ExpandSize(
                 child: _settingsOpen
                     ? Column(
                         mainAxisSize: MainAxisSize.min,
@@ -389,10 +383,7 @@ class _MenuPanelState extends State<_MenuPanel> {
                           ),
                           // The wake toggle + dim slider only mean something while
                           // auto-dim is on; reveal/collapse them smoothly (#51).
-                          AnimatedSize(
-                            duration: Motion.base,
-                            curve: Motion.symmetric,
-                            alignment: Alignment.topCenter,
+                          _ExpandSize(
                             child: widget.chatAutoDim
                                 ? Column(
                                     mainAxisSize: MainAxisSize.min,
@@ -578,7 +569,7 @@ class _SectionHeader extends StatelessWidget {
             const Spacer(),
             AnimatedRotation(
               turns: expanded ? 0.5 : 0,
-              duration: Motion.base,
+              duration: _sectionMotion(context),
               child: Icon(
                 Icons.expand_more,
                 size: IconSizes.md,
@@ -735,6 +726,37 @@ class _MenuAction extends StatelessWidget {
   }
 }
 
+/// How long a section's chevron takes to flip — instant when the OS "reduce
+/// animations" setting is on, so these collapsibles honor the same
+/// accessibility invariant as the motion primitives in `lib/ui/motion/` (see
+/// the Motion section of docs/AGENT_GUIDE.md).
+Duration _sectionMotion(BuildContext context) =>
+    context.reduceMotion ? Duration.zero : Motion.base;
+
+/// The grow/shrink of a collapsible menu section, degrading to a plain instant
+/// size change under reduce motion.
+///
+/// The degraded form drops [AnimatedSize] entirely rather than passing it a
+/// zero duration: a zero-duration AnimatedSize re-dirties itself inside its own
+/// `performLayout` and trips "A RenderAnimatedSize was mutated in its own
+/// performLayout implementation".
+class _ExpandSize extends StatelessWidget {
+  const _ExpandSize({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (context.reduceMotion) return child;
+    return AnimatedSize(
+      duration: Motion.base,
+      curve: Motion.symmetric,
+      alignment: Alignment.topCenter,
+      child: child,
+    );
+  }
+}
+
 /// A [_MenuAction]-styled row that expands its own section in place instead of
 /// firing a one-shot action — used where the choice belongs inside the menu
 /// rather than in a modal over it.
@@ -774,7 +796,7 @@ class _MenuExpander extends StatelessWidget {
             const Spacer(),
             AnimatedRotation(
               turns: expanded ? 0.5 : 0,
-              duration: Motion.base,
+              duration: _sectionMotion(context),
               child: Icon(
                 Icons.expand_more,
                 size: IconSizes.md,

@@ -5,6 +5,7 @@ import 'package:meowwatch/core/app_version.dart';
 import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/debug/log_level.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
+import 'package:meowwatch/core/theme/reduce_motion.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/core/update/update_availability.dart';
 import 'package:meowwatch/ui/player_menu_button.dart';
@@ -153,6 +154,34 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.byKey(const Key('theme-swatch-noir')), findsOneWidget);
   });
+
+  testWidgets(
+    'reduce motion expands the load section instantly (#235 review)',
+    (tester) async {
+      // OS "reduce animations" on: no AnimatedSize growth, no chevron spin —
+      // one pump and the choices are simply there.
+      await tester.pumpWidget(
+        _host(ReduceMotionScope(reduceMotion: true, child: _button())),
+      );
+      await tester.tap(find.byKey(const Key('player-menu-gear')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('player-menu-load')));
+      await tester.pump();
+
+      expect(find.byKey(const Key('load-video-from-computer')), findsOneWidget);
+      expect(
+        tester
+            .widget<AnimatedRotation>(
+              find.descendant(
+                of: find.byKey(const Key('player-menu-load')),
+                matching: find.byType(AnimatedRotation),
+              ),
+            )
+            .duration,
+        Duration.zero,
+      );
+    },
+  );
 
   testWidgets('picking a local file fires onBrowse and closes the menu', (
     tester,
