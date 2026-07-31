@@ -251,7 +251,10 @@ mixin _HomeBody
                               appLog('settings: theme=${theme.name}');
                               widget.onThemeChanged(theme);
                             },
-                            onLoadVideo: () => unawaited(_promptLoadVideo()),
+                            // Inline inside the gear — picking a source here
+                            // shouldn't throw a modal over the menu (#222).
+                            onBrowse: () => unawaited(_browse()),
+                            onLoadUrl: (url) => unawaited(_load(url)),
                             onLeave: _leave,
                             chatAutoDim: _chatAutoDim,
                             onChatAutoDimChanged: (val) {

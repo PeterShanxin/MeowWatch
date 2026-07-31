@@ -16,6 +16,7 @@ import '../core/theme/tokens/spacing.dart';
 import '../core/theme/tokens/type_scale.dart';
 import '../core/update/update_availability.dart';
 import 'idle_visibility.dart';
+import 'load_video_choices.dart';
 import 'settings/settings_panel.dart';
 import 'theme/theme_swatches.dart';
 import 'update_dialog.dart';
@@ -34,7 +35,8 @@ class PlayerMenuButton extends StatelessWidget {
     required this.myDisplayName,
     required this.currentTheme,
     required this.onThemeChanged,
-    required this.onLoadVideo,
+    required this.onBrowse,
+    required this.onLoadUrl,
     required this.onLeave,
     required this.chatAutoDim,
     required this.onChatAutoDimChanged,
@@ -81,7 +83,10 @@ class PlayerMenuButton extends StatelessWidget {
   final String myDisplayName;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
-  final VoidCallback onLoadVideo;
+  /// The two load sources, offered inline (#222) rather than behind a modal —
+  /// picking one from the gear shouldn't mean leaving the gear.
+  final VoidCallback onBrowse;
+  final void Function(String url) onLoadUrl;
   final VoidCallback onLeave;
   final bool chatAutoDim;
   final ValueChanged<bool> onChatAutoDimChanged;
@@ -164,7 +169,8 @@ class PlayerMenuButton extends StatelessWidget {
             myDisplayName: myDisplayName,
             currentTheme: currentTheme,
             onThemeChanged: onThemeChanged,
-            onLoadVideo: onLoadVideo,
+            onBrowse: onBrowse,
+            onLoadUrl: onLoadUrl,
             onLeave: onLeave,
             chatAutoDim: chatAutoDim,
             onChatAutoDimChanged: onChatAutoDimChanged,
@@ -200,7 +206,8 @@ class _MenuPanel extends StatefulWidget {
     required this.myDisplayName,
     required this.currentTheme,
     required this.onThemeChanged,
-    required this.onLoadVideo,
+    required this.onBrowse,
+    required this.onLoadUrl,
     required this.onLeave,
     required this.chatAutoDim,
     required this.onChatAutoDimChanged,
@@ -227,7 +234,8 @@ class _MenuPanel extends StatefulWidget {
   final String myDisplayName;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
-  final VoidCallback onLoadVideo;
+  final VoidCallback onBrowse;
+  final void Function(String url) onLoadUrl;
   final VoidCallback onLeave;
   final bool chatAutoDim;
   final ValueChanged<bool> onChatAutoDimChanged;
@@ -250,6 +258,7 @@ class _MenuPanel extends StatefulWidget {
 
 class _MenuPanelState extends State<_MenuPanel> {
   bool _settingsOpen = false;
+  bool _loadOpen = false;
 
   // Own the scroll position so this popover never grabs the PrimaryScrollController
   // (which the desktop Scrollbar asserts must back a single ScrollView).
@@ -308,13 +317,43 @@ class _MenuPanelState extends State<_MenuPanel> {
                 ),
               const SizedBox(height: Spacing.sm),
               Divider(color: m.border, height: Spacing.lg),
-              // One entry for both sources — it opens the chooser (local file
-              // or link), the same choice the load screen offers (#222).
-              _MenuAction(
+              // One entry for both sources, expanded in place: the same choice
+              // the load screen offers, without throwing a modal over the gear
+              // you are already in (#222).
+              _MenuExpander(
                 key: const Key('player-menu-load'),
                 icon: Icons.video_library_outlined,
-                text: 'Load a video…',
-                onTap: widget.onLoadVideo,
+                text: 'Load a video',
+                expanded: _loadOpen,
+                onTap: () => setState(() => _loadOpen = !_loadOpen),
+              ),
+              AnimatedSize(
+                duration: Motion.base,
+                curve: Motion.symmetric,
+                alignment: Alignment.topCenter,
+                child: _loadOpen
+                    ? Padding(
+                        padding: const EdgeInsets.only(
+                          top: Spacing.sm,
+                          bottom: Spacing.md,
+                        ),
+                        child: LoadVideoChoices(
+                          // Both paths dismiss the popover first: its FocusScope
+                          // traps keyboard focus while open, so the video would
+                          // lose space/play right after loading (same reason
+                          // [_MenuAction] closes).
+                          onBrowse: () {
+                            MenuController.maybeOf(context)?.close();
+                            widget.onBrowse();
+                          },
+                          onSubmitUrl: (url) {
+                            MenuController.maybeOf(context)?.close();
+                            widget.onLoadUrl(url);
+                          },
+                          urlFillColor: m.background,
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
               Divider(color: m.border, height: Spacing.lg),
               label('Theme'),
@@ -688,6 +727,59 @@ class _MenuAction extends StatelessWidget {
             Text(
               text,
               style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A [_MenuAction]-styled row that expands its own section in place instead of
+/// firing a one-shot action — used where the choice belongs inside the menu
+/// rather than in a modal over it.
+class _MenuExpander extends StatelessWidget {
+  const _MenuExpander({
+    required this.icon,
+    required this.text,
+    required this.expanded,
+    required this.onTap,
+    super.key,
+  });
+
+  final IconData icon;
+  final String text;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return InkWell(
+      borderRadius: BorderRadius.circular(Radii.md),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.sm,
+          vertical: Spacing.md,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: IconSizes.md, color: m.textPrimary),
+            const SizedBox(width: Spacing.md),
+            Text(
+              text,
+              style: TextStyle(color: m.textPrimary, fontSize: TypeScale.label),
+            ),
+            const Spacer(),
+            AnimatedRotation(
+              turns: expanded ? 0.5 : 0,
+              duration: Motion.base,
+              child: Icon(
+                Icons.expand_more,
+                size: IconSizes.md,
+                color: m.textDim,
+              ),
             ),
           ],
         ),

@@ -19,7 +19,8 @@ PlayerMenuButton _button({
   ValueChanged<HistoryMode>? onHistoryModeChanged,
   String? nowPlaying = 'Bocchi the Rock - 01.mkv',
   ValueChanged<MeowThemeId>? onThemeChanged,
-  VoidCallback? onLoadVideo,
+  VoidCallback? onBrowse,
+  void Function(String url)? onLoadUrl,
   VoidCallback? onLeave,
   List<String>? members,
   String myUsername = 'me',
@@ -48,7 +49,8 @@ PlayerMenuButton _button({
   myDisplayName: myDisplayName ?? myUsername,
   currentTheme: MeowThemeId.cozy,
   onThemeChanged: onThemeChanged ?? (_) {},
-  onLoadVideo: onLoadVideo ?? () {},
+  onBrowse: onBrowse ?? () {},
+  onLoadUrl: onLoadUrl ?? (_) {},
   onLeave: onLeave ?? () {},
   chatAutoDim: chatAutoDim,
   onChatAutoDimChanged: onChatAutoDimChanged ?? (_) {},
@@ -131,28 +133,68 @@ void main() {
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 
-  testWidgets('tapping Load video fires onLoadVideo and closes the menu', (
+  testWidgets('Load a video expands in place instead of opening a modal (#222)',
+      (tester) async {
+    await tester.pumpWidget(_host(_button()));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    // One entry, and its sources stay hidden until it's expanded.
+    expect(find.byKey(const Key('player-menu-load')), findsOneWidget);
+    expect(find.byKey(const Key('player-menu-paste-link')), findsNothing);
+    expect(find.byKey(const Key('load-video-from-computer')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('player-menu-load')));
+    await tester.pumpAndSettle();
+
+    // Choices appear inside the still-open menu — no dialog was pushed.
+    expect(find.byKey(const Key('load-video-from-computer')), findsOneWidget);
+    expect(find.byKey(const Key('url-input-field')), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byKey(const Key('theme-swatch-noir')), findsOneWidget);
+  });
+
+  testWidgets('picking a local file fires onBrowse and closes the menu', (
     tester,
   ) async {
-    var loaded = false;
-    await tester.pumpWidget(_host(_button(onLoadVideo: () => loaded = true)));
+    var browsed = false;
+    await tester.pumpWidget(_host(_button(onBrowse: () => browsed = true)));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('player-menu-load')));
     await tester.pumpAndSettle();
-    expect(loaded, isTrue);
+    await tester.ensureVisible(find.byKey(const Key('load-video-from-computer')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('load-video-from-computer')));
+    await tester.pumpAndSettle();
+
+    expect(browsed, isTrue);
+    // Closed, or the menu's FocusScope keeps trapping the player's keys.
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 
-  testWidgets('offers one load entry, not a separate paste-link item (#222)', (
+  testWidgets('submitting a link fires onLoadUrl and closes the menu', (
     tester,
   ) async {
-    await tester.pumpWidget(_host(_button()));
+    String? loaded;
+    await tester.pumpWidget(_host(_button(onLoadUrl: (u) => loaded = u)));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('player-menu-load')), findsOneWidget);
-    expect(find.byKey(const Key('player-menu-paste-link')), findsNothing);
-    expect(find.text('Load a video…'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('player-menu-load')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('url-input-field')),
+      'https://x.test/a.mp4',
+    );
+    // The popover scrolls on a short window; bring the button into view or the
+    // tap lands on the barrier behind it.
+    await tester.ensureVisible(find.byKey(const Key('url-load-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('url-load-button')));
+    await tester.pumpAndSettle();
+
+    expect(loaded, 'https://x.test/a.mp4');
+    expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 
   testWidgets('lists room members with "(you)" for self', (tester) async {
