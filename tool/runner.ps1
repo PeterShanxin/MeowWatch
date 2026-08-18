@@ -3,9 +3,10 @@
     Manages the MeowWatch self-hosted Windows CI runner lifecycle on demand.
 
 .DESCRIPTION
-    Harden the on-demand runner start path against the 14-day GitHub auto-deletion
-    hazard, manage custom labels (meowwatch-ci), sync the action archive cache,
-    and verify the runner becomes online and routable.
+    Hardens the on-demand runner start path against the 14-day GitHub auto-deletion
+    hazard, enforces the custom 'meowwatch-ci' label, scopes process management
+    to this specific runner installation ($RunnerDir), protects active CI jobs against
+    unsafe stop, syncs the action archive cache, and verifies runner online state.
 
 .PARAMETER Action
     Action to perform: start (default), stop, status, or sync-cache.
@@ -24,6 +25,9 @@
 
 .PARAMETER TimeoutSec
     Seconds to wait for runner to transition to 'online'. Defaults to 30.
+
+.PARAMETER Force
+    Force stop even if the runner is reported busy by GitHub or executing a job locally.
 #>
 [CmdletBinding()]
 param(
@@ -44,17 +48,25 @@ param(
     [string]$CustomLabel = 'meowwatch-ci',
 
     [Parameter()]
-    [int]$TimeoutSec = 30
+    [int]$TimeoutSec = 30,
+
+    [Parameter()]
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Always clear ambient GITHUB_TOKEN so gh uses valid keyring credentials
+$env:GITHUB_TOKEN = $null
+
+# Establish repository root from script location (independent of caller cwd)
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
 function Invoke-Gh {
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
         [string[]]$Args
     )
-    # Clear ambient GITHUB_TOKEN to ensure gh uses valid keyring credentials
     $env:GITHUB_TOKEN = $null
     & gh @Args
 }
@@ -68,15 +80,195 @@ function Get-DartCommand {
     if ($cmd) {
         return $cmd.Source
     }
-    $puroFlutter = Join-Path $env:USERPROFILE '.puro\envs\stable\flutter\bin\flutter.bat'
-    if (Test-Path $puroFlutter) {
-        return $puroFlutter
+    throw "Dart toolchain not found. Expected Puro Dart at '$puroDart' or 'dart' on PATH."
+}
+
+function Test-ProcessBelongsToRunner {
+    param(
+        [Parameter(Mandatory = $true)]
+        $Process,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TargetRunnerDir
+    )
+
+    if (-not $Process) { return $false }
+
+    $normRunner = [System.IO.Path]::GetFullPath($TargetRunnerDir).TrimEnd('\', '/')
+    $exePath = $Process.ExecutablePath
+
+    if ([string]::IsNullOrWhiteSpace($exePath) -and -not [string]::IsNullOrWhiteSpace($Process.CommandLine)) {
+        $cmd = $Process.CommandLine.Trim()
+        if ($cmd.StartsWith('"')) {
+            $endQuote = $cmd.IndexOf('"', 1)
+            if ($endQuote -gt 1) {
+                $exePath = $cmd.Substring(1, $endQuote - 1)
+            }
+        } else {
+            $space = $cmd.IndexOf(' ')
+            if ($space -gt 0) {
+                $exePath = $cmd.Substring(0, $space)
+            } else {
+                $exePath = $cmd
+            }
+        }
     }
-    throw "Dart/Flutter toolchain not found. Expected Puro at '$puroDart' or 'dart' on PATH."
+
+    if ([string]::IsNullOrWhiteSpace($exePath)) {
+        return $false
+    }
+
+    try {
+        $normExe = [System.IO.Path]::GetFullPath($exePath)
+        $procDir = [System.IO.Path]::GetDirectoryName($normExe)
+        if (-not $procDir) { return $false }
+        $procParentDir = [System.IO.Path]::GetDirectoryName($procDir)
+        if (-not $procParentDir) { return $false }
+
+        $binName = [System.IO.Path]::GetFileName($procDir)
+        $isBinDir = ($binName -eq 'bin' -or $binName -like 'bin.*')
+
+        return ($isBinDir -and [string]::Equals($procParentDir, $normRunner, [System.StringComparison]::OrdinalIgnoreCase))
+    } catch {
+        return $false
+    }
 }
 
 function Get-RunnerProcesses {
-    @(Get-CimInstance Win32_Process -Filter "Name = 'Runner.Listener.exe' or Name = 'Runner.Worker.exe'" -ErrorAction SilentlyContinue)
+    param([string]$TargetRunnerDir = $RunnerDir)
+    $allProcesses = @(Get-CimInstance Win32_Process -Filter "Name = 'Runner.Listener.exe' or Name = 'Runner.Worker.exe'" -ErrorAction SilentlyContinue)
+    return @($allProcesses | Where-Object { Test-ProcessBelongsToRunner -Process $_ -TargetRunnerDir $TargetRunnerDir })
+}
+
+function Resolve-RunnerRecoveryPlan {
+    param(
+        [Parameter()]
+        $RemoteRunner,
+
+        [Parameter()]
+        $LocalProcesses,
+
+        [Parameter()]
+        [bool]$HasLocalConfig,
+
+        [Parameter()]
+        [string]$TargetRepo,
+
+        [Parameter()]
+        [string]$TargetRunnerName,
+
+        [Parameter()]
+        [string]$TargetLabel
+    )
+
+    if ($RemoteRunner) {
+        $labels = @($RemoteRunner.labels | ForEach-Object { $_.name })
+        $needsLabel = ($TargetLabel -notin $labels)
+        return [PSCustomObject]@{
+            NeedsRegistration = $false
+            NeedsLocalCleanup = $false
+            NeedsLabelAddition = $needsLabel
+            RefusalReason = $null
+            RegistrationArgs = $null
+        }
+    }
+
+    # Runner is missing from GitHub
+    if ($LocalProcesses -and $LocalProcesses.Count -gt 0) {
+        $pids = ($LocalProcesses | ForEach-Object { "$($_.Name) (PID $($_.ProcessId))" }) -join ', '
+        return [PSCustomObject]@{
+            NeedsRegistration = $false
+            NeedsLocalCleanup = $false
+            NeedsLabelAddition = $false
+            RefusalReason = "Runner processes are active ($pids), but runner '$TargetRunnerName' is not registered on GitHub. Stop them before re-registering."
+            RegistrationArgs = $null
+        }
+    }
+
+    return [PSCustomObject]@{
+        NeedsRegistration = $true
+        NeedsLocalCleanup = $HasLocalConfig
+        NeedsLabelAddition = $false
+        RefusalReason = $null
+        RegistrationArgs = @(
+            '--unattended',
+            '--url', "https://github.com/$TargetRepo",
+            '--name', $TargetRunnerName,
+            '--work', '_work',
+            '--labels', $TargetLabel,
+            '--replace'
+        )
+    }
+}
+
+function Resolve-RunnerStopPlan {
+    param(
+        [Parameter()]
+        $RemoteRunner,
+
+        [Parameter()]
+        $LocalProcesses,
+
+        [Parameter()]
+        [bool]$QuerySucceeded,
+
+        [Parameter()]
+        [string]$QueryError,
+
+        [Parameter()]
+        [switch]$ForceStop
+    )
+
+    if (-not $LocalProcesses -or $LocalProcesses.Count -eq 0) {
+        return [PSCustomObject]@{
+            CanStop = $true
+            RefusalReason = $null
+            Action = 'None'
+        }
+    }
+
+    if ($ForceStop) {
+        return [PSCustomObject]@{
+            CanStop = $true
+            RefusalReason = $null
+            Action = 'Kill'
+        }
+    }
+
+    # Check local worker process
+    $workers = @($LocalProcesses | Where-Object { $_.Name -eq 'Runner.Worker.exe' })
+    if ($workers.Count -gt 0) {
+        $pids = ($workers | ForEach-Object { $_.ProcessId }) -join ', '
+        return [PSCustomObject]@{
+            CanStop = $false
+            RefusalReason = "Cannot stop runner: a worker job is actively executing locally (Worker PIDs: $pids). Use -Force to override."
+            Action = 'Refuse'
+        }
+    }
+
+    # Check query success
+    if (-not $QuerySucceeded) {
+        return [PSCustomObject]@{
+            CanStop = $false
+            RefusalReason = "Cannot safely verify whether runner is busy (GitHub query failed: $QueryError). Refusing to stop while GitHub status is unknown. Use -Force to override."
+            Action = 'Refuse'
+        }
+    }
+
+    # Check GitHub busy status
+    if ($RemoteRunner -and $RemoteRunner.busy -eq $true) {
+        return [PSCustomObject]@{
+            CanStop = $false
+            RefusalReason = "Cannot stop runner: GitHub reports runner is currently busy executing a job (ID: $($RemoteRunner.id)). Use -Force to override."
+            Action = 'Refuse'
+        }
+    }
+
+    return [PSCustomObject]@{
+        CanStop = $true
+        RefusalReason = $null
+        Action = 'Kill'
+    }
 }
 
 function Start-RunnerDetached {
@@ -96,15 +288,25 @@ function Start-RunnerDetached {
 }
 
 function Sync-ActionCache {
-    Write-Host "Syncing action archive cache..."
+    param(
+        [string]$TargetRunnerDir = $RunnerDir,
+        [string]$TargetRepoRoot = $RepoRoot
+    )
+    $env:GITHUB_TOKEN = $null
     $dart = Get-DartCommand
     $actionCacheScript = Join-Path $PSScriptRoot 'action_cache.dart'
     if (-not (Test-Path $actionCacheScript)) {
         throw "action_cache.dart not found at '$actionCacheScript'."
     }
-    & $dart run $actionCacheScript sync --runner-dir $RunnerDir
-    if ($LASTEXITCODE -ne 0) {
-        throw "Action cache sync failed with exit code $LASTEXITCODE."
+    Write-Host "Syncing action archive cache for '$TargetRepoRoot'..."
+    Push-Location -LiteralPath $TargetRepoRoot
+    try {
+        & $dart run $actionCacheScript sync --runner-dir $TargetRunnerDir
+        if ($LASTEXITCODE -ne 0) {
+            throw "Action cache sync failed with exit code $LASTEXITCODE."
+        }
+    } finally {
+        Pop-Location
     }
 }
 
@@ -118,19 +320,45 @@ function Get-RepoRunners {
 
 switch ($Action) {
     'sync-cache' {
-        Sync-ActionCache
+        Sync-ActionCache -TargetRunnerDir $RunnerDir -TargetRepoRoot $RepoRoot
     }
 
     'stop' {
-        $processes = Get-RunnerProcesses
-        if ($processes.Count -gt 0) {
-            $pids = ($processes | ForEach-Object { "$($_.Name) (PID $($_.ProcessId))" }) -join ', '
-            Write-Host "Stopping runner processes: $pids..."
-            $processes | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-            Write-Host "Runner processes stopped."
-        } else {
-            Write-Host "No runner processes (Runner.Listener.exe, Runner.Worker.exe) were running."
+        $processes = Get-RunnerProcesses -TargetRunnerDir $RunnerDir
+        if ($processes.Count -eq 0) {
+            Write-Host "No runner processes found for '$RunnerName' in '$RunnerDir'."
+            return
         }
+
+        $querySucceeded = $false
+        $queryError = $null
+        $remoteRunner = $null
+
+        try {
+            $runnersData = Get-RepoRunners
+            $remoteRunner = $runnersData.runners | Where-Object { $_.name -eq $RunnerName }
+            $querySucceeded = $true
+        } catch {
+            $querySucceeded = $false
+            $queryError = $_.Exception.Message
+        }
+
+        $stopPlan = Resolve-RunnerStopPlan `
+            -RemoteRunner $remoteRunner `
+            -LocalProcesses $processes `
+            -QuerySucceeded $querySucceeded `
+            -QueryError $queryError `
+            -ForceStop:$Force
+
+        if (-not $stopPlan.CanStop) {
+            Write-Error $stopPlan.RefusalReason
+            exit 1
+        }
+
+        $pids = ($processes | ForEach-Object { "$($_.Name) (PID $($_.ProcessId))" }) -join ', '
+        Write-Host "Stopping runner processes for '$RunnerName' in '$RunnerDir': $pids..."
+        $processes | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Write-Host "Runner processes stopped."
     }
 
     'status' {
@@ -139,9 +367,9 @@ switch ($Action) {
         }
         $runnersData = Get-RepoRunners
         $runner = $runnersData.runners | Where-Object { $_.name -eq $RunnerName }
-        $processes = Get-RunnerProcesses
+        $processes = Get-RunnerProcesses -TargetRunnerDir $RunnerDir
 
-        Write-Host "Runner Status for '$RunnerName' in '$Repo':"
+        Write-Host "Runner Status for '$RunnerName' in '$Repo' (Dir: $RunnerDir):"
         if ($runner) {
             Write-Host "  GitHub ID:      $($runner.id)"
             Write-Host "  Status:         $($runner.status)"
@@ -181,17 +409,24 @@ switch ($Action) {
         Write-Host "Checking GitHub registration for runner '$RunnerName' in '$Repo'..."
         $runnersData = Get-RepoRunners
         $runner = $runnersData.runners | Where-Object { $_.name -eq $RunnerName }
+        $runningProcesses = Get-RunnerProcesses -TargetRunnerDir $RunnerDir
+        $hasLocalConfig = Test-Path (Join-Path $RunnerDir '.runner')
 
-        if (-not $runner) {
+        $plan = Resolve-RunnerRecoveryPlan `
+            -RemoteRunner $runner `
+            -LocalProcesses $runningProcesses `
+            -HasLocalConfig $hasLocalConfig `
+            -TargetRepo $Repo `
+            -TargetRunnerName $RunnerName `
+            -TargetLabel $CustomLabel
+
+        if ($plan.RefusalReason) {
+            throw $plan.RefusalReason
+        }
+
+        if ($plan.NeedsRegistration) {
             Write-Host "Runner '$RunnerName' is not registered on GitHub (may have been auto-deleted after 14 days idle)."
-            $running = Get-RunnerProcesses
-            if ($running.Count -gt 0) {
-                $pids = ($running | ForEach-Object { "$($_.Name) (PID $($_.ProcessId))" }) -join ', '
-                throw "Runner processes are active ($pids), but runner is not registered on GitHub. Stop them before re-registering."
-            }
-
-            # Local cleanup if stale config exists
-            if (Test-Path (Join-Path $RunnerDir '.runner')) {
+            if ($plan.NeedsLocalCleanup) {
                 Write-Host "Removing stale local registration (.runner) via config.cmd remove --local..."
                 $configCmd = Join-Path $RunnerDir 'config.cmd'
                 & $configCmd remove --local
@@ -200,7 +435,6 @@ switch ($Action) {
                 }
             }
 
-            # Mint registration token
             Write-Host "Minting fresh runner registration token for '$Repo'..."
             $token = (Invoke-Gh api -X POST "repos/$Repo/actions/runners/registration-token" --jq .token).Trim()
             if (-not $token) {
@@ -210,12 +444,11 @@ switch ($Action) {
             Write-Host "Re-registering runner '$RunnerName' with custom label '$CustomLabel'..."
             try {
                 $configCmd = Join-Path $RunnerDir 'config.cmd'
-                & $configCmd --unattended --url "https://github.com/$Repo" --token $token --name $RunnerName --work "_work" --labels $CustomLabel --replace
+                & $configCmd @($plan.RegistrationArgs) --token $token
                 if ($LASTEXITCODE -ne 0) {
                     throw "config.cmd registration failed with exit code $LASTEXITCODE."
                 }
             } finally {
-                # Ensure token is cleared from memory
                 $token = $null
             }
 
@@ -225,25 +458,22 @@ switch ($Action) {
                 throw "Runner re-registration completed locally, but GitHub API still reports no runner named '$RunnerName'."
             }
             Write-Host "Runner successfully registered (ID: $($runner.id))."
+        } elseif ($plan.NeedsLabelAddition) {
+            Write-Host "Runner '$RunnerName' found on GitHub (ID: $($runner.id)), but missing custom label '$CustomLabel'. Adding via GitHub API..."
+            Invoke-Gh api -X POST "repos/$Repo/actions/runners/$($runner.id)/labels" -f "labels[]=$CustomLabel" | Out-Null
+            Write-Host "Label '$CustomLabel' added."
         } else {
             Write-Host "Runner '$RunnerName' found on GitHub (ID: $($runner.id), Status: $($runner.status))."
-            # Verify / add custom label
-            $currentLabels = @($runner.labels | ForEach-Object { $_.name })
-            if ($CustomLabel -notin $currentLabels) {
-                Write-Host "Runner is missing custom label '$CustomLabel'. Adding via GitHub API..."
-                Invoke-Gh api -X POST "repos/$Repo/actions/runners/$($runner.id)/labels" -f "labels[]=$CustomLabel" | Out-Null
-                Write-Host "Label '$CustomLabel' added."
-            }
         }
 
         # Sync action archive cache before starting listener
-        Sync-ActionCache
+        Sync-ActionCache -TargetRunnerDir $RunnerDir -TargetRepoRoot $RepoRoot
 
-        # Start runner listener if not already running
-        $runningProcesses = Get-RunnerProcesses
-        if ($runningProcesses.Count -gt 0) {
-            $pids = ($runningProcesses | ForEach-Object { "$($_.Name) (PID $($_.ProcessId))" }) -join ', '
-            Write-Host "Runner listener is already running: $pids."
+        # Check if listener is already running for THIS runner
+        $activeProcesses = Get-RunnerProcesses -TargetRunnerDir $RunnerDir
+        if ($activeProcesses.Count -gt 0) {
+            $pids = ($activeProcesses | ForEach-Object { "$($_.Name) (PID $($_.ProcessId))" }) -join ', '
+            Write-Host "Runner listener is already running for '$RunnerDir': $pids."
         } else {
             Write-Host "Starting runner listener detached ($RunnerDir\run.cmd)..."
             Start-RunnerDetached -Dir $RunnerDir
