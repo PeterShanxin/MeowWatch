@@ -57,8 +57,8 @@ void main() {
   group('foldRunsOn', () {
     test('reads the inline list form', () {
       expect(
-        foldRunsOn(['    runs-on: [self-hosted, windows]']),
-        '[self-hosted, windows]',
+        foldRunsOn(['    runs-on: [self-hosted, windows, meowwatch-ci]']),
+        '[self-hosted, windows, meowwatch-ci]',
       );
     });
 
@@ -108,7 +108,7 @@ void main() {
     const workflow = '''
 jobs:
   check-self-hosted:
-    runs-on: [self-hosted, windows]
+    runs-on: [self-hosted, windows, meowwatch-ci]
     steps:
       - uses: actions/checkout@v7
   check-hosted:
@@ -117,7 +117,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
   build-windows-x64:
-    runs-on: [self-hosted, windows]
+    runs-on: [self-hosted, windows, meowwatch-ci]
     steps:
       - uses: actions/checkout@v7
       # - uses: actions/retired@v1

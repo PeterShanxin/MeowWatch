@@ -65,9 +65,9 @@ is private, which is why it's safe here.)
 
 1. In your fork: **Settings → Actions → Runners → New self-hosted runner →
    Windows**. Follow the download/configure commands GitHub shows you.
-2. When configuring, give it the labels **`self-hosted`** and **`windows`** (the
-   `windows` label is added automatically on a Windows runner; the workflow
-   targets `runs-on: [self-hosted, windows]`).
+2. When configuring, give it the labels **`self-hosted`**, **`windows`**, and
+   **`meowwatch-ci`** (the `windows` label is added automatically on Windows;
+   the workflow targets `runs-on: [self-hosted, windows, meowwatch-ci]`).
 3. **Run it as the logged-in user**, not as `NETWORK SERVICE` — the service
    account can't see the Visual Studio C++ toolchain, so builds fail. The
    simplest is to start it interactively:

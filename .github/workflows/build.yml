@@ -46,7 +46,7 @@ jobs:
   check-self-hosted:
     name: Analyze & Test (self-hosted)
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'ci-hosted') }}
-    runs-on: [self-hosted, windows]
+    runs-on: [self-hosted, windows, meowwatch-ci]
     # Bound runaway hangs: the suite normally finishes in ~5m, but a stuck
     # flutter_tester otherwise sits until GitHub's 6h default, wedging the
     # self-hosted runner. See docs/AGENT_GUIDE.md → CI (runner hangs).
@@ -145,10 +145,11 @@ jobs:
     if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.check-self-hosted.result == 'success' }}
     # Runs on a self-hosted Windows runner (our own PC) so the expensive 2×
     # Windows build consumes no GitHub-hosted minutes. Requires a runner
-    # registered with the `self-hosted` + `windows` labels and the Visual Studio
-    # desktop C++ toolchain installed (see docs/AGENT_GUIDE.md → CI). Falls back
-    # to nothing if no runner is online — the job queues until one is.
-    runs-on: [self-hosted, windows]
+    # registered with the `self-hosted` + `windows` + `meowwatch-ci` labels and
+    # the Visual Studio desktop C++ toolchain installed (see
+    # docs/AGENT_GUIDE.md → CI). Falls back to nothing if no runner is online —
+    # the job queues until one is.
+    runs-on: [self-hosted, windows, meowwatch-ci]
     # Bound runaway hangs/builds: a release build is normally ~18m.
     timeout-minutes: 45
     steps:
