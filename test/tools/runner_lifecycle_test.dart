@@ -12,10 +12,11 @@ void main() {
         final scriptPath = 'test/tools/runner_lifecycle_test.ps1';
         expect(File(scriptPath).existsSync(), isTrue);
 
-        // Try pwsh first, fallback to powershell
-        var result = await Process.run('pwsh', ['-File', scriptPath]);
-        if (result.exitCode != 0 &&
-            result.stderr.toString().contains('is not recognized')) {
+        // Try pwsh first; if pwsh binary cannot be launched, fall back to powershell.
+        ProcessResult result;
+        try {
+          result = await Process.run('pwsh', ['-File', scriptPath]);
+        } on ProcessException {
           result = await Process.run('powershell', [
             '-ExecutionPolicy',
             'Bypass',

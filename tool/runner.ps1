@@ -279,11 +279,10 @@ function Start-RunnerDetached {
             CurrentDirectory = $Dir
         }
         if ($res.ReturnValue -ne 0) {
-            throw "Win32_Process.Create returned $($res.ReturnValue)"
+            throw "Win32_Process.Create returned non-zero code $($res.ReturnValue)"
         }
     } catch {
-        $runCmd = Join-Path $Dir 'run.cmd'
-        Start-Process -FilePath $runCmd -WorkingDirectory $Dir -WindowStyle Hidden
+        throw "Failed to start runner detached via Win32_Process.Create in '$Dir': $($_.Exception.Message). WMI process creation is required to escape the parent Job Object; Start-Process fallback is disabled because it cannot escape the agent Job Object."
     }
 }
 
@@ -355,9 +354,55 @@ switch ($Action) {
             exit 1
         }
 
-        $pids = ($processes | ForEach-Object { "$($_.Name) (PID $($_.ProcessId))" }) -join ', '
+        $targetProcesses = $processes
+
+        if (-not $Force) {
+            Write-Host "Initial safety check passed. Performing pre-termination quiescence revalidation..."
+            Start-Sleep -Milliseconds 500
+
+            $finalProcesses = Get-RunnerProcesses -TargetRunnerDir $RunnerDir
+            if ($finalProcesses.Count -eq 0) {
+                Write-Host "Runner processes already exited."
+                return
+            }
+
+            $finalQuerySucceeded = $false
+            $finalQueryError = $null
+            $finalRemoteRunner = $null
+
+            try {
+                $runnersData = Get-RepoRunners
+                $finalRemoteRunner = $runnersData.runners | Where-Object { $_.name -eq $RunnerName }
+                $finalQuerySucceeded = $true
+            } catch {
+                $finalQuerySucceeded = $false
+                $finalQueryError = $_.Exception.Message
+            }
+
+            $finalStopPlan = Resolve-RunnerStopPlan `
+                -RemoteRunner $finalRemoteRunner `
+                -LocalProcesses $finalProcesses `
+                -QuerySucceeded $finalQuerySucceeded `
+                -QueryError $finalQueryError `
+                -ForceStop:$false
+
+            if (-not $finalStopPlan.CanStop) {
+                Write-Error "Pre-termination revalidation failed: $($finalStopPlan.RefusalReason)"
+                exit 1
+            }
+
+            $targetProcesses = $finalProcesses
+        } else {
+            $targetProcesses = Get-RunnerProcesses -TargetRunnerDir $RunnerDir
+            if ($targetProcesses.Count -eq 0) {
+                Write-Host "No runner processes found for '$RunnerName' in '$RunnerDir'."
+                return
+            }
+        }
+
+        $pids = ($targetProcesses | ForEach-Object { "$($_.Name) (PID $($_.ProcessId))" }) -join ', '
         Write-Host "Stopping runner processes for '$RunnerName' in '$RunnerDir': $pids..."
-        $processes | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        $targetProcesses | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
         Write-Host "Runner processes stopped."
     }
 

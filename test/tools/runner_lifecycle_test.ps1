@@ -319,6 +319,121 @@ $stopPlan8 = Resolve-RunnerStopPlan `
 Assert-True $stopPlan8.CanStop "Allows stop when runner is idle (busy: false, no worker)"
 Assert-Equal $stopPlan8.Action 'Kill' "Action is Kill for idle runner"
 
+# Case 9: TOCTOU Revalidation - State changes from idle on first check to busy on final check
+$initialRemote9 = [PSCustomObject]@{
+    id = 22
+    name = 'meowwatch-pc'
+    status = 'online'
+    busy = $false
+    labels = @([PSCustomObject]@{ name = 'meowwatch-ci' })
+}
+$firstCheckPlan9 = Resolve-RunnerStopPlan `
+    -RemoteRunner $initialRemote9 `
+    -LocalProcesses @($activeProc) `
+    -QuerySucceeded $true `
+    -QueryError $null `
+    -ForceStop:$false
+
+Assert-True $firstCheckPlan9.CanStop "TOCTOU: Initial check allows stop when idle"
+
+$finalRemote9 = [PSCustomObject]@{
+    id = 22
+    name = 'meowwatch-pc'
+    status = 'online'
+    busy = $true
+    labels = @([PSCustomObject]@{ name = 'meowwatch-ci' })
+}
+$finalCheckPlan9 = Resolve-RunnerStopPlan `
+    -RemoteRunner $finalRemote9 `
+    -LocalProcesses @($activeProc) `
+    -QuerySucceeded $true `
+    -QueryError $null `
+    -ForceStop:$false
+
+Assert-False $finalCheckPlan9.CanStop "TOCTOU: Final revalidation refuses stop when state transitioned to busy: true"
+Assert-True ($finalCheckPlan9.RefusalReason -like "*currently busy executing a job*") "TOCTOU: Final revalidation states runner is busy"
+
+# Case 10: TOCTOU Revalidation - State changes from idle on first check to worker process active on final check
+$firstCheckPlan10 = Resolve-RunnerStopPlan `
+    -RemoteRunner $initialRemote9 `
+    -LocalProcesses @($activeProc) `
+    -QuerySucceeded $true `
+    -QueryError $null `
+    -ForceStop:$false
+
+Assert-True $firstCheckPlan10.CanStop "TOCTOU: Initial check allows stop when no worker"
+
+$finalProcesses10 = @($activeProc, $workerProc)
+$finalCheckPlan10 = Resolve-RunnerStopPlan `
+    -RemoteRunner $initialRemote9 `
+    -LocalProcesses $finalProcesses10 `
+    -QuerySucceeded $true `
+    -QueryError $null `
+    -ForceStop:$false
+
+Assert-False $finalCheckPlan10.CanStop "TOCTOU: Final revalidation refuses stop when Runner.Worker.exe appeared during quiescence"
+Assert-True ($finalCheckPlan10.RefusalReason -like "*worker job is actively executing locally*") "TOCTOU: Final revalidation identifies active worker"
+
+# Case 11: TOCTOU Revalidation - Initial check passes, but GitHub query fails during final revalidation
+$firstCheckPlan11 = Resolve-RunnerStopPlan `
+    -RemoteRunner $initialRemote9 `
+    -LocalProcesses @($activeProc) `
+    -QuerySucceeded $true `
+    -QueryError $null `
+    -ForceStop:$false
+
+Assert-True $firstCheckPlan11.CanStop "TOCTOU: Initial check passes before transient network failure"
+
+$finalCheckPlan11 = Resolve-RunnerStopPlan `
+    -RemoteRunner $null `
+    -LocalProcesses @($activeProc) `
+    -QuerySucceeded $false `
+    -QueryError "Connection reset by peer" `
+    -ForceStop:$false
+
+Assert-False $finalCheckPlan11.CanStop "TOCTOU: Final revalidation fails closed when GitHub query fails"
+
+# Case 12: TOCTOU Revalidation - Initial check passes with PID A, process list refreshed to PID B on revalidation
+$procA = [PSCustomObject]@{
+    Name = 'Runner.Listener.exe'
+    ProcessId = 1001
+    ExecutablePath = 'C:\actions-runner\bin\Runner.Listener.exe'
+}
+$procB = [PSCustomObject]@{
+    Name = 'Runner.Listener.exe'
+    ProcessId = 1002
+    ExecutablePath = 'C:\actions-runner\bin\Runner.Listener.exe'
+}
+$firstCheckPlan12 = Resolve-RunnerStopPlan `
+    -RemoteRunner $initialRemote9 `
+    -LocalProcesses @($procA) `
+    -QuerySucceeded $true `
+    -QueryError $null `
+    -ForceStop:$false
+
+Assert-True $firstCheckPlan12.CanStop "TOCTOU: Initial check passes with PID 1001"
+
+$finalCheckPlan12 = Resolve-RunnerStopPlan `
+    -RemoteRunner $initialRemote9 `
+    -LocalProcesses @($procB) `
+    -QuerySucceeded $true `
+    -QueryError $null `
+    -ForceStop:$false
+
+Assert-True $finalCheckPlan12.CanStop "TOCTOU: Final revalidation accepts refreshed PID 1002"
+Assert-Equal $finalCheckPlan12.Action 'Kill' "Action is Kill for refreshed PID"
+
+# Case 13: TOCTOU Revalidation - Runner exited on its own during quiescence
+$finalCheckPlan13 = Resolve-RunnerStopPlan `
+    -RemoteRunner $initialRemote9 `
+    -LocalProcesses @() `
+    -QuerySucceeded $true `
+    -QueryError $null `
+    -ForceStop:$false
+
+Assert-True $finalCheckPlan13.CanStop "TOCTOU: Revalidation returns CanStop=true when processes already exited"
+Assert-Equal $finalCheckPlan13.Action 'None' "Action is None when processes already exited"
+
 Write-Host "`n=== Test Group 4: Toolchain & Repo Independence ==="
 
 # Verify Dart command resolution
