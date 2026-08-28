@@ -60,7 +60,7 @@ function renderReadme(version, outDir) {
     '{{DOWNLOAD_URL}}': links.download,
     '{{RELEASES_URL}}': links.releases,
     '{{RELEASE_NOTES_URL}}': links.releaseNotes,
-    '{{LOGO_BLOCK}}': optionalImageBlock(outDir, 'logo.png', 120, 'MeowWatch icon'),
+    '{{LOGO_BLOCK}}': optionalImageBlock(outDir, 'logo.png', 96, 'MeowWatch icon'),
     '{{HERO_BLOCK}}': optionalImageBlock(
       outDir,
       'hero.png',

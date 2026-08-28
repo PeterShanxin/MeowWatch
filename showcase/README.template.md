@@ -8,7 +8,7 @@
 {{BADGES_ROW}}
 </p>
 
-<p align="center">
+{{HERO_BLOCK}}<p align="center">
   <a href="{{DOWNLOAD_URL}}"><strong>Download {{VERSION}}</strong></a>
   &nbsp;·&nbsp;
   <a href="{{RELEASES_URL}}">All releases</a>
@@ -16,13 +16,11 @@
   <a href="{{RELEASE_NOTES_URL}}">Release notes</a>
 </p>
 
-{{HERO_BLOCK}}---
+---
 
-## ✨ The problem
+## ✨ What it does
 
-Remote watch parties usually mean voice-call countdowns and drift. MeowWatch gives you **one room code, synchronized playback, and chat on the video** — without turning sync into the product.
-
-## 🎬 What it does
+Remote watch parties usually mean voice-call countdowns and drift. MeowWatch gives you **one room code, synchronized playback, and chat on the video**.
 
 1. **Start or join a room** — the code copies to your clipboard.
 2. **Load the same video** on both machines (drag-and-drop or paste a URL).
