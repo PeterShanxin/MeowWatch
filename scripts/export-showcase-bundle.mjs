@@ -34,15 +34,20 @@ function releaseLinks(version) {
 
 function renderBadges(links) {
   return [
-    `[![Release](${links.versionBadge})](${links.releases})`,
-    '![Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows)',
-    '![Flutter](https://img.shields.io/badge/built%20with-Flutter-54C5F8?logo=flutter)',
-    '![Alpha](https://img.shields.io/badge/status-alpha-orange)',
-    '![Co-watch](https://img.shields.io/badge/Syncplay-co--watch-8b5cf6)',
+    `  <a href="${links.download}"><img alt="Release" src="${links.versionBadge}"></a>`,
+    '  <img alt="Windows" src="https://img.shields.io/badge/platform-Windows-0078D6?logo=windows">',
+    '  <img alt="Flutter" src="https://img.shields.io/badge/built%20with-Flutter-54C5F8?logo=flutter">',
+    '  <img alt="Alpha" src="https://img.shields.io/badge/status-alpha-orange">',
+    '  <img alt="Co-watch" src="https://img.shields.io/badge/Syncplay-co--watch-8b5cf6">',
   ].join('\n');
 }
 
-function renderReadme(version) {
+function optionalImageBlock(outDir, filename, width, alt) {
+  if (!existsSync(join(outDir, 'assets', filename))) return '';
+  return `<p align="center">\n  <img src="assets/${filename}" width="${width}" alt="${alt}">\n</p>\n\n`;
+}
+
+function renderReadme(version, outDir) {
   const showcase = readJson('showcase/showcase.json');
   const template = readFileSync('showcase/README.template.md', 'utf8');
   const links = releaseLinks(version);
@@ -55,6 +60,13 @@ function renderReadme(version) {
     '{{DOWNLOAD_URL}}': links.download,
     '{{RELEASES_URL}}': links.releases,
     '{{RELEASE_NOTES_URL}}': links.releaseNotes,
+    '{{LOGO_BLOCK}}': optionalImageBlock(outDir, 'logo.png', 120, 'MeowWatch icon'),
+    '{{HERO_BLOCK}}': optionalImageBlock(
+      outDir,
+      'hero.png',
+      900,
+      'MeowWatch co-watching UI with video player and floating chat',
+    ),
     '{{FEATURES_TABLE}}': ['| Feature | Description |', '| --- | --- |', ...showcase.features.map((f) => `| **${f.title}** | ${f.description} |`)].join('\n'),
     '{{UX_LIST}}': showcase.ux.map((u) => `- ${u}`).join('\n'),
     '{{ENGINEERING_LIST}}': showcase.engineering.map((e) => `- ${e}`).join('\n'),
@@ -75,7 +87,6 @@ function ensureAsset(dest, ...sources) {
       return;
     }
   }
-  throw new Error(`Missing ${dest} (tried: ${sources.join(', ')})`);
 }
 
 function prepareAssets() {
@@ -118,6 +129,42 @@ function isAllowed(rel, allowed) {
   return false;
 }
 
+function collectReadmeAssetRefs(readme) {
+  const refs = [];
+  for (const match of readme.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["']/gi)) refs.push(match[1]);
+  for (const match of readme.matchAll(/!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)) refs.push(match[1]);
+  return refs;
+}
+
+function validateReadmeAssets(outDir) {
+  const readmePath = join(outDir, 'README.md');
+  const absRoot = resolve(outDir);
+  const readme = readFileSync(readmePath, 'utf8');
+  const errors = [];
+  for (const raw of collectReadmeAssetRefs(readme)) {
+    if (/^(https?:|data:|mailto:)/i.test(raw)) continue;
+    const rel = normalizeRel(raw.split('#')[0].split('?')[0]);
+    if (!rel || rel.includes('..') || posix.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) {
+      errors.push(`Rejected README asset path: ${raw}`);
+      continue;
+    }
+    const abs = resolve(outDir, rel);
+    if (!abs.startsWith(absRoot)) {
+      errors.push(`README asset escaped output directory: ${raw}`);
+      continue;
+    }
+    if (!existsSync(abs)) {
+      errors.push(`README references missing asset: ${rel}`);
+      continue;
+    }
+    if (lstatSync(abs).isSymbolicLink()) errors.push(`README asset is a symlink: ${rel}`);
+  }
+  if (errors.length) {
+    throw new Error(`README asset validation failed:\n${errors.map((e) => `  - ${e}`).join('\n')}`);
+  }
+  console.log('Validated README local asset references');
+}
+
 function validateOutput(outDir, outputConfig) {
   const allowed = new Set(outputConfig.outputPaths.map(normalizeRel));
   const found = listFilesRecursive(outDir);
@@ -131,6 +178,7 @@ function validateOutput(outDir, outputConfig) {
   if (errors.length) {
     throw new Error(`Showcase output validation failed:\n${errors.map((e) => `  - ${e}`).join('\n')}`);
   }
+  validateReadmeAssets(outDir);
   console.log(`Validated ${found.length} output file(s)`);
 }
 
@@ -146,12 +194,12 @@ function main() {
   prepareAssets();
   if (existsSync(outDir)) rmSync(outDir, { recursive: true, force: true });
   mkdirSync(join(outDir, 'assets'), { recursive: true });
-  writeFileSync(join(outDir, 'README.md'), renderReadme(version), 'utf8');
   for (const rel of allowlist.paths) {
     if (!rel.startsWith('showcase/assets/')) continue;
     if (!existsSync(rel)) continue;
     copyFileSync(rel, join(outDir, 'assets', rel.split('/').pop()));
   }
+  writeFileSync(join(outDir, 'README.md'), renderReadme(version, outDir), 'utf8');
   validateOutput(outDir, allowlist.output);
   console.log(`Wrote ${outDir} for v${version}`);
 }
