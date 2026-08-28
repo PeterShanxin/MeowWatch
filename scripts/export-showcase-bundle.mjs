@@ -27,7 +27,7 @@ function releaseLinks(version) {
     releases: `${base}/releases`,
     releaseNotes: `${base}/releases/tag/${tag}`,
     versionBadge: prerelease
-      ? `https://img.shields.io/github/v/release/${MIRROR}?include_prereleases&label=${encodeURIComponent(tag)}&color=orange`
+      ? `https://img.shields.io/badge/release-${tag.replace(/-/g, '--')}-orange`
       : `https://img.shields.io/github/v/release/${MIRROR}?label=latest`,
   };
 }
