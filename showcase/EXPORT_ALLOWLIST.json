@@ -1,6 +1,15 @@
 {
   "description": "Allowlist for public MeowWatch-releases export.",
-  "paths": ["showcase/showcase.json", "showcase/assets/hero.png", "showcase/assets/architecture.svg", "showcase/README.template.md"],
+  "paths": [
+    "showcase/assets/logo.png",
+    "showcase/assets/hero.png",
+    "showcase/assets/architecture.svg",
+    "showcase/README.template.md"
+  ],
   "generated": ["README.md"],
-  "neverExport": ["lib/**", "windows/**", "tool/**", "test/**"]
+  "output": {
+    "outputPaths": ["README.md", "assets/**"],
+    "requiredPaths": ["README.md", "assets/hero.png", "assets/architecture.svg", "assets/logo.png"]
+  },
+  "neverExport": ["lib/**", "windows/**", "tool/**", "test/**", "showcase/showcase.json"]
 }
