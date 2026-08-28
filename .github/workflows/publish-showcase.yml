@@ -25,7 +25,7 @@ jobs:
     name: Publish showcase and release mirror
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
@@ -40,11 +40,19 @@ jobs:
           set -euo pipefail
           VERSION="${{ inputs.version }}"
           TAG="v${VERSION}"
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets
-          node scripts/export-showcase-bundle.mjs --version "$VERSION"
+          RELEASE_JSON=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,prerelease)
+          IS_DRAFT=$(echo "$RELEASE_JSON" | jq -r .isDraft)
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "Release $TAG is still a draft" >&2
+            exit 1
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$(echo "$RELEASE_JSON" | jq -r .prerelease)" >> "$GITHUB_OUTPUT"
 
-      - name: Download private release zip
+      - name: Build showcase bundle
+        run: node scripts/export-showcase-bundle.mjs --version "${{ inputs.version }}"
+
+      - name: Download private release assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -56,7 +64,7 @@ jobs:
             --pattern 'MeowWatch-windows-x64.zip*' \
             --dir mirror-assets
 
-      - name: Create public mirror release
+      - name: Create or update public mirror release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.RELEASE_MIRROR_TOKEN }}
@@ -64,15 +72,26 @@ jobs:
           set -euo pipefail
           TAG="${{ steps.release.outputs.tag }}"
           if [ -z "${GH_TOKEN:-}" ]; then echo "RELEASE_MIRROR_TOKEN not set" >&2; exit 1; fi
-          if gh release view "$TAG" --repo "$MIRROR_REPO" >/dev/null 2>&1; then
-            echo "Release $TAG already exists on mirror" >&2
-            exit 1
+
+          NOTES_FILE=$(mktemp)
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body > "$NOTES_FILE"
+
+          PRERELEASE_FLAG=""
+          if [ "${{ steps.release.outputs.prerelease }}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
           fi
-          gh release create "$TAG" mirror-assets/* \
-            --repo "$MIRROR_REPO" \
-            --title "MeowWatch $TAG" \
-            --generate-notes \
-            --prerelease
+
+          if gh release view "$TAG" --repo "$MIRROR_REPO" >/dev/null 2>&1; then
+            echo "Release $TAG exists on mirror; updating assets and notes"
+            gh release upload "$TAG" mirror-assets/* --repo "$MIRROR_REPO" --clobber
+            gh release edit "$TAG" --repo "$MIRROR_REPO" --notes-file "$NOTES_FILE" $PRERELEASE_FLAG
+          else
+            gh release create "$TAG" mirror-assets/* \
+              --repo "$MIRROR_REPO" \
+              --title "MeowWatch $TAG" \
+              --notes-file "$NOTES_FILE" \
+              $PRERELEASE_FLAG
+          fi
 
       - name: Publish showcase to mirror main
         shell: bash
@@ -80,6 +99,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_MIRROR_TOKEN }}
         run: |
           set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then echo "RELEASE_MIRROR_TOKEN not set" >&2; exit 1; fi
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${MIRROR_REPO}.git" mirror-repo
           cd mirror-repo
           git config user.name "github-actions[bot]"
@@ -89,4 +109,6 @@ jobs:
             git add -A
             git commit -m "docs: refresh showcase for ${{ steps.release.outputs.tag }}"
             git push origin main
+          else
+            echo "Showcase unchanged; skipping main-branch commit."
           fi
