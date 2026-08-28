@@ -1,53 +1,55 @@
-<div align="center">
+<p align="center">
+  <img src="assets/logo.png" width="120" alt="MeowWatch icon">
+</p>
 
-# {{PRODUCT_NAME}}
+<h1 align="center">{{PRODUCT_NAME}}</h1>
 
-**{{TAGLINE}}**
+<p align="center">
+  <strong>{{TAGLINE}}</strong>
+</p>
 
-![{{PRODUCT_NAME}}](assets/hero.png)
+<p align="center">
+{{BADGES_ROW}}
+</p>
 
-[![Latest release](https://img.shields.io/github/v/release/PeterShanxin/MeowWatch-releases?label=latest&color=orange)](https://github.com/PeterShanxin/MeowWatch-releases/releases/latest)
-![Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows)
-![Status](https://img.shields.io/badge/status-alpha-orange)
+<p align="center">
+  <a href="{{DOWNLOAD_URL}}"><strong>Download {{VERSION}}</strong></a>
+  &nbsp;·&nbsp;
+  <a href="{{RELEASES_URL}}">All releases</a>
+  &nbsp;·&nbsp;
+  <a href="{{RELEASE_NOTES_URL}}">Release notes</a>
+</p>
 
-[**Download latest**]({{DOWNLOAD_URL}}) · [**All releases**]({{RELEASES_URL}})
-
-</div>
+<p align="center">
+  <img src="assets/hero.png" width="900" alt="MeowWatch co-watching UI with video player and floating chat">
+</p>
 
 ---
 
-## The problem
+## ✨ The problem
 
-Watching something with a friend over a voice call means constantly asking "are you paused?" and counting "3…2…1…" before every seek. MeowWatch removes that friction: **one room code, same playback position, chat right on the video.**
+Remote watch parties usually mean voice-call countdowns and drift. MeowWatch gives you **one room code, synchronized playback, and chat on the video** — without turning sync into the product.
 
-## What it does
+## 🎬 What it does
 
-1. **Start or join a room** — a code copies to your clipboard.
-2. **Drop the same video** on both machines (or paste a URL to resolve).
+1. **Start or join a room** — the code copies to your clipboard.
+2. **Load the same video** on both machines (drag-and-drop or paste a URL).
 3. **Stay in sync** — play, pause, and seek propagate through Syncplay.
 4. **Talk while you watch** — floating chat, reactions, and typing indicators.
 
-## Features
+## 🎯 Features
 
 {{FEATURES_TABLE}}
 
-## UX decisions
+## 💬 UX decisions
 
 {{UX_LIST}}
 
-## How sync works
+## ⚡ Engineering
 
-```text
-You press play/pause/seek
-    → MeowWatch Syncplay client
-    → public Syncplay server
-    → friend's MeowWatch
-    → libmpv adjusts playback
-```
+{{ENGINEERING_LIST}}
 
-Convergence uses `ignoringOnTheFly` and `setBy` semantics so neither side fights the other during drift correction.
-
-## Architecture
+## 🧠 Architecture
 
 ![System overview](assets/architecture.svg)
 
@@ -55,43 +57,39 @@ Convergence uses `ignoringOnTheFly` and `setBy` semantics so neither side fights
 | --- | --- |
 | VideoCore | libmpv playback, keyboard shortcuts, drag-and-drop |
 | SyncCore | Syncplay TCP + startTLS, heartbeat, roster |
-| ChatStore | Messages, reactions, typing — over Syncplay chat + control channel |
+| ChatStore | Messages, reactions, typing over Syncplay chat + control channel |
 | Data layer | Drift/SQLite — profiles, history, settings, themes |
 | UpdateService | R2 manifest + Ed25519 signature verification |
 
-Pure logic (`sync_follow`, `chat_overlay_layout`, etc.) is split from widgets for headless unit tests.
+Pure sync and layout logic is split from widgets for headless unit tests.
 
-## Engineering highlights
+## 📦 Quick start
 
-{{ENGINEERING_LIST}}
-
-## Quick start
-
-1. Download and extract the latest release zip.
+1. Download and extract the release zip.
 2. Run `meowwatch.exe`.
 3. Enter your name → **Start new room** (code copies automatically).
-4. Friend pastes the code under **Enter code from friend** → **Join**.
-5. Drop the same video file on both windows.
+4. Friend pastes the code → **Join**.
+5. Drop the same video on both windows.
 
 ## Compatibility
 
 | Platform | Status |
 | --- | --- |
 | Windows x64 | Available |
-| Windows ARM64 | Coming soon (x64 build runs under emulation today) |
+| Windows ARM64 | Coming soon (x64 runs under emulation today) |
 
 {{REQUIREMENTS_NOTES}}
 
-## Project status
+## Status
 
-{{STATUS}}. Six foundational product phases are shipped (solo playback → sync → chat → connect flow → themes → polish). Source code is developed privately; this repository is the public download and showcase surface.
+**{{STATUS}}** — six product phases shipped (solo playback → sync → chat → connect flow → themes → polish). Source is developed privately; this repository is the public download and showcase surface. Issues are not accepted here.
 
-Latest release: **{{VERSION}}**.
-
-## About the product engineering
-
-MeowWatch is built as a co-watching product first: lobby friction, presence cues, chat placement, theme personality, and sync reliability were iterated in real use — not specified upfront. The result is a Windows desktop app with a custom network client, signed update infrastructure, and 40+ alpha releases of continuous refinement.
+Current release: **{{VERSION}}**
 
 ## License
 
 {{LICENSE_SUMMARY}}
+
+---
+
+<p align="center"><sub>{{PRODUCT_NAME}} · {{VERSION}} · {{STATUS}}</sub></p>
