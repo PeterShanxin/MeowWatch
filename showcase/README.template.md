@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="assets/logo.png" width="120" alt="MeowWatch icon">
-</p>
-
-<h1 align="center">{{PRODUCT_NAME}}</h1>
+{{LOGO_BLOCK}}<h1 align="center">{{PRODUCT_NAME}}</h1>
 
 <p align="center">
   <strong>{{TAGLINE}}</strong>
@@ -20,11 +16,7 @@
   <a href="{{RELEASE_NOTES_URL}}">Release notes</a>
 </p>
 
-<p align="center">
-  <img src="assets/hero.png" width="900" alt="MeowWatch co-watching UI with video player and floating chat">
-</p>
-
----
+{{HERO_BLOCK}}---
 
 ## ✨ The problem
 
