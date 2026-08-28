@@ -1,8 +1,8 @@
 {
   "product": {
     "name": "MeowWatch",
-    "tagline": "Watch videos together, in perfect sync.",
-    "status": "Windows alpha (0.47.0-alpha)",
+    "tagline": "Watch videos together — synced playback, floating chat, zero countdowns.",
+    "status": "Windows alpha",
     "homepage": "https://github.com/PeterShanxin/MeowWatch-releases"
   },
   "platforms": [
@@ -34,6 +34,6 @@
     "Auto-assigned username when the field is blank.",
     "What's-new modal after updates."
   ],
-  "requirements": {"os": "Windows 10/11", "notes": ["Extract the zip and run meowwatch.exe.", "Both friends need the same video file.", "Uses public Syncplay servers."]},
-  "license": {"type": "proprietary", "summary": "Binaries and docs here are proprietary. Source is not published."}
+  "requirements": {"os": "Windows 10/11", "notes": ["Extract the zip and run meowwatch.exe.", "Both friends need the same video file (or a shared URL to resolve).", "Uses public Syncplay servers."]},
+  "license": {"type": "proprietary", "summary": "Binaries and documentation here are proprietary. Source is not published."}
 }
