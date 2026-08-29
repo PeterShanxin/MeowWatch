@@ -1,57 +1,119 @@
-<div align="center">
+<p align="center">
+  <img src="docs/assets/logo.png" width="96" alt="MeowWatch icon">
+</p>
 
-# MeowWatch
+<h1 align="center">MeowWatch</h1>
 
-**Watch videos together, in perfect sync.**
+<p align="center">
+  <strong>Watch videos together — synced playback, floating chat, zero countdowns.</strong>
+</p>
 
-Private development repository. Public downloads and the product showcase live at
-**[PeterShanxin/MeowWatch-releases](https://github.com/PeterShanxin/MeowWatch-releases)**.
+<p align="center">
+  <a href="https://github.com/PeterShanxin/MeowWatch/releases/tag/v0.47.0-alpha"><img alt="v0.47.0-alpha" src="https://img.shields.io/badge/release-v0.47.0--alpha-orange"></a>
+  <img alt="Windows" src="https://img.shields.io/badge/platform-Windows-0078D6?logo=windows">
+  <img alt="Flutter" src="https://img.shields.io/badge/built%20with-Flutter-54C5F8?logo=flutter">
+  <img alt="Alpha" src="https://img.shields.io/badge/status-alpha-orange">
+  <img alt="Co-watch" src="https://img.shields.io/badge/Syncplay-co--watch-8b5cf6">
+  <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/license-AGPL--3.0--only-blue"></a>
+</p>
 
-![MeowWatch — co-watching in action](docs/assets/hero.png)
+<p align="center">
+  <a href="https://github.com/PeterShanxin/MeowWatch/releases/tag/v0.47.0-alpha"><strong>Download 0.47.0-alpha</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/PeterShanxin/MeowWatch/releases">All releases</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/PeterShanxin/MeowWatch/releases/tag/v0.47.0-alpha">Release notes</a>
+</p>
 
-[![Build](https://github.com/PeterShanxin/MeowWatch/actions/workflows/build.yml/badge.svg)](https://github.com/PeterShanxin/MeowWatch/actions/workflows/build.yml)
-[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--only-blue)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows)
-![Version](https://img.shields.io/badge/version-0.47.0--alpha-orange)
+<p align="center">
+  <img src="docs/assets/hero.png" width="900" alt="MeowWatch co-watching UI with video player and floating chat">
+</p>
 
-</div>
+Windows x64 zip on that tag: [MeowWatch-windows-x64.zip](https://github.com/PeterShanxin/MeowWatch/releases/download/v0.47.0-alpha/MeowWatch-windows-x64.zip) ([`.sig`](https://github.com/PeterShanxin/MeowWatch/releases/download/v0.47.0-alpha/MeowWatch-windows-x64.zip.sig)). After the first install, MeowWatch updates itself in-place from a signed Cloudflare R2 manifest.
 
 ---
 
-## Download (public)
+## ✨ What it does
 
-**[MeowWatch-releases](https://github.com/PeterShanxin/MeowWatch-releases/releases/latest)** — installers and showcase README for users and portfolio visitors.
+Remote watch parties usually mean voice-call countdowns and drift. MeowWatch gives you **one room code, synchronized playback, and chat on the video**.
+
+1. **Start or join a room** — the code copies to your clipboard.
+2. **Load the same video** on both machines (drag-and-drop or paste a URL).
+3. **Stay in sync** — play, pause, and seek propagate through Syncplay.
+4. **Talk while you watch** — floating chat, reactions, and typing indicators.
+
+## 🎯 Features
+
+| Feature | Description |
+| --- | --- |
+| **Precision sync** | Custom Dart Syncplay client with stateful heartbeat and convergence. |
+| **Floating chat** | Glass-card overlay with corner snap, peek tab, and Tab-key toggle. |
+| **Three themes** | Cozy, Cinema Noir, and Glass Aurora — persisted in SQLite. |
+| **Drag & drop playback** | Drop a local video; libmpv handles playback. |
+| **Continue watching** | SQLite history with resume position and one-click resume. |
+| **Smart auto-pause** | Pauses when sync drops or a friend disconnects (2 s debounce). |
+| **Reactions & typing** | Emoji bursts and typing indicators over a control channel. |
+| **Signed auto-update** | Ed25519-verified in-app updates from Cloudflare R2. |
+
+## 💬 UX decisions
+
+- Room code copied to clipboard on create.
+- Idle cat mascot while waiting for a friend.
+- Chat card remembers dock corner and size per room.
+- Auto-assigned username when the field is blank.
+- What's-new modal after updates.
+
+## ⚡ Engineering
+
+- Flutter Windows desktop with commands-in / streams-out architecture.
+- Custom Syncplay protocol client (TCP + startTLS).
+- Headless-testable pure logic split from widgets.
+- Drift/SQLite persistence for profiles, history, and settings.
+- Signed release pipeline with fail-closed updater verification.
+- Six shipped product phases, 40+ alpha releases.
+
+## 🧠 Architecture
+
+![System overview](docs/assets/architecture.svg)
+
+| Subsystem | Responsibility |
+| --- | --- |
+| VideoCore | libmpv playback, keyboard shortcuts, drag-and-drop |
+| SyncCore | Syncplay TCP + startTLS, heartbeat, roster |
+| ChatStore | Messages, reactions, typing over Syncplay chat + control channel |
+| Data layer | Drift/SQLite — profiles, history, settings, themes |
+| UpdateService | R2 manifest + Ed25519 signature verification |
+
+Pure sync and layout logic is split from widgets for headless unit tests.
+
+## 📦 Quick start
+
+1. Download and extract the release zip.
+2. Run `meowwatch.exe`.
+3. Enter your name → **Start new room** (code copies automatically).
+4. Friend pastes the code → **Join**.
+5. Drop the same video on both windows.
+
+## Compatibility
 
 | Platform | Status |
 | --- | --- |
 | Windows x64 | Available |
-| Windows ARM64 | Coming soon |
+| Windows ARM64 | Coming soon (x64 runs under emulation today) |
 
-After the first install, MeowWatch updates itself in-place via a signed R2 manifest.
+- Extract the zip and run `meowwatch.exe`.
+- Both friends need the same video file (or a shared URL to resolve).
+- Uses public Syncplay servers.
 
----
+## Status
 
-## Features
+**Windows x64 public alpha** — six product phases shipped (solo playback → sync → chat → connect flow → themes → polish). Source is this repository.
 
-| Feature | Description |
-| --- | --- |
-| **Precision sync** | Custom Dart Syncplay client — TCP + startTLS, stateful heartbeat, convergence with `ignoringOnTheFly` / `setBy`. |
-| **Floating chat** | Drag-and-snap glass-card overlay — dock to any corner, collapse to a peek tab, Tab-key toggle. |
-| **3 themes** | Cozy, Cinema Noir, Glass Aurora — persisted in SQLite. |
-| **Drag & drop** | Drop a video file — plays via `libmpv`. |
-| **Continue watching** | SQLite history with resume position and one-click resume. |
-| **Smart auto-pause** | Pauses when sync drops or a friend disconnects (2 s debounce). |
-| **Reactions & typing** | Emoji bursts and typing indicators over a control channel. |
-| **Idle mascot** | Hand-painted cat while you wait for a friend. |
-| **Signed auto-update** | Ed25519-verified updates from Cloudflare R2. |
-
----
+Current release: **0.47.0-alpha**
 
 ## Development
 
-Contributor setup, CI, and release signing are documented in [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md). Contributions need a signed-off [CLA](CLA.md) — see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-Public showcase metadata is exported from `showcase/` via **Publish Showcase** when a tagged release is mirrored to `MeowWatch-releases`.
+Contributor setup, CI, and release signing are documented in [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md). Contributions need a signed-off [CLA](CLA.md) — see [CONTRIBUTING.md](CONTRIBUTING.md). Runtime helpers (yt-dlp, Deno) are covered in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ```powershell
 flutter pub get
@@ -59,14 +121,6 @@ flutter analyze
 flutter test
 flutter build windows --release
 ```
-
----
-
-## Architecture
-
-Commands-in / streams-out across video, sync, chat, and update subsystems. See [docs/ROADMAP.md](docs/ROADMAP.md) for shipped phases.
-
----
 
 ## License
 
@@ -81,3 +135,7 @@ The MeowWatch name and logo are covered by [TRADEMARKS.md](TRADEMARKS.md), not
 by the software license. Runtime helpers (yt-dlp Windows exe, Deno) are
 downloaded by the app and are **not** AGPL'd — see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+---
+
+<p align="center"><sub>MeowWatch · 0.47.0-alpha · Windows x64 public alpha</sub></p>
