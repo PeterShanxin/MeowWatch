@@ -86,19 +86,19 @@ $p4 = [PSCustomObject]@{
 }
 Assert-True (Test-ProcessBelongsToRunner -Process $p4 -TargetRunnerDir $targetRunner) "Matches via CommandLine fallback when ExecutablePath is null"
 
-# Reject nested sub-runner (e.g. Meowcal-Sub in C:\actions-runner\meowcal-sub)
+# Reject nested sub-runner (another install under the same parent dir)
 $pSub = [PSCustomObject]@{
     Name = 'Runner.Listener.exe'
-    ExecutablePath = 'C:\actions-runner\meowcal-sub\bin\Runner.Listener.exe'
-    CommandLine = '"C:\actions-runner\meowcal-sub\bin\Runner.Listener.exe" run'
+    ExecutablePath = 'C:\actions-runner\other-runner\bin\Runner.Listener.exe'
+    CommandLine = '"C:\actions-runner\other-runner\bin\Runner.Listener.exe" run'
 }
-Assert-False (Test-ProcessBelongsToRunner -Process $pSub -TargetRunnerDir $targetRunner) "Rejects nested sub-runner installation (meowcal-sub)"
+Assert-False (Test-ProcessBelongsToRunner -Process $pSub -TargetRunnerDir $targetRunner) "Rejects nested sub-runner installation (other-runner)"
 
 # Reject nested sub-runner with versioned bin
 $pSubVer = [PSCustomObject]@{
     Name = 'Runner.Listener.exe'
-    ExecutablePath = 'C:\actions-runner\meowcal-sub\bin.2.336.0\Runner.Listener.exe'
-    CommandLine = '"C:\actions-runner\meowcal-sub\bin.2.336.0\Runner.Listener.exe" run'
+    ExecutablePath = 'C:\actions-runner\other-runner\bin.2.336.0\Runner.Listener.exe'
+    CommandLine = '"C:\actions-runner\other-runner\bin.2.336.0\Runner.Listener.exe" run'
 }
 Assert-False (Test-ProcessBelongsToRunner -Process $pSubVer -TargetRunnerDir $targetRunner) "Rejects nested sub-runner with versioned bin"
 

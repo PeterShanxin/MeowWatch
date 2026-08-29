@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Flutter binary (not on PATH):** `FLUTTER=C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`. All `analyze`/`test` commands below use this exact path.
+- **Flutter binary (not on PATH):** `FLUTTER=%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`. All `analyze`/`test` commands below use this exact path.
 - **Keep `flutter analyze` at "No issues found!"** after every task.
 - **No new pub dependency.** The markdown formatter is hand-rolled for the fixed subset; external links reuse `Process.start('cmd', ['/c','start','', url], mode: detached)`.
 - **Markdown subset (only these):** `**bold**`, `` `code` ``, `#<digits>` issue refs, `### Heading`, `- `/`* ` bullets, blank-line-separated paragraphs, a leading `> ` summary line.

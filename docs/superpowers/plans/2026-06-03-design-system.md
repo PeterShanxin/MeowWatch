@@ -6,7 +6,7 @@
 
 **Architecture:** Plain `static const` token classes under `lib/core/theme/tokens/` (global, identical across all 3 themes), plus one `context.meowText` helper that composes a global type size/weight with the active theme's color and font family. Colors stay in the existing `MeowColors` ThemeExtension, untouched. A hidden-in-release gallery screen (opened by **long-pressing** the version badge — see Task 13's discovered conflict) renders every scale and the live components across all 3 themes.
 
-**Tech Stack:** Flutter (desktop, Windows-first), `media_kit`, `drift`. Flutter binary is Puro-installed and NOT on PATH — use `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`.
+**Tech Stack:** Flutter (desktop, Windows-first), `media_kit`, `drift`. Flutter binary is Puro-installed and NOT on PATH — use `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`.
 
 **Spec:** [docs/superpowers/specs/2026-06-03-design-system-design.md](../specs/2026-06-03-design-system-design.md)
 
@@ -14,7 +14,7 @@
 
 ## Conventions for every task
 
-- `FLUTTER` = `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`.
+- `FLUTTER` = `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`.
 - After any code change: `$FLUTTER analyze` must report **No issues found!** before commit.
 - Commit messages are conventional (`feat:` / `test:` / `refactor:`). Attribution is disabled globally — do not add it.
 - Tokens are **plain constants**: reference them directly (`Spacing.md`, `Radii.lg`), no `BuildContext` needed — except `context.meowText`, which needs context (it reads the theme).
@@ -97,7 +97,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/spacing_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/spacing_test.dart`
 Expected: FAIL — `Error: Couldn't resolve the package 'spacing.dart'` / `Spacing` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -119,7 +119,7 @@ abstract final class Spacing {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/spacing_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/spacing_test.dart`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
@@ -160,7 +160,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/radii_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/radii_test.dart`
 Expected: FAIL — `Radii` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -180,7 +180,7 @@ abstract final class Radii {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/radii_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/radii_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -221,7 +221,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/motion_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/motion_test.dart`
 Expected: FAIL — `Motion` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -242,7 +242,7 @@ abstract final class Motion {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/motion_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/motion_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -278,7 +278,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/icon_sizes_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/icon_sizes_test.dart`
 Expected: FAIL — `IconSizes` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -301,7 +301,7 @@ abstract final class Glyphs {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/icon_sizes_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/icon_sizes_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -343,7 +343,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/opacities_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/opacities_test.dart`
 Expected: FAIL — `Opacities` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -362,7 +362,7 @@ abstract final class Opacities {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/opacities_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/opacities_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -406,7 +406,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/shadows_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/shadows_test.dart`
 Expected: FAIL — `Shadows` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -437,7 +437,7 @@ abstract final class Shadows {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/shadows_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/shadows_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -483,7 +483,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/type_scale_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/type_scale_test.dart`
 Expected: FAIL — `TypeScale` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -510,7 +510,7 @@ abstract final class TypeScale {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/type_scale_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/type_scale_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -576,7 +576,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/meow_text_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/meow_text_test.dart`
 Expected: FAIL — `meowText` getter undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -647,14 +647,14 @@ extension MeowTextContext on BuildContext {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/meow_text_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/meow_text_test.dart`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Run analyze + full suite (nothing should regress — no UI uses tokens yet)**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: No issues found!
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test`
 Expected: All tests pass.
 
 - [ ] **Step 6: Commit**
@@ -711,7 +711,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/gallery/gallery_tap_counter_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/gallery/gallery_tap_counter_test.dart`
 Expected: FAIL — `GalleryTapCounter` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -746,7 +746,7 @@ class GalleryTapCounter {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/gallery/gallery_tap_counter_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/gallery/gallery_tap_counter_test.dart`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
@@ -972,7 +972,7 @@ class MotionAndShadowSpecimen extends StatelessWidget {
 
 - [ ] **Step 2: Verify it compiles**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze lib/ui/gallery/gallery_sections.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze lib/ui/gallery/gallery_sections.dart`
 Expected: No issues found!
 
 - [ ] **Step 3: Commit**
@@ -1011,7 +1011,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/gallery/design_gallery_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/gallery/design_gallery_test.dart`
 Expected: FAIL — `DesignGallery` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -1082,7 +1082,7 @@ class _DesignGalleryState extends State<DesignGallery> {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/gallery/design_gallery_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/gallery/design_gallery_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1202,9 +1202,9 @@ testWidgets('component zoo renders', (tester) async {
 
 - [ ] **Step 4: Run analyze + the gallery tests**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: No issues found!
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/gallery/`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/gallery/`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1254,7 +1254,7 @@ Add import: `import 'package:meowwatch/ui/gallery/design_gallery.dart';`
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/version_badge_test.dart -p "long-press"`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/version_badge_test.dart -p "long-press"`
 Expected: FAIL — no `DesignGallery` is pushed (no long-press handler yet).
 
 - [ ] **Step 4: Add `onLongPress` to the existing InkWell in `version_badge.dart`**
@@ -1282,7 +1282,7 @@ child: InkWell(
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/version_badge_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/version_badge_test.dart`
 Expected: PASS (existing tests + the new long-press test).
 
 - [ ] **Step 6: Add the env-var backup door**
@@ -1312,9 +1312,9 @@ Do not invent a navigator key if one is not already there — prefer the `initSt
 
 - [ ] **Step 7: analyze + full suite**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: No issues found!
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test`
 Expected: All pass.
 
 - [ ] **Step 8: Commit**
@@ -1364,15 +1364,15 @@ Literal → token map for this area (from the audit):
 > **#76 coupling caution:** the header's `left: 24` inset is deliberately tuned to clear the **22px top-left resize grip** (`_grip`) so the move-drag icon doesn't overlap the resize Listener. 24 maps cleanly to `Spacing.xxl`; the grip's **22** is NOT a scale step — **leave the 22px grip bespoke** (don't snap it to 20 or 24), or the header-clears-grip invariant breaks. If you do touch the grip, keep `grip ≤ header-left-inset`. Re-run `chat_overlay_resize_test.dart` after this file.
 
 - [ ] **Step 1:** Apply the map above across the four files. Keep behavior identical; only swap literals for tokens. Run `chat_overlay_resize_test.dart` as part of Step 3 (the grip/resize path).
-- [ ] **Step 2:** `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze` → No issues found!
+- [ ] **Step 2:** `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze` → No issues found!
 - [ ] **Step 3:** Run chat widget tests (non-golden):
-  `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_bubble_test.dart test/ui/chat/chat_input_test.dart test/ui/chat/peek_tab_test.dart test/ui/chat/chat_overlay_test.dart test/ui/chat/chat_overlay_repaint_test.dart test/ui/chat/chat_overlay_resize_test.dart`
+  `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_bubble_test.dart test/ui/chat/chat_input_test.dart test/ui/chat/peek_tab_test.dart test/ui/chat/chat_overlay_test.dart test/ui/chat/chat_overlay_repaint_test.dart test/ui/chat/chat_overlay_resize_test.dart`
   Fix any exact-pixel assertions to the new token value. The repaint guard MUST stay green; the resize test guards the #76 grip coupling.
 - [ ] **Step 4:** Regenerate + inspect goldens:
-  `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_overlay_golden_test.dart --update-goldens`
+  `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_overlay_golden_test.dart --update-goldens`
   Open `test/ui/chat/goldens/chat_overlay_empty.png` and `chat_overlay_expanded.png`; confirm only the intended small shifts (text +/-1px, corner 16) are visible — no layout breakage, no white wash.
 - [ ] **Step 5:** Re-run the golden test without the flag to confirm it passes:
-  `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_overlay_golden_test.dart`
+  `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_overlay_golden_test.dart`
   Expected: PASS.
 - [ ] **Step 6:** Commit
 ```bash
@@ -1460,8 +1460,8 @@ grep -rnE "BorderRadius\.circular\([0-9]" lib/ui --include=*.dart | grep -v gall
 Expected: only painter/gallery lines, no plain widget literals. Convert any stragglers found.
 
 - [ ] **Step 2:** Full suite + analyze:
-  `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze` → No issues found!
-  `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test` → all pass.
+  `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze` → No issues found!
+  `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test` → all pass.
 
 - [ ] **Step 3:** Commit (if anything changed)
 ```bash
@@ -1497,8 +1497,8 @@ git commit -m "refactor: convert remaining straggler literals to tokens"
 ```
 
 - [ ] **Step 3:** analyze + full suite:
-  `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze` → No issues found!
-  `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test` → all pass.
+  `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze` → No issues found!
+  `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test` → all pass.
 
 - [ ] **Step 4:** Commit
 ```bash
@@ -1512,7 +1512,7 @@ This is a visible change, so a manual pass is warranted before tagging (per CLAU
 
 - [ ] **Step 1:** Kill running instances (file lock): `Stop-Process -Name meowwatch -Force` (ignore "not found").
 - [ ] **Step 2:** Build Release:
-  `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat build windows`
+  `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat build windows`
   Confirm `build/windows/x64/runner/Release/data/app.so` mtime updated (Dart changes land there, not in the `.exe`).
 - [ ] **Step 3:** For two-instance-on-one-PC, set `$env:MEOWWATCH_FORCE_SW_DECODE='1'` before launching each instance (HW-decode contention gotcha).
 - [ ] **Step 4:** Manually verify: app looks right across all three themes (switch via the gear menu); chat bubbles, connect screen, dialogs, reactions render correctly; open the gallery (long-press the version badge on the Connect screen) and eyeball every scale + the component zoo in each theme; confirm no white-wash flash when dragging the chat overlay (#50 guard).

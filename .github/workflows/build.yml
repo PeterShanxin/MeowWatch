@@ -13,8 +13,10 @@ on:
     paths-ignore:
       - '**.md'
 
+# Default: read-only. PR jobs must not get write. The tag-only
+# `build-windows-x64` job grants `contents: write` to create GitHub Releases.
 permissions:
-  contents: write # needed for creating releases
+  contents: read
 
 # PR/branch runs: per-ref group, cancel superseded runs.
 # Tag runs: one shared group so releases queue (never cancel) and never race
@@ -25,33 +27,76 @@ concurrency:
 
 jobs:
   # ── PR gate: analyze + test ───────────────────────────────────────────
-  # Default runner is our free self-hosted Windows PC, so addressing review
-  # feedback push-after-push costs ZERO GitHub-hosted minutes. A PR only burns
-  # paid minutes when you deliberately add the `ci-hosted` label (e.g. the
-  # runner is offline and you don't want to wait). Whichever path runs, its
-  # result is funnelled into the single `gate` job below, which is the one
-  # stable required check (`Build / Analyze & Test`) for branch protection.
+  # Two Windows paths, one required check (`gate` / `Analyze & Test`).
+  #
+  # The self-hosted host holds the release-signing seed, so untrusted code
+  # must never schedule there. Trusted co-admins are PeterShanxin and
+  # ianmeowmeow (same host trust). Write access alone is not host trust:
+  # anyone else's same-repo PRs take `check-hosted` just like forks.
+  # Fork PRs, Dependabot PRs, any PR whose author is not a trusted
+  # co-admin, and any event whose github.actor is not a trusted co-admin
+  # always take `check-hosted` (GitHub-hosted windows-2022) with no label
+  # required — or, for push/tag, skip self-hosted entirely.
+  # `pull_request.user.login` is the PR author and does not change if
+  # someone later pushes onto that branch — github.actor is the pusher,
+  # so both must be a trusted co-admin. Fork heads never qualify
+  # (head.repo must equal this repository). Self-hosted
+  # `check-self-hosted` runs only for:
+  #   * non-PR events (push to main, v* tags) when github.actor is
+  #     PeterShanxin or ianmeowmeow
+  #   * same-repo PRs authored by a trusted co-admin *and* triggered by
+  #     a trusted co-admin (not dependabot[bot]), unless `ci-hosted`
+  # A trusted co-admin can still add `ci-hosted` to force hosted Windows
+  # (runner offline). Keep this job free of hosted-only composite actions:
+  # self-hosted runners prepare composite action dependencies before
+  # skipped steps are evaluated, so a `subosito/flutter-action` step here
+  # would try to set up (and fail) even when skipped — that's why hosted
+  # is a separate job.
   #
   # The suite is NOT cross-platform — `test/core/video/video_url_test.dart`
   # asserts on Windows paths (`C:\…` → basename) and
   # `test/ui/chat/chat_overlay_golden_test.dart` uses Windows-rendered goldens —
   # so on Linux 4 tests fail; both paths below must run on Windows.
 
-  # Default (free): self-hosted Windows. Runs for every PR / branch / main / tag
-  # push UNLESS the `ci-hosted` label is on the PR. Keep this job free of
-  # hosted-only composite actions: self-hosted runners prepare composite action
-  # dependencies before skipped steps are evaluated, so a `subosito/flutter-action`
-  # step here would try to set up (and fail) even when skipped — that's why the
-  # hosted fallback is a separate job, not an `if`-guarded step in this one.
   check-self-hosted:
     name: Analyze & Test (self-hosted)
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'ci-hosted') }}
+    if: >-
+      ${{ contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) && (
+        github.event_name != 'pull_request' || (
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.event.pull_request.user.login) &&
+          github.event.pull_request.user.login != 'dependabot[bot]' &&
+          !contains(github.event.pull_request.labels.*.name, 'ci-hosted')
+        )
+      ) }}
     runs-on: [self-hosted, windows, meowwatch-ci]
     # Bound runaway hangs: the suite normally finishes in ~5m, but a stuck
     # flutter_tester otherwise sits until GitHub's 6h default, wedging the
     # self-hosted runner. See docs/AGENT_GUIDE.md → CI (runner hangs).
     timeout-minutes: 20
     steps:
+      # Belt-and-braces: the job `if` should already exclude these. Fail closed
+      # if a future edit lets an untrusted PR, branch push, or tag reach this
+      # host. github.actor is required on every event, not only pull_request.
+      - name: Refuse untrusted workflow actors
+        shell: pwsh
+        env:
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+          PR_USER: ${{ github.event.pull_request.user.login }}
+          ACTOR: ${{ github.actor }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          $trusted = @('PeterShanxin', 'ianmeowmeow')
+          if ($trusted -notcontains $env:ACTOR) {
+            Write-Error "Only PeterShanxin or ianmeowmeow may run on the self-hosted runner (actor=$($env:ACTOR) event=$($env:EVENT_NAME))."
+            exit 1
+          }
+          if ($env:EVENT_NAME -eq 'pull_request' -and ($env:HEAD_REPO -ne $env:BASE_REPO -or $trusted -notcontains $env:PR_USER)) {
+            Write-Error "Only same-repo PRs from PeterShanxin or ianmeowmeow, triggered by a trusted co-admin, may run on the self-hosted runner (head=$($env:HEAD_REPO) user=$($env:PR_USER) actor=$($env:ACTOR))."
+            exit 1
+          }
+
       - uses: actions/checkout@v7
 
       - name: Setup Flutter (self-hosted, pre-installed via Puro)
@@ -77,12 +122,25 @@ jobs:
         shell: pwsh
         run: flutter test
 
-  # On-demand fallback (paid, 2× Windows): hosted `windows-2022`. Runs ONLY when
-  # a PR carries the `ci-hosted` label — use it when the self-hosted runner is
-  # offline and you'd rather spend minutes than wait for it to come online.
+  # GitHub-hosted `windows-2022` (paid, 2×). Automatic for fork PRs,
+  # Dependabot PRs, same-repo PRs whose author is not a trusted co-admin
+  # (PeterShanxin / ianmeowmeow), and PR events whose github.actor is not
+  # a trusted co-admin. Fork heads always take this path. Also the
+  # on-demand fallback when the `ci-hosted` label is set (self-hosted
+  # runner offline). Not used for trusted-admin push/tag — those stay
+  # self-hosted so release builds do not burn hosted Windows minutes. Any
+  # other login's branch or v* tag push does not take self-hosted and
+  # does not sign.
   check-hosted:
     name: Analyze & Test (hosted fallback)
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'ci-hosted') }}
+    if: >-
+      ${{ github.event_name == 'pull_request' && (
+        github.event.pull_request.head.repo.full_name != github.repository ||
+        !contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.event.pull_request.user.login) ||
+        !contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) ||
+        github.event.pull_request.user.login == 'dependabot[bot]' ||
+        contains(github.event.pull_request.labels.*.name, 'ci-hosted')
+      ) }}
     runs-on: windows-2022
     timeout-minutes: 25 # bound hangs; hosted run normally ~12-15m
     steps:
@@ -109,15 +167,16 @@ jobs:
 
   # Required check (the merge gate). A cheap hosted-Linux referee that passes
   # iff whichever check actually ran went green. Branch protection should
-  # require THIS context — `Build / Analyze & Test` — and nothing else, so a
-  # single name covers both the self-hosted and hosted-fallback paths.
+  # require THIS context — `Analyze & Test` — and nothing else, so a single
+  # name covers both the self-hosted and hosted-fallback paths.
   #
-  # Why hosted Linux and not self-hosted: when the self-hosted runner is OFFLINE
-  # and no label is set, `check-self-hosted` stays queued (never terminal), so
-  # this gate stays pending and the PR stays blocked — i.e. "wait until the
-  # runner is online". The gate itself must run on an always-available runner to
-  # be able to report once a path finishes; running it self-hosted would make it
-  # queue too. PR-only — plain pushes and tags don't gate-merge.
+  # Why hosted Linux and not self-hosted: the gate must run on an always-
+  # available runner to report once a path finishes. For a trusted-admin
+  # (PeterShanxin or ianmeowmeow) same-repo PR with no `ci-hosted` label, an
+  # offline self-hosted runner leaves `check-self-hosted` queued (never
+  # terminal), so this gate stays pending — i.e. "wait until the runner is
+  # online". Fork, Dependabot, and any other login never take that path.
+  # PR-only — plain pushes and tags don't gate-merge.
   gate:
     name: Analyze & Test
     needs: [check-self-hosted, check-hosted]
@@ -135,24 +194,41 @@ jobs:
             echo "Analyze & Test passed."
             exit 0
           fi
-          echo "::error::No green Analyze & Test run (self-hosted=$sh, hosted=$ho). If the self-hosted runner is offline, add the 'ci-hosted' label to run on GitHub-hosted."
+          echo "::error::No green Analyze & Test run (self-hosted=$sh, hosted=$ho). Fork, Dependabot, and any login other than PeterShanxin/ianmeowmeow always use GitHub-hosted Windows — a red hosted job is a real failure. Trusted-admin same-repo PRs: if the self-hosted runner is offline, add the 'ci-hosted' label."
           exit 1
 
   # ── Build Windows x64 (tag pushes only — release builds anyway) ────
   build-windows-x64:
     name: Windows x64
     needs: [check-hosted, check-self-hosted]
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.check-self-hosted.result == 'success' }}
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) && needs.check-self-hosted.result == 'success' }}
+    permissions:
+      contents: write # Create GitHub Release + upload zip/sig (tag-only).
     # Runs on a self-hosted Windows runner (our own PC) so the expensive 2×
     # Windows build consumes no GitHub-hosted minutes. Requires a runner
     # registered with the `self-hosted` + `windows` + `meowwatch-ci` labels and
     # the Visual Studio desktop C++ toolchain installed (see
-    # docs/AGENT_GUIDE.md → CI). Falls back to nothing if no runner is online —
-    # the job queues until one is.
+    # docs/AGENT_GUIDE.md → CI). github.actor must be PeterShanxin or
+    # ianmeowmeow — any other login's v* tag must not build or sign here.
+    # Fork PRs never reach this job. Falls back to nothing if no runner is
+    # online — the job queues until one is.
     runs-on: [self-hosted, windows, meowwatch-ci]
     # Bound runaway hangs/builds: a release build is normally ~18m.
     timeout-minutes: 45
     steps:
+      # Belt-and-braces with the job `if`: any other login's v* tag must
+      # never checkout or sign on this host.
+      - name: Refuse untrusted workflow actors
+        shell: pwsh
+        env:
+          ACTOR: ${{ github.actor }}
+        run: |
+          $trusted = @('PeterShanxin', 'ianmeowmeow')
+          if ($trusted -notcontains $env:ACTOR) {
+            Write-Error "Only PeterShanxin or ianmeowmeow may run tag signing on the self-hosted runner (actor=$($env:ACTOR))."
+            exit 1
+          }
+
       - uses: actions/checkout@v7
 
       - name: Setup Flutter (self-hosted, pre-installed via Puro)

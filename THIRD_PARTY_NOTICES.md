@@ -3,7 +3,8 @@
 MeowWatch downloads the following external tools at runtime (on first use of
 the paste-a-page-link feature) from their official release channels. They are
 separate programs invoked as subprocesses; they are not linked into MeowWatch
-and are not redistributed inside MeowWatch's release archives.
+and are not redistributed inside MeowWatch's release archives. They are **not**
+licensed under MeowWatch's AGPL-3.0-only license.
 
 ## yt-dlp
 

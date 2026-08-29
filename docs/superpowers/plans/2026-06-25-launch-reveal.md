@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Toolchain (NOT on PATH):** `FLUTTER=C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`. Run `$FLUTTER analyze` (keep "No issues found!") and `$FLUTTER test` locally — never defer to CI.
+- **Toolchain (NOT on PATH):** `FLUTTER=%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`. Run `$FLUTTER analyze` (keep "No issues found!") and `$FLUTTER test` locally — never defer to CI.
 - **TDD:** RED → GREEN → REFACTOR. Small conventional-commit (`feat:` / `test:` / `refactor:`) checkpoints at each verified step.
 - **Versioning (lockstep, this PR is one MINOR bump):** `pubspec.yaml` `version:` → `0.36.0-alpha+1`, `lib/core/app_version.dart` `appVersion` → `'0.36.0-alpha'`, and a new top `## [0.36.0-alpha] - 2026-06-25` entry in `CHANGELOG.md`. Keep the `-alpha` suffix.
 - **Immutability / file size:** new objects over mutation; keep files focused (200–400 lines typical).
@@ -51,7 +51,7 @@ Append inside `main()` in `test/core/theme/tokens/motion_test.dart`:
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/motion_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/motion_test.dart`
 Expected: FAIL — `Motion.reveal` / `Motion.emphasized` etc. are undefined.
 
 - [ ] **Step 3: Add the tokens**
@@ -83,7 +83,7 @@ and after `static const Curve symmetric = ...;`:
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/tokens/motion_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/tokens/motion_test.dart`
 Expected: PASS (all 5 tests).
 
 - [ ] **Step 5: Commit**
@@ -167,7 +167,7 @@ void main() {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/reduce_motion_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/reduce_motion_test.dart`
 Expected: FAIL — `reduce_motion.dart` does not exist.
 
 - [ ] **Step 3: Create the scope + accessor**
@@ -212,7 +212,7 @@ extension ReduceMotionContext on BuildContext {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/theme/reduce_motion_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/theme/reduce_motion_test.dart`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
@@ -286,7 +286,7 @@ void main() {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/motion/reveal_in_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/motion/reveal_in_test.dart`
 Expected: FAIL — `reveal_in.dart` does not exist.
 
 - [ ] **Step 3: Create the primitive**
@@ -388,7 +388,7 @@ class _RevealInState extends State<RevealIn>
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/motion/reveal_in_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/motion/reveal_in_test.dart`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
@@ -439,7 +439,7 @@ non-negative result (`-1 % 3 == 2`), so `launchTip(-1)` is the last element.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/launch/launch_tips_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/launch/launch_tips_test.dart`
 Expected: FAIL — `launch_tips.dart` does not exist.
 
 - [ ] **Step 3: Create the tips**
@@ -464,7 +464,7 @@ String launchTip(int index) => kLaunchTips[index % kLaunchTips.length];
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/launch/launch_tips_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/launch/launch_tips_test.dart`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
@@ -587,7 +587,7 @@ void main() {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/launch/launch_reveal_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/launch/launch_reveal_test.dart`
 Expected: FAIL — `launch_reveal.dart` does not exist.
 
 - [ ] **Step 3: Create the reveal**
@@ -819,7 +819,7 @@ per the spec.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/launch/launch_reveal_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/launch/launch_reveal_test.dart`
 Expected: PASS (4 tests). If the "plays then settles" first-frame assertion is
 flaky on the wash opacity, assert on `find.byKey(_splash)` presence only (it is
 the stable signal); the opacity is incidental.
@@ -904,7 +904,7 @@ void main() {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/app_launch_reveal_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/app_launch_reveal_test.dart`
 Expected: FAIL — `showLaunchReveal` is not a parameter of `MeowWatchApp`, and the splash never mounts.
 
 - [ ] **Step 3: Wire the reveal into `app.dart`**
@@ -992,7 +992,7 @@ the splash).
 
 Run:
 ```
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/app_launch_reveal_test.dart test/app_whats_new_test.dart test/app_theme_test.dart
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/app_launch_reveal_test.dart test/app_whats_new_test.dart test/app_theme_test.dart
 ```
 Expected: PASS (all). If `app_theme_test` taps a theme pill, confirm it no
 longer hits the splash (it shouldn't, with `showLaunchReveal: false`).
@@ -1041,7 +1041,7 @@ Append inside `main()` in `test/ui/gallery/design_gallery_test.dart`:
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/gallery/design_gallery_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/gallery/design_gallery_test.dart`
 Expected: FAIL — there is no `'Motion · reveal'` section.
 
 - [ ] **Step 3: Add the specimen + section + token chips**
@@ -1221,12 +1221,12 @@ one).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/gallery/design_gallery_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/gallery/design_gallery_test.dart`
 Expected: PASS (existing tests + the new one).
 
 - [ ] **Step 5: Verify analyze is clean (the `const` change above is the risk)**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!` — fix any `prefer_const_constructors` by adding
 `const` to the unaffected `GallerySection(...)` entries.
 
@@ -1302,8 +1302,8 @@ planned for the Lobby motion phase.
 
 Run:
 ```
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test
 ```
 Expected: `No issues found!` and all tests green. (The pre-existing
 `window_close_handler_test` "hard exit" case is a known flake — re-run it

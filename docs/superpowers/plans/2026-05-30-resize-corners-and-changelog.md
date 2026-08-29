@@ -6,9 +6,9 @@
 
 **Architecture:** Resize geometry stays a pure function (`computeCornerResize`) returning a new top-left + size with the opposite corner pinned; the widget free-floats during the drag (reusing `_dragTopLeft`/`_dragCardSize`) and glides back to its docked corner. The card switches from a content-hugging max-height to a fixed height so height is resizable. The updater gains a `fetchChangelog()` that reads `releases/changelog.json` (published by CI from `CHANGELOG.md`) and renders every version newer than the installed build, with a safe fallback to the single-note view.
 
-**Tech Stack:** Flutter (Dart 3 records), `http` (+ `http/testing` MockClient), drift, GitHub Actions + rclone + Python (CI). Flutter binary (NOT on PATH): `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`.
+**Tech Stack:** Flutter (Dart 3 records), `http` (+ `http/testing` MockClient), drift, GitHub Actions + rclone + Python (CI). Flutter binary (NOT on PATH): `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`.
 
-> Per-shell convenience: `$FLUTTER='C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat'`
+> Per-shell convenience: `$FLUTTER='%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat'`
 
 **Branch:** `feat/resizable-chat-card` (already checked out; stay on it).
 
@@ -855,7 +855,7 @@ git commit -m "chore: bump to 0.1.2-alpha"
 
 ```powershell
 Stop-Process -Name meowwatch -Force -ErrorAction SilentlyContinue
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat build windows
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat build windows
 ```
 
 - [ ] **Step 2: Manual two-instance test**

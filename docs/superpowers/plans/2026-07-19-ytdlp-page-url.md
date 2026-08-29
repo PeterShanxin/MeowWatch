@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Flutter binary: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat` (Puro, not on PATH)
+- Flutter binary: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat` (Puro, not on PATH)
 - Version lockstep: `pubspec.yaml` → `0.45.0-alpha+1`, `lib/core/app_version.dart` → `0.45.0-alpha`, `CHANGELOG.md` new top entry (feat = MINOR bump)
 - `flutter analyze` must stay "No issues found!"; full `flutter test` green
 - Immutable data patterns; files < 800 lines; no hardcoded secrets
@@ -72,7 +72,7 @@ class YtDlpResolver {
 ```
 
 - [ ] Write failing tests: classifier table (page URLs true, direct media false, playlist query URL true, non-http false); stderr mapper table (one real stderr line per kind); resolver parse of (a) single-format JSON, (b) `requested_formats` split JSON with bilibili-style `http_headers`, (c) `"_type": "playlist"` JSON → ResolveException(unsupportedSite-or-unknown with "playlist" detail), (d) exit 1 + DRM stderr → drm, (e) runner that never completes → timeout kind (use short injected timeout), (f) malformed JSON → unknown.
-- [ ] Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/resolve/ --no-pub` → FAIL (missing files)
+- [ ] Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/resolve/ --no-pub` → FAIL (missing files)
 - [ ] Implement the four files. Resolver builds exactly the Global-Constraints arg list, runs via injected `runner` (default `Process.run` with `stdoutEncoding/stderrEncoding: utf8`), races the timeout, picks video/audio URLs + headers from JSON.
 - [ ] Tests green; commit `feat: add yt-dlp resolve core (classifier, resolver, error mapping)`
 

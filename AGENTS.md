@@ -8,7 +8,7 @@ Codex-specific entrypoint for this repository.
 
 If you internalize nothing else, internalize these — each has bitten an agent who skipped the guide (full detail in the linked sections):
 
-- **Flutter is installed via Puro and is NOT on PATH.** Use the absolute binary `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`. Run `analyze`/`test` locally with it — never claim "no toolchain" and defer to CI. (Gotchas §)
+- **Flutter is installed via Puro and is NOT on PATH.** Use `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat` (Puro stable). Run `analyze`/`test` locally with it — never claim "no toolchain" and defer to CI. (Gotchas §)
 - **A release is NOT finished at merge.** The full chain is: PR → CI green → merge → **tag `v<version>` on the merge commit and push it** (this is what fires the Windows build + R2 upload) → **verify R2** (`latest.json` version matches, `changelog.json` includes it) → only then clean up. Stopping at "merged" ships nothing. (Release flow §)
 - **Every behavior-changing PR bumps the version in lockstep** across `pubspec.yaml`, `lib/core/app_version.dart`, and `CHANGELOG.md`. Out-of-sync = broken updater. (Versioning §)
 - **Manual testing uses the Release build**, and you must kill running `meowwatch.exe` before `flutter build windows` (a running instance holds a lock and the build still reports success). (Gotchas §)

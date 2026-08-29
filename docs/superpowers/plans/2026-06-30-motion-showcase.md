@@ -2,7 +2,7 @@
 
 > **For agentic workers:** TDD (RED → GREEN → REFACTOR), one bite-sized step at a
 > time, conventional commits, Puro Flutter at
-> `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`.
+> `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`.
 
 **Goal:** Finish the motion design system's *showcase* — make every shipped
 motion token and primitive visible and replayable in the hidden design gallery,

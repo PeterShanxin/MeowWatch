@@ -7,7 +7,7 @@
 **Architecture:** A pure classifier turns the Syncplay client's already-applied peer state into an optional `SyncActivity` at the source (race-free, with the pre-apply local snapshot). `SyncCore` republishes these on a new `activity` broadcast stream. `HomeScreen` subscribes and renders each via the existing transient-banner + `chat.addSystem` channels. Drift-rewind corrections are filtered out so only deliberate friend-actions surface.
 
 **Tech Stack:** Flutter/Dart. Run Flutter via the Puro absolute path — plain `flutter` is NOT on PATH:
-`FLUTTER=C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`
+`FLUTTER=%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`
 
 ---
 
@@ -61,7 +61,7 @@ Append to `test/core/sync/peer_state_test.dart` (add the import if not already p
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/peer_state_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/peer_state_test.dart`
 Expected: FAIL — `SyncActivity`/`SyncActivityKind` undefined (compile error).
 
 - [ ] **Step 3: Write minimal implementation**
@@ -103,7 +103,7 @@ class SyncActivity {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/peer_state_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/peer_state_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -216,7 +216,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/sync_activity_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/sync_activity_test.dart`
 Expected: FAIL — `classifySyncActivity` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -274,7 +274,7 @@ SyncActivity? classifySyncActivity({
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/sync_activity_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/sync_activity_test.dart`
 Expected: PASS (all 7).
 
 - [ ] **Step 5: Commit**
@@ -321,7 +321,7 @@ And add this test inside `main()`:
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/sync_core_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/sync_core_test.dart`
 Expected: FAIL — `core.activity` / `emitActivity` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -359,7 +359,7 @@ Add the close in `dispose()` after `await _peerFile.close();` (line ~97):
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/sync_core_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/sync_core_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -442,7 +442,7 @@ snapshot), making the block:
 
 - [ ] **Step 3: Verify it compiles cleanly**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!`
 
 - [ ] **Step 4: Commit**
@@ -510,7 +510,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/sync_activity_text_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/sync_activity_text_test.dart`
 Expected: FAIL — `syncActivityText` / `SyncActivityText` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -561,7 +561,7 @@ SyncActivityText syncActivityText(SyncActivity a) {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/sync_activity_text_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/sync_activity_text_test.dart`
 Expected: PASS (all 5).
 
 - [ ] **Step 5: Commit**
@@ -648,10 +648,10 @@ After `unawaited(_peerFileSub?.cancel());` (line ~228), add:
 
 - [ ] **Step 6: Verify analyze + full suite**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!`
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test`
 Expected: All tests pass.
 
 - [ ] **Step 7: Commit**
@@ -708,10 +708,10 @@ style already in the file):
 
 - [ ] **Step 4: Verify analyze + full suite once more**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!`
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test`
 Expected: All tests pass.
 
 - [ ] **Step 5: Commit**
@@ -731,7 +731,7 @@ shows as a banner over the video AND a chat system line with the right wording/t
 your OWN actions in B are NOT announced to yourself. Confirm no spurious notices from drift
 corrections during steady playback.
 ```text
-FLUTTER=C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat
+FLUTTER=%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat
 Stop-Process -Name meowwatch -Force   # release the file lock first
 $FLUTTER build windows
 ```

@@ -18,7 +18,7 @@ font (SIL OFL).
 
 ## Global Constraints
 
-- **Flutter binary (NOT on PATH):** `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`. Use it for every `analyze` / `test` / `build`.
+- **Flutter binary (NOT on PATH):** `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`. Use it for every `analyze` / `test` / `build`.
 - **Keep `flutter analyze` at "No issues found!"** after every task.
 - **Versioning (this is a behavior-changing PR):** bump the version in lockstep across `pubspec.yaml` (`version:`), `lib/core/app_version.dart` (`appVersion`), and `CHANGELOG.md`. Target version for this plan: **`0.35.0-alpha`** (minor bump — a new feature; keep `-alpha`). Build number `+1`.
 - **Immutability / small files** per repo coding style: new widgets live in their own focused files under `lib/ui/brand/`.
@@ -73,7 +73,7 @@ void main() {
 
 - [ ] **Step 2: Run the test, verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/brand/meow_logo_mark_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/brand/meow_logo_mark_test.dart`
 Expected: FAIL — `meow_logo_mark.dart` / `MeowLogoMark` not found.
 
 - [ ] **Step 3: Implement the mark**
@@ -172,7 +172,7 @@ class _MeowLogoMarkPainter extends CustomPainter {
 
 - [ ] **Step 4: Run the test, verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/brand/meow_logo_mark_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/brand/meow_logo_mark_test.dart`
 Expected: PASS (both tests).
 
 - [ ] **Step 5: Add a golden test to lock the geometry**
@@ -197,15 +197,15 @@ Append to `test/ui/brand/meow_logo_mark_test.dart`:
 
 - [ ] **Step 6: Generate the golden + verify**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/brand/meow_logo_mark_test.dart --update-goldens`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/brand/meow_logo_mark_test.dart --update-goldens`
 Then run without the flag to confirm it matches:
-`C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/brand/meow_logo_mark_test.dart`
+`%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/brand/meow_logo_mark_test.dart`
 Expected: PASS. A new file `test/ui/brand/goldens/meow_logo_mark_cozy.png` exists.
 
 - [ ] **Step 7: Analyze + commit**
 
 ```bash
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze
 git add lib/ui/brand/meow_logo_mark.dart test/ui/brand/
 git commit -m "feat: add MeowLogoMark (Neon Nine cat mark)"
 ```
@@ -260,7 +260,7 @@ and add `assets/fonts/` to the asset list:
         - asset: assets/fonts/Sora.ttf
 ```
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat pub get`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat pub get`
 Expected: resolves with no error.
 
 - [ ] **Step 3: Write the failing test**
@@ -300,7 +300,7 @@ void main() {
 
 - [ ] **Step 4: Run the test, verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/brand/meow_wordmark_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/brand/meow_wordmark_test.dart`
 Expected: FAIL — `MeowWordmark` not found.
 
 - [ ] **Step 5: Implement the wordmark**
@@ -361,13 +361,13 @@ class MeowWordmark extends StatelessWidget {
 
 - [ ] **Step 6: Run the test, verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/brand/meow_wordmark_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/brand/meow_wordmark_test.dart`
 Expected: PASS (both tests).
 
 - [ ] **Step 7: Analyze + commit**
 
 ```bash
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze
 git add assets/fonts/ pubspec.yaml lib/ui/brand/meow_wordmark.dart test/ui/brand/meow_wordmark_test.dart
 git commit -m "feat: add Sora font + MeowWordmark"
 ```
@@ -425,7 +425,7 @@ void main() {
 
 - [ ] **Step 2: Run the test, verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/brand/meow_logo_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/brand/meow_logo_test.dart`
 Expected: FAIL — `MeowLogo` not found.
 
 - [ ] **Step 3: Implement the lockup**
@@ -468,13 +468,13 @@ class MeowLogo extends StatelessWidget {
 
 - [ ] **Step 4: Run the test, verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/brand/meow_logo_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/brand/meow_logo_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Analyze + commit**
 
 ```bash
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze
 git add lib/ui/brand/meow_logo.dart test/ui/brand/meow_logo_test.dart
 git commit -m "feat: add MeowLogo lockup"
 ```
@@ -515,7 +515,7 @@ this self-contained case works:
 
 - [ ] **Step 2: Run the test, verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/connect/connect_screen_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/connect/connect_screen_test.dart`
 Expected: FAIL on the new `find.byType(MeowLogo)` assertion (still a plain Text).
 
 - [ ] **Step 3: Replace the header Text with the lockup**
@@ -549,13 +549,13 @@ import to keep `analyze` clean.)
 
 - [ ] **Step 4: Run the test, verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/connect/connect_screen_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/connect/connect_screen_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Analyze + commit**
 
 ```bash
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze
 git add lib/ui/connect/connect_screen.dart test/ui/connect/connect_screen_test.dart
 git commit -m "feat: show the MeowLogo in the lobby header"
 ```
@@ -591,7 +591,7 @@ Add imports at the top of the test if missing:
 
 - [ ] **Step 2: Run the test, verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/gallery/design_gallery_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/gallery/design_gallery_test.dart`
 Expected: FAIL — no `BRAND` section / no `MeowLogo`.
 
 - [ ] **Step 3: Implement `BrandSpecimen` and register the section**
@@ -669,18 +669,18 @@ the opening `[`, so the brand leads the page):
 
 - [ ] **Step 4: Run the test, verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/gallery/design_gallery_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/gallery/design_gallery_test.dart`
 Expected: PASS. If a pre-existing assertion counted sections, update that count by +1.
 
 - [ ] **Step 5: Run the full gallery + specimen suites**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/gallery/`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/gallery/`
 Expected: PASS.
 
 - [ ] **Step 6: Analyze + commit**
 
 ```bash
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze
 git add lib/ui/gallery/gallery_sections.dart test/ui/gallery/design_gallery_test.dart
 git commit -m "feat: add Brand specimen to the design gallery"
 ```
@@ -727,13 +727,13 @@ Insert a new entry at the top of the version list (use today's date,
 
 - [ ] **Step 4: Verify the three versions match**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Confirm by eye that `pubspec.yaml`, `lib/core/app_version.dart`, and the top of
 `CHANGELOG.md` all read `0.35.0-alpha`.
 
 - [ ] **Step 5: Run the whole suite**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test`
 Expected: PASS (entire suite). Fix any fallout before committing.
 
 - [ ] **Step 6: Commit**
@@ -780,15 +780,15 @@ flutter_launcher_icons:
 - [ ] **Step 3: Generate the icon**
 
 Run:
-`C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat pub get`
-`C:/Users/shanx/.puro/envs/stable/flutter/bin/dart.bat run flutter_launcher_icons`
+`%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat pub get`
+`%USERPROFILE%\.puro\envs\stable\flutter\bin\dart.bat run flutter_launcher_icons`
 Expected: `windows/runner/resources/app_icon.ico` is rewritten.
 
 - [ ] **Step 4: Verify in a Release build**
 
 Kill any running build-output `meowwatch.exe` first (a running instance holds a
 lock and the build still reports success — see AGENT_GUIDE Gotchas). Then:
-`C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat build windows`
+`%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat build windows`
 Launch `build/windows/x64/runner/Release/meowwatch.exe` and confirm the new
 taskbar/window icon.
 

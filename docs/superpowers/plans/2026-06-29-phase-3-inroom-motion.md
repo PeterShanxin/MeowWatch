@@ -1,7 +1,7 @@
 # Phase 3 — In-room + controls motion Implementation Plan
 
 > **For agentic workers:** TDD task-by-task. Steps use checkbox (`- [ ]`) syntax. Run the
-> Puro Flutter binary: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`.
+> Puro Flutter binary: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`.
 
 **Goal:** Bring the in-room surfaces and everyday controls onto the motion system — banners
 slide+fade+settle, reaction bursts get the one elastic pop+arc, the mascot quiets when video

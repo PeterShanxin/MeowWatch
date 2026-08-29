@@ -8,7 +8,7 @@
 
 **Tech Stack:** Flutter 3.44 (Dart 3.12, via Puro), `flutter_test`. No new packages.
 
-**Flutter binary:** `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat` (not on PATH). Use this absolute path in every command.
+**Flutter binary:** `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat` (not on PATH). Use this absolute path in every command.
 
 **Conventions (match existing code):**
 - Immutable data classes are `@immutable` with `==`/`hashCode` (see `lib/core/sync/peer_state.dart`).
@@ -85,7 +85,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/chat_message_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/chat_message_test.dart`
 Expected: FAIL — `copyWith` not defined / `timestamp` not a parameter.
 
 - [ ] **Step 3: Implement**
@@ -128,7 +128,7 @@ class ChatMessage {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/chat_message_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/chat_message_test.dart`
 Expected: PASS — All tests passed!
 
 - [ ] **Step 5: Commit**
@@ -198,7 +198,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_corner_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_corner_test.dart`
 Expected: FAIL — `chat_corner.dart` does not exist.
 
 - [ ] **Step 3: Implement**
@@ -264,7 +264,7 @@ SnapResult computeSnap({
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_corner_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_corner_test.dart`
 Expected: PASS — All tests passed!
 
 - [ ] **Step 5: Commit**
@@ -335,7 +335,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_overlay_layout_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_overlay_layout_test.dart`
 Expected: FAIL — `chat_overlay_layout.dart` does not exist.
 
 - [ ] **Step 3: Implement**
@@ -403,7 +403,7 @@ class ChatOverlayLayout {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_overlay_layout_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_overlay_layout_test.dart`
 Expected: PASS — All tests passed!
 
 - [ ] **Step 5: Commit**
@@ -523,7 +523,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/chat/chat_store_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/chat/chat_store_test.dart`
 Expected: FAIL — `chat_store.dart` does not exist.
 
 - [ ] **Step 3: Implement**
@@ -582,7 +582,7 @@ class ChatStore {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/chat/chat_store_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/chat/chat_store_test.dart`
 Expected: PASS — All tests passed!
 
 - [ ] **Step 5: Commit**
@@ -658,7 +658,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_bubble_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_bubble_test.dart`
 Expected: FAIL — `chat_bubble.dart` does not exist.
 
 - [ ] **Step 3: Implement**
@@ -728,7 +728,7 @@ class ChatBubble extends StatelessWidget {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_bubble_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_bubble_test.dart`
 Expected: PASS — All tests passed!
 
 - [ ] **Step 5: Commit**
@@ -788,7 +788,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_input_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_input_test.dart`
 Expected: FAIL — `chat_input.dart` does not exist.
 
 - [ ] **Step 3: Implement**
@@ -865,7 +865,7 @@ class _ChatInputState extends State<ChatInput> {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_input_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_input_test.dart`
 Expected: PASS — All tests passed!
 
 - [ ] **Step 5: Commit**
@@ -916,7 +916,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/peek_tab_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/peek_tab_test.dart`
 Expected: FAIL — `peek_tab.dart` does not exist.
 
 - [ ] **Step 3: Implement**
@@ -959,7 +959,7 @@ class PeekTab extends StatelessWidget {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/peek_tab_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/peek_tab_test.dart`
 Expected: PASS — All tests passed!
 
 - [ ] **Step 5: Commit**
@@ -1052,7 +1052,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_overlay_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_overlay_test.dart`
 Expected: FAIL — `chat_overlay.dart` does not exist.
 
 - [ ] **Step 3: Implement**
@@ -1261,7 +1261,7 @@ class _GlassCard extends StatelessWidget {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/chat/chat_overlay_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/chat/chat_overlay_test.dart`
 Expected: PASS — All tests passed!
 
 - [ ] **Step 5: Commit**
@@ -1430,12 +1430,12 @@ import 'package:flutter/services.dart';
 
 - [ ] **Step 6: Verify the app analyzes and builds**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: No issues found!
 
 Run the full test suite to confirm nothing regressed:
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test`
 Expected: All tests passed!
 
 - [ ] **Step 7: Commit**
@@ -1453,7 +1453,7 @@ git commit -m "feat: wire chat overlay into HomeScreen with Tab toggle"
 
 - [ ] **Step 1: Build the Windows app**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat build windows`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat build windows`
 Expected: build succeeds; exe at `build/windows/x64/runner/Release/meowwatch.exe`.
 
 - [ ] **Step 2: Run two instances and exercise the checklist**

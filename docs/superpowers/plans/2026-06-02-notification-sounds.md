@@ -8,7 +8,7 @@
 
 **Tech Stack:** Flutter (desktop), `media_kit` (`Player`/`Media`), Drift-backed `SettingsStore` (string key-value), `flutter_test`.
 
-**Flutter binary:** `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat` (NOT on PATH). Set `FLUTTER=C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat` for commands below.
+**Flutter binary:** `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat` (NOT on PATH). Set `FLUTTER=%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat` for commands below.
 
 ---
 

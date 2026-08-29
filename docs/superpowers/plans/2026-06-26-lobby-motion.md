@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Toolchain (NOT on PATH):** `FLUTTER=C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`. Run `$FLUTTER analyze` (keep "No issues found!") and `$FLUTTER test` locally — never defer to CI.
+- **Toolchain (NOT on PATH):** `FLUTTER=%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`. Run `$FLUTTER analyze` (keep "No issues found!") and `$FLUTTER test` locally — never defer to CI.
 - **TDD:** RED → GREEN → REFACTOR. Small conventional-commit (`feat:` / `test:` / `refactor:` / `chore:`) checkpoints at each verified step.
 - **Versioning (lockstep, this PR is one MINOR bump):** `pubspec.yaml` `version:` → `0.37.0-alpha+1`, `lib/core/app_version.dart` `appVersion` → `'0.37.0-alpha'`, and a new top `## [0.37.0-alpha] - 2026-06-26` entry in `CHANGELOG.md`. Keep the `-alpha` suffix.
 - **Reduce-motion default = off.** OS "reduce animations" forces it on independently (`context.reduceMotion` ORs the app scope with `MediaQuery.disableAnimationsOf`).
@@ -77,7 +77,7 @@ void main() {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/app_reduce_motion_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/app_reduce_motion_test.dart`
 Expected: FAIL — `initialReduceMotion` is not a parameter of `MeowWatchApp`.
 
 - [ ] **Step 3: Add the settings key**
@@ -150,12 +150,12 @@ In the `runApp(MeowWatchApp(...))` call, add after `initialTheme: savedTheme,`:
 
 - [ ] **Step 6: Run the test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/app_reduce_motion_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/app_reduce_motion_test.dart`
 Expected: PASS (2 tests).
 
 - [ ] **Step 7: Analyze + commit**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!`
 
 ```bash
@@ -217,7 +217,7 @@ void main() {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/settings/reduce_motion_control_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/settings/reduce_motion_control_test.dart`
 Expected: FAIL — `ReduceMotionControl` is undefined.
 
 - [ ] **Step 3: Add `ReduceMotionControl` + the panel row**
@@ -310,7 +310,7 @@ In `SettingsPanel.build`, prepend the row + a divider as the first children of t
 
 - [ ] **Step 4: Run the control test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/settings/reduce_motion_control_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/settings/reduce_motion_control_test.dart`
 Expected: PASS (1 test).
 
 - [ ] **Step 5: Thread it through the lobby gear**
@@ -430,8 +430,8 @@ In `lib/app.dart`, where `onConnect` constructs `HomeScreen(...)`, add after `cu
 
 Run:
 ```
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/settings/reduce_motion_control_test.dart test/ui/settings/settings_panel_test.dart test/ui/settings/lobby_settings_button_test.dart test/ui/player_menu_button_test.dart test/ui/connect/connect_screen_test.dart
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/settings/reduce_motion_control_test.dart test/ui/settings/settings_panel_test.dart test/ui/settings/lobby_settings_button_test.dart test/ui/player_menu_button_test.dart test/ui/connect/connect_screen_test.dart
 ```
 Expected: `No issues found!` and all green (the optional params keep the existing helpers compiling; the new panel row doesn't break their assertions).
 
@@ -509,7 +509,7 @@ void main() {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/motion/fade_up_route_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/motion/fade_up_route_test.dart`
 Expected: FAIL — `fade_up_route.dart` does not exist.
 
 - [ ] **Step 3: Create the route**
@@ -556,7 +556,7 @@ PageRouteBuilder<T> fadeUpRoute<T>({
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/motion/fade_up_route_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/motion/fade_up_route_test.dart`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Use it for lobby → room**
@@ -594,8 +594,8 @@ In the `onConnect` callback, replace the `Navigator.of(context).push(MaterialPag
 
 Run:
 ```
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/motion/fade_up_route_test.dart test/app_launch_reveal_test.dart test/app_theme_test.dart
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/motion/fade_up_route_test.dart test/app_launch_reveal_test.dart test/app_theme_test.dart
 ```
 Expected: `No issues found!` and green.
 
@@ -695,7 +695,7 @@ void main() {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/motion/staggered_reveal_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/motion/staggered_reveal_test.dart`
 Expected: FAIL — `staggered_reveal.dart` does not exist.
 
 - [ ] **Step 3: Create the cascade helper**
@@ -789,7 +789,7 @@ class _StaggeredRevealState extends State<StaggeredReveal> {
 
 - [ ] **Step 4: Run the helper test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/motion/staggered_reveal_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/motion/staggered_reveal_test.dart`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Wrap the lobby library column**
@@ -893,8 +893,8 @@ Pass the signals to `ConnectScreen` — add after the `onReduceMotionChanged: _s
 
 Run:
 ```
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/motion/staggered_reveal_test.dart test/app_launch_reveal_test.dart test/ui/connect/connect_screen_test.dart
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/motion/staggered_reveal_test.dart test/app_launch_reveal_test.dart test/ui/connect/connect_screen_test.dart
 ```
 Expected: `No issues found!` and green. (`connect_screen_test` builds `ConnectScreen` with the defaults `playLibraryEntrance: false, holdLibraryHidden: false` → library present, no cascade, assertions unchanged.)
 
@@ -943,7 +943,7 @@ Append inside `main()` in `test/app_reduce_motion_test.dart`:
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/app_reduce_motion_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/app_reduce_motion_test.dart`
 Expected: FAIL — `themeAnimationDuration` is the framework default (`kThemeAnimationDuration`) even when reduce motion is on.
 
 - [ ] **Step 3: Make the theme swap instant under reduce motion**
@@ -964,7 +964,7 @@ import 'core/theme/tokens/motion.dart';
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/app_reduce_motion_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/app_reduce_motion_test.dart`
 Expected: PASS (4 tests total).
 
 - [ ] **Step 5: Polish the lobby gear open animation**
@@ -1019,8 +1019,8 @@ with:
 
 Run:
 ```
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/settings/lobby_settings_button_test.dart test/ui/player_menu_button_test.dart test/app_reduce_motion_test.dart
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/settings/lobby_settings_button_test.dart test/ui/player_menu_button_test.dart test/app_reduce_motion_test.dart
 ```
 Expected: `No issues found!` and green. (The gears still open and render their panels; the existing gear tests pump+settle so the `Duration.zero` path under reduce motion is exercised harmlessly.)
 
@@ -1103,8 +1103,8 @@ cold-start card cascade — both go instant under reduce motion.
 
 Run:
 ```
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test
 ```
 Expected: `No issues found!` and all tests green. (If the local suite hangs at "loading …" or a self-hosted CI run cancels at ~20 min, suspect stale `flutter_tester` zombies, not a code bug — kill stale `flutter_tester` processes, NOT `meowwatch.exe`, then re-run.)
 

@@ -15,7 +15,7 @@
 4. **Saving rooms:** auto-save a profile on every connect; profiles are deletable from the list.
 
 **Conventions for every task:**
-- Flutter binary (NOT on PATH): `FLUTTER=C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`
+- Flutter binary (NOT on PATH): `FLUTTER=%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`
 - Keep `$FLUTTER analyze` at "No issues found!" before each commit.
 - Conventional-commit messages (`feat:`, `fix:`, `chore:`, `test:`).
 - Immutable state objects (`@immutable` + `copyWith`), small focused files.
@@ -56,7 +56,7 @@
 Run (uses pub to resolve compatible versions for Dart 3.12):
 
 ```bash
-FLUTTER=C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat
+FLUTTER=%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat
 $FLUTTER pub add drift sqlite3_flutter_libs path_provider
 $FLUTTER pub add dev:drift_dev dev:build_runner
 ```
