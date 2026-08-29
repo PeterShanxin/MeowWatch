@@ -33,35 +33,35 @@ always runs on a Windows runner.
 
 | Who | Runner | When |
 | --- | --- | --- |
-| **Fork PRs, Dependabot PRs, and any other login** | GitHub-hosted `windows-2022` | Automatic. They **never** run on the privileged self-hosted PC (that machine holds the release-signing seed). Fork heads stay on hosted even if the actor is a trusted co-admin. Write access alone is not host trust. |
-| **Same-repo PRs from `PeterShanxin` or `ianmeowmeow`, triggered by either** | Self-hosted Windows (`meowwatch-ci`) | Default. Those two have the same host trust. |
-| **Trusted-admin fallback** | GitHub-hosted `windows-2022` | Add the **`ci-hosted`** label (self-hosted runner offline, or you would rather not wait). |
+| **Every pull request** (including `PeterShanxin`, `ianmeowmeow`, forks, Dependabot) | GitHub-hosted `windows-2025` | Automatic. PRs **never** schedule on the privileged self-hosted PC (`meowwatch-ci`). That machine holds the release-signing seed. |
+| **Trusted-admin push / tag analyze** | Self-hosted Windows (`meowwatch-ci`) | Push to `main` and `v*` tags when `github.actor` is `PeterShanxin` or `ianmeowmeow`. |
+| **Tag sign (`Windows x64`)** | Self-hosted Windows (`meowwatch-ci`) | Same two actors only. Reads the Ed25519 seed on that PC. |
 
 The merge gate is the `gate` job. Its check-run name is exactly
-**`Analyze & Test`** — that is the required check. It passes if either path
-went green.
+**`Analyze & Test`** — that is the required check. It passes if the hosted
+Windows job went green.
 
 Tag-only `Windows x64` build and **Sign release** stay on self-hosted, and
 only when **`github.actor` is `PeterShanxin` or `ianmeowmeow`**. Any other
 login's `git push` of a branch or a `v*` tag does **not** run on that host
-and does **not** sign a release. Fork PRs cannot schedule those jobs. Write
-access alone is not host trust. The **Publish Showcase** workflow
+and does **not** sign a release. Pull requests cannot schedule those jobs.
+Write access alone is not host trust. The **Publish Showcase** workflow
 (`workflow_dispatch`) holds `RELEASE_MIRROR_TOKEN` and is likewise limited
 to those two actors — any other login's click must not run it.
 
 ### If your check is stuck "Queued / Expected"
 
-- **Fork, Dependabot, or any other login:** you should already be on hosted
-  Windows. A queued self-hosted job is a bug — say so on the PR.
-- **Same-repo PR from `PeterShanxin` or `ianmeowmeow`, triggered by either:** no self-hosted runner is online.
-  Start it, or add the **`ci-hosted`** label.
+- **Pull request:** you should already be on hosted Windows. A queued
+  `meowwatch-ci` job on a PR is a bug — say so on the PR.
+- **Push / tag analyze or `Windows x64`:** no self-hosted runner is
+  online. Start it. Tag signing has no hosted fallback.
 
 ## Self-hosted runners
 
 Do **not** attach a self-hosted runner to this canonical repository. The
 privileged Windows host is for trusted co-admins only (`PeterShanxin` and
-`ianmeowmeow`: PRs, pushes, and tags). Forks and any other login cannot
-schedule jobs there. Outsiders registering runners here is not supported.
+`ianmeowmeow`: push/tag analyze and tag signing). Pull requests never
+schedule there. Outsiders registering runners here is not supported.
 
 If you maintain your own **fork**, you may register runners on that fork
 alone. Never point a runner at this repo.

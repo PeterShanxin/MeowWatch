@@ -6,15 +6,13 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
-    # `labeled` lets the `ci-hosted` label trigger a fresh run (the on-demand
-    # GitHub-hosted fallback). Adding `types` overrides the default set, so the
-    # defaults (opened/synchronize/reopened) must be listed explicitly.
-    types: [opened, synchronize, reopened, labeled]
     paths-ignore:
       - '**.md'
 
-# Default: read-only. PR jobs must not get write. The tag-only
-# `build-windows-x64` job grants `contents: write` to create GitHub Releases.
+# Default: read-only. Hosted PR jobs must stay at contents: read and must
+# never interpolate secrets.R2_*, RELEASE_MIRROR_TOKEN, or read the
+# release seed. The tag-only `build-windows-x64` job grants
+# `contents: write` to create GitHub Releases.
 permissions:
   contents: read
 
@@ -26,32 +24,24 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
-  # ── PR gate: analyze + test ───────────────────────────────────────────
+  # ── Analyze + test ──────────────────────────────────────────────────
   # Two Windows paths, one required check (`gate` / `Analyze & Test`).
   #
-  # The self-hosted host holds the release-signing seed, so untrusted code
-  # must never schedule there. Trusted co-admins are PeterShanxin and
-  # ianmeowmeow (same host trust). Write access alone is not host trust:
-  # anyone else's same-repo PRs take `check-hosted` just like forks.
-  # Fork PRs, Dependabot PRs, any PR whose author is not a trusted
-  # co-admin, and any event whose github.actor is not a trusted co-admin
-  # always take `check-hosted` (GitHub-hosted windows-2022) with no label
-  # required — or, for push/tag, skip self-hosted entirely.
-  # `pull_request.user.login` is the PR author and does not change if
-  # someone later pushes onto that branch — github.actor is the pusher,
-  # so both must be a trusted co-admin. Fork heads never qualify
-  # (head.repo must equal this repository). Self-hosted
-  # `check-self-hosted` runs only for:
-  #   * non-PR events (push to main, v* tags) when github.actor is
-  #     PeterShanxin or ianmeowmeow
-  #   * same-repo PRs authored by a trusted co-admin *and* triggered by
-  #     a trusted co-admin (not dependabot[bot]), unless `ci-hosted`
-  # A trusted co-admin can still add `ci-hosted` to force hosted Windows
-  # (runner offline). Keep this job free of hosted-only composite actions:
-  # self-hosted runners prepare composite action dependencies before
-  # skipped steps are evaluated, so a `subosito/flutter-action` step here
-  # would try to set up (and fail) even when skipped — that's why hosted
-  # is a separate job.
+  # Every `pull_request` takes `check-hosted` on GitHub-hosted
+  # windows-2025 — including PeterShanxin and ianmeowmeow. PRs must
+  # never schedule on meowwatch-ci. The self-hosted host holds the
+  # Ed25519 release seed; fork-PR approval does not cover a future
+  # write login adding a new workflow.
+  #
+  # Self-hosted `check-self-hosted` stays for trusted-admin push/tag
+  # analyze (main + v* tags) when github.actor is PeterShanxin or
+  # ianmeowmeow. Tag sign (`build-windows-x64`) stays self-hosted
+  # under the same allowlist. Write access alone is not host trust.
+  # Keep this job free of hosted-only composite actions: self-hosted
+  # runners prepare composite action dependencies before skipped steps
+  # are evaluated, so a `subosito/flutter-action` step here would try
+  # to set up (and fail) even when skipped — that's why hosted is a
+  # separate job.
   #
   # The suite is NOT cross-platform — `test/core/video/video_url_test.dart`
   # asserts on Windows paths (`C:\…` → basename) and
@@ -60,24 +50,22 @@ jobs:
 
   check-self-hosted:
     name: Analyze & Test (self-hosted)
+    # Push/tag only. A pull_request `if` that can be true would *queue*
+    # on meowwatch-ci before any fail-closed step runs.
     if: >-
-      ${{ contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) && (
-        github.event_name != 'pull_request' || (
-          github.event.pull_request.head.repo.full_name == github.repository &&
-          contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.event.pull_request.user.login) &&
-          github.event.pull_request.user.login != 'dependabot[bot]' &&
-          !contains(github.event.pull_request.labels.*.name, 'ci-hosted')
-        )
-      ) }}
+      ${{ github.event_name != 'pull_request' &&
+          contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) }}
     runs-on: [self-hosted, windows, meowwatch-ci]
     # Bound runaway hangs: the suite normally finishes in ~5m, but a stuck
     # flutter_tester otherwise sits until GitHub's 6h default, wedging the
     # self-hosted runner. See docs/AGENT_GUIDE.md → CI (runner hangs).
     timeout-minutes: 20
     steps:
-      # Belt-and-braces: the job `if` should already exclude these. Fail closed
-      # if a future edit lets an untrusted PR, branch push, or tag reach this
-      # host. github.actor is required on every event, not only pull_request.
+      # Belt-and-braces: the job `if` should already exclude these. Fail
+      # closed *before checkout* if a future edit lets a PR or an
+      # untrusted actor reach this host. Keep both github.actor and
+      # pull_request.user.login on the allowlist — fork approval does
+      # not cover a future write login adding a new workflow.
       - name: Refuse untrusted workflow actors
         shell: pwsh
         env:
@@ -92,8 +80,12 @@ jobs:
             Write-Error "Only PeterShanxin or ianmeowmeow may run on the self-hosted runner (actor=$($env:ACTOR) event=$($env:EVENT_NAME))."
             exit 1
           }
-          if ($env:EVENT_NAME -eq 'pull_request' -and ($env:HEAD_REPO -ne $env:BASE_REPO -or $trusted -notcontains $env:PR_USER)) {
-            Write-Error "Only same-repo PRs from PeterShanxin or ianmeowmeow, triggered by a trusted co-admin, may run on the self-hosted runner (head=$($env:HEAD_REPO) user=$($env:PR_USER) actor=$($env:ACTOR))."
+          if ($env:PR_USER -and $trusted -notcontains $env:PR_USER) {
+            Write-Error "Only PeterShanxin or ianmeowmeow may run on the self-hosted runner (user=$($env:PR_USER) actor=$($env:ACTOR))."
+            exit 1
+          }
+          if ($env:EVENT_NAME -eq 'pull_request') {
+            Write-Error "pull_request must not run on the self-hosted runner (head=$($env:HEAD_REPO) user=$($env:PR_USER) actor=$($env:ACTOR))."
             exit 1
           }
 
@@ -122,26 +114,16 @@ jobs:
         shell: pwsh
         run: flutter test
 
-  # GitHub-hosted `windows-2022` (paid, 2×). Automatic for fork PRs,
-  # Dependabot PRs, same-repo PRs whose author is not a trusted co-admin
-  # (PeterShanxin / ianmeowmeow), and PR events whose github.actor is not
-  # a trusted co-admin. Fork heads always take this path. Also the
-  # on-demand fallback when the `ci-hosted` label is set (self-hosted
-  # runner offline). Not used for trusted-admin push/tag — those stay
-  # self-hosted so release builds do not burn hosted Windows minutes. Any
-  # other login's branch or v* tag push does not take self-hosted and
-  # does not sign.
+  # GitHub-hosted windows-2025. Every pull_request — owner, ianmeowmeow,
+  # forks, Dependabot, any other login. Never interpolates secrets.R2_*,
+  # RELEASE_MIRROR_TOKEN, or the release-seed path. Push/tag analyze
+  # stays on check-self-hosted for the two trusted actors.
   check-hosted:
-    name: Analyze & Test (hosted fallback)
-    if: >-
-      ${{ github.event_name == 'pull_request' && (
-        github.event.pull_request.head.repo.full_name != github.repository ||
-        !contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.event.pull_request.user.login) ||
-        !contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) ||
-        github.event.pull_request.user.login == 'dependabot[bot]' ||
-        contains(github.event.pull_request.labels.*.name, 'ci-hosted')
-      ) }}
-    runs-on: windows-2022
+    name: Analyze & Test (hosted)
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: windows-2025
+    permissions:
+      contents: read
     timeout-minutes: 25 # bound hangs; hosted run normally ~12-15m
     steps:
       - uses: actions/checkout@v7
@@ -165,23 +147,20 @@ jobs:
         shell: pwsh
         run: flutter test
 
-  # Required check (the merge gate). A cheap hosted-Linux referee that passes
-  # iff whichever check actually ran went green. Branch protection should
-  # require THIS context — `Analyze & Test` — and nothing else, so a single
-  # name covers both the self-hosted and hosted-fallback paths.
-  #
-  # Why hosted Linux and not self-hosted: the gate must run on an always-
-  # available runner to report once a path finishes. For a trusted-admin
-  # (PeterShanxin or ianmeowmeow) same-repo PR with no `ci-hosted` label, an
-  # offline self-hosted runner leaves `check-self-hosted` queued (never
-  # terminal), so this gate stays pending — i.e. "wait until the runner is
-  # online". Fork, Dependabot, and any other login never take that path.
-  # PR-only — plain pushes and tags don't gate-merge.
+  # Required check (the merge gate). Cheap hosted-Linux referee. Branch
+  # protection should require THIS context — `Analyze & Test` — and
+  # nothing else. Every PR takes check-hosted; check-self-hosted is
+  # skipped on pull_request (result=skipped). The gate passes when
+  # hosted is green. Why hosted Linux: the referee must run on an
+  # always-available runner. PR-only — plain pushes and tags don't
+  # gate-merge.
   gate:
     name: Analyze & Test
     needs: [check-self-hosted, check-hosted]
     if: ${{ always() && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
       - name: Require a green Analyze & Test
@@ -190,18 +169,18 @@ jobs:
           sh='${{ needs.check-self-hosted.result }}'
           ho='${{ needs.check-hosted.result }}'
           echo "self-hosted=$sh  hosted=$ho"
-          if [ "$sh" = "success" ] || [ "$ho" = "success" ]; then
+          if [ "$ho" = "success" ]; then
             echo "Analyze & Test passed."
             exit 0
           fi
-          echo "::error::No green Analyze & Test run (self-hosted=$sh, hosted=$ho). Fork, Dependabot, and any login other than PeterShanxin/ianmeowmeow always use GitHub-hosted Windows — a red hosted job is a real failure. Trusted-admin same-repo PRs: if the self-hosted runner is offline, add the 'ci-hosted' label."
+          echo "::error::No green Analyze & Test run (self-hosted=$sh, hosted=$ho). Every pull_request uses GitHub-hosted Windows — a red or skipped hosted job is a real failure."
           exit 1
 
   # ── Build Windows x64 (tag pushes only — release builds anyway) ────
   build-windows-x64:
     name: Windows x64
     needs: [check-hosted, check-self-hosted]
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) && needs.check-self-hosted.result == 'success' }}
+    if: ${{ always() && github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/v') && contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) && needs.check-self-hosted.result == 'success' }}
     permissions:
       contents: write # Create GitHub Release + upload zip/sig (tag-only).
     # Runs on a self-hosted Windows runner (our own PC) so the expensive 2×
@@ -217,15 +196,22 @@ jobs:
     timeout-minutes: 45
     steps:
       # Belt-and-braces with the job `if`: any other login's v* tag must
-      # never checkout or sign on this host.
+      # never checkout or sign on this host. Keep actor + user.login —
+      # fork approval does not cover a future write login adding a
+      # workflow that reaches this job.
       - name: Refuse untrusted workflow actors
         shell: pwsh
         env:
           ACTOR: ${{ github.actor }}
+          PR_USER: ${{ github.event.pull_request.user.login }}
         run: |
           $trusted = @('PeterShanxin', 'ianmeowmeow')
           if ($trusted -notcontains $env:ACTOR) {
             Write-Error "Only PeterShanxin or ianmeowmeow may run tag signing on the self-hosted runner (actor=$($env:ACTOR))."
+            exit 1
+          }
+          if ($env:PR_USER -and $trusted -notcontains $env:PR_USER) {
+            Write-Error "Only PeterShanxin or ianmeowmeow may run tag signing on the self-hosted runner (user=$($env:PR_USER) actor=$($env:ACTOR))."
             exit 1
           }
 
