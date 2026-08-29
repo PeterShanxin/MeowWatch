@@ -37,9 +37,12 @@ jobs:
   # `check-hosted` (GitHub-hosted windows-2022) with no label required.
   # `pull_request.user.login` is the PR author and does not change if a
   # write collaborator later pushes onto that branch — github.actor is
-  # the pusher, so both must be PeterShanxin. Self-hosted `check-self-hosted`
-  # runs only for:
-  #   * non-PR events (push to main, v* tags), as today
+  # the pusher, so both must be PeterShanxin. github.actor must also be
+  # PeterShanxin for push and tag: a write collaborator can push a branch
+  # or a v* tag, and that must not schedule self-hosted (tag signing lives
+  # on this host). Self-hosted `check-self-hosted` runs only for:
+  #   * non-PR events (push to main, v* tags) when github.actor is
+  #     PeterShanxin
   #   * same-repo PRs authored by PeterShanxin *and* triggered by
   #     PeterShanxin (not dependabot[bot]), unless `ci-hosted`
   # The owner can still add `ci-hosted` to force hosted Windows (runner
@@ -56,12 +59,13 @@ jobs:
   check-self-hosted:
     name: Analyze & Test (self-hosted)
     if: >-
-      ${{ github.event_name != 'pull_request' || (
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.pull_request.user.login == 'PeterShanxin' &&
-        github.actor == 'PeterShanxin' &&
-        github.event.pull_request.user.login != 'dependabot[bot]' &&
-        !contains(github.event.pull_request.labels.*.name, 'ci-hosted')
+      ${{ github.actor == 'PeterShanxin' && (
+        github.event_name != 'pull_request' || (
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.event.pull_request.user.login == 'PeterShanxin' &&
+          github.event.pull_request.user.login != 'dependabot[bot]' &&
+          !contains(github.event.pull_request.labels.*.name, 'ci-hosted')
+        )
       ) }}
     runs-on: [self-hosted, windows, meowwatch-ci]
     # Bound runaway hangs: the suite normally finishes in ~5m, but a stuck
@@ -70,18 +74,23 @@ jobs:
     timeout-minutes: 20
     steps:
       # Belt-and-braces: the job `if` should already exclude these. Fail closed
-      # if a future edit lets an untrusted PR reach this host.
-      - name: Refuse untrusted pull requests
-        if: github.event_name == 'pull_request'
+      # if a future edit lets an untrusted PR, branch push, or tag reach this
+      # host. github.actor is required on every event, not only pull_request.
+      - name: Refuse untrusted workflow actors
         shell: pwsh
         env:
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           BASE_REPO: ${{ github.repository }}
           PR_USER: ${{ github.event.pull_request.user.login }}
-          PR_ACTOR: ${{ github.actor }}
+          ACTOR: ${{ github.actor }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if ($env:HEAD_REPO -ne $env:BASE_REPO -or $env:PR_USER -ne 'PeterShanxin' -or $env:PR_ACTOR -ne 'PeterShanxin') {
-            Write-Error "Only same-repo PRs from PeterShanxin, triggered by PeterShanxin, may run on the self-hosted runner (head=$($env:HEAD_REPO) user=$($env:PR_USER) actor=$($env:PR_ACTOR))."
+          if ($env:ACTOR -ne 'PeterShanxin') {
+            Write-Error "Only PeterShanxin may run on the self-hosted runner (actor=$($env:ACTOR) event=$($env:EVENT_NAME))."
+            exit 1
+          }
+          if ($env:EVENT_NAME -eq 'pull_request' -and ($env:HEAD_REPO -ne $env:BASE_REPO -or $env:PR_USER -ne 'PeterShanxin')) {
+            Write-Error "Only same-repo PRs from PeterShanxin, triggered by PeterShanxin, may run on the self-hosted runner (head=$($env:HEAD_REPO) user=$($env:PR_USER) actor=$($env:ACTOR))."
             exit 1
           }
 
@@ -115,8 +124,10 @@ jobs:
   # PR events whose github.actor is not PeterShanxin (a write collaborator
   # pushing onto an already-open owner PR). Collaborator write is not host
   # trust. Also the on-demand owner fallback when the `ci-hosted` label is
-  # set (self-hosted runner offline). Not used for push/tag — those stay
-  # self-hosted so release builds do not burn hosted Windows minutes.
+  # set (self-hosted runner offline). Not used for owner push/tag — those
+  # stay self-hosted when github.actor is PeterShanxin so release builds
+  # do not burn hosted Windows minutes. A collaborator branch or v* tag
+  # push does not take self-hosted and does not sign.
   check-hosted:
     name: Analyze & Test (hosted fallback)
     if: >-
@@ -188,19 +199,32 @@ jobs:
   build-windows-x64:
     name: Windows x64
     needs: [check-hosted, check-self-hosted]
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.check-self-hosted.result == 'success' }}
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && github.actor == 'PeterShanxin' && needs.check-self-hosted.result == 'success' }}
     permissions:
       contents: write # Create GitHub Release + upload zip/sig (tag-only).
     # Runs on a self-hosted Windows runner (our own PC) so the expensive 2×
     # Windows build consumes no GitHub-hosted minutes. Requires a runner
     # registered with the `self-hosted` + `windows` + `meowwatch-ci` labels and
     # the Visual Studio desktop C++ toolchain installed (see
-    # docs/AGENT_GUIDE.md → CI). Falls back to nothing if no runner is online —
-    # the job queues until one is.
+    # docs/AGENT_GUIDE.md → CI). github.actor must be PeterShanxin — a
+    # write collaborator's v* tag must not build or sign here. Falls back
+    # to nothing if no runner is online — the job queues until one is.
     runs-on: [self-hosted, windows, meowwatch-ci]
     # Bound runaway hangs/builds: a release build is normally ~18m.
     timeout-minutes: 45
     steps:
+      # Belt-and-braces with the job `if`: a collaborator v* tag must never
+      # checkout or sign on this host.
+      - name: Refuse untrusted workflow actors
+        shell: pwsh
+        env:
+          ACTOR: ${{ github.actor }}
+        run: |
+          if ($env:ACTOR -ne 'PeterShanxin') {
+            Write-Error "Only PeterShanxin may run tag signing on the self-hosted runner (actor=$($env:ACTOR))."
+            exit 1
+          }
+
       - uses: actions/checkout@v7
 
       - name: Setup Flutter (self-hosted, pre-installed via Puro)

@@ -42,8 +42,11 @@ The merge gate is the `gate` job. Its check-run name is exactly
 **`Analyze & Test`** — that is the required check. It passes if either path
 went green.
 
-Tag-only `Windows x64` build and **Sign release** stay on self-hosted. Pull
-requests cannot schedule those jobs.
+Tag-only `Windows x64` build and **Sign release** stay on self-hosted, and
+only when **`github.actor` is `PeterShanxin`**. A write collaborator's `git
+push` of a branch or a `v*` tag does **not** run on that host and does **not**
+sign a release. Pull requests cannot schedule those jobs. Write access is not
+host trust.
 
 ### If your check is stuck "Queued / Expected"
 
@@ -55,7 +58,8 @@ requests cannot schedule those jobs.
 ## Self-hosted runners
 
 Do **not** attach a self-hosted runner to this canonical repository. The
-privileged Windows host is owner- and tag-only. Outsiders registering
+privileged Windows host is owner-triggered only (the owner's PRs, pushes, and
+tags). Write collaborators cannot schedule jobs there. Outsiders registering
 runners here is not supported.
 
 If you maintain your own **fork**, you may register runners on that fork
