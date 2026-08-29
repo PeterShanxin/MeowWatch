@@ -147,6 +147,14 @@ jobs:
         shell: pwsh
         run: flutter test
 
+      - name: Upload golden failures
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: golden-failures
+          path: test/**/failures
+          if-no-files-found: ignore
+
   # Required check (the merge gate). Cheap hosted-Linux referee. Branch
   # protection should require THIS context — `Analyze & Test` — and
   # nothing else. Every PR takes check-hosted; check-self-hosted is
