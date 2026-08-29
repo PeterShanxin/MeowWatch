@@ -126,6 +126,8 @@ jobs:
     timeout-minutes: 25 # bound hangs; hosted run normally ~12-15m
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Hosted runners download Flutter fresh.
       - name: Setup Flutter (hosted)

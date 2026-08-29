@@ -51,7 +51,8 @@ replace the YAML actor allowlist on remaining self-hosted jobs. The
 `RELEASE_MIRROR_TOKEN` and is limited to those two actors — any other
 login's click must not run it.
 
-Hosted PR jobs use `permissions: contents: read` only. They must not see
+Hosted PR jobs use `permissions: contents: read` only. Their checkout
+sets `persist-credentials: false`. They must not see
 `TAURI_SIGNING_PRIVATE_KEY`, the MeowWatch Ed25519 seed /
 `MEOWWATCH_RELEASE_KEY` / `release-key.txt`, `R2_*` secrets, or
 `RELEASE_MIRROR_TOKEN`.

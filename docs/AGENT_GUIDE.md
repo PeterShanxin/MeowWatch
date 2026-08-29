@@ -76,13 +76,16 @@ not billed.
 - **PR gate (analyze + test)** → every `pull_request` takes **`check-hosted`**
   on `windows-2025`. There is no self-hosted PR path and no `ci-hosted` label.
   Hosted PR jobs (`check-hosted`, `gate`) use **`permissions: contents: read`
-  only** and must **never** interpolate `TAURI_SIGNING_PRIVATE_KEY`, the
+  only**. Hosted PR `actions/checkout` sets **`persist-credentials: false`**.
+  Those jobs must **never** interpolate `TAURI_SIGNING_PRIVATE_KEY`, the
   MeowWatch Ed25519 seed / `MEOWWATCH_RELEASE_KEY` / `release-key.txt`,
   `R2_*` secrets, or `RELEASE_MIRROR_TOKEN`. The suite is **not
   cross-platform** — `test/core/video/video_url_test.dart` asserts on Windows
   paths (`C:\…` → basename) and `test/ui/chat/chat_overlay_golden_test.dart`
   uses Windows-rendered goldens — so on Linux 4 tests fail; the PR path must
-  be Windows.
+  be Windows. Chat-overlay goldens allow a **0.1%** pixel delta on hosted
+  `windows-2025` (ClearType / font hinting vs the maintainer-box goldens;
+  run 33264970792 was 0.05% / 444px and 15px). That is not a skip.
   - **Push/tag analyze (`check-self-hosted`)** →
     **`[self-hosted, windows, meowwatch-ci]`**, only when `github.event_name !=
     pull_request` and `github.actor` is PeterShanxin or ianmeowmeow (not
