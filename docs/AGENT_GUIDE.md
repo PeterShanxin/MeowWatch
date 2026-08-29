@@ -64,7 +64,7 @@ The workflow (`.github/workflows/build.yml`) splits Windows check jobs so the
 the release-signing seed (`%USERPROFILE%\.meowwatch\release-key.txt`). Trusted
 co-admins are **PeterShanxin** and **ianmeowmeow** (same host trust). **Every
 `pull_request`** — forks, Dependabot, trusted-admin same-repo PRs, any other
-login — takes **`check-hosted`** on GitHub-hosted **`windows-2025`**. Self-hosted
+login — takes **`check-hosted`** on GitHub-hosted **`windows-2022`**. Self-hosted
 is **trusted-admin push/tag sign only**: analyze on push/`v*` tag, and tag
 **Sign release**, and only when `github.actor` is in `{PeterShanxin,
 ianmeowmeow}` (Dependabot excluded). Write access alone is not host trust.
@@ -74,7 +74,7 @@ GitHub-hosted Windows is billed at **2×**. Self-hosted runners themselves are
 not billed.
 
 - **PR gate (analyze + test)** → every `pull_request` takes **`check-hosted`**
-  on `windows-2025`. There is no self-hosted PR path and no `ci-hosted` label.
+  on `windows-2022`. There is no self-hosted PR path and no `ci-hosted` label.
   Hosted PR jobs (`check-hosted`, `gate`) use **`permissions: contents: read`
   only**. Hosted PR `actions/checkout` sets **`persist-credentials: false`**.
   Those jobs must **never** interpolate `TAURI_SIGNING_PRIVATE_KEY`, the
@@ -83,9 +83,10 @@ not billed.
   cross-platform** — `test/core/video/video_url_test.dart` asserts on Windows
   paths (`C:\…` → basename) and `test/ui/chat/chat_overlay_golden_test.dart`
   uses Windows-rendered goldens — so on Linux 4 tests fail; the PR path must
-  be Windows. Chat-overlay goldens allow a **0.1%** pixel delta on hosted
-  `windows-2025` (ClearType / font hinting vs the maintainer-box goldens;
-  run 33264970792 was 0.05% / 444px and 15px). That is not a skip.
+  be Windows. Hosted image is **`windows-2022`**, not `windows-2025`: run
+  33264970792 failed the two chat-overlay goldens on 2025 (0.05%/444px and
+  15px). 2022 already ran untrusted PRs. Do not `--update-goldens` for 2025
+  pixels.
   - **Push/tag analyze (`check-self-hosted`)** →
     **`[self-hosted, windows, meowwatch-ci]`**, only when `github.event_name !=
     pull_request` and `github.actor` is PeterShanxin or ianmeowmeow (not

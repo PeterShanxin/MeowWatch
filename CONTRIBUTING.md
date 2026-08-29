@@ -38,7 +38,7 @@ seed; pull-request code must never execute there.
 
 | Who | Runner | When |
 | --- | --- | --- |
-| **Every pull request** | GitHub-hosted `windows-2025` | Automatic. The `check-hosted` job, then the `gate` referee. |
+| **Every pull request** | GitHub-hosted `windows-2022` | Automatic. The `check-hosted` job, then the `gate` referee. Pinned to 2022: hosted 2025 failed the two chat-overlay goldens. |
 | **Trusted-admin push / `v*` tag** (`PeterShanxin` or `ianmeowmeow`, not Dependabot) | Self-hosted Windows (`meowwatch-ci`) | Analyze + test on push/tag, and tag-only **Sign release**. Any other login's branch or tag push does **not** run on that host and does **not** sign. |
 
 The merge gate is the `gate` job. Its check-run name is exactly

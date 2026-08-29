@@ -112,7 +112,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
   check-hosted:
-    runs-on: windows-2025
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2

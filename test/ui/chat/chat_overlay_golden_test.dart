@@ -5,25 +5,7 @@ import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/chat/chat_overlay.dart';
 
-import '../../helpers/hosted_windows_golden.dart';
-
 void main() {
-  // Hosted windows-2025 rasterizes the card text a few hundred pixels
-  // off the goldens from the maintainer box. See hosted_windows_golden.dart.
-  late GoldenFileComparator previousComparator;
-  setUpAll(() {
-    previousComparator = goldenFileComparator;
-    final testFile = goldenFileComparator is LocalFileComparator
-        ? Uri.parse(
-            '${(goldenFileComparator as LocalFileComparator).basedir}chat_overlay_golden_test.dart',
-          )
-        : Uri.parse('test/ui/chat/chat_overlay_golden_test.dart');
-    goldenFileComparator = HostedWindowsGoldenComparator(testFile);
-  });
-  tearDownAll(() {
-    goldenFileComparator = previousComparator;
-  });
-
   testWidgets('GOLDEN: expanded card over black, bottom-left', (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1.0;

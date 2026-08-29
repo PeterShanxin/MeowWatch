@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   # ── Analyze + test ────────────────────────────────────────────────────
-  # Every `pull_request` takes GitHub-hosted `check-hosted` (`windows-2025`).
+  # Every `pull_request` takes GitHub-hosted `check-hosted` (`windows-2022`).
   # That is the only PR path. `gate` stays the required check name
   # (`Analyze & Test`).
   #
@@ -111,16 +111,18 @@ jobs:
         shell: pwsh
         run: flutter test
 
-  # Every pull_request. GitHub-hosted `windows-2025` (paid, 2×). Forks,
+  # Every pull_request. GitHub-hosted `windows-2022` (paid, 2×). Forks,
   # Dependabot, trusted-admin same-repo PRs, and any other login all take
-  # this path. Trusted-admin push/tag stay on check-self-hosted so release
-  # analyze does not burn hosted Windows minutes. This job must not
-  # interpolate TAURI_SIGNING_PRIVATE_KEY, MEOWWATCH_RELEASE_KEY, R2_*,
-  # or RELEASE_MIRROR_TOKEN.
+  # this path. Pinned to 2022 (not 2025): hosted 2025 failed the two
+  # chat-overlay goldens (run 33264970792: 0.05%/444px and 15px). That
+  # image already ran untrusted PRs. Do not --update-goldens for 2025
+  # pixels. Trusted-admin push/tag stay on check-self-hosted. This job
+  # must not interpolate TAURI_SIGNING_PRIVATE_KEY, MEOWWATCH_RELEASE_KEY,
+  # R2_*, or RELEASE_MIRROR_TOKEN.
   check-hosted:
     name: Analyze & Test (hosted)
     if: ${{ github.event_name == 'pull_request' }}
-    runs-on: windows-2025
+    runs-on: windows-2022
     permissions:
       contents: read
     timeout-minutes: 25 # bound hangs; hosted run normally ~12-15m
