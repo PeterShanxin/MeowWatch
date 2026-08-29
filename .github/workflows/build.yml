@@ -150,52 +150,6 @@ jobs:
         shell: pwsh
         run: flutter test
 
-  # One-shot (this PR branch only): re-record the two chat-overlay goldens
-  # on the same hosted windows-2022 + flutter-action path as check-hosted.
-  # Uploads the PNGs; a follow-up commit copies them into the repo.
-  # Does not interpolate signing / R2 / RELEASE_MIRROR_TOKEN.
-  record-chat-overlay-goldens:
-    name: Record chat-overlay goldens (windows-2022)
-    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'cursor/stage2-post-public-ci-75f0' }}
-    runs-on: windows-2022
-    permissions:
-      contents: read
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Setup Flutter (hosted)
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install dependencies
-        shell: pwsh
-        run: flutter pub get
-
-      - name: Re-record chat overlay goldens
-        shell: pwsh
-        run: flutter test test/ui/chat/chat_overlay_golden_test.dart --update-goldens
-
-      - name: Hash the two goldens
-        shell: pwsh
-        run: |
-          Get-FileHash test/ui/chat/goldens/chat_overlay_expanded.png, test/ui/chat/goldens/chat_overlay_empty.png -Algorithm SHA256 |
-            ForEach-Object { "$($_.Hash) $($_.Path)" }
-
-      - name: Upload chat-overlay goldens
-        uses: actions/upload-artifact@v7
-        with:
-          name: chat-overlay-goldens-windows-2022
-          path: |
-            test/ui/chat/goldens/chat_overlay_expanded.png
-            test/ui/chat/goldens/chat_overlay_empty.png
-          if-no-files-found: error
-          retention-days: 3
-
   # Required check (the merge gate). Cheap hosted-Linux referee that
   # passes iff `check-hosted` went green. Branch protection should require
   # THIS context — `Analyze & Test` — and nothing else. PR-only — plain
