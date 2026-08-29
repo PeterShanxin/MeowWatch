@@ -34,7 +34,8 @@ always runs on a Windows runner.
 | Who | Runner | When |
 | --- | --- | --- |
 | **Fork PRs, Dependabot PRs, and collaborator PRs** | GitHub-hosted `windows-2022` | Automatic. They **never** run on the owner's self-hosted PC (that machine holds the release-signing seed). Write access on the repo is not host trust. |
-| **Same-repo PRs from the owner (`PeterShanxin`) only** | Self-hosted Windows (`meowwatch-ci`) | Default, so the owner's feedback pushes stay off the hosted-minutes meter. |
+| **Pushes by a write collaborator onto an already-open owner PR** | GitHub-hosted `windows-2022` | Automatic. The PR author (`user.login`) stays the owner; `github.actor` is the pusher, so this still does **not** get self-hosted. |
+| **Same-repo PRs from the owner (`PeterShanxin`) only, triggered by the owner** | Self-hosted Windows (`meowwatch-ci`) | Default, so the owner's own feedback pushes stay off the hosted-minutes meter. |
 | **Owner fallback** | GitHub-hosted `windows-2022` | Add the **`ci-hosted`** label (self-hosted runner offline, or you would rather not wait). |
 
 The merge gate is the `gate` job. Its check-run name is exactly
@@ -46,9 +47,9 @@ requests cannot schedule those jobs.
 
 ### If your check is stuck "Queued / Expected"
 
-- **Fork, Dependabot, or collaborator PR:** you should already be on hosted
+- **Fork, Dependabot, collaborator PR, or collaborator push onto an owner PR:** you should already be on hosted
   Windows. A queued self-hosted job is a bug — say so on the PR.
-- **Owner (`PeterShanxin`) same-repo PR:** no self-hosted runner is online.
+- **Owner (`PeterShanxin`) same-repo PR triggered by the owner:** no self-hosted runner is online.
   Start it, or add the **`ci-hosted`** label.
 
 ## Self-hosted runners
