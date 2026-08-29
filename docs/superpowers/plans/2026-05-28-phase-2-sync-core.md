@@ -105,7 +105,7 @@ class SyncplayConstants {
 
 - [ ] **Step 2: Run analyze**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!`
 
 - [ ] **Step 3: Commit**
@@ -194,7 +194,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/peer_state_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/peer_state_test.dart`
 Expected: FAIL — `peer_state.dart` does not exist.
 
 - [ ] **Step 3: Write the implementation**
@@ -293,7 +293,7 @@ class ChatMessage {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/peer_state_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/peer_state_test.dart`
 Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
@@ -353,7 +353,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/sync_messages_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/sync_messages_test.dart`
 Expected: FAIL — `sync_messages.dart` does not exist.
 
 - [ ] **Step 3: Write the implementation**
@@ -392,7 +392,7 @@ class LineFramer {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/sync_messages_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/sync_messages_test.dart`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
@@ -588,7 +588,7 @@ import 'package:meowwatch/core/sync/peer_state.dart';
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/sync_messages_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/sync_messages_test.dart`
 Expected: FAIL — encoder/decoder functions and message types not defined.
 
 - [ ] **Step 3: Write the implementation**
@@ -830,7 +830,7 @@ ServerMessage _decodeSet(Map set) {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/sync_messages_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/sync_messages_test.dart`
 Expected: PASS (all encoder + decoder tests).
 
 - [ ] **Step 5: Commit**
@@ -891,7 +891,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/ping_service_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/ping_service_test.dart`
 Expected: FAIL — `ping_service.dart` does not exist.
 
 - [ ] **Step 3: Write the implementation**
@@ -932,7 +932,7 @@ class PingService {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/ping_service_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/ping_service_test.dart`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
@@ -1045,7 +1045,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/sync_core_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/sync_core_test.dart`
 Expected: FAIL — `sync_core.dart` does not exist.
 
 - [ ] **Step 3: Write the implementation**
@@ -1144,7 +1144,7 @@ abstract class SyncCore {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/sync_core_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/sync_core_test.dart`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
@@ -1294,7 +1294,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/playback_sync_bridge_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/playback_sync_bridge_test.dart`
 Expected: FAIL — `playback_sync_bridge.dart` does not exist.
 
 - [ ] **Step 3: Write the implementation**
@@ -1405,7 +1405,7 @@ class PlaybackSyncBridge {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/sync/playback_sync_bridge_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/sync/playback_sync_bridge_test.dart`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
@@ -1652,7 +1652,7 @@ class SyncplayClient extends SyncCore {
 
 - [ ] **Step 2: Run analyze**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!`
 
 - [ ] **Step 3: Commit**
@@ -1744,12 +1744,12 @@ with:
 
 - [ ] **Step 2: Run analyze**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!`
 
 - [ ] **Step 3: Run the full unit suite (nothing should regress)**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test`
 Expected: all tests pass.
 
 - [ ] **Step 4: Commit**
@@ -1785,7 +1785,7 @@ Add to `test/core/video/playback_state_test.dart` inside the `PlaybackState` gro
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/video/playback_state_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/video/playback_state_test.dart`
 Expected: FAIL — `filePath` is not a parameter of `PlaybackState`.
 
 - [ ] **Step 3: Add `filePath` to `PlaybackState`**
@@ -1844,7 +1844,7 @@ In `lib/core/video/media_kit_video_core.dart`, update the `emit` in `load` to al
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/video/playback_state_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/video/playback_state_test.dart`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -1973,7 +1973,7 @@ class _DevConnectBarState extends State<DevConnectBar> {
 
 - [ ] **Step 2: Run analyze**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!`
 
 - [ ] **Step 3: Commit**
@@ -2135,12 +2135,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
 - [ ] **Step 2: Run analyze**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!`
 
 - [ ] **Step 3: Run full unit suite**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test`
 Expected: all tests pass.
 
 - [ ] **Step 4: Commit**
@@ -2174,7 +2174,7 @@ In `lib/ui/home_screen.dart`, update the `_connSub` listener in `initState`:
 
 - [ ] **Step 2: Run analyze**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!`
 
 - [ ] **Step 3: Commit**
@@ -2192,7 +2192,7 @@ git commit -m "feat(ui): announce loaded file once room handshake completes"
 
 - [ ] **Step 1: Build the app**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat build windows --debug`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat build windows --debug`
 Expected: `Built build\windows\x64\runner\Debug\meowwatch.exe`.
 
 - [ ] **Step 2: Launch two instances**

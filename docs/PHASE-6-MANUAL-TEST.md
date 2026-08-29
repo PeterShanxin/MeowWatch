@@ -26,7 +26,7 @@ a possible future feature — tell me if you want it.)
 
 ### If "B doesn't follow play" happens again
 There's now an automatic log at:
-`C:\Users\shanx\AppData\Local\Temp\meowwatch_sync.log`
+`%TEMP%\meowwatch_sync.log`
 Reproduce the issue once, then send me that file (or just tell me) — it records
 the exact follow decisions so I can pin the root cause.
 

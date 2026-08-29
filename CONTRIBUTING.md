@@ -1,86 +1,75 @@
 # Contributing to MeowWatch
 
-Thanks for helping out! This page covers the one thing that trips people up:
-**how CI runs on pull requests**, and how to get your own free Windows runner
-if you maintain a fork.
+Thanks for helping out.
 
-For the full development workflow (toolchain paths, release flow, versioning,
-gotchas) see [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) — it's the source of
-truth. This file is just the contributor-facing CI summary.
+**A pull request cannot merge until you agree to the
+[Contributor License Agreement](CLA.md).** Tick the CLA checkbox on the pull
+request template.
+
+For toolchain, release flow, versioning, and gotchas see
+[`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md). This file is the contributor-facing
+CI and license summary.
+
+## License
+
+Community source is **[AGPL-3.0-only](LICENSE)**. You keep copyright in your
+contributions. Under the CLA you also grant the maintainer a copyright and
+patent license, including the right to relicense, so commercial licensing can
+be offered to organizations that require terms outside AGPL-3.0.
+
+Using the public project under AGPL-3.0 does **not** require a paid license.
+See [TRADEMARKS.md](TRADEMARKS.md) for the name and logo. Report
+vulnerabilities via [SECURITY.md](SECURITY.md), not a public issue.
+
+Runtime helpers (yt-dlp Windows exe, Deno) are downloaded by the app and are
+**not** AGPL'd — see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## How CI works
 
-Every PR must pass one check before it can merge: **`Build / Analyze & Test`**
+Every PR must pass one check before it can merge: **`Analyze & Test`**
 (`flutter analyze` + `flutter test`). The suite is Windows-only (it asserts on
-Windows file paths and uses Windows-rendered golden images), so the check always
-runs on a Windows runner.
+Windows file paths and uses Windows-rendered golden images), so the check
+always runs on a Windows runner.
 
-There are two ways that check can run:
+| Who | Runner | When |
+| --- | --- | --- |
+| **Fork PRs and Dependabot PRs** | GitHub-hosted `windows-2022` | Automatic. They **never** run on the maintainer's self-hosted PC (that machine holds the release-signing seed). |
+| **Same-repo PRs from a human maintainer** | Self-hosted Windows (`meowwatch-ci`) | Default, so maintainer feedback pushes stay off the hosted-minutes meter. |
+| **Maintainer fallback** | GitHub-hosted `windows-2022` | Add the **`ci-hosted`** label (self-hosted runner offline, or you would rather not wait). |
 
-| Path | Runner | Cost | When |
-| --- | --- | --- | --- |
-| **Default** | A **self-hosted Windows** runner (e.g. the maintainer's PC) | Free | Automatically, on every push to the PR |
-| **Fallback** | **GitHub-hosted `windows-2022`** | Paid (2× minutes) | Only when you add the **`ci-hosted`** label to the PR |
+The merge gate is the `gate` job. Its check-run name is exactly
+**`Analyze & Test`** — that is the required check. It passes if either path
+went green.
 
-Why the split: GitHub-hosted Windows minutes are metered and **billed at 2×**.
-Re-running a hosted Windows check on every "address review feedback" push burns
-the monthly minute budget fast. Running on a self-hosted runner is free and
-unlimited, so that's the default; the hosted path is there only as an on-demand
-escape hatch.
+Tag-only `Windows x64` build and **Sign release** stay on self-hosted. Pull
+requests cannot schedule those jobs.
 
 ### If your check is stuck "Queued / Expected"
 
-That means **no self-hosted runner is online**. Two options:
+- **Fork or Dependabot PR:** you should already be on hosted Windows. A queued
+  self-hosted job is a bug — say so on the PR.
+- **Maintainer same-repo PR:** no self-hosted runner is online. Start it, or
+  add the **`ci-hosted`** label.
 
-1. **Wait** for the runner to come online (if you or the maintainer owns one —
-   bring it up, see below). The check resumes automatically.
-2. **Add the `ci-hosted` label** to the PR. This immediately re-runs the check
-   on GitHub-hosted Windows and unblocks the merge without needing a runner.
-   Remove the label (and push again) to go back to the free self-hosted path.
+## Self-hosted runners
 
-The merge gate (`Build / Analyze & Test`) stays red/pending until one of the two
-paths reports green — so you can never merge on an unverified commit.
+Do **not** attach a self-hosted runner to this canonical repository. The
+privileged Windows host is maintainer- and tag-only. Outsiders registering
+runners here is not supported.
 
-## Running your own self-hosted Windows runner (optional)
+If you maintain your own **fork**, you may register runners on that fork
+alone. Never point a runner at this repo.
 
-If you maintain a **fork** and want free Windows CI, register your own Windows
-runner. (Only do this for a repo you trust — never attach a self-hosted runner
-to a public repo, where untrusted PRs could run code on your machine. MeowWatch
-is private, which is why it's safe here.)
+## Development
 
-**Prerequisites on the Windows machine:**
+Flutter is installed via [Puro](https://puro.dev/) on the `stable` channel.
+On the maintainer's Windows machines it lives at
+`%USERPROFILE%\.puro\envs\stable\flutter\bin` and is **not** on PATH. Hosted CI
+installs Flutter with `subosito/flutter-action`.
 
-1. **Flutter via [Puro](https://puro.dev/)** on the `stable` channel. The
-   workflow expects it at `%USERPROFILE%\.puro\envs\stable\flutter\bin` (it does
-   **not** use `subosito/flutter-action` on self-hosted runners). Install:
-   ```powershell
-   # Install Puro (see puro.dev for the current one-liner), then:
-   puro create stable stable
-   puro use stable
-   ```
-2. **Visual Studio with the "Desktop development with C++" workload** — required
-   by `flutter build windows`. The Build Tools edition is enough.
-
-**Register the runner:**
-
-1. In your fork: **Settings → Actions → Runners → New self-hosted runner →
-   Windows**. Follow the download/configure commands GitHub shows you.
-2. When configuring, give it the labels **`self-hosted`**, **`windows`**, and
-   **`meowwatch-ci`** (the `windows` label is added automatically on Windows;
-   the workflow targets `runs-on: [self-hosted, windows, meowwatch-ci]`).
-3. **Run it as the logged-in user**, not as `NETWORK SERVICE` — the service
-   account can't see the Visual Studio C++ toolchain, so builds fail. The
-   simplest is to start it interactively:
-   ```powershell
-   # from the runner install folder
-   .\run.cmd
-   ```
-   (MeowWatch's maintainer does **not** install it as an autostart service —
-   they start it on demand before a release and stop it after. You can do
-   whatever fits your workflow.)
-
-Once it shows **online** in Settings → Actions → Runners, your PR checks run on
-it for free.
-
-**No runner? No problem.** Just use the `ci-hosted` label (above) and your check
-runs on GitHub-hosted Windows.
+```powershell
+flutter pub get
+flutter analyze
+flutter test
+flutter build windows --release
+```

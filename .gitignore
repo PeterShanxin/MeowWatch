@@ -16,3 +16,9 @@ windows/flutter/ephemeral/
 linux/flutter/ephemeral/
 macos/Flutter/ephemeral/
 test/ui/chat/failures/
+
+# Credential / signing material — never commit these even by accident.
+.env
+*.pem
+*.key
+release-key.txt

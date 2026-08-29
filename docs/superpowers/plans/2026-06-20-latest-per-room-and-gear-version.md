@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Flutter binary (not on PATH):** `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat`. All `analyze`/`test` commands use this absolute path.
+- **Flutter binary (not on PATH):** `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat`. All `analyze`/`test` commands use this absolute path.
 - **Work in the worktree:** `d:/Repos/MeowWatch/.claude/worktrees/latest-per-room` on branch `feat/latest-per-room-and-gear-version`. All paths below are relative to that root.
 - **Version lockstep (every behavior-changing PR):** bump `pubspec.yaml`, `lib/core/app_version.dart`, `CHANGELOG.md` together. This feature = `feat:` = MINOR bump **0.31.1-alpha → 0.32.0-alpha**. Keep the `-alpha` suffix.
 - **Immutability:** never mutate inputs; return new lists/objects (`@immutable` + `copyWith` already used).
@@ -58,7 +58,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/data/history_mode_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/data/history_mode_test.dart`
 Expected: FAIL — `history_mode.dart` does not exist / `HistoryMode` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -92,7 +92,7 @@ HistoryMode historyModeFromName(String? name) {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/data/history_mode_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/data/history_mode_test.dart`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
@@ -172,7 +172,7 @@ void main() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/data/history_collapse_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/data/history_collapse_test.dart`
 Expected: FAIL — `history_collapse.dart` does not exist.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -210,7 +210,7 @@ List<HistoryEntry> collapseHistory(List<HistoryEntry> entries, HistoryMode mode)
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/data/history_collapse_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/data/history_collapse_test.dart`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
@@ -279,7 +279,7 @@ git commit -m "feat: add collapseHistory (latest-per-room view filter)"
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/data/drift_history_store_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/data/drift_history_store_test.dart`
 Expected: FAIL — `watchRecent` has no `mode` parameter.
 
 - [ ] **Step 3: Implement — interface**
@@ -375,9 +375,9 @@ import 'package:meowwatch/core/data/history_mode.dart';
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/core/data/drift_history_store_test.dart test/support/fakes.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/core/data/drift_history_store_test.dart test/support/fakes.dart`
 Expected: PASS (existing cases + 2 new). Then a quick analyze:
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze lib/core/data`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze lib/core/data`
 Expected: `No issues found!`
 
 - [ ] **Step 7: Commit**
@@ -453,7 +453,7 @@ Add cases:
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/settings/settings_panel_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/settings/settings_panel_test.dart`
 Expected: FAIL — `SettingsPanel` has no `historyMode`; `kHistoryModeSettingKey` undefined.
 
 - [ ] **Step 3: Implement — setting key**
@@ -562,7 +562,7 @@ class HistoryModeControl extends StatelessWidget {
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/settings/settings_panel_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/settings/settings_panel_test.dart`
 Expected: PASS (existing + 3 new). This intentionally breaks the two gear call-sites (compile errors) — fixed in Tasks 5 and 6.
 
 - [ ] **Step 6: Commit**
@@ -637,7 +637,7 @@ Add a widget test (mirror the file's existing ConnectScreen pump harness — reu
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/settings/lobby_settings_button_test.dart test/ui/connect/connect_screen_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/settings/lobby_settings_button_test.dart test/ui/connect/connect_screen_test.dart`
 Expected: FAIL — `LobbySettingsButton`/`ConnectScreen` don't compile yet (missing params / `_ContinueWatching` has no `mode`).
 
 - [ ] **Step 3: Implement — LobbySettingsButton**
@@ -730,7 +730,7 @@ class _ContinueWatching extends StatelessWidget {
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/settings/lobby_settings_button_test.dart test/ui/connect/connect_screen_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/settings/lobby_settings_button_test.dart test/ui/connect/connect_screen_test.dart`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -790,7 +790,7 @@ Add a case (uses the existing `_openSettings` helper that opens the gear + expan
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/player_menu_button_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/player_menu_button_test.dart`
 Expected: FAIL — `PlayerMenuButton` has no `historyMode`.
 
 - [ ] **Step 3: Implement — PlayerMenuButton + _MenuPanel**
@@ -862,9 +862,9 @@ Pass to `PlayerMenuButton` (in `build`), with an inline setter that persists:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/player_menu_button_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/player_menu_button_test.dart`
 Expected: PASS (existing + new). Then analyze the touched UI:
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze lib/ui`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze lib/ui`
 Expected: `No issues found!`
 
 - [ ] **Step 6: Commit**
@@ -904,7 +904,7 @@ import 'package:meowwatch/core/update/update_availability.dart';
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/version_badge_test.dart --plain-name "shared updateAvailable"`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/version_badge_test.dart --plain-name "shared updateAvailable"`
 Expected: FAIL — `update_availability.dart` does not exist.
 
 - [ ] **Step 3: Implement — notifier**
@@ -940,7 +940,7 @@ In `VersionBadge.resetForTest`, clear it too (keeps tests order-independent):
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/version_badge_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/version_badge_test.dart`
 Expected: PASS (existing + new).
 
 - [ ] **Step 6: Commit**
@@ -1018,7 +1018,7 @@ import 'package:meowwatch/core/update/update_availability.dart';
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/player_menu_button_test.dart --plain-name "version footer"`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/player_menu_button_test.dart --plain-name "version footer"`
 Expected: FAIL — no `player-menu-version` key.
 
 - [ ] **Step 3: Implement — footer widget + mount it**
@@ -1121,9 +1121,9 @@ class _VersionFooter extends StatelessWidget {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test test/ui/player_menu_button_test.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test test/ui/player_menu_button_test.dart`
 Expected: PASS (all cases). Then analyze:
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze lib/ui/player_menu_button.dart`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze lib/ui/player_menu_button.dart`
 Expected: `No issues found!`
 
 - [ ] **Step 5: Commit**
@@ -1170,7 +1170,7 @@ Insert a new entry directly above the current top `## [0.31.1-alpha]` entry:
 
 - [ ] **Step 4: Verify the three are in lockstep**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat analyze`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze`
 Expected: `No issues found!`
 Then confirm the version string matches in all three:
 Run: `git grep -n "0.32.0-alpha" pubspec.yaml lib/core/app_version.dart CHANGELOG.md`
@@ -1178,7 +1178,7 @@ Expected: a hit in each of the three files.
 
 - [ ] **Step 5: Full test suite**
 
-Run: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat test`
+Run: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test`
 Expected: all tests pass. (If a golden test fails, no chat/golden widget was touched by this plan — investigate rather than blindly updating goldens.)
 
 - [ ] **Step 6: Commit**

@@ -6,9 +6,9 @@
 
 **Architecture:** Pure resize math (`computeResize`) split from the widget like the existing `computeSnap`. Size is held as window fractions on the immutable `ChatOverlayLayout`, rendered as px at build time. During a grip drag the card free-floats top-left-pinned (reusing the existing `_dragTopLeft` render path) and eases back to its docked corner on release. Persistence reuses the existing `SettingsStore` key/value store (same path the theme uses).
 
-**Tech Stack:** Flutter (Dart), `media_kit` (unrelated here), drift `SettingsStore`. Flutter binary: `C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat` (NOT on PATH).
+**Tech Stack:** Flutter (Dart), `media_kit` (unrelated here), drift `SettingsStore`. Flutter binary: `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat` (NOT on PATH).
 
-> Set once per shell: `$FLUTTER='C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat'`
+> Set once per shell: `$FLUTTER='%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat'`
 
 ---
 
@@ -822,7 +822,7 @@ Add a bullet under the current/most-recent phase in `docs/ROADMAP.md`:
 
 ```powershell
 Stop-Process -Name meowwatch -Force -ErrorAction SilentlyContinue
-C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat build windows
+%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat build windows
 ```
 
 Launch `build/windows/x64/runner/Release/meowwatch.exe` and verify:

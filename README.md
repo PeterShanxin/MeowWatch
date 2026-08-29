@@ -10,7 +10,7 @@ Private development repository. Public downloads and the product showcase live a
 ![MeowWatch — co-watching in action](docs/assets/hero.png)
 
 [![Build](https://github.com/PeterShanxin/MeowWatch/actions/workflows/build.yml/badge.svg)](https://github.com/PeterShanxin/MeowWatch/actions/workflows/build.yml)
-![License](https://img.shields.io/badge/license-proprietary-blue)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--only-blue)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows)
 ![Version](https://img.shields.io/badge/version-0.47.0--alpha-orange)
 
@@ -49,7 +49,7 @@ After the first install, MeowWatch updates itself in-place via a signed R2 manif
 
 ## Development
 
-This repository is **private**. Contributor setup, CI, and release signing are documented in [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md).
+Contributor setup, CI, and release signing are documented in [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md). Contributions need a signed-off [CLA](CLA.md) — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Public showcase metadata is exported from `showcase/` via **Publish Showcase** when a tagged release is mirrored to `MeowWatch-releases`.
 
@@ -70,4 +70,14 @@ Commands-in / streams-out across video, sync, chat, and update subsystems. See [
 
 ## License
 
-Copyright © 2026 MeowWatch. Proprietary — see [LICENSE](LICENSE).
+MeowWatch community source is licensed under the
+**[GNU Affero General Public License v3.0 only](LICENSE)** (AGPL-3.0-only).
+
+Commercial licensing is available for organizations that require terms outside
+AGPL-3.0. Using the public project under AGPL-3.0 does not require a paid
+license.
+
+The MeowWatch name and logo are covered by [TRADEMARKS.md](TRADEMARKS.md), not
+by the software license. Runtime helpers (yt-dlp Windows exe, Deno) are
+downloaded by the app and are **not** AGPL'd — see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

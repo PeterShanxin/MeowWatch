@@ -11,10 +11,10 @@
 **Spec:** `docs/superpowers/specs/2026-05-29-phase-5-themes-design.md`
 
 **Tooling note:** Flutter is NOT on PATH. Use the absolute binary in every command:
-`C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat` (shown below as `$FLUTTER`).
+`%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat` (shown below as `$FLUTTER`).
 
 ```bash
-FLUTTER=C:/Users/shanx/.puro/envs/stable/flutter/bin/flutter.bat
+FLUTTER=%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat
 ```
 
 **Color → slot mapping (canonical — used by the refactor tasks).** Every literal currently in the widget files maps to one of these. Opacity variants are produced from a base slot with `.withValues(alpha: …)` so all shades move together when the theme changes:
@@ -1289,4 +1289,4 @@ git tag phase-5-complete
 
 - [ ] **Step 4: Update project memory**
 
-Add a "Phase 5 SHIPPED" bullet to `C:\Users\shanx\.claude\projects\D--Repos-MeowWatch\memory\project_meowwatch.md` (theme system: MeowColors ThemeExtension + 3 presets, Settings table v1→v2 migration, switcher on Connect + control bar, context.meow getter, zero hardcoded colors outside presets) and note any new gotcha discovered (e.g. golden harness needing a themed wrapper).
+Add a "Phase 5 SHIPPED" bullet to `the agent project memory file` (theme system: MeowColors ThemeExtension + 3 presets, Settings table v1→v2 migration, switcher on Connect + control bar, context.meow getter, zero hardcoded colors outside presets) and note any new gotcha discovered (e.g. golden harness needing a themed wrapper).
