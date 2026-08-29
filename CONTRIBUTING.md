@@ -33,9 +33,9 @@ always runs on a Windows runner.
 
 | Who | Runner | When |
 | --- | --- | --- |
-| **Fork PRs and Dependabot PRs** | GitHub-hosted `windows-2022` | Automatic. They **never** run on the maintainer's self-hosted PC (that machine holds the release-signing seed). |
-| **Same-repo PRs from a human maintainer** | Self-hosted Windows (`meowwatch-ci`) | Default, so maintainer feedback pushes stay off the hosted-minutes meter. |
-| **Maintainer fallback** | GitHub-hosted `windows-2022` | Add the **`ci-hosted`** label (self-hosted runner offline, or you would rather not wait). |
+| **Fork PRs, Dependabot PRs, and collaborator PRs** | GitHub-hosted `windows-2022` | Automatic. They **never** run on the owner's self-hosted PC (that machine holds the release-signing seed). Write access on the repo is not host trust. |
+| **Same-repo PRs from the owner (`PeterShanxin`) only** | Self-hosted Windows (`meowwatch-ci`) | Default, so the owner's feedback pushes stay off the hosted-minutes meter. |
+| **Owner fallback** | GitHub-hosted `windows-2022` | Add the **`ci-hosted`** label (self-hosted runner offline, or you would rather not wait). |
 
 The merge gate is the `gate` job. Its check-run name is exactly
 **`Analyze & Test`** — that is the required check. It passes if either path
@@ -46,15 +46,15 @@ requests cannot schedule those jobs.
 
 ### If your check is stuck "Queued / Expected"
 
-- **Fork or Dependabot PR:** you should already be on hosted Windows. A queued
-  self-hosted job is a bug — say so on the PR.
-- **Maintainer same-repo PR:** no self-hosted runner is online. Start it, or
-  add the **`ci-hosted`** label.
+- **Fork, Dependabot, or collaborator PR:** you should already be on hosted
+  Windows. A queued self-hosted job is a bug — say so on the PR.
+- **Owner (`PeterShanxin`) same-repo PR:** no self-hosted runner is online.
+  Start it, or add the **`ci-hosted`** label.
 
 ## Self-hosted runners
 
 Do **not** attach a self-hosted runner to this canonical repository. The
-privileged Windows host is maintainer- and tag-only. Outsiders registering
+privileged Windows host is owner- and tag-only. Outsiders registering
 runners here is not supported.
 
 If you maintain your own **fork**, you may register runners on that fork

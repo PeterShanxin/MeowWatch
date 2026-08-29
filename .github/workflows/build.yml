@@ -30,12 +30,14 @@ jobs:
   # Two Windows paths, one required check (`gate` / `Analyze & Test`).
   #
   # The self-hosted host holds the release-signing seed, so untrusted code
-  # must never schedule there. Fork PRs and Dependabot PRs always take
-  # `check-hosted` (GitHub-hosted windows-2022) with no label required.
-  # Self-hosted `check-self-hosted` runs only for:
+  # must never schedule there. Write access on the repo is not host trust:
+  # collaborators' same-repo PRs take `check-hosted` just like forks.
+  # Fork PRs, Dependabot PRs, and any PR whose author is not PeterShanxin
+  # always take `check-hosted` (GitHub-hosted windows-2022) with no label
+  # required. Self-hosted `check-self-hosted` runs only for:
   #   * non-PR events (push to main, v* tags), as today
-  #   * same-repo PRs from a human (not dependabot[bot]), unless `ci-hosted`
-  # Maintainers can still add `ci-hosted` to force hosted Windows (runner
+  #   * same-repo PRs from PeterShanxin (not dependabot[bot]), unless `ci-hosted`
+  # The owner can still add `ci-hosted` to force hosted Windows (runner
   # offline). Keep this job free of hosted-only composite actions: self-hosted
   # runners prepare composite action dependencies before skipped steps are
   # evaluated, so a `subosito/flutter-action` step here would try to set up
@@ -51,6 +53,7 @@ jobs:
     if: >-
       ${{ github.event_name != 'pull_request' || (
         github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.user.login == 'PeterShanxin' &&
         github.event.pull_request.user.login != 'dependabot[bot]' &&
         !contains(github.event.pull_request.labels.*.name, 'ci-hosted')
       ) }}
@@ -70,8 +73,8 @@ jobs:
           BASE_REPO: ${{ github.repository }}
           PR_USER: ${{ github.event.pull_request.user.login }}
         run: |
-          if ($env:HEAD_REPO -ne $env:BASE_REPO -or $env:PR_USER -eq 'dependabot[bot]') {
-            Write-Error "Untrusted PRs must not run on the self-hosted runner (head=$($env:HEAD_REPO) user=$($env:PR_USER))."
+          if ($env:HEAD_REPO -ne $env:BASE_REPO -or $env:PR_USER -ne 'PeterShanxin') {
+            Write-Error "Only same-repo PRs from PeterShanxin may run on the self-hosted runner (head=$($env:HEAD_REPO) user=$($env:PR_USER))."
             exit 1
           }
 
@@ -100,16 +103,18 @@ jobs:
         shell: pwsh
         run: flutter test
 
-  # GitHub-hosted `windows-2022` (paid, 2×). Automatic for fork PRs and
-  # Dependabot PRs (they must never use the privileged self-hosted host).
-  # Also the on-demand maintainer fallback when the `ci-hosted` label is set
-  # (self-hosted runner offline). Not used for push/tag — those stay
-  # self-hosted so release builds do not burn hosted Windows minutes.
+  # GitHub-hosted `windows-2022` (paid, 2×). Automatic for fork PRs,
+  # Dependabot PRs, and same-repo PRs whose author is not PeterShanxin
+  # (collaborator write is not host trust). Also the on-demand owner
+  # fallback when the `ci-hosted` label is set (self-hosted runner
+  # offline). Not used for push/tag — those stay self-hosted so release
+  # builds do not burn hosted Windows minutes.
   check-hosted:
     name: Analyze & Test (hosted fallback)
     if: >-
       ${{ github.event_name == 'pull_request' && (
         github.event.pull_request.head.repo.full_name != github.repository ||
+        github.event.pull_request.user.login != 'PeterShanxin' ||
         github.event.pull_request.user.login == 'dependabot[bot]' ||
         contains(github.event.pull_request.labels.*.name, 'ci-hosted')
       ) }}
@@ -143,11 +148,12 @@ jobs:
   # name covers both the self-hosted and hosted-fallback paths.
   #
   # Why hosted Linux and not self-hosted: the gate must run on an always-
-  # available runner to report once a path finishes. For a maintainer PR with
-  # no `ci-hosted` label, an offline self-hosted runner leaves
-  # `check-self-hosted` queued (never terminal), so this gate stays pending —
-  # i.e. "wait until the runner is online". Fork / Dependabot PRs never take
-  # that path. PR-only — plain pushes and tags don't gate-merge.
+  # available runner to report once a path finishes. For an owner
+  # (PeterShanxin) same-repo PR with no `ci-hosted` label, an offline
+  # self-hosted runner leaves `check-self-hosted` queued (never terminal), so
+  # this gate stays pending — i.e. "wait until the runner is online". Fork,
+  # Dependabot, and collaborator PRs never take that path. PR-only — plain
+  # pushes and tags don't gate-merge.
   gate:
     name: Analyze & Test
     needs: [check-self-hosted, check-hosted]
@@ -165,7 +171,7 @@ jobs:
             echo "Analyze & Test passed."
             exit 0
           fi
-          echo "::error::No green Analyze & Test run (self-hosted=$sh, hosted=$ho). Fork and Dependabot PRs always use GitHub-hosted Windows — a red hosted job is a real failure. Same-repo maintainer PRs: if the self-hosted runner is offline, add the 'ci-hosted' label."
+          echo "::error::No green Analyze & Test run (self-hosted=$sh, hosted=$ho). Fork, Dependabot, and collaborator PRs always use GitHub-hosted Windows — a red hosted job is a real failure. Owner same-repo PRs: if the self-hosted runner is offline, add the 'ci-hosted' label."
           exit 1
 
   # ── Build Windows x64 (tag pushes only — release builds anyway) ────
