@@ -5,6 +5,10 @@ name: Publish Showcase
 #
 # SECURITY: Only files exported by scripts/export-showcase-bundle.mjs (driven by
 # showcase/EXPORT_ALLOWLIST.json) may cross into the public repository.
+#
+# Write access is not host trust. This job holds RELEASE_MIRROR_TOKEN. A
+# collaborator who can click workflow_dispatch must not run it. GitHub
+# evaluates `if:` before the job starts.
 
 on:
   workflow_dispatch:
@@ -23,6 +27,9 @@ env:
 jobs:
   publish:
     name: Publish showcase and release mirror
+    if: >-
+      github.actor == 'PeterShanxin' &&
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

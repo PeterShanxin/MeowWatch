@@ -46,7 +46,9 @@ Tag-only `Windows x64` build and **Sign release** stay on self-hosted, and
 only when **`github.actor` is `PeterShanxin`**. A write collaborator's `git
 push` of a branch or a `v*` tag does **not** run on that host and does **not**
 sign a release. Pull requests cannot schedule those jobs. Write access is not
-host trust.
+host trust. The **Publish Showcase** workflow (`workflow_dispatch`) holds
+`RELEASE_MIRROR_TOKEN` and is likewise owner-actor-only — write does not let
+you click it live.
 
 ### If your check is stuck "Queued / Expected"
 
