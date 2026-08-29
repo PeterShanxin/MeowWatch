@@ -61,27 +61,25 @@ Then build Release and do the manual test (see the Gotchas: kill build-path `meo
 
 The workflow (`.github/workflows/build.yml`) splits Windows check jobs so the
 **privileged self-hosted host never runs untrusted code**. That host holds
-the release-signing seed (`%USERPROFILE%\.meowwatch\release-key.txt`). Fork PRs,
-Dependabot PRs, same-repo PRs from anyone other than **PeterShanxin**,
-**any PR event whose `github.actor` is not PeterShanxin** (a write collaborator
-pushing onto an already-open owner PR — `pull_request.user.login` stays the
-author), and **any push or `v*` tag whose `github.actor` is not PeterShanxin**
-always stay off that host. Write access is not host trust — a collaborator
-can push a branch or a tag; that must not analyze, build, or sign on the
-privileged runner. Untrusted PRs use GitHub-hosted `windows-2022`. Owner
-same-repo PRs **triggered by PeterShanxin**, plus **PeterShanxin push/tag**,
-still default to self-hosted so the owner's own work stays off the
-hosted-minutes meter (GitHub-hosted Windows is billed at **2×**).
+the release-signing seed (`%USERPROFILE%\.meowwatch\release-key.txt`). Trusted
+co-admins are **PeterShanxin** and **ianmeowmeow** (same host trust). Fork PRs,
+Dependabot PRs, same-repo PRs from any other login, **any PR event whose
+`github.actor` is not a trusted co-admin**, and **any push or `v*` tag whose
+`github.actor` is not a trusted co-admin** always stay off that host. Fork
+heads never qualify even if the actor is trusted. Write access alone is not
+host trust. Untrusted PRs use GitHub-hosted `windows-2022`. Trusted-admin
+same-repo PRs **triggered by a trusted co-admin**, plus **their push/tag**,
+still default to self-hosted so that work stays off the hosted-minutes meter
+(GitHub-hosted Windows is billed at **2×**).
 Self-hosted runners themselves are not billed.
 
-- **PR gate (analyze + test)** → **fork, Dependabot, collaborator PRs, and
-  collaborator pushes onto an owner PR** take **`check-hosted`** on
-  `windows-2022` automatically (no `ci-hosted` label). **Same-repo PRs from
-  PeterShanxin only, and only when `github.actor` is also PeterShanxin**, plus
-  **push/tag from PeterShanxin**, take **`check-self-hosted`** on
-  **`[self-hosted, windows, meowwatch-ci]`** unless the PR has **`ci-hosted`**.
-  A collaborator branch or `v*` tag push does **not** schedule
-  `check-self-hosted`. The suite is **not cross-platform** —
+- **PR gate (analyze + test)** → **fork, Dependabot, and any other login**
+  take **`check-hosted`** on `windows-2022` automatically (no `ci-hosted`
+  label). **Same-repo PRs from PeterShanxin or ianmeowmeow, and only when
+  `github.actor` is also one of those two**, plus **push/tag from either**,
+  take **`check-self-hosted`** on **`[self-hosted, windows, meowwatch-ci]`**
+  unless the PR has **`ci-hosted`**. Any other login's branch or `v*` tag
+  push does **not** schedule `check-self-hosted`. The suite is **not cross-platform** —
   `test/core/video/video_url_test.dart` asserts on Windows paths (`C:\…` →
   basename) and `test/ui/chat/chat_overlay_golden_test.dart` uses
   Windows-rendered goldens — so on Linux 4 tests fail; both runner paths must
@@ -89,8 +87,8 @@ Self-hosted runners themselves are not billed.
   - **On-demand hosted fallback (`check-hosted`)** → also used when the owner
     adds the **`ci-hosted` label** (self-hosted runner offline). The label fires
     a fresh run on the current head SHA; concurrency cancels the stalled
-    self-hosted attempt. Fork/Dependabot/collaborator PRs, and collaborator
-    pushes onto an owner PR, do not need this label.
+    self-hosted attempt. Fork/Dependabot/any-other-login PRs do not need this
+    label.
   - **Single required check (`gate`)** → both paths feed a tiny referee job on
     hosted Linux (1×, seconds) whose check-run name is exactly
     **`Analyze & Test`** (that exact string is the branch-protection context —
@@ -100,23 +98,24 @@ Self-hosted runners themselves are not billed.
     `enforce_admins:false` so `--admin` still merges doc-only PRs that skip CI
     via `paths-ignore`; no required reviews — bot reviews gate by convention,
     not by rule), set via `gh api -X PUT repos/PeterShanxin/MeowWatch/branches/main/protection`.
-    So it's the one stable gate covering both runners. If an **owner** PR's
-    runner is offline and no `ci-hosted` label is set, `check-self-hosted` stays
-    *queued*, so the gate stays *pending* until the runner comes online (or you
-    add the label). Fork/Dependabot/collaborator PRs, and collaborator pushes
-    onto an owner PR, never queue on that host.
+    So it's the one stable gate covering both runners. If a **trusted-admin**
+    PR's runner is offline and no `ci-hosted` label is set, `check-self-hosted`
+    stays *queued*, so the gate stays *pending* until the runner comes online
+    (or you add the label). Fork/Dependabot/any-other-login PRs never queue on
+    that host.
 - **`build-windows-x64`** → `[self-hosted, windows, meowwatch-ci]`. The
   expensive 2× Windows build runs on **our own PC** for free. **Tag-push only,
-  and only when `github.actor` is PeterShanxin** — pull requests cannot
-  schedule it, and a write collaborator's `v*` tag must not build or sign.
-  Workflow default `permissions` are `contents: read`; this job is the one
-  that gets `contents: write` to create GitHub Releases.
+  and only when `github.actor` is PeterShanxin or ianmeowmeow** — pull requests
+  cannot schedule it, and any other login's `v*` tag must not build or sign.
+  Fork PRs never reach this job. Workflow default `permissions` are
+  `contents: read`; this job is the one that gets `contents: write` to create
+  GitHub Releases.
 - **`release`** (GitHub Release + R2 upload) → `ubuntu-latest`. Bash/rclone job, 1×. Tag-push only. This one **runs on hosted Linux**, so it needs hosted Actions to be available. **Failure path:** if a tag is pushed while hosted Actions is unavailable (budget cap reached, or minutes exhausted with no budget), the self-hosted check + `build-windows-x64` still produce the Windows artifact, but this `release` job fails or never starts — so **R2 is not updated and `latest.json` / `changelog.json` stay stale (the in-app updater keeps offering the old version).** The operator must then either **re-run the `release` job from the Actions UI once hosted Actions is restored** (no re-tag needed — re-running picks up the already-built artifact), or **manually publish** the build zip + a regenerated `latest.json` + `changelog.json` to R2. Fully self-hosting this job (rewriting its bash/rclone steps for Windows) would remove the dependency — a separate follow-up. `secrets.R2_*` are referenced **only** in this job; PR jobs must never interpolate them.
-- **`publish-showcase.yml`** → hosted Linux, **`workflow_dispatch` only**. It interpolates `secrets.RELEASE_MIRROR_TOKEN` to write the public MeowWatch-releases mirror. Write access is not dispatch trust: the job `if:` requires `github.actor == 'PeterShanxin'` (same pattern as Meowcal `publish-update.yml`). GitHub evaluates that `if:` before the job starts, so a collaborator click must not run it.
+- **`publish-showcase.yml`** → hosted Linux, **`workflow_dispatch` only**. It interpolates `secrets.RELEASE_MIRROR_TOKEN` to write the public MeowWatch-releases mirror. The job `if:` requires `github.actor` to be **PeterShanxin or ianmeowmeow**. GitHub evaluates that `if:` before the job starts, so any other login's click must not run it. Forks stay excluded.
 
 ### Self-hosted Windows runner
 
-Registered to this repo with the **`self-hosted` + `windows` + `meowwatch-ci`** labels (those labels are what the workflow selects — not a machine hostname). It must be **online** for **PeterShanxin** tag builds and for **PeterShanxin same-repo** `check-self-hosted` jobs **triggered by PeterShanxin** — otherwise `build-windows-x64` (owner tags) or that PR check queues until a runner appears. **Fork, Dependabot, collaborator PRs, collaborator pushes onto an owner PR, and collaborator branch/`v*` tag pushes never use this runner.** Untrusted PRs take hosted Windows automatically. Collaborator tags do not sign. For an owner PR you can sidestep the wait by adding the **`ci-hosted` label**; a tag build has no such fallback and always needs the runner. Do not invite outsiders to attach runners to this canonical repo.
+Registered to this repo with the **`self-hosted` + `windows` + `meowwatch-ci`** labels (those labels are what the workflow selects — not a machine hostname). It must be **online** for **PeterShanxin / ianmeowmeow** tag builds and for **their same-repo** `check-self-hosted` jobs **triggered by either** — otherwise `build-windows-x64` (trusted-admin tags) or that PR check queues until a runner appears. **Fork, Dependabot, and any other login never use this runner.** Untrusted PRs take hosted Windows automatically. Any other login's tags do not sign. For a trusted-admin PR you can sidestep the wait by adding the **`ci-hosted` label**; a tag build has no such fallback and always needs the runner. Do not invite outsiders to attach runners to this canonical repo.
 
 Machine-local name and install directory live as parameters on `tool/runner.ps1` (`$RunnerName`, `$RunnerDir`). Do not copy those values into docs or issue text.
 
@@ -138,7 +137,7 @@ Machine-local name and install directory live as parameters on `tool/runner.ps1`
   - **The job log will not tell you whether it worked.** The runner prints `Download action repository 'actions/checkout@v7' (SHA:…)` *before* it consults the cache, so that line appears either way. The real signal is `Found action archive '<file>' in cache directory '<dir>'` in `$RunnerDir\_diag\Worker_*.log`.
   - **Never restart a live runner to apply it.** `.env` is read once, in `Program.LoadAndSetEnv`, when the listener starts; restarting mid-job can sever a dispatched job and there is no drain API. Since the runner is on-demand, syncing before you start it costs nothing.
   - **Don't share this runner's action-archive cache with another runner on the same machine.** A directory every job on both reads is a wider blast radius than the few megabytes it would save. MeowWatch's runner must not execute untrusted (fork / Dependabot) pull-request code.
-- **If hosted Actions is unavailable** (included minutes *and* the Actions budget cap both spent): a **PeterShanxin `v*` tag** push is unaffected for the build — its check + Windows build both run on the self-hosted runner for free — but the hosted `release` upload won't run (see the `release` failure path above: re-run it once hosted Actions is restored, or publish to R2 manually, else `latest.json`/`changelog.json` go stale). A **collaborator tag** does not take that self-hosted path. **Owner same-repo PR triggered by PeterShanxin** checks can still run on the self-hosted runner **as long as the runner is online**. **Fork / Dependabot / collaborator PRs, and collaborator pushes onto an owner PR,** need hosted Windows, so they cannot pass CI while hosted Actions is down; the `gate` referee also needs hosted Actions. If you cannot unblock through CI, bridge with the local-verification gate (see "When hosted Actions is unavailable" above) and merge with admin override.
+- **If hosted Actions is unavailable** (included minutes *and* the Actions budget cap both spent): a **PeterShanxin or ianmeowmeow `v*` tag** push is unaffected for the build — its check + Windows build both run on the self-hosted runner for free — but the hosted `release` upload won't run (see the `release` failure path above: re-run it once hosted Actions is restored, or publish to R2 manually, else `latest.json`/`changelog.json` go stale). Any **other login's tag** does not take that self-hosted path. **Trusted-admin same-repo PRs triggered by PeterShanxin or ianmeowmeow** can still run on the self-hosted runner **as long as the runner is online**. **Fork / Dependabot / any other login** need hosted Windows, so they cannot pass CI while hosted Actions is down; the `gate` referee also needs hosted Actions. If you cannot unblock through CI, bridge with the local-verification gate (see "When hosted Actions is unavailable" above) and merge with admin override.
 - **Runner hangs & watching a long run.** `flutter test` (occasionally `pub get` / the build) can wedge on the self-hosted runner — a stuck `flutter_tester` holds the job open with no progress. Each job now carries a **`timeout-minutes`** (checks 20/25, build 45, release 15) so a hang fails fast and frees the runner instead of sitting until GitHub's **6h default**; a timed-out run shows a clear status and re-runs with one click (no manual `flutter_tester` kill needed). The hang is flaky/environmental — the same commit passes on a clean retry — so the timeout is a backstop, not a root-cause fix. **Don't trust `gh run watch` for long self-hosted runs:** it has silently dropped the run mid-stream (~56 min in) and exited as if finished, hiding the hang. Poll `gh run view <run-id> --json status,conclusion,jobs` instead.
   - **One concrete, self-inflicted cause: local PC load.** The runner shares this dev PC, so a local `flutter build windows` (or a freshly launched app) running *while the runner executes the release's `Run tests` step* starves the tests past `timeout-minutes` → the tag run is **cancelled**, and because the test gate didn't pass, `build-windows-x64` + `release` (R2 publish) **skip** — nothing ships (happened on v0.33.0-alpha's first attempt). **Preventive:** do the final manual-test Release build *before* pushing the `v*` tag, then keep the PC idle while the release run is in flight. **Recover:** once idle, `gh run rerun <run-id>` — it re-uses the same run, and a green test step lets the build + R2 jobs proceed.
   - **Local test runs orphan `flutter_tester` processes — kill them before anything hits the runner.** A local full-suite `flutter test` (even one that passes) can leave several `flutter_tester.exe` orphans behind, and every failed/cancelled runner job orphans its own batch. Those orphans starve the *next* runner job: timing-sensitive tests flake, or the job hits `timeout-minutes`, or the runner dies outright with "runner lost communication with the server" — each of which strands more orphans, compounding. Rule of thumb (v0.40.0-alpha release): after every local suite run and between CI attempts, kill the leftover `flutter_tester.exe` processes, then rerun.
@@ -297,7 +296,7 @@ Keep the `-alpha` suffix until we move off alpha. CI parses `CHANGELOG.md` → `
 1. Land the work on a feature/fix branch and get it **locally green** (analyze + test). **If the change has visible/UX surface, do an early local look BEFORE opening the PR:** build the Release and open it so the user can inspect/test while iteration is still cheap — no PR, bots, or gates involved yet — and fold in their feedback (possibly several rounds). Once the user is happy with the look (or for non-visual changes, right away), **open a PR to `main`.** Don't push `v*` tags from the branch. This is the *early* checkpoint; step 3's manual test is the *final* one on the shippable commit — two distinct looks.
 2. Wait for the automatic **Copilot review**, then run the `address-pr-review` skill: fix or reject each comment with a real reason, reply, resolve the threads, push.
 3. If a manual test is warranted (visible behavior change), **request it only once the automated gates are clear** — bot reviews resolved/satisfied **and** CI green — never while a review or CI run is still pending. A new commit re-opens the gate, so a test exercised on a not-yet-final commit gets invalidated by the next change; the human's hands-on time is the scarce resource, so spend it once, on the version that will actually ship. (Building the Release artifact ahead of time is fine — just don't ask them to *exercise* it until the gates are clear.) Pure edge-case/defensive fixes with unit coverage don't need a manual test — say so. If the user already confirmed a manual test but later review/CI feedback requires any app-behavior patch, stop after CI/reviews clear, build/open the updated Release app again, and get a fresh manual confirmation before merging/tagging. Docs/comment/CI-only follow-ups do not invalidate an already-confirmed manual app test; say that explicitly.
-4. Wait for **CI green** (the `Analyze & Test` check — the PR gate, now required by branch protection on `main`). Fork / Dependabot / collaborator PRs, and collaborator pushes onto an owner PR, run on hosted Windows automatically. Owner (`PeterShanxin`) same-repo PRs **triggered by PeterShanxin** run free on the self-hosted runner, so **start the runner** if `check-self-hosted` is queued, or add the `ci-hosted` label to run on hosted Windows instead. The full `Windows x64` build does **not** run on PRs; it runs only on a **PeterShanxin** tag push (`github.actor`). Then **merge** the PR to `main` (merge commit). _(If hosted Actions is ever unavailable — included minutes and the Actions budget cap both spent — use the local verification gate from "When hosted Actions is unavailable" above instead of waiting on this check.)_
+4. Wait for **CI green** (the `Analyze & Test` check — the PR gate, now required by branch protection on `main`). Fork / Dependabot / any other login run on hosted Windows automatically. Same-repo PRs from **PeterShanxin or ianmeowmeow** **triggered by either** run free on the self-hosted runner, so **start the runner** if `check-self-hosted` is queued, or add the `ci-hosted` label to run on hosted Windows instead. The full `Windows x64` build does **not** run on PRs; it runs only on a **PeterShanxin or ianmeowmeow** tag push (`github.actor`). Then **merge** the PR to `main` (merge commit). _(If hosted Actions is ever unavailable — included minutes and the Actions budget cap both spent — use the local verification gate from "When hosted Actions is unavailable" above instead of waiting on this check.)_
 5. `git checkout main && git pull` → **tag** `v<version>` on the merge commit → `git push origin v<version>`. The tag fires the build + release jobs (build → R2 upload + `changelog.json`). Since this is the *first* clean-room Windows build for the change, watch it — a build-only breakage surfaces here, not at PR time.
 6. Wait for the release run green, then **verify R2**: `curl …/releases/latest.json` (version matches) and `…/releases/changelog.json` (array includes the new version).
 7. **Wrap up** once R2 is verified — run the `call-it-a-day` skill (or do it by hand): `git checkout main && git pull` so main is the merge+tag commit, delete the merged branch (local + remote), prune the feature worktree under the active agent's worktree directory (for example, `.claude/worktrees/` or `.Codex/worktrees/`), remove session scratch files, and stop any leftover `meowwatch.exe` dev/test instances. End on a clean `git status` on `main`. Don't start this until after the merge, tag, and R2 verification — the worktree is still needed for PR iteration before then.
