@@ -23,12 +23,21 @@ const Duration positionOverrunTolerance = Duration(seconds: 1);
 /// Once playback has started, the only remaining guard is the sanity invariant
 /// that a position never exceeds the media's [duration] (plus a small rounding
 /// tolerance for an end-of-file tick that lands a hair past it).
+///
+/// [probeZeroPending] identifies the one delayed `0:00` event produced by the
+/// paused-load decode probe. If an explicit non-zero seek has already moved the
+/// player away from zero, that stale probe event must not undo the seek. A
+/// normal zero remains valid when no probe event is pending.
 bool acceptPlayerPosition({
   required Duration incoming,
   required Duration duration,
   required bool started,
+  Duration current = Duration.zero,
+  bool probeZeroPending = false,
 }) {
-  if (incoming <= Duration.zero) return true;
+  if (incoming <= Duration.zero) {
+    return !(probeZeroPending && started && current > Duration.zero);
+  }
   if (!started) return false;
   if (duration <= Duration.zero) return false;
   return incoming <= duration + positionOverrunTolerance;

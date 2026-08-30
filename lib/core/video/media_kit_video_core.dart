@@ -48,6 +48,12 @@ class MediaKitVideoCore extends VideoCore {
   /// source (which a hung/bad new source would then ride into a false open).
   bool _paramsResetSeen = false;
 
+  /// Token of the load probe's private seek back to 0:00 until its position
+  /// event is observed. libmpv can deliver that event after the public resume
+  /// seek has already landed; the position listener drops that one stale zero
+  /// instead of flashing Continue Watching back to the beginning.
+  int? _pendingProbeZeroToken;
+
   /// In-flight [reset] (leave-room teardown) on this reused engine, or null when
   /// idle. [load] awaits it before touching the shared player so a fast re-join
   /// can't open a new source only for the previous room's trailing `stop()` to
@@ -117,11 +123,23 @@ class MediaKitVideoCore extends VideoCore {
         // libmpv can deliver mid-load — otherwise a freshly loaded episode
         // shows the old one's end instead of 0:00, and a room would broadcast
         // the wrong position (#132). See [acceptPlayerPosition].
-        if (!acceptPlayerPosition(
+        final probeZeroPending = _pendingProbeZeroToken == _loadToken;
+        final accepted = acceptPlayerPosition(
           incoming: pos,
+          current: state.position,
           duration: state.duration,
           started: _playbackStarted,
-        )) {
+          probeZeroPending: probeZeroPending,
+        );
+        // Consume the probe marker on its first zero event whether accepted
+        // (normal paused load) or rejected (late after a resume seek).
+        if (probeZeroPending && pos <= Duration.zero) {
+          _pendingProbeZeroToken = null;
+        }
+        if (!accepted) {
+          if (probeZeroPending && pos <= Duration.zero) {
+            appLog('trace: ignored late paused-load probe zero');
+          }
           return;
         }
         emit(state.copyWith(position: pos));
@@ -285,6 +303,7 @@ class MediaKitVideoCore extends VideoCore {
     // legitimately sits at 0:00 and any non-zero tick is the previous file's
     // lingering end position (#132).
     _playbackStarted = false;
+    _pendingProbeZeroToken = null;
     // Arm the params-open guard: a real params event seen before this load's
     // START_FILE reset is the previous source's, and must not latch `opened`.
     _paramsResetSeen = false;
@@ -377,6 +396,7 @@ class MediaKitVideoCore extends VideoCore {
         await _player.pause();
         if (ownsSource() && opened) {
           // Settle back to a paused start.
+          _pendingProbeZeroToken = token;
           await _player.seek(Duration.zero);
         } else if (ownsSource()) {
           // Never confirmed within the budget — surface the failure now so the
@@ -408,6 +428,9 @@ class MediaKitVideoCore extends VideoCore {
   @override
   Future<void> seek(Duration position) {
     _playbackStarted = true;
+    // An explicit seek to the beginning owns that zero; do not mistake it for
+    // the load probe's delayed event.
+    if (position <= Duration.zero) _pendingProbeZeroToken = null;
     appLog('trace: seek ${position.inMilliseconds}ms');
     return _player.seek(position);
   }
@@ -432,6 +455,7 @@ class MediaKitVideoCore extends VideoCore {
   Future<void> reset() async {
     _playbackStarted = false;
     _paramsResetSeen = false;
+    _pendingProbeZeroToken = null;
     // Clear stored state synchronously, before any await, so the next room reads
     // a blank slate even if it mounts immediately. stop()'s trailing events
     // (playing:false, position/duration 0) are harmless on the load screen.
