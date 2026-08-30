@@ -3,8 +3,7 @@
 Thanks for helping out.
 
 **By intentionally submitting a contribution to this project, you agree to the
-[Contributor License Agreement](CLA.md) for that contribution.** No per-pull-
-request checkbox is required.
+[Contributor License Agreement](CLA.md) for that contribution.**
 
 For toolchain, release flow, versioning, and gotchas see
 [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md). This file is the contributor-facing
