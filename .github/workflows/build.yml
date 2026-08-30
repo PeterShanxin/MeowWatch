@@ -183,10 +183,10 @@ jobs:
     if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) && github.actor != 'dependabot[bot]' && needs.check-self-hosted.result == 'success' }}
     permissions:
       contents: write # Create GitHub Release + upload zip/sig (tag-only).
-    # Runs on a self-hosted Windows runner (our own PC) so the expensive 2×
-    # Windows build consumes no GitHub-hosted minutes. Requires a runner
-    # registered with the `self-hosted` + `windows` + `meowwatch-ci` labels and
-    # the Visual Studio desktop C++ toolchain installed (see
+    # Runs on a self-hosted Windows runner because the release signing key is
+    # available only on that trusted physical host. Requires a runner registered
+    # with the `self-hosted` + `windows` + `meowwatch-ci` labels and the Visual
+    # Studio desktop C++ toolchain installed (see
     # docs/AGENT_GUIDE.md → CI). github.actor must be PeterShanxin or
     # ianmeowmeow — any other login's v* tag must not build or sign here.
     # pull_request never reaches this job. Falls back to nothing if no runner is
