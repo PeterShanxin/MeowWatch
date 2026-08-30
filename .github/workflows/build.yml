@@ -11,7 +11,7 @@ on:
 
 # Default: read-only. Hosted PR gates must stay contents:read and must never
 # interpolate TAURI_SIGNING_PRIVATE_KEY, MEOWWATCH_RELEASE_KEY / the Ed25519
-# seed / release-key.txt, R2_* secrets, or RELEASE_MIRROR_TOKEN. The tag-only
+# seed / release-key.txt, or R2_* secrets. The tag-only
 # `build-windows-x64` job grants `contents: write` to create GitHub Releases.
 permissions:
   contents: read
@@ -111,14 +111,14 @@ jobs:
         shell: pwsh
         run: flutter test
 
-  # Every pull_request. GitHub-hosted `windows-2022` (paid, 2×). Forks,
+  # Every pull_request. Standard GitHub-hosted `windows-2022`. Forks,
   # Dependabot, trusted-admin same-repo PRs, and any other login all take
   # this path. Pinned to 2022 (not 2025): hosted 2025 failed the two
   # chat-overlay goldens (run 33264970792: 0.05%/444px and 15px). That
   # image already ran untrusted PRs. Do not --update-goldens for 2025
   # pixels. Trusted-admin push/tag stay on check-self-hosted. This job
   # must not interpolate TAURI_SIGNING_PRIVATE_KEY, MEOWWATCH_RELEASE_KEY,
-  # R2_*, or RELEASE_MIRROR_TOKEN.
+  # or R2_* secrets.
   check-hosted:
     name: Analyze & Test (hosted)
     if: ${{ github.event_name == 'pull_request' }}
