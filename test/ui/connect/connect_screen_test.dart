@@ -9,6 +9,7 @@ import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
 import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
+import 'package:meowwatch/core/data/watch_context.dart';
 import 'package:meowwatch/core/session/session_mode.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
@@ -136,16 +137,15 @@ class _FakeHistoryStore implements HistoryStore {
     required String filePath,
     required String fileName,
     required int fileSizeBytes,
+    required WatchContext context,
     int? durationMs,
-    String? room,
     String? username,
-    String? server,
-    int? port,
   }) async {}
 
   @override
   Future<bool> updatePosition({
     required String filePath,
+    required WatchContext context,
     required int positionMs,
     int? durationMs,
   }) async => true;
@@ -837,6 +837,14 @@ void main() {
     durationMs: 600000,
     lastPositionMs: 120000,
     playedAt: DateTime(2026, 5, 29),
+    contextKey: syncedWatchContextKey(
+      server: 'syncplay.pl',
+      port: 8999,
+      room: 'room-$id',
+    ),
+    room: 'room-$id',
+    server: 'syncplay.pl',
+    port: 8999,
   );
 
   testWidgets('continue-watching row shows progress and can be deleted', (
@@ -1176,16 +1184,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('Local Player Mode start is a local session with no saved room', (
+  testWidgets('Local Player Mode start is a local session with a real room', (
     tester,
   ) async {
     await pump(tester);
     await turnOnLocalMode(tester);
     expect(find.text('Start watching'), findsOneWidget);
-    expect(
-      find.text('Play on this computer — no room, no sync.'),
-      findsOneWidget,
-    );
+    expect(find.text('Play on this computer — no sync.'), findsOneWidget);
 
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
     await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
@@ -1194,9 +1199,12 @@ void main() {
 
     expect(connected, isNotNull);
     expect(connected!.sessionMode, SessionMode.local);
-    expect(connected!.room, isEmpty);
+    expect(connected!.room, isNotEmpty);
+    expect(connected!.server, isNotEmpty);
+    expect(connected!.port, greaterThan(0));
     expect(connected!.username, 'lin');
     expect(profiles.saveUsedCalls, 0);
+    expect(find.textContaining('copied'), findsNothing);
   });
 
   testWidgets(
@@ -1213,6 +1221,7 @@ void main() {
       expect(connected!.sessionMode, SessionMode.local);
       expect(connected!.resumeFilePath, '/ep1.mkv');
       expect(connected!.resumePositionMs, 120000);
+      expect(connected!.room, 'cozy-fox-42');
       expect(profiles.saveUsedCalls, 0);
     },
   );
@@ -1234,6 +1243,66 @@ void main() {
     expect(connected!.sessionMode, SessionMode.synced);
     expect(connected!.room, 'sleepy-owl-13');
     expect(profiles.saveUsedCalls, 1);
+    expect(find.text(kLocalJoinOverrideNotice), findsOneWidget);
+  });
+
+  testWidgets('Local ON + invalid join code does not override or launch', (
+    tester,
+  ) async {
+    await pump(tester);
+    await turnOnLocalMode(tester);
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-otter-counts-cozy-stars@cozy.example.net:notaport',
+    );
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+
+    expect(connected, isNull);
+    expect(find.text(kLocalJoinOverrideNotice), findsNothing);
+    expect(find.text('Start watching'), findsOneWidget);
+  });
+
+  testWidgets('Local OFF + valid join has no override notice', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-owl-13',
+    );
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+
+    expect(connected!.sessionMode, SessionMode.synced);
+    expect(find.text(kLocalJoinOverrideNotice), findsNothing);
+  });
+
+  testWidgets('after Join override, lobby Local stays ON', (tester) async {
+    final settings = _FakeSettingsStore();
+    await pump(tester, settings: settings);
+    await turnOnLocalMode(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-owl-13',
+    );
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pumpAndSettle();
+
+    expect(connected!.sessionMode, SessionMode.synced);
+    expect(await settings.get(kLocalPlayerModeSettingKey), 'true');
+    expect(find.text('Start watching'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const Key('local-player-mode-toggle')))
+          .value,
+      isTrue,
+    );
   });
 
   testWidgets('Local Player Mode still opens a saved room as synced', (
@@ -1259,6 +1328,7 @@ void main() {
     expect(connected!.sessionMode, SessionMode.synced);
     expect(connected!.room, 'happy-otter-99');
     expect(profiles.saveUsedCalls, 1);
+    expect(find.text(kLocalJoinOverrideNotice), findsOneWidget);
   });
 
   testWidgets('Local Player Mode toggle persists across a remount', (
@@ -1305,7 +1375,7 @@ void main() {
 
       expect(connected, isNotNull);
       expect(connected!.sessionMode, SessionMode.local);
-      expect(connected!.room, isEmpty);
+      expect(connected!.room, isNotEmpty);
       expect(profiles.saveUsedCalls, 0);
     },
   );
@@ -1355,7 +1425,7 @@ void main() {
 
       expect(connected, isNotNull);
       expect(connected!.sessionMode, SessionMode.local);
-      expect(connected!.room, isEmpty);
+      expect(connected!.room, isNotEmpty);
       expect(profiles.saveUsedCalls, 0);
       expect(settings.map[kLocalPlayerModeSettingKey], 'true');
     },

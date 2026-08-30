@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/data/history_collapse.dart';
 import '../../core/data/history_entry.dart';
 import '../../core/data/history_mode.dart';
+import '../../core/data/watch_context.dart';
 import '../../core/sync/peer_state.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
@@ -1039,8 +1040,15 @@ class _MotionReflowSpecimenState extends State<MotionReflowSpecimen> {
     durationMs: durationMs,
     lastPositionMs: positionMs,
     playedAt: _now.subtract(Duration(hours: hoursAgo)),
+    contextKey: syncedWatchContextKey(
+      server: 'syncplay.pl',
+      port: 8999,
+      room: room,
+    ),
     room: room,
     username: user,
+    server: 'syncplay.pl',
+    port: 8999,
   );
 
   @override

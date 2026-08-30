@@ -88,3 +88,18 @@ String? selectSessionBanner({
 /// Parse the persisted Local Player Mode flag. Absent / unknown → off, so
 /// existing installs keep today's start-a-room default.
 bool localPlayerModeFromSetting(String? value) => value == 'true';
+
+/// Snack shown when a Local-default user explicitly joins a room.
+const String kLocalJoinOverrideNotice =
+    'Local mode off for this session — joining room.';
+
+/// Manual Join / saved-room override the lobby Local default for this
+/// session only. Invalid codes never override.
+bool shouldShowLocalJoinOverride({
+  required bool persistedLocal,
+  required SessionLaunch launch,
+  bool validDestination = true,
+}) {
+  if (!persistedLocal || !validDestination) return false;
+  return launch == SessionLaunch.joinCode || launch == SessionLaunch.savedRoom;
+}

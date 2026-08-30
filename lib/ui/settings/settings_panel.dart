@@ -34,8 +34,8 @@ class SettingsPanel extends StatelessWidget {
     super.key,
   });
 
-  /// When both are set, the lobby gear shows the Local Player Mode toggle.
-  /// The in-room gear leaves these null — switching mid-session is not a thing.
+  /// When both are set, Settings shows the Local Player Mode toggle (lobby
+  /// default, or the current session's effective mode in the player gear).
   final bool? localPlayerMode;
   final ValueChanged<bool>? onLocalPlayerModeChanged;
 
@@ -184,8 +184,7 @@ class SoundPickerRow extends StatelessWidget {
   }
 }
 
-/// Lobby-only switch: watch alone without opening a Syncplay room. Public so
-/// it can be unit-tested directly.
+/// Local Player Mode switch. Public so it can be unit-tested directly.
 class LocalPlayerModeControl extends StatelessWidget {
   const LocalPlayerModeControl({
     required this.value,
@@ -207,21 +206,9 @@ class LocalPlayerModeControl extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Local Player Mode',
-                  style: TextStyle(color: m.textDim, fontSize: TypeScale.body),
-                ),
-                Text(
-                  'Start watching without a room',
-                  style: TextStyle(
-                    color: m.textDim.withValues(alpha: 0.8),
-                    fontSize: TypeScale.label,
-                  ),
-                ),
-              ],
+            child: Text(
+              'Local Player Mode',
+              style: TextStyle(color: m.textDim, fontSize: TypeScale.body),
             ),
           ),
           Switch(

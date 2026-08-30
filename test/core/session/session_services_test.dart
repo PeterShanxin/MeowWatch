@@ -43,6 +43,32 @@ void main() {
     expect(session.chat, isNull);
   });
 
+  test('startSynced then stopToLocal tears the trio down', () async {
+    final session = SessionServices.local();
+    session.startSynced(video: _FakeVideoCore());
+    expect(session.mode, SessionMode.synced);
+    expect(session.sync, isNotNull);
+    expect(session.bridge, isNotNull);
+    expect(session.chat, isNotNull);
+
+    await session.stopToLocal();
+    expect(session.mode, SessionMode.local);
+    expect(session.sync, isNull);
+    expect(session.bridge, isNull);
+    expect(session.chat, isNull);
+  });
+
+  test('repeated start/stop does not leave hosts behind', () async {
+    final session = SessionServices.local();
+    final video = _FakeVideoCore();
+    for (var i = 0; i < 3; i++) {
+      session.startSynced(video: video);
+      expect(session.sync, isNotNull);
+      await session.stopToLocal();
+      expect(session.sync, isNull);
+    }
+  });
+
   test('synced session owns the live trio', () async {
     final session = SessionServices.synced(video: _FakeVideoCore());
     expect(session.mode, SessionMode.synced);

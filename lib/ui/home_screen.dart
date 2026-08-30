@@ -14,6 +14,7 @@ import '../core/connect/room_share.dart';
 import '../core/data/history_mode.dart';
 import '../core/data/settings_store.dart';
 import '../core/data/stores.dart';
+import '../core/data/watch_context.dart';
 import '../core/debug/app_log.dart';
 import '../core/debug/debug_log.dart';
 import '../core/debug/log_archive.dart';
@@ -122,9 +123,27 @@ class HomeScreen extends StatefulWidget {
 abstract class _HomeScreenStateBase extends State<HomeScreen> {
   late final MediaKitVideoCore _core;
   late final SessionServices _session;
-  late final SessionChrome _chrome;
+  late SessionChrome _chrome;
 
   bool get _isSynced => _session.isSynced;
+  bool get _isLocal => _session.isLocal;
+
+  WatchContext get _historyContext => watchContextForSession(
+    local: _session.isLocal,
+    server: widget.config.server,
+    port: widget.config.port,
+    room: widget.config.room,
+  );
+
+  bool _shouldLog({required bool verboseOnly}) {
+    final level = appLogInstance?.level;
+    return level == LogLevel.verbose ||
+        (!verboseOnly && level == LogLevel.neat);
+  }
+
+  /// Implemented on [_HomeScreenState]: live Local ↔ synced switch.
+  Future<void> _setEffectiveLocalMode(bool local);
+
   SyncplayClient? get _sync => _session.sync;
   PlaybackSyncBridge? get _bridge => _session.bridge;
   ChatStore? get _chat => _session.chat;
@@ -288,11 +307,7 @@ class _HomeScreenState extends _HomeScreenStateBase
       mode: widget.config.sessionMode,
       video: _core,
       onLog: appLog,
-      shouldLog: ({required bool verboseOnly}) {
-        final level = appLogInstance?.level;
-        return level == LogLevel.verbose ||
-            (!verboseOnly && level == LogLevel.neat);
-      },
+      shouldLog: _shouldLog,
     );
     _chrome = SessionChrome.forMode(_session.mode);
     _audioPlayer = VideoEnginePool.instance.audioPlayer;
@@ -314,27 +329,8 @@ class _HomeScreenState extends _HomeScreenStateBase
     _historyTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       unawaited(_saveResumePosition());
     });
-    final sync = _sync;
-    if (sync != null) {
-      unawaited(
-        sync.connect(
-          server: widget.config.server,
-          port: widget.config.port,
-          username: widget.config.username,
-          room: widget.config.room,
-          password: widget.config.password,
-        ),
-      );
-      // Announce a deliberate leave if the window is closed (X button) while
-      // we're in the room — disconnect() sends the leaving signal with a
-      // bounded flush (#92). The Leave button already does this directly via
-      // _leave().
-      _closeHook = () async {
-        appLog('life: window-close hook fired (announcing leave)');
-        await sync.disconnectForAppClose();
-        appLog('life: window-close leave sent');
-      };
-      appCloseHook.value = _closeHook;
+    if (_isSynced) {
+      unawaited(_connectExistingRoom());
     }
     final resume = widget.config.resumeFilePath;
     if (resume != null) {
@@ -413,6 +409,130 @@ class _HomeScreenState extends _HomeScreenStateBase
       await widget.settings.get(kLogLevelSettingKey),
     );
     if (mounted) setState(() => _logLevel = level);
+  }
+
+  Future<void> _connectExistingRoom() async {
+    final sync = _sync;
+    if (sync == null) return;
+    _closeHook = () async {
+      appLog('life: window-close hook fired (announcing leave)');
+      await sync.disconnectForAppClose();
+      appLog('life: window-close leave sent');
+    };
+    appCloseHook.value = _closeHook;
+    await sync.connect(
+      server: widget.config.server,
+      port: widget.config.port,
+      username: widget.config.username,
+      room: widget.config.room,
+      password: widget.config.password,
+    );
+  }
+
+  /// Explicit in-player Local toggle: persist the lobby default AND switch
+  /// this session's effective mode live. Join override never calls this.
+  @override
+  Future<void> _setEffectiveLocalMode(bool local) async {
+    if (local == _session.isLocal) {
+      unawaited(_persistLocalPlayerMode(local));
+      return;
+    }
+    await _saveResumePosition(force: true);
+    if (local) {
+      await _tearDownCollaboration();
+    } else {
+      await _startCollaboration();
+    }
+    unawaited(_persistLocalPlayerMode(local));
+    final path = _core.state.filePath;
+    if (path != null && isPlaybackOpen(_core.state)) {
+      await _recordOpen(path);
+      await _saveResumePosition(force: true);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _persistLocalPlayerMode(bool local) {
+    return widget.settings.set(kLocalPlayerModeSettingKey, local.toString());
+  }
+
+  Future<void> _startCollaboration() async {
+    _session.startSynced(video: _core, onLog: appLog, shouldLog: _shouldLog);
+    _chrome = SessionChrome.forMode(SessionMode.synced);
+    _syncStatus = SyncConnectionStatus.connecting;
+    _syncError = null;
+    _initChatSubscriptions();
+    _initSyncSubscriptions();
+    unawaited(_connectExistingRoom());
+    appLog('life: local → synced ${roomLogLabel(widget.config.room)}');
+  }
+
+  Future<void> _tearDownCollaboration() async {
+    await _cancelCollaborationSubscriptions();
+    _clearCollaborationUiState();
+    if (identical(appCloseHook.value, _closeHook)) appCloseHook.value = null;
+    _closeHook = null;
+    await _session.stopToLocal();
+    _chrome = SessionChrome.forMode(SessionMode.local);
+    appLog('life: synced → local');
+  }
+
+  Future<void> _cancelCollaborationSubscriptions() async {
+    await _chatSub?.cancel();
+    await _reactionSub?.cancel();
+    await _typingSub?.cancel();
+    await _connSub?.cancel();
+    await _presenceSub?.cancel();
+    await _noticeSub?.cancel();
+    await _peerFileSub?.cancel();
+    await _activitySub?.cancel();
+    await _rosterSub?.cancel();
+    await _leavingSub?.cancel();
+    await _activityThrottleSub?.cancel();
+    _chatSub = null;
+    _reactionSub = null;
+    _typingSub = null;
+    _connSub = null;
+    _presenceSub = null;
+    _noticeSub = null;
+    _peerFileSub = null;
+    _activitySub = null;
+    _rosterSub = null;
+    _leavingSub = null;
+    _activityThrottleSub = null;
+  }
+
+  void _clearCollaborationUiState() {
+    _syncStatus = SyncConnectionStatus.disconnected;
+    _syncError = null;
+    _peers.clear();
+    _pendingGhosts.clear();
+    _cleanlyLeaving.clear();
+    _departedAt.clear();
+    _lastConnectedUsername = null;
+    _wasReconnecting = false;
+    _prevSyncStatus = SyncConnectionStatus.disconnected;
+    _peerFiles = const PeerFiles();
+    _syncHealthy = false;
+    _autoPausedNotice = false;
+    _autoPausedReason = null;
+    _autoPauseTimer?.cancel();
+    _autoPauseTimer = null;
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
+    _presenceNotice.value = null;
+    _lastPeerLeft = null;
+    _joinPrompt = null;
+    _activityThrottle.clearPending();
+    _messages.value = const [];
+    _typingLabel.value = null;
+    _chatHasUnread.value = false;
+    for (final t in _typingTimers.values) {
+      t.cancel();
+    }
+    _typingTimers.clear();
+    _typingUsers.clear();
+    _chatHintToken = null;
   }
 
   @override

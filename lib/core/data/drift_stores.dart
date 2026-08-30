@@ -7,6 +7,7 @@ import 'history_mode.dart';
 import 'saved_profile.dart';
 import 'settings_store.dart';
 import 'stores.dart';
+import 'watch_context.dart';
 
 class DriftProfileStore implements ProfileStore {
   DriftProfileStore(this._db);
@@ -40,7 +41,9 @@ class DriftProfileStore implements ProfileStore {
     // conflict branch writes exactly what the old update path wrote: name,
     // password (null clears it), and lastUsedAt; isDefault stays untouched.
     final now = DateTime.now();
-    return _db.into(_db.profiles).insert(
+    return _db
+        .into(_db.profiles)
+        .insert(
           ProfilesCompanion.insert(
             name: name,
             server: server,
@@ -71,15 +74,15 @@ class DriftProfileStore implements ProfileStore {
       (_db.delete(_db.profiles)..where((t) => t.id.equals(id))).go();
 
   SavedProfile _toModel(ProfileRow r) => SavedProfile(
-        id: r.id,
-        name: r.name,
-        server: r.server,
-        port: r.port,
-        room: r.room,
-        username: r.username,
-        password: r.password,
-        lastUsedAt: r.lastUsedAt,
-      );
+    id: r.id,
+    name: r.name,
+    server: r.server,
+    port: r.port,
+    room: r.room,
+    username: r.username,
+    password: r.password,
+    lastUsedAt: r.lastUsedAt,
+  );
 }
 
 /// Every code point Dart's [String.trim] strips: the Unicode White_Space set
@@ -129,49 +132,30 @@ class DriftHistoryStore implements HistoryStore {
         ..limit(limit);
       return query.watch().map((rows) => rows.map(_toModel).toList());
     }
-    // latestPerRoom: SQL selects the collapsed set directly — the latest
-    // entry per room (ROW_NUMBER over the trimmed room key, newest-first by
-    // playedAt then id) plus every roomless entry — so older distinct rooms
-    // still surface when one room dominates recent history (#199, PR #216
-    // review; a pre-collapse LIMIT is NOT equivalent — it starves older
-    // rooms). Work per invalidation stays bounded where it actually hurt:
-    // the old implementation materialized the whole table into Dart
-    // (row → HistoryEntry mapping + list churn per emission), while the
-    // single window pass here runs inside SQLite's engine and hands Dart at
-    // most `limit` rows.
-    //
-    // TRIM(x, kDartTrimWhitespace)/COALESCE mirror collapseHistory's grouping
-    // key exactly (null/blank room = "not in a room", kept always) — the
-    // two-argument TRIM strips the same Unicode whitespace Dart's trim()
-    // does, so whitespace-padded aliases of one room can't split into
-    // phantom groups and eat LIMIT slots (PR #216 review). The
-    // collapseHistory post-pass below is a true no-op safety net over the
-    // (tiny) selected set.
+    // latestPerRoom: latest row per context_key (Local is one bucket; each
+    // synced server/port/room is its own). A pre-collapse LIMIT would starve
+    // older rooms when one context dominates recent history.
     final rows = _db.customSelect(
       'SELECT * FROM ('
       'SELECT h.*, '
-      "TRIM(COALESCE(h.room, ''), ?1) AS room_key, "
       'ROW_NUMBER() OVER ('
-      "PARTITION BY TRIM(COALESCE(h.room, ''), ?1) "
+      'PARTITION BY h.context_key '
       'ORDER BY h.played_at DESC, h.id DESC'
       ') AS room_rank '
       'FROM history_entries h'
       ') '
-      "WHERE room_rank = 1 OR room_key = '' "
+      'WHERE room_rank = 1 '
       'ORDER BY played_at DESC, id DESC '
-      'LIMIT ?2',
-      variables: [
-        Variable<String>(kDartTrimWhitespace),
-        Variable<int>(limit),
-      ],
+      'LIMIT ?1',
+      variables: [Variable<int>(limit)],
       readsFrom: {_db.historyEntries},
     );
     return rows.watch().map(
-          (raw) => collapseHistory(
-            raw.map((r) => _toModel(_db.historyEntries.map(r.data))).toList(),
-            mode,
-          ).take(limit).toList(),
-        );
+      (raw) => collapseHistory(
+        raw.map((r) => _toModel(_db.historyEntries.map(r.data))).toList(),
+        mode,
+      ).take(limit).toList(),
+    );
   }
 
   @override
@@ -179,54 +163,46 @@ class DriftHistoryStore implements HistoryStore {
     required String filePath,
     required String fileName,
     required int fileSizeBytes,
+    required WatchContext context,
     int? durationMs,
-    String? room,
     String? username,
-    String? server,
-    int? port,
   }) {
-    // Single-statement upsert on the unique filePath — one round trip instead
-    // of select-then-insert/update (#199). The conflict branch mirrors the
-    // old update path column-for-column; `old.<column>` keeps the stored
-    // value, and lastPositionMs is never listed so a re-open can't touch a
-    // saved resume point.
+    // Upsert on (filePath, contextKey) — Local and each synced room are
+    // independent rows. lastPositionMs is never listed so a re-open can't
+    // touch a saved resume point.
     final now = DateTime.now();
-    return _db.into(_db.historyEntries).insert(
+    return _db
+        .into(_db.historyEntries)
+        .insert(
           HistoryEntriesCompanion.insert(
             filePath: filePath,
             fileName: fileName,
             fileSizeBytes: Value(fileSizeBytes),
             durationMs: Value(durationMs),
             playedAt: now,
-            room: Value(room),
+            contextKey: context.key,
+            room: Value(context.storedRoom),
             username: Value(username),
-            server: Value(server),
-            port: Value(port),
+            server: Value(context.storedServer),
+            port: Value(context.storedPort),
           ),
           onConflict: DoUpdate(
             (old) => HistoryEntriesCompanion.custom(
               fileName: Variable(fileName),
               fileSizeBytes: Variable(fileSizeBytes),
-              // Same guard as updatePosition: a re-open commits the duration
-              // captured at open time — often 0, mpv hasn't probed yet — and
-              // must never clobber a runtime a periodic save already
-              // backfilled (#208 review).
               durationMs: (durationMs != null && durationMs > 0)
                   ? Variable(durationMs)
                   : old.durationMs,
-              // A local open of a row that already belongs to a room must not
-              // bump playedAt — that would make Latest-per-room look like the
-              // room itself was just used (#252; full split is #253).
-              playedAt: room != null
-                  ? Variable(now)
-                  : old.playedAt.iif(old.room.isNotNull(), Variable(now)),
-              // Keep room metadata when this open isn't in a room.
-              room: room != null ? Variable(room) : old.room,
+              playedAt: Variable(now),
+              room: Variable(context.storedRoom),
               username: username != null ? Variable(username) : old.username,
-              server: server != null ? Variable(server) : old.server,
-              port: port != null ? Variable(port) : old.port,
+              server: Variable(context.storedServer),
+              port: Variable(context.storedPort),
             ),
-            target: [_db.historyEntries.filePath],
+            target: [
+              _db.historyEntries.filePath,
+              _db.historyEntries.contextKey,
+            ],
           ),
         );
   }
@@ -234,19 +210,24 @@ class DriftHistoryStore implements HistoryStore {
   @override
   Future<bool> updatePosition({
     required String filePath,
+    required WatchContext context,
     required int positionMs,
     int? durationMs,
   }) async {
-    final rows = await (_db.update(_db.historyEntries)
-          ..where((t) => t.filePath.equals(filePath)))
-        .write(HistoryEntriesCompanion(
-      lastPositionMs: Value(positionMs),
-      // Only write a real, positive runtime — never clobber a known duration
-      // with a 0 from a not-yet-probed frame.
-      durationMs: (durationMs != null && durationMs > 0)
-          ? Value(durationMs)
-          : const Value.absent(),
-    ));
+    final rows =
+        await (_db.update(_db.historyEntries)..where(
+              (t) =>
+                  t.filePath.equals(filePath) &
+                  t.contextKey.equals(context.key),
+            ))
+            .write(
+              HistoryEntriesCompanion(
+                lastPositionMs: Value(positionMs),
+                durationMs: (durationMs != null && durationMs > 0)
+                    ? Value(durationMs)
+                    : const Value.absent(),
+              ),
+            );
     return rows > 0;
   }
 
@@ -258,18 +239,19 @@ class DriftHistoryStore implements HistoryStore {
   Future<void> clearAll() => _db.delete(_db.historyEntries).go();
 
   HistoryEntry _toModel(HistoryRow r) => HistoryEntry(
-        id: r.id,
-        filePath: r.filePath,
-        fileName: r.fileName,
-        fileSizeBytes: r.fileSizeBytes,
-        durationMs: r.durationMs,
-        lastPositionMs: r.lastPositionMs,
-        playedAt: r.playedAt,
-        room: r.room,
-        username: r.username,
-        server: r.server,
-        port: r.port,
-      );
+    id: r.id,
+    filePath: r.filePath,
+    fileName: r.fileName,
+    fileSizeBytes: r.fileSizeBytes,
+    durationMs: r.durationMs,
+    lastPositionMs: r.lastPositionMs,
+    playedAt: r.playedAt,
+    contextKey: r.contextKey,
+    room: r.room,
+    username: r.username,
+    server: r.server,
+    port: r.port,
+  );
 }
 
 class DriftSettingsStore implements SettingsStore {
@@ -279,25 +261,28 @@ class DriftSettingsStore implements SettingsStore {
 
   @override
   Future<String?> get(String key) async {
-    final row = await (_db.select(_db.settings)
-          ..where((t) => t.key.equals(key)))
-        .getSingleOrNull();
+    final row = await (_db.select(
+      _db.settings,
+    )..where((t) => t.key.equals(key))).getSingleOrNull();
     return row?.value;
   }
 
   @override
   Future<void> set(String key, String value) {
-    return _db.into(_db.settings).insertOnConflictUpdate(
+    return _db
+        .into(_db.settings)
+        .insertOnConflictUpdate(
           SettingsCompanion.insert(key: key, value: value),
         );
   }
 
   @override
   Future<bool> hasAnySettings() async {
-    final row = await (_db.select(_db.settings)
-          ..where((t) => t.key.equals(kLastSeenVersionKey).not())
-          ..limit(1))
-        .getSingleOrNull();
+    final row =
+        await (_db.select(_db.settings)
+              ..where((t) => t.key.equals(kLastSeenVersionKey).not())
+              ..limit(1))
+            .getSingleOrNull();
     return row != null;
   }
 }

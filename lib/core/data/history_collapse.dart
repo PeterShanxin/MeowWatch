@@ -3,25 +3,21 @@ import 'history_mode.dart';
 
 /// Apply the continue-watching [mode] to a newest-first [entries] list.
 ///
-/// [HistoryMode.everyVideo] returns the list unchanged. [HistoryMode.latestPerRoom]
-/// keeps an entry when its room is null/empty (a solo or pre-schema watch is not
-/// "in a room") OR when that room's bare code has not been seen yet — because the
-/// list is newest-first, the first sighting of a room is its latest entry, so
-/// later same-room entries are dropped. Hide-not-delete: this filters the view
-/// only; nothing is removed from storage. The input is never mutated.
-List<HistoryEntry> collapseHistory(List<HistoryEntry> entries, HistoryMode mode) {
+/// [HistoryMode.everyVideo] returns every context record (same media in
+/// Local and in room A both stay). [HistoryMode.latestPerRoom] keeps the
+/// newest row per context key — Local is one bucket, each synced
+/// server/port/room is its own. Hide-not-delete: view filter only.
+List<HistoryEntry> collapseHistory(
+  List<HistoryEntry> entries,
+  HistoryMode mode,
+) {
   if (mode == HistoryMode.everyVideo) {
     return List<HistoryEntry>.of(entries);
   }
-  final seenRooms = <String>{};
+  final seen = <String>{};
   final out = <HistoryEntry>[];
   for (final entry in entries) {
-    final room = entry.room?.trim() ?? '';
-    if (room.isEmpty) {
-      out.add(entry);
-      continue;
-    }
-    if (seenRooms.add(room)) out.add(entry);
+    if (seen.add(entry.contextKey)) out.add(entry);
   }
   return out;
 }

@@ -382,7 +382,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
       launch: SessionLaunch.start,
     );
     if (mode.isLocal) {
-      await _connect(RoomConfig.local(username: _username));
+      // Real room identity so this session can become synced later. No
+      // clipboard copy — Local Start is not a share action.
+      final code = generateRoomCode();
+      await _connect(
+        RoomConfig.local(
+          username: _username,
+          server: _serverValue,
+          port: _portValue,
+          room: code,
+          password: _passwordValue,
+        ),
+      );
       return;
     }
     await _startNewRoom();
@@ -445,7 +456,27 @@ class _ConnectScreenState extends State<ConnectScreen> {
       );
   }
 
+  /// Shown on the app-level messenger so it survives the push into the player.
+  void _showLocalJoinOverrideSnack() {
+    final m = context.meow;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: m.surface,
+          duration: const Duration(seconds: 3),
+          content: Text(
+            kLocalJoinOverrideNotice,
+            style: TextStyle(color: m.textPrimary),
+          ),
+        ),
+      );
+  }
+
   Future<void> _joinTypedCode() async {
+    await _awaitInitialSettings();
+    if (!mounted) return;
     final raw = _code.text.trim();
     if (raw.isEmpty) return;
     // Parse the pasted code: a plain string (magic sentence, bare `happy-cat-11`,
@@ -458,6 +489,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
     if (!parsed.isValid) {
       _showSnack(parsed.error!);
       return;
+    }
+    if (shouldShowLocalJoinOverride(
+      persistedLocal: _localPlayerMode,
+      launch: SessionLaunch.joinCode,
+    )) {
+      _showLocalJoinOverrideSnack();
     }
     // A code that names a server describes a complete destination: it carries a
     // port only when non-default, so an omitted port means the Syncplay default
@@ -481,6 +518,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
     SavedProfile p, {
     String? usernameOverride,
   }) async {
+    await _awaitInitialSettings();
+    if (!mounted) return;
+    if (shouldShowLocalJoinOverride(
+      persistedLocal: _localPlayerMode,
+      launch: SessionLaunch.savedRoom,
+    )) {
+      _showLocalJoinOverrideSnack();
+    }
     final username = usernameOverride ?? p.username;
     await _connect(
       RoomConfig(
@@ -534,10 +579,24 @@ class _ConnectScreenState extends State<ConnectScreen> {
       localPlayerMode: _localPlayerMode,
       launch: SessionLaunch.continueWatching,
     );
+    // A stored endpoint is authoritative. Never carry a same-room password
+    // across servers/ports; only legacy rows may borrow their room profile.
+    final legacyEntry = entry.server == null || entry.port == null;
+    final password =
+        endpointProfile?.password ??
+        (legacyEntry ? roomProfile?.password : null) ??
+        _passwordValue;
     if (mode.isLocal) {
+      // Resume this card's progress locally. Keep the card's room identity so
+      // the same session can become synced later. Do not treat old room
+      // metadata as permission to sync now.
       await _connect(
         RoomConfig.local(
           username: username,
+          server: server,
+          port: port,
+          room: room,
+          password: password,
           resumeFilePath: entry.filePath,
           resumePositionMs: entry.lastPositionMs,
         ),
@@ -545,19 +604,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
       );
       return;
     }
-    // A stored endpoint is authoritative. Never carry a same-room password
-    // across servers/ports; only legacy rows may borrow their room profile.
-    final legacyEntry = entry.server == null || entry.port == null;
     await _connect(
       RoomConfig(
         server: server,
         port: port,
         room: room,
         username: username,
-        password:
-            endpointProfile?.password ??
-            (legacyEntry ? roomProfile?.password : null) ??
-            _passwordValue,
+        password: password,
         resumeFilePath: entry.filePath,
         resumePositionMs: entry.lastPositionMs,
       ),
@@ -788,7 +841,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       const SizedBox(height: 8),
       Text(
         _localPlayerMode
-            ? 'Play on this computer — no room, no sync.'
+            ? 'Play on this computer — no sync.'
             : 'A private code is generated and copied to clipboard.',
         style: context.meowText.body.copyWith(color: m.textDim),
       ),

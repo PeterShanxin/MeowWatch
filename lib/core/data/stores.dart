@@ -1,6 +1,7 @@
 import 'history_entry.dart';
 import 'history_mode.dart';
 import 'saved_profile.dart';
+import 'watch_context.dart';
 
 /// Commands-in / streams-out access to saved connection profiles.
 abstract class ProfileStore {
@@ -32,24 +33,23 @@ abstract class HistoryStore {
     HistoryMode mode = HistoryMode.everyVideo,
   });
 
-  /// Record (or refresh) that [filePath] was opened. Keeps the existing
-  /// [lastPositionMs]; updates name/size/duration/room/username/endpoint and
-  /// bumps playedAt. Room fields are null outside a room.
+  /// Record (or refresh) that [filePath] was opened in [context]. Keeps the
+  /// existing [lastPositionMs] on that context row; updates name/size/duration
+  /// /username and bumps playedAt. Local and synced contexts are independent.
   Future<void> recordOpen({
     required String filePath,
     required String fileName,
     required int fileSizeBytes,
+    required WatchContext context,
     int? durationMs,
-    String? room,
     String? username,
-    String? server,
-    int? port,
   });
 
-  /// Update the resume position for an already-recorded file (no-op if absent).
-  /// Also backfills [durationMs] when given — duration is often unknown at
-  /// open time (mpv hasn't probed the file yet), so the periodic position save
-  /// is where the runtime — and thus the progress bar — gets filled in.
+  /// Update the resume position for an already-recorded file in [context]
+  /// (no-op if that context row is absent). Also backfills [durationMs] when
+  /// given — duration is often unknown at open time (mpv hasn't probed the
+  /// file yet), so the periodic position save is where the runtime — and thus
+  /// the progress bar — gets filled in.
   ///
   /// Returns whether a row was actually updated. False means the file has no
   /// history row yet (recordOpen still in flight) — callers coordinating
@@ -58,6 +58,7 @@ abstract class HistoryStore {
   /// unchanged (#208 review).
   Future<bool> updatePosition({
     required String filePath,
+    required WatchContext context,
     required int positionMs,
     int? durationMs,
   });

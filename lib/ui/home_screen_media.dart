@@ -317,10 +317,8 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
         fileName: state.fileName ?? path,
         fileSizeBytes: size,
         durationMs: state.duration.inMilliseconds,
-        room: _isSynced ? widget.config.room : null,
-        username: _isSynced ? widget.config.username : null,
-        server: _isSynced ? widget.config.server : null,
-        port: _isSynced ? widget.config.port : null,
+        context: _historyContext,
+        username: widget.config.username,
       );
       appLog('db: recordOpen ok ${mediaDisplayName(path)}');
     } catch (e) {
@@ -363,6 +361,7 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
           // silent no-op as saved (#208 review).
           final wrote = await widget.history.updatePosition(
             filePath: path,
+            context: _historyContext,
             positionMs: state.position.inMilliseconds,
             durationMs: state.duration.inMilliseconds,
           );

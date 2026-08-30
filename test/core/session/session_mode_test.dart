@@ -71,6 +71,60 @@ void main() {
     });
   });
 
+  group('shouldShowLocalJoinOverride', () {
+    test('Local default + valid join-code shows the notice', () {
+      expect(
+        shouldShowLocalJoinOverride(
+          persistedLocal: true,
+          launch: SessionLaunch.joinCode,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldShowLocalJoinOverride(
+          persistedLocal: true,
+          launch: SessionLaunch.savedRoom,
+        ),
+        isTrue,
+      );
+    });
+
+    test('invalid destination never shows the notice', () {
+      expect(
+        shouldShowLocalJoinOverride(
+          persistedLocal: true,
+          launch: SessionLaunch.joinCode,
+          validDestination: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('Local off or Start / Continue never shows the notice', () {
+      expect(
+        shouldShowLocalJoinOverride(
+          persistedLocal: false,
+          launch: SessionLaunch.joinCode,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldShowLocalJoinOverride(
+          persistedLocal: true,
+          launch: SessionLaunch.start,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldShowLocalJoinOverride(
+          persistedLocal: true,
+          launch: SessionLaunch.continueWatching,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   test('localPlayerModeFromSetting treats only true as on', () {
     expect(localPlayerModeFromSetting(null), isFalse);
     expect(localPlayerModeFromSetting('false'), isFalse);

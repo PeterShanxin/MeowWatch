@@ -54,11 +54,18 @@ class PlayerMenuButton extends StatelessWidget {
     required this.logLevel,
     required this.onLogLevelChanged,
     required this.onExportLogs,
+    this.localPlayerMode = false,
+    this.onLocalPlayerModeChanged,
     super.key,
   });
 
   /// Local sessions hide room-code / roster / chat-dim rows.
   final SessionMode sessionMode;
+
+  /// Current effective session Local mode. The player gear toggle flips
+  /// this live; it is not just a future-default.
+  final bool localPlayerMode;
+  final ValueChanged<bool>? onLocalPlayerModeChanged;
 
   /// Continue-watching mode + its setter, surfaced in the gear's Settings
   /// section via [SettingsPanel] — the in-room counterpart to the lobby gear.
@@ -193,6 +200,8 @@ class PlayerMenuButton extends StatelessWidget {
             logLevel: logLevel,
             onLogLevelChanged: onLogLevelChanged,
             onExportLogs: onExportLogs,
+            localPlayerMode: localPlayerMode,
+            onLocalPlayerModeChanged: onLocalPlayerModeChanged,
           ),
         ),
       ],
@@ -231,9 +240,13 @@ class _MenuPanel extends StatefulWidget {
     required this.logLevel,
     required this.onLogLevelChanged,
     required this.onExportLogs,
+    required this.localPlayerMode,
+    this.onLocalPlayerModeChanged,
   });
 
   final SessionMode sessionMode;
+  final bool localPlayerMode;
+  final ValueChanged<bool>? onLocalPlayerModeChanged;
   final HistoryMode historyMode;
   final ValueChanged<HistoryMode> onHistoryModeChanged;
   final String roomCode;
@@ -435,6 +448,9 @@ class _MenuPanelState extends State<_MenuPanel> {
                             logLevel: widget.logLevel,
                             onLogLevelChanged: widget.onLogLevelChanged,
                             onExportLogs: widget.onExportLogs,
+                            localPlayerMode: widget.localPlayerMode,
+                            onLocalPlayerModeChanged:
+                                widget.onLocalPlayerModeChanged,
                           ),
                         ],
                       )

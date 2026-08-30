@@ -42,6 +42,8 @@ PlayerMenuButton _button({
   LogLevel logLevel = LogLevel.verbose,
   ValueChanged<LogLevel>? onLogLevelChanged,
   VoidCallback? onExportLogs,
+  bool? localPlayerMode,
+  ValueChanged<bool>? onLocalPlayerModeChanged,
 }) => PlayerMenuButton(
   sessionMode: sessionMode,
   historyMode: historyMode,
@@ -70,6 +72,8 @@ PlayerMenuButton _button({
   logLevel: logLevel,
   onLogLevelChanged: onLogLevelChanged ?? (_) {},
   onExportLogs: onExportLogs ?? () {},
+  localPlayerMode: localPlayerMode ?? sessionMode.isLocal,
+  onLocalPlayerModeChanged: onLocalPlayerModeChanged ?? (_) {},
 );
 
 /// Open the gear and expand the collapsible Settings section.
@@ -252,6 +256,37 @@ void main() {
     await tester.tap(find.byKey(const Key('player-menu-settings')));
     await tester.pumpAndSettle();
     expect(find.text('Dim chat when idle'), findsNothing);
+    expect(find.text('Local Player Mode'), findsOneWidget);
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const Key('local-player-mode-toggle')))
+          .value,
+      isTrue,
+    );
+  });
+
+  testWidgets('synced session Settings shows Local Player Mode off', (
+    tester,
+  ) async {
+    var local = false;
+    await tester.pumpWidget(
+      _host(
+        _button(
+          localPlayerMode: false,
+          onLocalPlayerModeChanged: (v) => local = v,
+        ),
+      ),
+    );
+    await _openSettings(tester);
+    expect(find.text('Local Player Mode'), findsOneWidget);
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const Key('local-player-mode-toggle')))
+          .value,
+      isFalse,
+    );
+    await _tap(tester, find.byKey(const Key('local-player-mode-toggle')));
+    expect(local, isTrue);
   });
 
   testWidgets('lists room members with "(you)" for self', (tester) async {

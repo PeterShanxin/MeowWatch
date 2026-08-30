@@ -226,6 +226,10 @@ mixin _HomeBody
                           ignoring: _chatDragging || _isUiIdle,
                           child: PlayerMenuButton(
                             sessionMode: _session.mode,
+                            localPlayerMode: _isLocal,
+                            onLocalPlayerModeChanged: (enabled) {
+                              unawaited(_setEffectiveLocalMode(enabled));
+                            },
                             historyMode: _historyMode,
                             onHistoryModeChanged: (mode) {
                               appLog(

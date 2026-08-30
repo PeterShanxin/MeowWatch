@@ -6,6 +6,7 @@ import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
 import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
+import 'package:meowwatch/core/data/watch_context.dart';
 
 class FakeProfileStore implements ProfileStore {
   final _ctrl = StreamController<List<SavedProfile>>.broadcast();
@@ -56,16 +57,15 @@ class FakeHistoryStore implements HistoryStore {
     required String filePath,
     required String fileName,
     required int fileSizeBytes,
+    required WatchContext context,
     int? durationMs,
-    String? room,
     String? username,
-    String? server,
-    int? port,
   }) async {}
 
   @override
   Future<bool> updatePosition({
     required String filePath,
+    required WatchContext context,
     required int positionMs,
     int? durationMs,
   }) async => true;

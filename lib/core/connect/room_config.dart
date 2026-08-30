@@ -17,18 +17,24 @@ class RoomConfig {
     this.sessionMode = SessionMode.synced,
   });
 
-  /// A solo playback session: same player, no Syncplay room.
+  /// A Local playback session: real room identity, no Syncplay yet.
+  /// [room]/[server]/[port] stay so the same session can become synced later.
   factory RoomConfig.local({
-    String username = 'meow',
+    required String username,
+    required String server,
+    required int port,
+    required String room,
+    String? password,
     String? resumeFilePath,
     int resumePositionMs = 0,
   }) {
     return RoomConfig(
       sessionMode: SessionMode.local,
-      server: '',
-      port: 0,
-      room: '',
+      server: server,
+      port: port,
+      room: room,
       username: username,
+      password: password,
       resumeFilePath: resumeFilePath,
       resumePositionMs: resumePositionMs,
     );

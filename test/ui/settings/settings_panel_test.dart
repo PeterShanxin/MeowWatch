@@ -63,12 +63,7 @@ void main() {
     expect(exported, isTrue);
   });
 
-  testWidgets('lobby panel shows Local Player Mode; in-room panel hides it', (
-    tester,
-  ) async {
-    await tester.pumpWidget(_host(_panel()));
-    expect(find.text('Local Player Mode'), findsNothing);
-
+  testWidgets('Local Player Mode is title + toggle only', (tester) async {
     await tester.pumpWidget(
       _host(
         SettingsPanel(
@@ -89,6 +84,7 @@ void main() {
     );
     expect(find.text('Local Player Mode'), findsOneWidget);
     expect(find.byKey(const Key('local-player-mode-toggle')), findsOneWidget);
+    expect(find.text('Start watching without a room'), findsNothing);
   });
 
   testWidgets('renders the Continue watching toggle', (tester) async {

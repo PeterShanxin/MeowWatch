@@ -48,11 +48,12 @@ String formatFileSize(int bytes) {
   return '${(bytes / unit).toStringAsFixed(0)} KB';
 }
 
-/// Second card line: where it was watched — `in <room> as <name>`. Null when
-/// no room was recorded (pre-schema or watched solo).
+/// Second card line: where it was watched. Local rows say `Local`.
+/// Synced rows say `in <room>` or `in <room> as <name>`.
 String? historyRoomLine(HistoryEntry e) {
+  if (e.isLocalContext) return 'Local';
   final room = e.room;
-  if (room == null || room.isEmpty) return null;
+  if (room == null || room.isEmpty) return 'Local';
   final name = e.username;
   if (name == null || name.isEmpty) return 'in $room';
   return 'in $room as $name';

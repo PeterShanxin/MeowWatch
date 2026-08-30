@@ -29,14 +29,19 @@ void main() {
     expect(base.sessionMode, SessionMode.synced);
   });
 
-  test('RoomConfig.local is a solo session with no room', () {
+  test('RoomConfig.local keeps a real room identity for later sync', () {
     final local = RoomConfig.local(
       username: 'lin',
+      server: 'syncplay.pl',
+      port: 8999,
+      room: 'sleepy-otter-counts-cozy-stars',
       resumeFilePath: 'D:/v.mkv',
       resumePositionMs: 1200,
     );
     expect(local.sessionMode, SessionMode.local);
-    expect(local.room, isEmpty);
+    expect(local.room, 'sleepy-otter-counts-cozy-stars');
+    expect(local.server, 'syncplay.pl');
+    expect(local.port, 8999);
     expect(local.username, 'lin');
     expect(local.resumeFilePath, 'D:/v.mkv');
     expect(local.resumePositionMs, 1200);
