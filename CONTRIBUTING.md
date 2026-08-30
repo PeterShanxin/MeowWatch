@@ -2,9 +2,9 @@
 
 Thanks for helping out.
 
-**A pull request cannot merge until you agree to the
-[Contributor License Agreement](CLA.md).** Tick the CLA checkbox on the pull
-request template.
+**By intentionally submitting a contribution to this project, you agree to the
+[Contributor License Agreement](CLA.md) for that contribution.** No per-pull-
+request checkbox is required.
 
 For toolchain, release flow, versioning, and gotchas see
 [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md). This file is the contributor-facing
@@ -16,6 +16,11 @@ Community source is **[AGPL-3.0-only](LICENSE)**. You keep copyright in your
 contributions. Under the CLA you also grant the maintainer a copyright and
 patent license, including the right to relicense, so commercial licensing can
 be offered to organizations that require terms outside AGPL-3.0.
+
+Acceptance is submission-based: the CLA terms in effect when you intentionally
+submit material for inclusion govern that contribution. Viewing, starring, or
+forking the repository, opening an issue, or joining a discussion does not by
+itself accept the CLA.
 
 Using the public project under AGPL-3.0 does **not** require a paid license.
 See [TRADEMARKS.md](TRADEMARKS.md) for the name and logo. Report
@@ -46,16 +51,13 @@ The merge gate is the `gate` job. Its check-run name is exactly
 PR job is green.
 
 Write access is not host trust. GitHub's fork-workflow approval does not
-replace the YAML actor allowlist on remaining self-hosted jobs. The
-**Publish Showcase** workflow (`workflow_dispatch`) holds
-`RELEASE_MIRROR_TOKEN` and is limited to those two actors — any other
-login's click must not run it.
+replace the YAML actor allowlist on remaining self-hosted jobs.
 
 Hosted PR jobs use `permissions: contents: read` only. Their checkout
 sets `persist-credentials: false`. They must not see
 `TAURI_SIGNING_PRIVATE_KEY`, the MeowWatch Ed25519 seed /
 `MEOWWATCH_RELEASE_KEY` / `release-key.txt`, `R2_*` secrets, or
-`RELEASE_MIRROR_TOKEN`.
+other release credentials.
 
 ### If your check is stuck "Queued / Expected"
 

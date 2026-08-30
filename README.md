@@ -113,7 +113,7 @@ Current release: **0.47.0-alpha**
 
 ## Development
 
-Contributor setup, CI, and release signing are documented in [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md). Contributions need a signed-off [CLA](CLA.md) — see [CONTRIBUTING.md](CONTRIBUTING.md). Runtime helpers (yt-dlp, Deno) are covered in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Contributor setup, CI, and release signing are documented in [docs/AGENT_GUIDE.md](docs/AGENT_GUIDE.md). Intentional submissions are governed by the [CLA](CLA.md) — see [CONTRIBUTING.md](CONTRIBUTING.md). Runtime helpers (yt-dlp, Deno) are covered in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ```powershell
 flutter pub get
@@ -126,6 +126,7 @@ flutter build windows --release
 
 MeowWatch community source is licensed under the
 **[GNU Affero General Public License v3.0 only](LICENSE)** (AGPL-3.0-only).
+The project-specific application notice is in [LICENSE-NOTICE.md](LICENSE-NOTICE.md).
 
 Commercial licensing is available for organizations that require terms outside
 AGPL-3.0. Using the public project under AGPL-3.0 does not require a paid

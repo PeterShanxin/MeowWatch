@@ -1,65 +1,76 @@
 # Contributor License Agreement
 
-This Contributor License Agreement ("Agreement") applies to any contribution
-you submit to MeowWatch (the "Project").
+Version 1.0 — effective 30 August 2026
 
-By opening a pull request and ticking the CLA checkbox, you agree to these
-terms for that contribution and for any later contributions you submit to the
-Project unless we agree otherwise in writing.
+This Contributor License Agreement ("Agreement") applies to Contributions
+intentionally submitted to MeowWatch (the "Project"). The Maintainer is the
+copyright holder of MeowWatch, currently the GitHub user
+[PeterShanxin](https://github.com/PeterShanxin).
 
-**Maintainer** means the copyright holder of MeowWatch (currently the GitHub
-user [PeterShanxin](https://github.com/PeterShanxin)).
+## 1. Contribution and acceptance
 
-## 1. You keep your copyright
+A "Contribution" is material intentionally submitted for inclusion in the
+Project, including a pull request, patch, commit submitted for inclusion, code,
+documentation, or other material intentionally submitted for that purpose.
 
-You retain copyright in your contributions. This Agreement is a license grant,
+By intentionally submitting a Contribution to this Project after being given
+notice of these terms through [CONTRIBUTING.md](CONTRIBUTING.md) or the
+repository, you agree to this Agreement for that Contribution.
+
+Merely viewing, starring, or forking the repository, opening an issue, or
+participating in a discussion does not by itself constitute acceptance. The
+terms in effect when a Contribution is submitted govern that Contribution;
+later changes to this Agreement do not apply retroactively.
+
+## 2. You keep your copyright
+
+You retain copyright in your Contributions. This Agreement is a license grant,
 not an assignment of copyright.
 
-## 2. Copyright license
+## 3. Copyright license
 
 You grant the Maintainer a perpetual, worldwide, non-exclusive, no-charge,
 royalty-free, irrevocable copyright license to reproduce, prepare derivative
 works of, publicly display, publicly perform, sublicense, and distribute your
-contributions and such derivative works.
+Contributions and such derivative works.
 
-## 3. Patent license
+## 4. Patent license
 
 You grant the Maintainer a perpetual, worldwide, non-exclusive, no-charge,
-royalty-free, irrevocable patent license to make, have made, use, offer to
-sell, sell, import, and otherwise transfer the Project, where such license
-applies only to those patent claims licensable by you that are necessarily
-infringed by your contribution(s) alone or by combination of your
-contribution(s) with the Project.
+royalty-free, irrevocable patent license to make, have made, use, offer to sell,
+sell, import, and otherwise transfer the Project, where such license applies
+only to patent claims licensable by you that are necessarily infringed by your
+Contribution alone or by its combination with the Project.
 
-## 4. Relicensing (dual licensing)
+## 5. Relicensing and commercial versions
 
-The public Project is licensed under **AGPL-3.0-only**. The licenses in
-sections 2 and 3 include the right for the Maintainer to relicense your
-contributions, including as part of commercially licensed versions of
-MeowWatch offered to organizations that require terms outside AGPL-3.0.
+The public Project is licensed under **AGPL-3.0-only**. The licenses in sections
+3 and 4 include the right for the Maintainer to sublicense and relicense your
+Contributions, including as part of separately commercially licensed versions
+of MeowWatch offered to organizations that require terms outside AGPL-3.0.
 
-This does not take away the AGPL-3.0-only license of the public Project.
-Commercial use of the public Project under AGPL-3.0 does not require a
-separate paid license.
+This does not remove the AGPL-3.0-only license from the public Project.
+Commercial use of the public Project under AGPL-3.0 does not require a separate
+paid license.
 
-## 5. Representations
+## 6. Your representations
 
 You represent that:
 
-1. You are legally entitled to grant the licenses above. If your employer has
-   rights in the contribution, you have permission to contribute it, or your
-   employer has waived those rights for this contribution.
-2. Each contribution is your original creation, or you otherwise have
+1. You are legally entitled to grant the licenses above. If an employer or
+   another entity has rights in the Contribution, you have permission to submit
+   it or that entity has waived those rights for this Contribution.
+2. Each Contribution is your original creation, or you otherwise have
    sufficient rights to submit it under this Agreement.
-3. Your contribution includes complete details of any third-party license or
-   other restriction of which you are personally aware.
+3. Your submission identifies any third-party license or other restriction of
+   which you are personally aware.
 
-## 6. Support
-
-You are not required to provide support for your contributions, except to the
+You are not required to provide support for your Contributions except to the
 extent you choose to.
 
-## 7. How to agree
+## 7. Future Contributions
 
-Tick the CLA checkbox on the pull request template before merge. Maintainers
-will not merge contributions that have not agreed to this Agreement.
+You may notify the Maintainer in writing that you do not accept this Agreement
+for future Contributions. That notice applies only to Contributions submitted
+after it is received. Licenses already granted for earlier Contributions remain
+irrevocable as stated above.
