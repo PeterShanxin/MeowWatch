@@ -482,7 +482,14 @@ class _HomeScreenState extends _HomeScreenStateBase
   }
 
   Future<void> _startCollaboration() async {
-    _session.startSynced(video: _core, onLog: appLog, shouldLog: _shouldLog);
+    _session.startSynced(
+      video: _core,
+      // The player is already open in a live switch, and the load coordinator
+      // will not re-confirm this source to the new bridge (#252).
+      openSource: _loadedSource,
+      onLog: appLog,
+      shouldLog: _shouldLog,
+    );
     _chrome = SessionChrome.forMode(SessionMode.synced);
     _syncStatus = SyncConnectionStatus.connecting;
     _syncError = null;

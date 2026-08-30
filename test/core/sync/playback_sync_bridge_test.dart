@@ -2757,4 +2757,114 @@ void main() {
           'state so the room stops chasing it',
     );
   });
+
+  group('adoptOpenSource (live Local -> Synced switch, #252)', () {
+    const open = PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration(minutes: 5),
+      duration: Duration(hours: 2),
+      fileName: 'a.mkv',
+      filePath: '/videos/a.mkv',
+      opened: true,
+    );
+
+    test(
+      'a bridge over an already-running player publishes nothing until it '
+      'adopts the source',
+      () async {
+        video.push(open);
+        await pumpEventQueue();
+        video.push(open.copyWith(status: PlaybackStatus.playing));
+        await pumpEventQueue();
+
+        expect(
+          sync.localUpdates,
+          isEmpty,
+          reason: 'this is the #252 regression: with no confirmed source the '
+              'heartbeat reports a permanent 0:00/paused',
+        );
+        expect(sync.changes, isEmpty);
+      },
+    );
+
+    test('adopting seeds the heartbeat and asserts the position as a seek', () async {
+      video.push(open);
+      await pumpEventQueue();
+
+      bridge.adoptOpenSource('/videos/a.mkv');
+
+      expect(sync.localUpdates.last.position, const Duration(minutes: 5));
+      expect(sync.localUpdates.last.paused, isTrue);
+      expect(
+        sync.changes,
+        [true],
+        reason: 'a Syncplay room only moves on a signalled change, so the '
+            'switch must assert its position with doSeek — otherwise a peer '
+            'joining later converges to 0:00 instead of to us',
+      );
+    });
+
+    test('adopting a playing source reports it as playing', () async {
+      video.push(open.copyWith(status: PlaybackStatus.playing));
+      await pumpEventQueue();
+
+      bridge.adoptOpenSource('/videos/a.mkv');
+
+      expect(sync.localUpdates.last.paused, isFalse);
+      expect(sync.changes, [true]);
+    });
+
+    test('after adopting, local play/pause and seeks are published', () async {
+      video.push(open);
+      await pumpEventQueue();
+      bridge.adoptOpenSource('/videos/a.mkv');
+      sync.changes.clear();
+
+      video.push(open.copyWith(status: PlaybackStatus.playing));
+      await pumpEventQueue();
+      expect(sync.changes, [false], reason: 'the play flip must reach the room');
+
+      video.push(
+        open.copyWith(
+          status: PlaybackStatus.playing,
+          position: const Duration(minutes: 20),
+        ),
+      );
+      await pumpEventQueue();
+      expect(sync.changes, [false, true], reason: 'and so must the seek');
+    });
+
+    test('adopting does not seed the bookkeeping as a jump from 0:00', () async {
+      video.push(open);
+      await pumpEventQueue();
+      bridge.adoptOpenSource('/videos/a.mkv');
+      sync.changes.clear();
+
+      // A steady tick at the adopted position is ordinary playback, not a seek —
+      // proof the detector was seeded from the player, not from zero.
+      video.push(open.copyWith(position: const Duration(minutes: 5)));
+      await pumpEventQueue();
+      expect(sync.changes, isEmpty);
+    });
+
+    test('a source that is not the one open is not adopted', () async {
+      video.push(open);
+      await pumpEventQueue();
+
+      bridge.adoptOpenSource('/videos/other.mkv');
+
+      expect(sync.localUpdates, isEmpty);
+      expect(sync.changes, isEmpty);
+    });
+
+    test('an errored source is not adopted', () async {
+      video.push(open.copyWith(status: PlaybackStatus.error));
+      await pumpEventQueue();
+
+      bridge.adoptOpenSource('/videos/a.mkv');
+
+      expect(sync.localUpdates, isEmpty);
+      expect(sync.changes, isEmpty);
+    });
+  });
 }

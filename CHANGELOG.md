@@ -16,6 +16,7 @@ in-app updater reads to show what changed.
 
 ### Added
 - **Local Player Mode** in the lobby gear and the in-player gear. Local still gets a random room identity, just no Syncplay. Changing it in either place is remembered for future Start and Continue Watching sessions. Typing a code or opening a saved room still joins together for that session only, without changing the remembered default (#252, #254).
+- Turning Local Player Mode **off inside the player** now hands the room a session that is already watching: same room code, same video, same spot on the timeline, and full two-way control — a friend who joins afterwards lands where you are, and play, pause and seek work from either side (#252, #254).
 - Watch history now keeps **separate progress per room**. Room A and room B can stay at different times, while switching Local Player Mode inside one room keeps updating that same record (#254).
 
 ### Fixed

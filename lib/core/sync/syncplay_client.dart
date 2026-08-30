@@ -629,7 +629,18 @@ class SyncplayClient extends SyncCore {
     if (_shouldFormatLog(verboseOnly: true)) {
       onLog?.call('>> ${redactSecretsForLog(message)}');
     }
-    socket.add(utf8.encode('$line\r\n'));
+    try {
+      socket.add(utf8.encode('$line\r\n'));
+    } on Object catch (e) {
+      // A socket write can legitimately fail while the link is going away: a
+      // deliberate leave flushes the socket, and dart:io marks the sink "bound
+      // to a stream" for the duration of that flush, so an inbound State landing
+      // in the same window would otherwise throw a StateError straight out of
+      // the socket's data handler and abort the message pump. A half-open link
+      // behaves the same way. Never silent — the watchdog owns recovery, this
+      // only records that the byte never left.
+      onLog?.call('send failed (link closing): $e');
+    }
   }
 
   /// Most-recent outbound messages kept in [debugSentMessages]; older entries

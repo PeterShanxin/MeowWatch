@@ -44,17 +44,30 @@ class SessionServices {
   bool get isSynced => _mode.isSynced;
 
   /// Spin up the Syncplay trio. No-op if already synced.
+  ///
+  /// [openSource] is the source the load coordinator has already accepted for
+  /// [video] — pass it whenever the player is already open as the trio starts
+  /// (the live Local -> Synced switch). See
+  /// [PlaybackSyncBridge.adoptOpenSource].
   void startSynced({
     required VideoCore video,
+    String? openSource,
     void Function(String line)? onLog,
     bool Function({required bool verboseOnly})? shouldLog,
   }) {
     if (_mode.isSynced) return;
     final client = SyncplayClient(onLog: onLog, shouldLog: shouldLog);
     sync = client;
-    bridge = PlaybackSyncBridge(video: video, sync: client)..start();
+    final playbackBridge = PlaybackSyncBridge(video: video, sync: client)
+      ..start();
+    bridge = playbackBridge;
     chat = ChatStore(sync: client);
     _mode = SessionMode.synced;
+    // A live Local -> Synced switch hands the new bridge a player that is
+    // ALREADY open, and the load coordinator will never call markSourceOpen for
+    // it again. Adopt it here, or the bridge publishes nothing and the session
+    // becomes drivable-but-not-driving (#252).
+    if (openSource != null) playbackBridge.adoptOpenSource(openSource);
   }
 
   /// Tear down the Syncplay trio. No-op if already local.

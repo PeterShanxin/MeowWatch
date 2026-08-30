@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../debug/app_log.dart';
 import '../video/playback_state.dart';
+import '../video/source_announce.dart';
 import '../video/video_core.dart';
 import 'peer_state.dart';
 import 'sync_core.dart';
@@ -136,6 +137,50 @@ class PlaybackSyncBridge {
   void start() {
     _videoSub = video.stateStream.listen(_onLocalState);
     _peerSub = sync.peerState.listen(_queuePeerState);
+  }
+
+  /// Adopt a source that was already open *before this bridge existed*.
+  ///
+  /// The live Local -> Synced switch (#252) builds the Syncplay trio around a
+  /// player that is already running, so [markSourceOpen] — the only other way a
+  /// source is ever confirmed — fired long ago, against a bridge that no longer
+  /// exists. Without this the fresh bridge sits at `_confirmedOpenSource == null`
+  /// and suppresses every outbound publish: the new client heartbeats a permanent
+  /// `0:00 / paused` and none of our play/pause/seek is ever announced. The room
+  /// can still drive us (the peer-state path never consults the marker), so the
+  /// session ends up drivable but not driving — the exact asymmetry reported in
+  /// #252.
+  ///
+  /// Adoption also does one thing a plain [markSourceOpen] cannot: it publishes
+  /// the current position as an explicit local change (`doSeek`). A Syncplay
+  /// room's authoritative playstate only moves when a client *signals* a change,
+  /// so without the assert the room would sit at 0:00 with no setter and a peer
+  /// joining later would converge to 0:00 rather than to us. That is the same
+  /// state a synced-from-the-start session publishes when its Continue-Watching
+  /// resume seek lands before the room is joined — precisely the equivalence the
+  /// switch is supposed to deliver.
+  void adoptOpenSource(String source) {
+    final s = video.state;
+    // Reuse the connect-time announce gate: adopt only a source that is still
+    // the one the load coordinator accepted and has not since errored.
+    if (!canAnnounceOnConnect(
+      currentPath: s.filePath,
+      acceptedPath: source,
+      status: s.status,
+    )) {
+      return;
+    }
+    final paused = s.status != PlaybackStatus.playing;
+    _confirmedOpenSource = source;
+    // Seed the seek-detection bookkeeping from where the player already is, so
+    // the next tick reads as ordinary playback rather than a jump from 0:00.
+    _lastFilePath = s.filePath;
+    _lastPaused = paused;
+    _lastPosition = s.position;
+    _lastTick = DateTime.now();
+    _preOpenPlayRemote = false;
+    sync.updateLocalState(position: s.position, paused: paused);
+    sync.notifyLocalChange(doSeek: true);
   }
 
   void _queuePeerState(PeerPlayState peer) {
