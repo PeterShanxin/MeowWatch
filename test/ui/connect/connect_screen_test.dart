@@ -1190,7 +1190,10 @@ void main() {
     await pump(tester);
     await turnOnLocalMode(tester);
     expect(find.text('Start watching'), findsOneWidget);
-    expect(find.text('Play on this computer — no sync.'), findsOneWidget);
+    expect(
+      find.text('Play on this computer — no sync. This choice is remembered.'),
+      findsOneWidget,
+    );
 
     await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
     await tester.ensureVisible(find.byKey(const Key('connect-start-new')));

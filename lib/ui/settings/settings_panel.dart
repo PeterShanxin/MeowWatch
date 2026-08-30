@@ -34,8 +34,8 @@ class SettingsPanel extends StatelessWidget {
     super.key,
   });
 
-  /// When both are set, Settings shows the Local Player Mode toggle (lobby
-  /// default, or the current session's effective mode in the player gear).
+  /// When both are set, Settings shows the Local Player Mode toggle. Lobby and
+  /// player hosts both persist changes; the player also switches live.
   final bool? localPlayerMode;
   final ValueChanged<bool>? onLocalPlayerModeChanged;
 

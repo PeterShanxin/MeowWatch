@@ -15,7 +15,7 @@ in-app updater reads to show what changed.
 > Watch alone — same player, no sync. Flip it live without leaving the video.
 
 ### Added
-- **Local Player Mode** in the lobby gear and the in-player gear. Local still gets a random room identity, just no Syncplay. Start and Continue Watching stay local; typing a code or opening a saved room joins together for this session only, without changing the lobby default (#252, #254).
+- **Local Player Mode** in the lobby gear and the in-player gear. Local still gets a random room identity, just no Syncplay. Changing it in either place is remembered for future Start and Continue Watching sessions. Typing a code or opening a saved room still joins together for that session only, without changing the remembered default (#252, #254).
 - Watch history now keeps **separate progress per room**. Room A and room B can stay at different times, while switching Local Player Mode inside one room keeps updating that same record (#254).
 
 ### Fixed

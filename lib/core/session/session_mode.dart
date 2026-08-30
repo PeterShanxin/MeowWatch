@@ -12,9 +12,9 @@ enum SessionMode {
 /// How the user asked to enter the player from the lobby.
 enum SessionLaunch { start, continueWatching, joinCode, savedRoom }
 
-/// Pick [SessionMode] from the persisted Local Player Mode toggle and the
-/// lobby action. The toggle only changes the default solo path — join-code
-/// and saved-room stay synced.
+/// Pick [SessionMode] from the remembered Local Player Mode setting and the
+/// lobby action. Explicit toggles in either the lobby or player update this
+/// default; join-code and saved-room launches stay synced without updating it.
 SessionMode resolveSessionMode({
   required bool localPlayerMode,
   required SessionLaunch launch,

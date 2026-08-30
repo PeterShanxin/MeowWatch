@@ -841,7 +841,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       const SizedBox(height: 8),
       Text(
         _localPlayerMode
-            ? 'Play on this computer — no sync.'
+            ? 'Play on this computer — no sync. This choice is remembered.'
             : 'A private code is generated and copied to clipboard.',
         style: context.meowText.body.copyWith(color: m.textDim),
       ),

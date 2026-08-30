@@ -62,8 +62,8 @@ class PlayerMenuButton extends StatelessWidget {
   /// Local sessions hide room-code / roster / chat-dim rows.
   final SessionMode sessionMode;
 
-  /// Current effective session Local mode. The player gear toggle flips
-  /// this live; it is not just a future-default.
+  /// Current effective session Local mode. The player gear toggle flips this
+  /// live and persists the new lobby default for future Start / Continue.
   final bool localPlayerMode;
   final ValueChanged<bool>? onLocalPlayerModeChanged;
 

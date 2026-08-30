@@ -40,9 +40,10 @@ const String kLogLevelSettingKey = 'log_level';
 /// `latestPerRoom`).
 const String kHistoryModeSettingKey = 'history_mode';
 
-/// Key for the persisted Local Player Mode toggle (value = `"true"` / `"false"`;
-/// absent/unknown → off). When on, Start and Continue Watching enter a local
-/// session; join-code and saved rooms stay synced.
+/// Key for the remembered Local Player Mode toggle (value = `"true"` /
+/// `"false"`; absent/unknown → off). Explicit lobby and in-player flips both
+/// persist here. When on, Start and Continue Watching enter a local session;
+/// join-code and saved-room overrides stay synced without changing this value.
 const String kLocalPlayerModeSettingKey = 'local_player_mode';
 
 /// Key for the last app version the user has seen (value = an [appVersion]
