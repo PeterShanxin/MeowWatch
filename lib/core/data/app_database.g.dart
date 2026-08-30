@@ -882,7 +882,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
   final int lastPositionMs;
   final DateTime playedAt;
 
-  /// `local` or `synced|{server}|{port}|{room}`. Unique with [filePath].
+  /// Legacy roomless `local`, or stable `synced|server|port|room` regardless of
+  /// the effective session mode. Unique with [filePath].
   final String contextKey;
   final String? room;
   final String? username;

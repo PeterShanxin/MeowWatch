@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 
 import 'watch_context.dart';
 
-/// A file the user has watched in one watch context, with the position to
-/// resume from. Same media can have a Local row and one row per synced room.
+/// A file the user has watched in one room context, with the position to resume
+/// from. Effective Local/synced mode does not split a real room into two rows.
 @immutable
 class HistoryEntry {
   const HistoryEntry({
@@ -29,12 +29,13 @@ class HistoryEntry {
   final int lastPositionMs;
   final DateTime playedAt;
 
-  /// `local` or `synced|{server}|{port}|{room}`.
+  /// `local` for legacy roomless playback, otherwise the stable
+  /// `synced|{server}|{port}|{room}` room key (also used by Local sessions).
   final String contextKey;
 
   /// Room code and the name used when this file was last opened in a session.
-  /// Legacy Local rows can be null; new Local sessions retain their real random
-  /// room as metadata while [contextKey] remains `local`.
+  /// Legacy roomless rows can be null; real Local sessions retain their random
+  /// room and use the same [contextKey] as synced mode in that room.
   final String? room;
   final String? username;
 

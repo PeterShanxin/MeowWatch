@@ -84,7 +84,7 @@ void main() {
     }
   });
 
-  test('history context flips with effective mode, not room identity', () {
+  test('history key stays with the room across effective-mode flips', () {
     final local = watchContextForSession(
       local: true,
       server: identity.server,
@@ -92,18 +92,17 @@ void main() {
       room: identity.room,
     );
     expect(local.isLocal, isTrue);
-    expect(local.key, kLocalWatchContextKey);
     expect(local.storedServer, identity.server);
     expect(local.storedPort, identity.port);
     expect(local.storedRoom, identity.room);
-    expect(
-      watchContextForSession(
-        local: false,
-        server: identity.server,
-        port: identity.port,
-        room: identity.room,
-      ).key,
-      'synced|syncplay.pl|8999|sleepy-otter-counts-cozy-stars',
+    final synced = watchContextForSession(
+      local: false,
+      server: identity.server,
+      port: identity.port,
+      room: identity.room,
     );
+    expect(synced.isSynced, isTrue);
+    expect(local.key, synced.key);
+    expect(local.key, 'synced|syncplay.pl|8999|sleepy-otter-counts-cozy-stars');
   });
 }

@@ -85,32 +85,6 @@ class DriftProfileStore implements ProfileStore {
   );
 }
 
-/// Every code point Dart's [String.trim] strips: the Unicode White_Space set
-/// (U+0009–U+000D, U+0020, U+0085, U+00A0, U+1680, U+2000–U+200A, U+2028,
-/// U+2029, U+202F, U+205F, U+3000) plus the BOM U+FEFF, per the String.trim
-/// SDK docs. Passed to SQLite's two-argument TRIM(X, Y) so the SQL room key
-/// in [DriftHistoryStore.watchRecent] matches `room?.trim()` exactly —
-/// single-argument TRIM only strips ASCII spaces, which would split e.g. an
-/// NBSP-padded room (pasted share code) into a phantom second room (PR #216
-/// review). An exhaustive BMP sweep in drift_history_store_test.dart keeps
-/// this list verifiably in sync with the running SDK. Built from code points
-/// rather than escape literals so no invisible characters live in source.
-final String kDartTrimWhitespace = String.fromCharCodes(const <int>[
-  0x0009, 0x000A, 0x000B, 0x000C, 0x000D, // tab, LF, VT, FF, CR
-  0x0020, // space
-  0x0085, // next line (NEL)
-  0x00A0, // no-break space
-  0x1680, // ogham space mark
-  0x2000, 0x2001, 0x2002, 0x2003, 0x2004, // en quad..three-per-em space
-  0x2005, 0x2006, 0x2007, 0x2008, 0x2009, // four-per-em..thin space
-  0x200A, // hair space
-  0x2028, 0x2029, // line / paragraph separator
-  0x202F, // narrow no-break space
-  0x205F, // medium mathematical space
-  0x3000, // ideographic space
-  0xFEFF, // BOM (zero-width no-break space)
-]);
-
 class DriftHistoryStore implements HistoryStore {
   DriftHistoryStore(this._db);
 
@@ -132,8 +106,9 @@ class DriftHistoryStore implements HistoryStore {
         ..limit(limit);
       return query.watch().map((rows) => rows.map(_toModel).toList());
     }
-    // latestPerRoom: latest row per context_key (Local is one bucket; each
-    // synced server/port/room is its own). A pre-collapse LIMIT would starve
+    // latestPerRoom: latest row per context_key (legacy roomless Local is one
+    // bucket; each real server/port/room is its own regardless of mode). A
+    // pre-collapse LIMIT would starve
     // older rooms when one context dominates recent history.
     final rows = _db.customSelect(
       'SELECT * FROM ('
@@ -167,9 +142,9 @@ class DriftHistoryStore implements HistoryStore {
     int? durationMs,
     String? username,
   }) {
-    // Upsert on (filePath, contextKey) — Local and each synced room are
-    // independent rows. lastPositionMs is never listed so a re-open can't
-    // touch a saved resume point.
+    // Upsert on (filePath, contextKey). A real room has one key across Local and
+    // synced modes; only legacy roomless Local is independent. lastPositionMs
+    // is never listed so a re-open can't touch a saved resume point.
     final now = DateTime.now();
     return _db
         .into(_db.historyEntries)

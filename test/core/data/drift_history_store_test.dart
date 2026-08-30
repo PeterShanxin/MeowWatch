@@ -67,23 +67,43 @@ void main() {
     expect(list.single.isLocalContext, isTrue);
   });
 
-  test(
-    'Local context keeps room identity as metadata without changing its key',
-    () async {
-      const localRoom = WatchContext.local(
-        server: 'syncplay.pl',
-        port: 8999,
-        room: 'quiet-otter-counts-stars',
-      );
-      await open(r'D:\v\ep1.mkv', context: localRoom, username: 'meow');
+  test('Local context with a room uses that stable room key', () async {
+    const localRoom = WatchContext.local(
+      server: 'syncplay.pl',
+      port: 8999,
+      room: 'quiet-otter-counts-stars',
+    );
+    await open(r'D:\v\ep1.mkv', context: localRoom, username: 'meow');
 
-      final entry = (await store.watchRecent().first).single;
-      expect(entry.contextKey, kLocalWatchContextKey);
-      expect(entry.room, 'quiet-otter-counts-stars');
-      expect(entry.server, 'syncplay.pl');
-      expect(entry.port, 8999);
-    },
-  );
+    final entry = (await store.watchRecent().first).single;
+    expect(
+      entry.contextKey,
+      'synced|syncplay.pl|8999|quiet-otter-counts-stars',
+    );
+    expect(entry.room, 'quiet-otter-counts-stars');
+    expect(entry.server, 'syncplay.pl');
+    expect(entry.port, 8999);
+  });
+
+  test('Local toggle updates the existing same-room row', () async {
+    const path = r'D:\v\A.mkv';
+    const localRoom = WatchContext.local(
+      server: 'syncplay.pl',
+      port: 8999,
+      room: 'bouncy-snail-picks-spry-carrot',
+    );
+
+    await open(path, context: roomA, username: 'meow');
+    await seek(path, context: roomA, positionMs: 109958);
+    await open(path, context: localRoom, username: 'meow');
+    await seek(path, context: localRoom, positionMs: 124875);
+
+    final all = await store.watchRecent(mode: HistoryMode.everyVideo).first;
+    expect(all, hasLength(1));
+    expect(all.single.contextKey, roomA.key);
+    expect(all.single.lastPositionMs, 124875);
+    expect(all.single.room, roomA.room);
+  });
 
   test('same media Local + room A coexist with independent progress', () async {
     const path = r'D:\v\A.mkv';

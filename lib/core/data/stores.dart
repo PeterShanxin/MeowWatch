@@ -35,7 +35,8 @@ abstract class HistoryStore {
 
   /// Record (or refresh) that [filePath] was opened in [context]. Keeps the
   /// existing [lastPositionMs] on that context row; updates name/size/duration
-  /// /username and bumps playedAt. Local and synced contexts are independent.
+  /// /username and bumps playedAt. Effective Local/synced mode shares a real
+  /// room context; only different rooms (or legacy roomless Local) are separate.
   Future<void> recordOpen({
     required String filePath,
     required String fileName,

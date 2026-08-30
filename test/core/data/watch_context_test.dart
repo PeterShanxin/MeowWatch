@@ -22,6 +22,24 @@ void main() {
       expect(ctx.storedPort, 8999);
     });
 
+    test('Local and synced modes share the same real-room key', () {
+      const local = WatchContext.local(
+        server: 'syncplay.pl',
+        port: 8999,
+        room: 'cozy-fox-42',
+      );
+      final synced = WatchContext.synced(
+        server: 'syncplay.pl',
+        port: 8999,
+        room: 'cozy-fox-42',
+      );
+
+      expect(local.isLocal, isTrue);
+      expect(synced.isSynced, isTrue);
+      expect(local.key, synced.key);
+      expect(local.key, 'synced|syncplay.pl|8999|cozy-fox-42');
+    });
+
     test('same room on two servers are distinct', () {
       final a = WatchContext.synced(
         server: 'syncplay.pl',
@@ -51,29 +69,24 @@ void main() {
       );
     });
 
-    test('watchContextForSession is local or this room endpoint', () {
-      expect(
-        watchContextForSession(
-          local: true,
-          server: 'syncplay.pl',
-          port: 8999,
-          room: 'cozy',
-        ),
-        const WatchContext.local(
-          server: 'syncplay.pl',
-          port: 8999,
-          room: 'cozy',
-        ),
+    test('watchContextForSession keeps mode but not mode in the key', () {
+      final local = watchContextForSession(
+        local: true,
+        server: 'syncplay.pl',
+        port: 8999,
+        room: 'cozy',
       );
-      expect(
-        watchContextForSession(
-          local: false,
-          server: 'syncplay.pl',
-          port: 8999,
-          room: 'cozy',
-        ).key,
-        'synced|syncplay.pl|8999|cozy',
+      final synced = watchContextForSession(
+        local: false,
+        server: 'syncplay.pl',
+        port: 8999,
+        room: 'cozy',
       );
+
+      expect(local.isLocal, isTrue);
+      expect(synced.isSynced, isTrue);
+      expect(local.key, synced.key);
+      expect(local.key, 'synced|syncplay.pl|8999|cozy');
     });
 
     test('row with room + endpoint keeps that endpoint', () {

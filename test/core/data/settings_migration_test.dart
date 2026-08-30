@@ -22,10 +22,10 @@ void main() {
     expect(row.value, 'noir');
   });
 
-  test('schemaVersion is 5', () {
+  test('schemaVersion is 6', () {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 5);
+    expect(db.schemaVersion, 6);
   });
 
   test(
@@ -60,7 +60,7 @@ void main() {
   );
 
   test(
-    'v4 to v5 migrates roomful rows to synced and roomless to local',
+    'v4 to current migrates roomful rows to room keys and roomless to local',
     () async {
       final dir = await Directory.systemTemp.createTemp('mw-hist-mig');
       addTearDown(() => dir.delete(recursive: true));
@@ -167,4 +167,117 @@ INSERT INTO history_entries (
       expect(solo.durationMs, 120000);
     },
   );
+
+  test('v5 to v6 merges Local and synced rows for the same room', () async {
+    final dir = await Directory.systemTemp.createTemp('mw-hist-room-mig');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = File(p.join(dir.path, 't.db'));
+    final raw = sqlite3.open(file.path);
+    raw.execute('''
+CREATE TABLE profiles (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  server TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  room TEXT NOT NULL,
+  username TEXT NOT NULL,
+  password TEXT NULL,
+  is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+  last_used_at INTEGER NULL,
+  UNIQUE(server, port, room, username)
+);
+''');
+    raw.execute('''
+CREATE TABLE settings (
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY (key)
+);
+''');
+    raw.execute('''
+CREATE TABLE history_entries (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  file_path TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  file_size_bytes INTEGER NOT NULL DEFAULT 0,
+  duration_ms INTEGER NULL,
+  last_position_ms INTEGER NOT NULL DEFAULT 0,
+  played_at INTEGER NOT NULL,
+  context_key TEXT NOT NULL,
+  room TEXT NULL,
+  username TEXT NULL,
+  server TEXT NULL,
+  port INTEGER NULL,
+  UNIQUE(file_path, context_key)
+);
+''');
+    const path = r'D:\v\A.mkv';
+    const room = 'nimble-rabbit-tosses-eager-teapot';
+    raw.execute(
+      '''
+INSERT INTO history_entries (
+  file_path, file_name, duration_ms, last_position_ms, played_at,
+  context_key, room, username, server, port
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+''',
+      [
+        path,
+        'A.mkv',
+        600000,
+        109958,
+        100,
+        'synced|syncplay.pl|8995|$room',
+        room,
+        'meow',
+        'syncplay.pl',
+        8995,
+      ],
+    );
+    raw.execute(
+      '''
+INSERT INTO history_entries (
+  file_path, file_name, duration_ms, last_position_ms, played_at,
+  context_key, room, username, server, port
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+''',
+      [
+        path,
+        'A.mkv',
+        600000,
+        124875,
+        101,
+        kLocalWatchContextKey,
+        room,
+        'meow',
+        'syncplay.pl',
+        8995,
+      ],
+    );
+    raw.execute(
+      '''
+INSERT INTO history_entries (
+  file_path, file_name, duration_ms, last_position_ms, played_at,
+  context_key
+) VALUES (?, ?, ?, ?, ?, ?)
+''',
+      [r'D:\v\legacy.mkv', 'legacy.mkv', 120000, 35000, 102, 'local'],
+    );
+    raw.execute('PRAGMA user_version = 5');
+    raw.close();
+
+    final db = AppDatabase(NativeDatabase(file));
+    addTearDown(db.close);
+    final rows = await db.select(db.historyEntries).get();
+    expect(rows, hasLength(2));
+
+    final merged = rows.firstWhere((r) => r.filePath == path);
+    expect(merged.contextKey, 'synced|syncplay.pl|8995|$room');
+    expect(merged.lastPositionMs, 124875);
+    expect(merged.playedAt, DateTime.fromMillisecondsSinceEpoch(101000));
+    expect(merged.room, room);
+
+    final legacy = rows.firstWhere((r) => r.filePath.endsWith('legacy.mkv'));
+    expect(legacy.contextKey, kLocalWatchContextKey);
+    expect(legacy.lastPositionMs, 35000);
+  });
 }

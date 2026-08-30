@@ -1,15 +1,49 @@
 import 'package:flutter/foundation.dart';
 
-/// Sentinel identity for a Local-context history row.
+/// Sentinel identity for a legacy roomless Local history row.
 const String kLocalWatchContextKey = 'local';
+
+/// Every code point Dart's [String.trim] strips. SQLite's one-argument TRIM
+/// only strips ASCII spaces, so migrations and queries use this as the second
+/// argument when deriving the same stable room key as Dart.
+final String kDartTrimWhitespace = String.fromCharCodes(const <int>[
+  0x0009,
+  0x000A,
+  0x000B,
+  0x000C,
+  0x000D,
+  0x0020,
+  0x0085,
+  0x00A0,
+  0x1680,
+  0x2000,
+  0x2001,
+  0x2002,
+  0x2003,
+  0x2004,
+  0x2005,
+  0x2006,
+  0x2007,
+  0x2008,
+  0x2009,
+  0x200A,
+  0x2028,
+  0x2029,
+  0x202F,
+  0x205F,
+  0x3000,
+  0xFEFF,
+]);
 
 /// Kind of watch context a history row belongs to.
 enum WatchContextKind { local, synced }
 
-/// Where a watch happened: Local, or a specific Syncplay room endpoint.
+/// Where a watch happened: roomless Local, or a real room endpoint whose
+/// current session may be Local or synced.
 ///
-/// Progress is per context, not per media. Identity is
-/// `(media, local)` or `(media, server, port, room)` — username is metadata.
+/// Progress identity is `(media, local)` only for legacy roomless playback, or
+/// `(media, server, port, room)` whenever a real room exists. Effective Local
+/// mode and username are metadata, never identity.
 @immutable
 class WatchContext {
   const WatchContext._({required this.kind, this.server, this.port, this.room});
@@ -38,13 +72,27 @@ class WatchContext {
   bool get isLocal => kind == WatchContextKind.local;
   bool get isSynced => kind == WatchContextKind.synced;
 
-  /// Unique context key stored on the history row.
-  String get key => isLocal
-      ? kLocalWatchContextKey
-      : syncedWatchContextKey(server: server!, port: port!, room: room!);
+  /// Unique context key stored on the history row. A real room always wins over
+  /// effective mode, so toggling Local in-player keeps writing the same row.
+  String get key {
+    final roomKey = room?.trim() ?? '';
+    if (roomKey.isNotEmpty) {
+      return syncedWatchContextKey(
+        server: server ?? '',
+        port: port ?? 0,
+        room: roomKey,
+      );
+    }
+    return isLocal
+        ? kLocalWatchContextKey
+        : syncedWatchContextKey(
+            server: server ?? '',
+            port: port ?? 0,
+            room: roomKey,
+          );
+  }
 
-  /// Session identity stored as metadata. It never participates in the Local
-  /// context key, but preserves the real random room assigned to that session.
+  /// Session identity stored as metadata and used by [key] whenever roomful.
   String? get storedRoom => room;
   String? get storedServer => server;
   int? get storedPort => port;
@@ -83,12 +131,13 @@ String migrateHistoryContextKey({String? room, String? server, int? port}) {
   );
 }
 
-/// Latest-per-room grouping key: Local is one bucket; each synced endpoint
-/// is its own bucket.
+/// Latest-per-room grouping key: roomless Local is one legacy bucket; every
+/// real endpoint is its own bucket regardless of effective mode.
 String historyContextBucketKey(WatchContext context) => context.key;
 
-/// History context for the current player session. Local writes the Local
-/// row; synced writes this room's endpoint — never the other way around.
+/// History context for the current player session. [local] preserves the
+/// effective mode on the object, while [WatchContext.key] remains the same room
+/// endpoint through an in-player mode switch.
 WatchContext watchContextForSession({
   required bool local,
   required String server,
