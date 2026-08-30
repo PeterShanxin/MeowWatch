@@ -54,6 +54,11 @@ class MediaKitVideoCore extends VideoCore {
   /// instead of flashing Continue Watching back to the beginning.
   int? _pendingProbeZeroToken;
 
+  /// Re-seek of libmpv's physical cursor after a delayed probe-zero event. The
+  /// retained [PlaybackState] alone is not enough: without this correction the
+  /// UI still shows the resume point, but the next play starts from 0:00.
+  Future<void>? _pendingProbeRecovery;
+
   /// In-flight [reset] (leave-room teardown) on this reused engine, or null when
   /// idle. [load] awaits it before touching the shared player so a fast re-join
   /// can't open a new source only for the previous room's trailing `stop()` to
@@ -124,6 +129,12 @@ class MediaKitVideoCore extends VideoCore {
         // shows the old one's end instead of 0:00, and a room would broadcast
         // the wrong position (#132). See [acceptPlayerPosition].
         final probeZeroPending = _pendingProbeZeroToken == _loadToken;
+        final recoveryTarget = lateProbeZeroRecoveryTarget(
+          incoming: pos,
+          current: state.position,
+          started: _playbackStarted,
+          probeZeroPending: probeZeroPending,
+        );
         final accepted = acceptPlayerPosition(
           incoming: pos,
           current: state.position,
@@ -137,8 +148,18 @@ class MediaKitVideoCore extends VideoCore {
           _pendingProbeZeroToken = null;
         }
         if (!accepted) {
-          if (probeZeroPending && pos <= Duration.zero) {
-            appLog('trace: ignored late paused-load probe zero');
+          if (recoveryTarget != null) {
+            appLog('trace: correcting late paused-load probe zero');
+            late final Future<void> recovery;
+            recovery = _restoreAfterLateProbeZero(recoveryTarget, _loadToken);
+            _pendingProbeRecovery = recovery;
+            unawaited(
+              recovery.whenComplete(() {
+                if (identical(_pendingProbeRecovery, recovery)) {
+                  _pendingProbeRecovery = null;
+                }
+              }),
+            );
           }
           return;
         }
@@ -304,6 +325,7 @@ class MediaKitVideoCore extends VideoCore {
     // lingering end position (#132).
     _playbackStarted = false;
     _pendingProbeZeroToken = null;
+    _pendingProbeRecovery = null;
     // Arm the params-open guard: a real params event seen before this load's
     // START_FILE reset is the previous source's, and must not latch `opened`.
     _paramsResetSeen = false;
@@ -412,11 +434,30 @@ class MediaKitVideoCore extends VideoCore {
     }
   }
 
+  Future<void> _restoreAfterLateProbeZero(Duration target, int token) async {
+    if (_loadToken != token || target <= Duration.zero) return;
+    try {
+      await _player.seek(target);
+      if (_loadToken == token) {
+        appLog(
+          'trace: restored paused-load probe position '
+          '${target.inMilliseconds}ms',
+        );
+      }
+    } catch (_) {
+      if (_loadToken == token) {
+        appLog('video: failed to restore paused-load probe position');
+      }
+    }
+  }
+
   @override
-  Future<void> play() {
+  Future<void> play() async {
     _playbackStarted = true;
     appLog('trace: play');
-    return _player.play();
+    final recovery = _pendingProbeRecovery;
+    if (recovery != null) await recovery;
+    await _player.play();
   }
 
   @override
@@ -426,13 +467,15 @@ class MediaKitVideoCore extends VideoCore {
   }
 
   @override
-  Future<void> seek(Duration position) {
+  Future<void> seek(Duration position) async {
     _playbackStarted = true;
     // An explicit seek to the beginning owns that zero; do not mistake it for
     // the load probe's delayed event.
     if (position <= Duration.zero) _pendingProbeZeroToken = null;
     appLog('trace: seek ${position.inMilliseconds}ms');
-    return _player.seek(position);
+    final recovery = _pendingProbeRecovery;
+    if (recovery != null) await recovery;
+    await _player.seek(position);
   }
 
   @override
@@ -456,6 +499,7 @@ class MediaKitVideoCore extends VideoCore {
     _playbackStarted = false;
     _paramsResetSeen = false;
     _pendingProbeZeroToken = null;
+    _pendingProbeRecovery = null;
     // Clear stored state synchronously, before any await, so the next room reads
     // a blank slate even if it mounts immediately. stop()'s trailing events
     // (playing:false, position/duration 0) are harmless on the load screen.

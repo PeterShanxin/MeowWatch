@@ -3,6 +3,28 @@
 /// want to drop that legitimate final tick.
 const Duration positionOverrunTolerance = Duration(seconds: 1);
 
+/// The position that must be re-applied after the paused-load probe's delayed
+/// seek to `0:00` physically moves the backend behind an already-landed resume.
+///
+/// Ignoring the stale zero event is not sufficient: media_kit's cached/UI state
+/// can still retain [current] while libmpv's real playback cursor sits at zero,
+/// so the next `play()` starts from the beginning. Returning [current] tells the
+/// backend adapter to seek the real cursor back before playback may start.
+Duration? lateProbeZeroRecoveryTarget({
+  required Duration incoming,
+  required Duration current,
+  required bool started,
+  required bool probeZeroPending,
+}) {
+  if (incoming <= Duration.zero &&
+      probeZeroPending &&
+      started &&
+      current > Duration.zero) {
+    return current;
+  }
+  return null;
+}
+
 /// Whether an incoming player position is valid for the current media.
 ///
 /// libmpv's event loop can deliver a final end-of-file `time-pos` from the
@@ -36,7 +58,13 @@ bool acceptPlayerPosition({
   bool probeZeroPending = false,
 }) {
   if (incoming <= Duration.zero) {
-    return !(probeZeroPending && started && current > Duration.zero);
+    return lateProbeZeroRecoveryTarget(
+          incoming: incoming,
+          current: current,
+          started: started,
+          probeZeroPending: probeZeroPending,
+        ) ==
+        null;
   }
   if (!started) return false;
   if (duration <= Duration.zero) return false;

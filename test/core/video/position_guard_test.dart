@@ -126,4 +126,30 @@ void main() {
       );
     });
   });
+
+  group('lateProbeZeroRecoveryTarget', () {
+    test('restores the retained resume position after the probe moves mpv', () {
+      expect(
+        lateProbeZeroRecoveryTarget(
+          incoming: Duration.zero,
+          current: const Duration(minutes: 18),
+          started: true,
+          probeZeroPending: true,
+        ),
+        const Duration(minutes: 18),
+      );
+    });
+
+    test('does not restore an ordinary explicit zero', () {
+      expect(
+        lateProbeZeroRecoveryTarget(
+          incoming: Duration.zero,
+          current: const Duration(minutes: 18),
+          started: true,
+          probeZeroPending: false,
+        ),
+        isNull,
+      );
+    });
+  });
 }
