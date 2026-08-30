@@ -20,6 +20,7 @@ in-app updater reads to show what changed.
 ### Fixed
 - A failed link during local playback now still shows the notice — it no longer fails silently (#252).
 - Starting or continuing right after launch now waits for the saved Local Player Mode, so a persisted ON cannot open a room by accident (#252).
+- Flipping Local Player Mode in the lobby gear right after launch no longer gets overwritten by the still-loading saved value (#252).
 
 ## [0.47.0-alpha] - 2026-08-01
 

@@ -67,6 +67,10 @@ class _FakeSettingsStore implements SettingsStore {
 
 /// Settings store whose *reads* block on a caller-controlled gate, to test
 /// that Start waits for the persisted Local Player Mode before launching.
+///
+/// [get] snapshots the value at call time, then waits. A later [set] must
+/// not change what that in-flight read returns — otherwise a stale-vs-toggle
+/// race cannot be forced.
 class _GatedGetSettingsStore implements SettingsStore {
   _GatedGetSettingsStore(this._gate);
 
@@ -75,8 +79,9 @@ class _GatedGetSettingsStore implements SettingsStore {
 
   @override
   Future<String?> get(String key) async {
+    final snapshot = map[key];
     await _gate;
-    return map[key];
+    return snapshot;
   }
 
   @override
@@ -1302,6 +1307,57 @@ void main() {
       expect(connected!.sessionMode, SessionMode.local);
       expect(connected!.room, isEmpty);
       expect(profiles.saveUsedCalls, 0);
+    },
+  );
+
+  testWidgets(
+    'toggling Local Player Mode ON while the initial read is in flight keeps ON',
+    (tester) async {
+      final gate = Completer<void>();
+      final settings = _GatedGetSettingsStore(gate.future);
+      settings.map[kLocalPlayerModeSettingKey] = 'false';
+      await tester.binding.setSurfaceSize(const Size(800, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await pump(tester, settings: settings);
+
+      await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('local-player-mode-toggle')),
+      );
+      await tester.tap(find.byKey(const Key('local-player-mode-toggle')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Switch>(find.byKey(const Key('local-player-mode-toggle')))
+            .value,
+        isTrue,
+      );
+      expect(find.text('Start watching'), findsOneWidget);
+
+      // Stale initial get (persisted false) now lands. It must not undo the
+      // toggle the user already made.
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Start watching'), findsOneWidget);
+      expect(
+        tester
+            .widget<Switch>(find.byKey(const Key('local-player-mode-toggle')))
+            .value,
+        isTrue,
+      );
+
+      await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+      await tester.tap(find.byKey(const Key('connect-start-new')));
+      await tester.pumpAndSettle();
+
+      expect(connected, isNotNull);
+      expect(connected!.sessionMode, SessionMode.local);
+      expect(connected!.room, isEmpty);
+      expect(profiles.saveUsedCalls, 0);
+      expect(settings.map[kLocalPlayerModeSettingKey], 'true');
     },
   );
 }

@@ -101,6 +101,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
   HistoryMode _historyMode = HistoryMode.latestPerRoom;
   bool _localPlayerMode = false;
 
+  /// Bumped by [_setLocalPlayerMode]. An in-flight [_loadSettings] that
+  /// started before the bump must not write [_localPlayerMode] — the user's
+  /// explicit choice is newer than the persisted snapshot it is about to
+  /// apply.
+  int _localPlayerModeRevision = 0;
+
   // Created lazily on the first sound preview so headless tests (and the common
   // case of never previewing) don't spin up a media player needlessly.
   Player? _preview;
@@ -194,11 +200,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
     // Mode first: Start / Continue Watching wait on [_settingsReady], and
     // this key must be authoritative before those actions run. Reading it
     // last used to leave a cold-start window where the default-off seed won.
+    final loadRevision = _localPlayerModeRevision;
     final localPlayerMode = localPlayerModeFromSetting(
       await widget.settings.get(kLocalPlayerModeSettingKey),
     );
     if (!mounted) return;
-    _localPlayerMode = localPlayerMode;
+    if (loadRevision == _localPlayerModeRevision) {
+      _localPlayerMode = localPlayerMode;
+    }
 
     final primary = await widget.settings.get(kNotifyPrimarySoundKey);
     final secondary = await widget.settings.get(kNotifySecondarySoundKey);
@@ -214,7 +223,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _secondarySoundId = resolveSecondary(secondary).id;
       _logLevel = level;
       _historyMode = historyMode;
-      _localPlayerMode = localPlayerMode;
+      if (loadRevision == _localPlayerModeRevision) {
+        _localPlayerMode = localPlayerMode;
+      }
     });
   }
 
@@ -251,6 +262,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   void _setLocalPlayerMode(bool enabled) {
     appLog('settings: local player mode=$enabled');
+    _localPlayerModeRevision++;
     setState(() => _localPlayerMode = enabled);
     _persistSetting(kLocalPlayerModeSettingKey, enabled.toString());
   }
