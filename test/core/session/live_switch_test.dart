@@ -85,15 +85,17 @@ void main() {
   });
 
   test('history context flips with effective mode, not room identity', () {
-    expect(
-      watchContextForSession(
-        local: true,
-        server: identity.server,
-        port: identity.port,
-        room: identity.room,
-      ).isLocal,
-      isTrue,
+    final local = watchContextForSession(
+      local: true,
+      server: identity.server,
+      port: identity.port,
+      room: identity.room,
     );
+    expect(local.isLocal, isTrue);
+    expect(local.key, kLocalWatchContextKey);
+    expect(local.storedServer, identity.server);
+    expect(local.storedPort, identity.port);
+    expect(local.storedRoom, identity.room);
     expect(
       watchContextForSession(
         local: false,

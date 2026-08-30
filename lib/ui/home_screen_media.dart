@@ -294,6 +294,10 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
         Duration(milliseconds: positionMs),
         source: path,
       );
+      appLog(
+        'video: resume target=${positionMs}ms '
+        'landed=${_core.state.position.inMilliseconds}ms',
+      );
     }
   }
 

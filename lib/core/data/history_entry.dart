@@ -32,8 +32,9 @@ class HistoryEntry {
   /// `local` or `synced|{server}|{port}|{room}`.
   final String contextKey;
 
-  /// Room code and the name used when this file was last opened in a room.
-  /// Null for Local-context rows.
+  /// Room code and the name used when this file was last opened in a session.
+  /// Legacy Local rows can be null; new Local sessions retain their real random
+  /// room as metadata while [contextKey] remains `local`.
   final String? room;
   final String? username;
 
@@ -45,7 +46,7 @@ class HistoryEntry {
   bool get isLocalContext => contextKey == kLocalWatchContextKey;
 
   WatchContext get watchContext => isLocalContext
-      ? const WatchContext.local()
+      ? WatchContext.local(server: server, port: port, room: room)
       : WatchContext.synced(
           server: server ?? '',
           port: port ?? 0,

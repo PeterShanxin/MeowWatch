@@ -15,14 +15,15 @@ in-app updater reads to show what changed.
 > Watch alone — same player, no sync. Flip it live without leaving the video.
 
 ### Added
-- **Local Player Mode** in the lobby gear and the in-player gear. Local still has a room identity, just no Syncplay. Start and Continue Watching stay local; typing a code or opening a saved room joins together for this session only, without changing the lobby default (#252, #254).
-- Watch history now keeps **separate progress per place you watched** — Local, room A, room B. The same video can sit at different times in each (#253, #254).
+- **Local Player Mode** in the lobby gear and the in-player gear. Local still gets a random room identity, just no Syncplay. Start and Continue Watching stay local; typing a code or opening a saved room joins together for this session only, without changing the lobby default (#252, #254).
+- Watch history now keeps **separate progress per place you watched** — Local, room A, room B. The same video can sit at different times in each (#254).
 
 ### Fixed
 - A failed link during local playback now still shows the notice — it no longer fails silently (#252).
 - Starting or continuing right after launch now waits for the saved Local Player Mode, so a persisted ON cannot open a room by accident (#252).
 - Flipping Local Player Mode in the lobby gear right after launch no longer gets overwritten by the still-loading saved value (#252).
-- Watching a video locally no longer overwrites that video's progress from a synced room (#253).
+- Watching a video locally no longer overwrites that video's progress from a synced room (#254).
+- Continue Watching now reliably opens at the saved position instead of starting again from the beginning (#254).
 
 ## [0.47.0-alpha] - 2026-08-01
 

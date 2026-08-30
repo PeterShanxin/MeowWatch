@@ -67,6 +67,24 @@ void main() {
     expect(list.single.isLocalContext, isTrue);
   });
 
+  test(
+    'Local context keeps room identity as metadata without changing its key',
+    () async {
+      const localRoom = WatchContext.local(
+        server: 'syncplay.pl',
+        port: 8999,
+        room: 'quiet-otter-counts-stars',
+      );
+      await open(r'D:\v\ep1.mkv', context: localRoom, username: 'meow');
+
+      final entry = (await store.watchRecent().first).single;
+      expect(entry.contextKey, kLocalWatchContextKey);
+      expect(entry.room, 'quiet-otter-counts-stars');
+      expect(entry.server, 'syncplay.pl');
+      expect(entry.port, 8999);
+    },
+  );
+
   test('same media Local + room A coexist with independent progress', () async {
     const path = r'D:\v\A.mkv';
     await open(path, name: 'A.mkv', context: roomA, username: 'meow');

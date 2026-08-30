@@ -14,11 +14,8 @@ enum WatchContextKind { local, synced }
 class WatchContext {
   const WatchContext._({required this.kind, this.server, this.port, this.room});
 
-  const WatchContext.local()
-    : kind = WatchContextKind.local,
-      server = null,
-      port = null,
-      room = null;
+  const WatchContext.local({this.server, this.port, this.room})
+    : kind = WatchContextKind.local;
 
   factory WatchContext.synced({
     required String server,
@@ -46,10 +43,11 @@ class WatchContext {
       ? kLocalWatchContextKey
       : syncedWatchContextKey(server: server!, port: port!, room: room!);
 
-  /// Room/server/port written for a Local row — always null.
-  String? get storedRoom => isLocal ? null : room;
-  String? get storedServer => isLocal ? null : server;
-  int? get storedPort => isLocal ? null : port;
+  /// Session identity stored as metadata. It never participates in the Local
+  /// context key, but preserves the real random room assigned to that session.
+  String? get storedRoom => room;
+  String? get storedServer => server;
+  int? get storedPort => port;
 
   @override
   bool operator ==(Object other) =>
@@ -97,6 +95,12 @@ WatchContext watchContextForSession({
   required int port,
   required String room,
 }) {
-  if (local) return const WatchContext.local();
+  if (local) {
+    return WatchContext.local(
+      server: server.trim(),
+      port: port,
+      room: room.trim(),
+    );
+  }
   return WatchContext.synced(server: server, port: port, room: room);
 }

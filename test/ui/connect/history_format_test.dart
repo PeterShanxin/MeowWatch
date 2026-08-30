@@ -10,6 +10,7 @@ HistoryEntry entry({
   int fileSizeBytes = 0,
   String? room,
   String? username,
+  bool local = false,
 }) => HistoryEntry(
   id: 1,
   filePath: '/x.mkv',
@@ -18,7 +19,7 @@ HistoryEntry entry({
   durationMs: durationMs,
   lastPositionMs: lastPositionMs,
   playedAt: playedAt ?? DateTime(2026, 5, 30),
-  contextKey: (room != null && room.isNotEmpty)
+  contextKey: !local && room != null && room.isNotEmpty
       ? syncedWatchContextKey(server: 's', port: 8999, room: room)
       : kLocalWatchContextKey,
   room: room,
@@ -107,6 +108,18 @@ void main() {
     test('Local context says Local', () {
       expect(historyRoomLine(entry()), 'Local');
       expect(historyRoomLine(entry(room: '')), 'Local');
+    });
+    test('Local context with a real room shows its random room code', () {
+      expect(
+        historyRoomLine(
+          entry(
+            room: 'quiet-otter-counts-stars',
+            username: 'meow',
+            local: true,
+          ),
+        ),
+        'in quiet-otter-counts-stars as meow',
+      );
     });
     test('room only', () {
       expect(

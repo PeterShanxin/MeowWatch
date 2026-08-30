@@ -329,12 +329,20 @@ class _HomeScreenState extends _HomeScreenStateBase
     _historyTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       unawaited(_saveResumePosition());
     });
-    if (_isSynced) {
-      unawaited(_connectExistingRoom());
-    }
     final resume = widget.config.resumeFilePath;
     if (resume != null) {
-      unawaited(_resume(resume, widget.config.resumePositionMs));
+      // Restore the saved position before joining Syncplay. Connecting first
+      // races the server's initial 0:00 state against the resume seek and can
+      // make Continue Watching appear to start over.
+      unawaited(
+        _resumeForLaunch(
+          resume,
+          widget.config.resumePositionMs,
+          connectAfterResume: _isSynced,
+        ),
+      );
+    } else if (_isSynced) {
+      unawaited(_connectExistingRoom());
     }
     // Landing on the load screen (no video yet): nudge the user that chat lives
     // behind Tab — a quick fading toast plus a pulse of the collapsed chat tab.
@@ -427,6 +435,23 @@ class _HomeScreenState extends _HomeScreenStateBase
       room: widget.config.room,
       password: widget.config.password,
     );
+  }
+
+  /// Continue Watching launch coordinator. A synced session joins only after
+  /// the saved seek has landed, so the server's initial room state cannot race
+  /// the local resume back to 0:00. Local sessions simply resume and stop here.
+  Future<void> _resumeForLaunch(
+    String path,
+    int positionMs, {
+    required bool connectAfterResume,
+  }) async {
+    try {
+      await _resume(path, positionMs);
+    } finally {
+      if (connectAfterResume && mounted && _isSynced) {
+        await _connectExistingRoom();
+      }
+    }
   }
 
   /// Explicit in-player Local toggle: persist the lobby default AND switch

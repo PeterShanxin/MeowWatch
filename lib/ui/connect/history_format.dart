@@ -48,10 +48,10 @@ String formatFileSize(int bytes) {
   return '${(bytes / unit).toStringAsFixed(0)} KB';
 }
 
-/// Second card line: where it was watched. Local rows say `Local`.
-/// Synced rows say `in <room>` or `in <room> as <name>`.
+/// Second card line: where it was watched. Rows with a retained room identity
+/// say `in <room>` or `in <room> as <name>`; legacy roomless Local rows say
+/// `Local`.
 String? historyRoomLine(HistoryEntry e) {
-  if (e.isLocalContext) return 'Local';
   final room = e.room;
   if (room == null || room.isEmpty) return 'Local';
   final name = e.username;

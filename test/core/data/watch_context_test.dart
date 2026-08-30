@@ -59,7 +59,11 @@ void main() {
           port: 8999,
           room: 'cozy',
         ),
-        const WatchContext.local(),
+        const WatchContext.local(
+          server: 'syncplay.pl',
+          port: 8999,
+          room: 'cozy',
+        ),
       );
       expect(
         watchContextForSession(
