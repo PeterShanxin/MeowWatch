@@ -67,6 +67,24 @@ class SessionChrome {
   bool get isSynced => chat;
 }
 
+/// Which text the over-video notice slot should show.
+///
+/// An in-flight page-URL resolve outranks everything. Media/load transients
+/// ([notice]) stay visible in local mode — they are the only failure
+/// feedback when a bad paste leaves the current video playing. Derived
+/// sync banners ([derivedSync]: waiting / connecting / friend hints) only
+/// appear when [syncBanners] is on.
+String? selectSessionBanner({
+  required bool leavingRoom,
+  String? resolving,
+  String? notice,
+  String? derivedSync,
+  required bool syncBanners,
+}) {
+  if (leavingRoom) return null;
+  return resolving ?? notice ?? (syncBanners ? derivedSync : null);
+}
+
 /// Parse the persisted Local Player Mode flag. Absent / unknown → off, so
 /// existing installs keep today's start-a-room default.
 bool localPlayerModeFromSetting(String? value) => value == 'true';

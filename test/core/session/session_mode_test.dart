@@ -77,4 +77,84 @@ void main() {
     expect(localPlayerModeFromSetting('yes'), isFalse);
     expect(localPlayerModeFromSetting('true'), isTrue);
   });
+
+  group('selectSessionBanner', () {
+    const waiting = 'Waiting for a friend to join…';
+    const connecting = 'Connecting to room cozy-fox-42…';
+    const loadFailure = "Couldn't play that — the page has no video.";
+    const resolving = 'Finding the video…';
+
+    test('local keeps a media/load failure notice', () {
+      final chrome = SessionChrome.forMode(SessionMode.local);
+      expect(
+        selectSessionBanner(
+          leavingRoom: false,
+          notice: loadFailure,
+          derivedSync: waiting,
+          syncBanners: chrome.syncBanners,
+        ),
+        loadFailure,
+      );
+    });
+
+    test('local suppresses waiting and connecting sync hints', () {
+      final chrome = SessionChrome.forMode(SessionMode.local);
+      expect(
+        selectSessionBanner(
+          leavingRoom: false,
+          derivedSync: waiting,
+          syncBanners: chrome.syncBanners,
+        ),
+        isNull,
+      );
+      expect(
+        selectSessionBanner(
+          leavingRoom: false,
+          derivedSync: connecting,
+          syncBanners: chrome.syncBanners,
+        ),
+        isNull,
+      );
+    });
+
+    test('local still shows an in-flight resolve notice', () {
+      final chrome = SessionChrome.forMode(SessionMode.local);
+      expect(
+        selectSessionBanner(
+          leavingRoom: false,
+          resolving: resolving,
+          notice: loadFailure,
+          derivedSync: waiting,
+          syncBanners: chrome.syncBanners,
+        ),
+        resolving,
+      );
+    });
+
+    test('synced still shows derived waiting when nothing else is up', () {
+      final chrome = SessionChrome.forMode(SessionMode.synced);
+      expect(
+        selectSessionBanner(
+          leavingRoom: false,
+          derivedSync: waiting,
+          syncBanners: chrome.syncBanners,
+        ),
+        waiting,
+      );
+    });
+
+    test('leaving the room silences every notice', () {
+      final chrome = SessionChrome.forMode(SessionMode.synced);
+      expect(
+        selectSessionBanner(
+          leavingRoom: true,
+          resolving: resolving,
+          notice: loadFailure,
+          derivedSync: waiting,
+          syncBanners: chrome.syncBanners,
+        ),
+        isNull,
+      );
+    });
+  });
 }

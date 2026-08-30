@@ -138,29 +138,27 @@ mixin _HomeBody
                     Align(
                       key: const ValueKey<String>('sync-hint'),
                       alignment: const Alignment(0, -0.8),
-                      // Transient notices (join/leave, throttled sync actions)
-                      // are the banner's hottest source; they flow through
-                      // their own notifier so a scrub burst dirties only this
-                      // subtree (#196). A live notice wins over the derived
-                      // banner; _leavingRoom (via _banner's guard) silences
-                      // both.
-                      // An in-flight page-URL resolve ("Finding the video…")
-                      // outranks presence notices: it is the only feedback the
-                      // user has that their paste is being worked on.
-                      // Local sessions keep this slot for resolve/load notices
-                      // only — no waiting-for-friend / connecting banners.
+                      // Transient notices (join/leave, throttled sync actions,
+                      // and media/load failures) flow through their own
+                      // notifier so a scrub burst dirties only this subtree
+                      // (#196). Resolve progress outranks them; derived sync
+                      // banners (waiting / connecting) only mount in synced
+                      // sessions. Local still shows media-side notices — a
+                      // bad paste during playback has no other failure
+                      // surface (#254).
                       child: ValueListenableBuilder<String?>(
                         valueListenable: _resolveNotice,
                         builder: (context, resolving, _) =>
                             ValueListenableBuilder<String?>(
                               valueListenable: _presenceNotice,
                               builder: (context, notice, _) => SyncHintBanner(
-                                text: _leavingRoom
-                                    ? null
-                                    : resolving ??
-                                          (_chrome.syncBanners
-                                              ? (notice ?? _banner)
-                                              : null),
+                                text: selectSessionBanner(
+                                  leavingRoom: _leavingRoom,
+                                  resolving: resolving,
+                                  notice: notice,
+                                  derivedSync: _banner,
+                                  syncBanners: _chrome.syncBanners,
+                                ),
                               ),
                             ),
                       ),

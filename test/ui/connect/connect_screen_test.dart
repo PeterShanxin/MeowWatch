@@ -65,6 +65,27 @@ class _FakeSettingsStore implements SettingsStore {
   Future<bool> hasAnySettings() async => _map.isNotEmpty;
 }
 
+/// Settings store whose *reads* block on a caller-controlled gate, to test
+/// that Start waits for the persisted Local Player Mode before launching.
+class _GatedGetSettingsStore implements SettingsStore {
+  _GatedGetSettingsStore(this._gate);
+
+  final Future<void> _gate;
+  final Map<String, String> map = {};
+
+  @override
+  Future<String?> get(String key) async {
+    await _gate;
+    return map[key];
+  }
+
+  @override
+  Future<void> set(String key, String value) async => map[key] = value;
+
+  @override
+  Future<bool> hasAnySettings() async => map.isNotEmpty;
+}
+
 /// Settings store whose writes block on a caller-controlled gate, to test that
 /// the connect screen flushes pending lobby-settings writes before navigating.
 class _GatedSettingsStore implements SettingsStore {
@@ -1256,4 +1277,31 @@ void main() {
     );
     expect(toggle.value, isTrue);
   });
+
+  testWidgets(
+    'persisted Local Player Mode wins even if Start is tapped before settings return',
+    (tester) async {
+      final gate = Completer<void>();
+      final settings = _GatedGetSettingsStore(gate.future);
+      settings.map[kLocalPlayerModeSettingKey] = 'true';
+      await pump(tester, settings: settings);
+
+      // Cold start: the toggle has not landed, so the button still reads as
+      // the synced default. The tap must not launch a room on that seed.
+      expect(find.text('Start new room'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+      await tester.tap(find.byKey(const Key('connect-start-new')));
+      await tester.pump();
+      expect(connected, isNull);
+      expect(profiles.saveUsedCalls, 0);
+
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      expect(connected, isNotNull);
+      expect(connected!.sessionMode, SessionMode.local);
+      expect(connected!.room, isEmpty);
+      expect(profiles.saveUsedCalls, 0);
+    },
+  );
 }

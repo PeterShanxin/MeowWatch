@@ -112,6 +112,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
   // join.
   Future<void> _settingsWrites = Future<void>.value();
 
+  // Completes when the first [_loadSettings] lands. Start / Continue Watching
+  // await this so a persisted Local Player Mode can't lose a cold-start race
+  // to the default-off [_localPlayerMode] seed (#254).
+  late final Future<void> _settingsReady;
+
   @override
   void initState() {
     super.initState();
@@ -143,7 +148,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         (value) => _passwordFocusStart = value,
       ),
     );
-    _loadSettings();
+    _settingsReady = _loadSettings();
   }
 
   @override
@@ -186,6 +191,15 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _loadSettings() async {
+    // Mode first: Start / Continue Watching wait on [_settingsReady], and
+    // this key must be authoritative before those actions run. Reading it
+    // last used to leave a cold-start window where the default-off seed won.
+    final localPlayerMode = localPlayerModeFromSetting(
+      await widget.settings.get(kLocalPlayerModeSettingKey),
+    );
+    if (!mounted) return;
+    _localPlayerMode = localPlayerMode;
+
     final primary = await widget.settings.get(kNotifyPrimarySoundKey);
     final secondary = await widget.settings.get(kNotifySecondarySoundKey);
     final level = logLevelFromName(
@@ -193,9 +207,6 @@ class _ConnectScreenState extends State<ConnectScreen> {
     );
     final historyMode = historyModeFromName(
       await widget.settings.get(kHistoryModeSettingKey),
-    );
-    final localPlayerMode = localPlayerModeFromSetting(
-      await widget.settings.get(kLocalPlayerModeSettingKey),
     );
     if (!mounted) return;
     setState(() {
@@ -205,6 +216,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _historyMode = historyMode;
       _localPlayerMode = localPlayerMode;
     });
+  }
+
+  Future<void> _awaitInitialSettings() async {
+    await _settingsReady;
   }
 
   void _setPrimarySound(String id) {
@@ -348,6 +363,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _startPlayback() async {
+    await _awaitInitialSettings();
+    if (!mounted) return;
     final mode = resolveSessionMode(
       localPlayerMode: _localPlayerMode,
       launch: SessionLaunch.start,
@@ -470,6 +487,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
     List<SavedProfile> profiles, {
     String? usernameOverride,
   }) async {
+    await _awaitInitialSettings();
+    if (!mounted) return;
     // Identity priority: tapping a history card means "resume as watched
     // before"; the inline "Join as current name" action is the explicit
     // override.

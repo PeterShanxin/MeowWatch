@@ -17,6 +17,10 @@ in-app updater reads to show what changed.
 ### Added
 - **Local Player Mode** in the lobby gear. When it's on, Start and Continue Watching open the same player without a Syncplay room, a share code, or chat. Join a code or a saved room and you're still watching together (#252).
 
+### Fixed
+- A failed link during local playback now still shows the notice — it no longer fails silently (#252).
+- Starting or continuing right after launch now waits for the saved Local Player Mode, so a persisted ON cannot open a room by accident (#252).
+
 ## [0.47.0-alpha] - 2026-08-01
 
 > One "Load a video" choice instead of two — and a failed link now says so.
