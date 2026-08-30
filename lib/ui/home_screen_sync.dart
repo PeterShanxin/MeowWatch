@@ -121,7 +121,10 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
   /// the playback-state notices. Called once from initState; the handler
   /// bodies are unchanged from the pre-split screen (#182).
   void _initSyncSubscriptions() {
-    _connSub = _sync.connectionState.listen((s) {
+    final sync = _sync;
+    final chat = _chat;
+    if (sync == null || chat == null) return;
+    _connSub = sync.connectionState.listen((s) {
       if (mounted) {
         setState(() {
           _syncStatus = s.status;
@@ -165,13 +168,13 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
       // so _syncStatus is already updated; addSystem pushes its own emission.
       if (isConnectionDrop(prev: _prevSyncStatus, next: s.status)) {
         _wasReconnecting = true;
-        _chat.addSystem(connectionLostMessage);
+        chat.addSystem(connectionLostMessage);
       } else if (isReconnectSuccess(
         wasReconnecting: _wasReconnecting,
         next: s.status,
       )) {
         _wasReconnecting = false;
-        _chat.addSystem(reconnectedToRoomMessage);
+        chat.addSystem(reconnectedToRoomMessage);
         // If the server wouldn't hand our prior wire name back on this
         // reconnect, our just-dropped session is lingering as a ghost on it and
         // will shortly be reaped — record it so its departure is silenced, not
@@ -212,8 +215,8 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
     });
     // Track peers who announced a deliberate leave so the presence listener can
     // distinguish "left the room" from "lost connection" (issue #92).
-    _leavingSub = _chat.leaving.listen((name) => _cleanlyLeaving.add(name));
-    _presenceSub = _sync.presence.listen((e) {
+    _leavingSub = chat.leaving.listen((name) => _cleanlyLeaving.add(name));
+    _presenceSub = sync.presence.listen((e) {
       if (!mounted) return;
       // Our own lingering ghost (a post-reconnect roster entry under a name the
       // server renamed us off) must never be treated as a peer — otherwise it
@@ -236,7 +239,7 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
                 ? '🐾 ${e.username} reconnected'
                 : '🐾 ${e.username} joined';
             _showTransientNotice(banner);
-            _chat.addSystem(
+            chat.addSystem(
               peerJoinMessage(username: e.username, reconnected: reconnected),
             );
             if (_shouldReannounceOnConnect()) {
@@ -276,7 +279,7 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
                 ? '👋 ${e.username} left'
                 : '📵 ${e.username} lost connection';
             _showTransientNotice(banner);
-            _chat.addSystem(
+            chat.addSystem(
               peerDepartureMessage(username: e.username, clean: clean),
             );
           }
@@ -284,7 +287,7 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
         _evaluateSyncHealth();
       });
     });
-    _peerFileSub = _sync.peerFile.listen((f) {
+    _peerFileSub = sync.peerFile.listen((f) {
       if (!mounted) return;
       setState(() {
         _peerFiles = _peerFiles.set(f);
@@ -324,7 +327,7 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
     // avoid buffering lonely activity, and again at output because the throttle
     // debounce can outlast a peer leaving — without the second gate, an activity
     // queued while healthy would still surface after sync is gone (#41).
-    _activitySub = _sync.activity.listen((a) {
+    _activitySub = sync.activity.listen((a) {
       if (!_syncHealthyNow) return;
       _activityThrottle.add(a);
     });
@@ -352,11 +355,11 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
       if (prompt != null) {
         setState(() => _joinPrompt = prompt);
       }
-      _chat.addSystem(t.chatLine);
+      chat.addSystem(t.chatLine);
     });
-    _rosterSub = _sync.initialRoster.listen((members) {
+    _rosterSub = sync.initialRoster.listen((members) {
       if (!mounted) return;
-      _chat.addSystem(roomGreeting(members));
+      chat.addSystem(roomGreeting(members));
       // Friends already in the room when you arrive get a banner too, not just
       // the chat greeting (easy to miss on the video). Live joins after this are
       // handled by the presence handler above.
@@ -453,7 +456,7 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
         _autoPausedNotice = true;
         _autoPausedReason = reason;
       });
-      _chat.addSystem(reason);
+      _chat?.addSystem(reason);
     }
   }
 
@@ -463,6 +466,7 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
   /// warning, then the auto-pause reason, then a "friend hasn't loaded a
   /// video" heads-up, then the plain waiting/connect hint.
   String? get _banner {
+    if (!_isSynced) return null;
     // Once leaving is committed, suppress every hint — the socket teardown can
     // briefly flip status to "Connecting…/Disconnected" and we don't want that
     // flashing over the video during the leave + route-exit animation.

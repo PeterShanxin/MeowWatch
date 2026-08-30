@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../session/session_mode.dart';
+
 /// Everything the watch screen needs to join a room and optionally resume a
 /// previously-watched file. Built by [ConnectScreen], consumed by HomeScreen.
 @immutable
@@ -12,7 +14,27 @@ class RoomConfig {
     this.password,
     this.resumeFilePath,
     this.resumePositionMs = 0,
+    this.sessionMode = SessionMode.synced,
   });
+
+  /// A solo playback session: same player, no Syncplay room.
+  factory RoomConfig.local({
+    String username = 'meow',
+    String? resumeFilePath,
+    int resumePositionMs = 0,
+  }) {
+    return RoomConfig(
+      sessionMode: SessionMode.local,
+      server: '',
+      port: 0,
+      room: '',
+      username: username,
+      resumeFilePath: resumeFilePath,
+      resumePositionMs: resumePositionMs,
+    );
+  }
+
+  final SessionMode sessionMode;
 
   final String server;
   final int port;
@@ -36,6 +58,7 @@ class RoomConfig {
   final int resumePositionMs;
 
   RoomConfig copyWith({
+    SessionMode? sessionMode,
     String? server,
     int? port,
     String? room,
@@ -45,6 +68,7 @@ class RoomConfig {
     int? resumePositionMs,
   }) {
     return RoomConfig(
+      sessionMode: sessionMode ?? this.sessionMode,
       server: server ?? this.server,
       port: port ?? this.port,
       room: room ?? this.room,
@@ -58,6 +82,7 @@ class RoomConfig {
   @override
   bool operator ==(Object other) =>
       other is RoomConfig &&
+      other.sessionMode == sessionMode &&
       other.server == server &&
       other.port == port &&
       other.room == room &&
@@ -67,6 +92,14 @@ class RoomConfig {
       other.resumePositionMs == resumePositionMs;
 
   @override
-  int get hashCode => Object.hash(server, port, room, username, password,
-      resumeFilePath, resumePositionMs);
+  int get hashCode => Object.hash(
+    sessionMode,
+    server,
+    port,
+    room,
+    username,
+    password,
+    resumeFilePath,
+    resumePositionMs,
+  );
 }

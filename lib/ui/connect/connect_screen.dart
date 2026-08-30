@@ -16,6 +16,7 @@ import '../../core/data/history_mode.dart';
 import '../../core/data/saved_profile.dart';
 import '../../core/data/settings_store.dart';
 import '../../core/data/stores.dart';
+import '../../core/session/session_mode.dart';
 import '../../core/debug/app_log.dart';
 import '../../core/debug/log_archive.dart';
 import '../../core/debug/log_level.dart';
@@ -98,6 +99,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   String _secondarySoundId = kDefaultSecondarySoundId;
   LogLevel _logLevel = LogLevel.verbose;
   HistoryMode _historyMode = HistoryMode.latestPerRoom;
+  bool _localPlayerMode = false;
 
   // Created lazily on the first sound preview so headless tests (and the common
   // case of never previewing) don't spin up a media player needlessly.
@@ -192,12 +194,16 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final historyMode = historyModeFromName(
       await widget.settings.get(kHistoryModeSettingKey),
     );
+    final localPlayerMode = localPlayerModeFromSetting(
+      await widget.settings.get(kLocalPlayerModeSettingKey),
+    );
     if (!mounted) return;
     setState(() {
       _primarySoundId = resolvePrimary(primary).id;
       _secondarySoundId = resolveSecondary(secondary).id;
       _logLevel = level;
       _historyMode = historyMode;
+      _localPlayerMode = localPlayerMode;
     });
   }
 
@@ -226,6 +232,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
     appLog('settings: history mode=${mode.storageName}');
     setState(() => _historyMode = mode);
     _persistSetting(kHistoryModeSettingKey, mode.storageName);
+  }
+
+  void _setLocalPlayerMode(bool enabled) {
+    appLog('settings: local player mode=$enabled');
+    setState(() => _localPlayerMode = enabled);
+    _persistSetting(kLocalPlayerModeSettingKey, enabled.toString());
   }
 
   /// Queue a settings write, chaining it onto [_settingsWrites] so [_connect]
@@ -307,14 +319,16 @@ class _ConnectScreenState extends State<ConnectScreen> {
   String? get _passwordValue => _password.text.isEmpty ? null : _password.text;
 
   Future<void> _connect(RoomConfig config, {String? profileUsername}) async {
-    await widget.profiles.saveUsed(
-      name: config.room,
-      server: config.server,
-      port: config.port,
-      room: config.room,
-      username: profileUsername ?? config.username,
-      password: config.password,
-    );
+    if (config.sessionMode.isSynced) {
+      await widget.profiles.saveUsed(
+        name: config.room,
+        server: config.server,
+        port: config.port,
+        room: config.room,
+        username: profileUsername ?? config.username,
+        password: config.password,
+      );
+    }
     if (!mounted) return;
     // Flush any pending lobby-settings writes first, so the room reads the
     // values the user just picked rather than the previous ones — a Drift set()
@@ -331,6 +345,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
     // and the name just used is already remembered via the saved room (#172).
     setState(() => _suggestedName = generateUsername());
     await _loadSettings();
+  }
+
+  Future<void> _startPlayback() async {
+    final mode = resolveSessionMode(
+      localPlayerMode: _localPlayerMode,
+      launch: SessionLaunch.start,
+    );
+    if (mode.isLocal) {
+      await _connect(RoomConfig.local(username: _username));
+      return;
+    }
+    await _startNewRoom();
   }
 
   Future<void> _startNewRoom() async {
@@ -473,6 +499,21 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final savedUsername = (entryName != null && entryName.isNotEmpty)
         ? entryName
         : roomProfile?.username;
+    final mode = resolveSessionMode(
+      localPlayerMode: _localPlayerMode,
+      launch: SessionLaunch.continueWatching,
+    );
+    if (mode.isLocal) {
+      await _connect(
+        RoomConfig.local(
+          username: username,
+          resumeFilePath: entry.filePath,
+          resumePositionMs: entry.lastPositionMs,
+        ),
+        profileUsername: usernameOverride == null ? null : savedUsername,
+      );
+      return;
+    }
     // A stored endpoint is authoritative. Never carry a same-room password
     // across servers/ports; only legacy rows may borrow their room profile.
     final legacyEntry = entry.server == null || entry.port == null;
@@ -646,6 +687,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
             top: Spacing.md,
             right: Spacing.md,
             child: LobbySettingsButton(
+              localPlayerMode: _localPlayerMode,
+              onLocalPlayerModeChanged: _setLocalPlayerMode,
               historyMode: _historyMode,
               onHistoryModeChanged: _setHistoryMode,
               currentTheme: widget.currentTheme,
@@ -705,15 +748,17 @@ class _ConnectScreenState extends State<ConnectScreen> {
           foregroundColor: m.background,
           padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
         ),
-        onPressed: _startNewRoom,
-        child: const Text(
-          'Start new room',
-          style: TextStyle(fontWeight: TypeScale.bold),
+        onPressed: _startPlayback,
+        child: Text(
+          _localPlayerMode ? 'Start watching' : 'Start new room',
+          style: const TextStyle(fontWeight: TypeScale.bold),
         ),
       ),
       const SizedBox(height: 8),
       Text(
-        'A private code is generated and copied to clipboard.',
+        _localPlayerMode
+            ? 'Play on this computer — no room, no sync.'
+            : 'A private code is generated and copied to clipboard.',
         style: context.meowText.body.copyWith(color: m.textDim),
       ),
       const SizedBox(height: Spacing.xl),

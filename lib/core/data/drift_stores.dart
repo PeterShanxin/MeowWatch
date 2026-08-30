@@ -214,7 +214,12 @@ class DriftHistoryStore implements HistoryStore {
               durationMs: (durationMs != null && durationMs > 0)
                   ? Variable(durationMs)
                   : old.durationMs,
-              playedAt: Variable(now),
+              // A local open of a row that already belongs to a room must not
+              // bump playedAt — that would make Latest-per-room look like the
+              // room itself was just used (#252; full split is #253).
+              playedAt: room != null
+                  ? Variable(now)
+                  : old.playedAt.iif(old.room.isNotNull(), Variable(now)),
               // Keep room metadata when this open isn't in a room.
               room: room != null ? Variable(room) : old.room,
               username: username != null ? Variable(username) : old.username,

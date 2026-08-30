@@ -50,7 +50,9 @@ mixin _HomeChatState on _HomeScreenStateBase, _HomeIdleState {
   /// from initState; the handler bodies are unchanged from the pre-split
   /// screen (#182).
   void _initChatSubscriptions() {
-    _chatSub = _chat.stream.listen((msgs) async {
+    final chat = _chat;
+    if (chat == null) return;
+    _chatSub = chat.stream.listen((msgs) async {
       if (!mounted) return;
       // Not a length comparison: once the store's retention cap holds the list
       // at a constant length, a trim+append emission would read as "no new
@@ -103,10 +105,10 @@ mixin _HomeChatState on _HomeScreenStateBase, _HomeIdleState {
         }
       }
     });
-    _reactionSub = _chat.reactions.listen((e) {
+    _reactionSub = chat.reactions.listen((e) {
       if (mounted && !_reactionFeed.isClosed) _reactionFeed.add(e.emoji);
     });
-    _typingSub = _chat.typing.listen(_onTyping);
+    _typingSub = chat.typing.listen(_onTyping);
   }
 
   /// Show the load-screen hint as a self-fading bottom toast (see [_FadingToast]:

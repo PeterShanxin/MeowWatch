@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../core/app_version.dart';
 import '../core/data/history_mode.dart';
+import '../core/session/session_mode.dart';
 import '../core/debug/log_level.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
@@ -26,6 +27,7 @@ import 'update_dialog.dart';
 /// action, theme swatches, a collapsible Settings section, and "Leave room".
 class PlayerMenuButton extends StatelessWidget {
   const PlayerMenuButton({
+    this.sessionMode = SessionMode.synced,
     required this.historyMode,
     required this.onHistoryModeChanged,
     required this.roomCode,
@@ -55,6 +57,9 @@ class PlayerMenuButton extends StatelessWidget {
     super.key,
   });
 
+  /// Local sessions hide room-code / roster / chat-dim rows.
+  final SessionMode sessionMode;
+
   /// Continue-watching mode + its setter, surfaced in the gear's Settings
   /// section via [SettingsPanel] — the in-room counterpart to the lobby gear.
   final HistoryMode historyMode;
@@ -83,6 +88,7 @@ class PlayerMenuButton extends StatelessWidget {
   final String myDisplayName;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
+
   /// The two load sources, offered inline (#222) rather than behind a modal —
   /// picking one from the gear shouldn't mean leaving the gear.
   final VoidCallback onBrowse;
@@ -160,6 +166,7 @@ class PlayerMenuButton extends StatelessWidget {
             ),
           ),
           child: _MenuPanel(
+            sessionMode: sessionMode,
             historyMode: historyMode,
             onHistoryModeChanged: onHistoryModeChanged,
             roomCode: roomCode,
@@ -197,6 +204,7 @@ class PlayerMenuButton extends StatelessWidget {
 /// section is expanded for the current open session.
 class _MenuPanel extends StatefulWidget {
   const _MenuPanel({
+    required this.sessionMode,
     required this.historyMode,
     required this.onHistoryModeChanged,
     required this.roomCode,
@@ -225,6 +233,7 @@ class _MenuPanel extends StatefulWidget {
     required this.onExportLogs,
   });
 
+  final SessionMode sessionMode;
   final HistoryMode historyMode;
   final ValueChanged<HistoryMode> onHistoryModeChanged;
   final String roomCode;
@@ -299,24 +308,30 @@ class _MenuPanelState extends State<_MenuPanel> {
             // instead of hugging the left as half-width nubs.
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              label('Room code'),
-              _RoomCodeRow(code: widget.roomCode),
-              const SizedBox(height: Spacing.sm),
-              Divider(color: m.border, height: Spacing.lg),
+              if (widget.sessionMode.isSynced) ...[
+                label('Room code'),
+                _RoomCodeRow(code: widget.roomCode),
+                const SizedBox(height: Spacing.sm),
+                Divider(color: m.border, height: Spacing.lg),
+              ],
               label('Now playing'),
               _NowPlayingRow(fileName: widget.nowPlaying),
               const SizedBox(height: Spacing.sm),
               Divider(color: m.border, height: Spacing.lg),
-              label('In the room (${widget.members.length})'),
-              for (final name in widget.members)
-                // isMe matches the wire identity; the matched "you" row renders our
-                // chosen name so a transient reconnect dedupe suffix never shows (#107).
-                _MemberRow(
-                  name: name == widget.myUsername ? widget.myDisplayName : name,
-                  isMe: name == widget.myUsername,
-                ),
-              const SizedBox(height: Spacing.sm),
-              Divider(color: m.border, height: Spacing.lg),
+              if (widget.sessionMode.isSynced) ...[
+                label('In the room (${widget.members.length})'),
+                for (final name in widget.members)
+                  // isMe matches the wire identity; the matched "you" row renders our
+                  // chosen name so a transient reconnect dedupe suffix never shows (#107).
+                  _MemberRow(
+                    name: name == widget.myUsername
+                        ? widget.myDisplayName
+                        : name,
+                    isMe: name == widget.myUsername,
+                  ),
+                const SizedBox(height: Spacing.sm),
+                Divider(color: m.border, height: Spacing.lg),
+              ],
               // One entry for both sources, expanded in place: the same choice
               // the load screen offers, without throwing a modal over the gear
               // you are already in (#222).
@@ -376,35 +391,38 @@ class _MenuPanelState extends State<_MenuPanel> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _MenuSwitch(
-                            text: 'Dim chat when idle',
-                            value: widget.chatAutoDim,
-                            onChanged: widget.onChatAutoDimChanged,
-                          ),
-                          // The wake toggle + dim slider only mean something while
-                          // auto-dim is on; reveal/collapse them smoothly (#51).
-                          _ExpandSize(
-                            child: widget.chatAutoDim
-                                ? Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      _MenuSwitch(
-                                        text: 'Fully wake chat on message',
-                                        value: widget.chatWakeOnMessage,
-                                        onChanged:
-                                            widget.onChatWakeOnMessageChanged,
-                                      ),
-                                      _DimSlider(
-                                        value: widget.chatIdleDim,
-                                        onChanged: widget.onChatIdleDimChanged,
-                                      ),
-                                    ],
-                                  )
-                                : const SizedBox(width: double.infinity),
-                          ),
-                          const SizedBox(height: Spacing.xs),
+                          if (widget.sessionMode.isSynced) ...[
+                            _MenuSwitch(
+                              text: 'Dim chat when idle',
+                              value: widget.chatAutoDim,
+                              onChanged: widget.onChatAutoDimChanged,
+                            ),
+                            // The wake toggle + dim slider only mean something while
+                            // auto-dim is on; reveal/collapse them smoothly (#51).
+                            _ExpandSize(
+                              child: widget.chatAutoDim
+                                  ? Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        _MenuSwitch(
+                                          text: 'Fully wake chat on message',
+                                          value: widget.chatWakeOnMessage,
+                                          onChanged:
+                                              widget.onChatWakeOnMessageChanged,
+                                        ),
+                                        _DimSlider(
+                                          value: widget.chatIdleDim,
+                                          onChanged:
+                                              widget.onChatIdleDimChanged,
+                                        ),
+                                      ],
+                                    )
+                                  : const SizedBox(width: double.infinity),
+                            ),
+                            const SizedBox(height: Spacing.xs),
+                          ],
                           SettingsPanel(
                             historyMode: widget.historyMode,
                             onHistoryModeChanged: widget.onHistoryModeChanged,
@@ -426,7 +444,7 @@ class _MenuPanelState extends State<_MenuPanel> {
               _MenuAction(
                 key: const Key('player-menu-leave'),
                 icon: Icons.arrow_back,
-                text: 'Leave room',
+                text: widget.sessionMode.isSynced ? 'Leave room' : 'Back',
                 onTap: widget.onLeave,
               ),
               Divider(color: m.border, height: Spacing.lg),

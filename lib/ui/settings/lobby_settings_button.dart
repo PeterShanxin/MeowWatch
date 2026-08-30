@@ -22,6 +22,8 @@ import 'settings_panel.dart';
 /// in-room gear.
 class LobbySettingsButton extends StatefulWidget {
   const LobbySettingsButton({
+    required this.localPlayerMode,
+    required this.onLocalPlayerModeChanged,
     required this.historyMode,
     required this.onHistoryModeChanged,
     required this.currentTheme,
@@ -37,6 +39,8 @@ class LobbySettingsButton extends StatefulWidget {
     super.key,
   });
 
+  final bool localPlayerMode;
+  final ValueChanged<bool> onLocalPlayerModeChanged;
   final HistoryMode historyMode;
   final ValueChanged<HistoryMode> onHistoryModeChanged;
   final MeowThemeId currentTheme;
@@ -151,6 +155,8 @@ class _LobbySettingsButtonState extends State<LobbySettingsButton> {
               const SizedBox(height: Spacing.sm),
               Divider(color: m.border, height: Spacing.lg),
               SettingsPanel(
+                localPlayerMode: widget.localPlayerMode,
+                onLocalPlayerModeChanged: widget.onLocalPlayerModeChanged,
                 historyMode: widget.historyMode,
                 onHistoryModeChanged: widget.onHistoryModeChanged,
                 primarySoundId: widget.primarySoundId,

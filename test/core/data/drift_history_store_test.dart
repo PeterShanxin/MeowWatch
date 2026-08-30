@@ -43,8 +43,12 @@ void main() {
     expect(single.username, 'meow');
     expect(single.server, 'syncplay.pl');
     expect(single.port, 8995);
+    final playedAt = single.playedAt;
 
-    // Re-opening outside a room must not wipe the recorded room endpoint/name.
+    // Re-opening outside a room must not wipe the recorded room endpoint/name,
+    // and must not bump playedAt (that would make Latest-per-room look like
+    // the old room just watched this file — #252 / #253).
+    await Future<void>.delayed(const Duration(milliseconds: 5));
     await store.recordOpen(
         filePath: r'D:\v\ep1.mkv', fileName: 'ep1.mkv', fileSizeBytes: 1);
     single = (await store.watchRecent().first).single;
@@ -52,6 +56,7 @@ void main() {
     expect(single.username, 'meow');
     expect(single.server, 'syncplay.pl');
     expect(single.port, 8995);
+    expect(single.playedAt, playedAt);
   });
 
   test('recordOpen on the same path keeps last position, refreshes playedAt',

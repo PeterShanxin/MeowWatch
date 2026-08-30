@@ -9,6 +9,7 @@ import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
 import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
+import 'package:meowwatch/core/session/session_mode.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/brand/meow_logo.dart';
@@ -1133,5 +1134,126 @@ void main() {
     expect(find.byKey(const Key('continue-1')), findsNothing);
     expect(find.byKey(const Key('continue-2')), findsNothing);
     expect(find.text('Continue watching'), findsNothing);
+  });
+
+  Future<void> turnOnLocalMode(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('local-player-mode-toggle')),
+    );
+    await tester.tap(find.byKey(const Key('local-player-mode-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('Local Player Mode start is a local session with no saved room', (
+    tester,
+  ) async {
+    await pump(tester);
+    await turnOnLocalMode(tester);
+    expect(find.text('Start watching'), findsOneWidget);
+    expect(
+      find.text('Play on this computer — no room, no sync.'),
+      findsOneWidget,
+    );
+
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+    await tester.tap(find.byKey(const Key('connect-start-new')));
+    await tester.pumpAndSettle();
+
+    expect(connected, isNotNull);
+    expect(connected!.sessionMode, SessionMode.local);
+    expect(connected!.room, isEmpty);
+    expect(connected!.username, 'lin');
+    expect(profiles.saveUsedCalls, 0);
+  });
+
+  testWidgets(
+    'Local Player Mode Continue Watching resumes locally at saved position',
+    (tester) async {
+      history.recent.add(historyEntryAs(1, 'ep1', 'meowPEOW'));
+      await pump(tester);
+      await turnOnLocalMode(tester);
+
+      await tester.ensureVisible(find.byKey(const Key('continue-1')));
+      await tester.tap(find.byKey(const Key('continue-1')));
+      await tester.pumpAndSettle();
+
+      expect(connected!.sessionMode, SessionMode.local);
+      expect(connected!.resumeFilePath, '/ep1.mkv');
+      expect(connected!.resumePositionMs, 120000);
+      expect(profiles.saveUsedCalls, 0);
+    },
+  );
+
+  testWidgets('Local Player Mode still joins a typed room as synced', (
+    tester,
+  ) async {
+    await pump(tester);
+    await turnOnLocalMode(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-owl-13',
+    );
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+
+    expect(connected!.sessionMode, SessionMode.synced);
+    expect(connected!.room, 'sleepy-owl-13');
+    expect(profiles.saveUsedCalls, 1);
+  });
+
+  testWidgets('Local Player Mode still opens a saved room as synced', (
+    tester,
+  ) async {
+    profiles.profiles.add(
+      SavedProfile(
+        id: 1,
+        name: 'happy-otter-99',
+        server: 'syncplay.pl',
+        port: 8999,
+        room: 'happy-otter-99',
+        username: 'lin',
+        password: null,
+        lastUsedAt: DateTime(2026, 5, 29),
+      ),
+    );
+    await pump(tester);
+    await turnOnLocalMode(tester);
+    await tester.tap(find.text('happy-otter-99'));
+    await tester.pumpAndSettle();
+
+    expect(connected!.sessionMode, SessionMode.synced);
+    expect(connected!.room, 'happy-otter-99');
+    expect(profiles.saveUsedCalls, 1);
+  });
+
+  testWidgets('Local Player Mode toggle persists across a remount', (
+    tester,
+  ) async {
+    final settings = _FakeSettingsStore();
+    await pump(tester, settings: settings);
+    await turnOnLocalMode(tester);
+    expect(await settings.get(kLocalPlayerModeSettingKey), 'true');
+
+    await pump(tester, settings: settings);
+    await tester.pumpAndSettle();
+    expect(find.text('Start watching'), findsOneWidget);
+
+    await tester.binding.setSurfaceSize(const Size(800, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+    final toggle = tester.widget<Switch>(
+      find.byKey(const Key('local-player-mode-toggle')),
+    );
+    expect(toggle.value, isTrue);
   });
 }

@@ -10,6 +10,13 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.48.0-alpha] - 2026-08-30
+
+> Watch alone — same player, no room.
+
+### Added
+- **Local Player Mode** in the lobby gear. When it's on, Start and Continue Watching open the same player without a Syncplay room, a share code, or chat. Join a code or a saved room and you're still watching together (#252).
+
 ## [0.47.0-alpha] - 2026-08-01
 
 > One "Load a video" choice instead of two — and a failed link now says so.

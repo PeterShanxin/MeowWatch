@@ -187,7 +187,7 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
     // Tell the sync bridge this source is confirmed open so its heartbeat
     // accepts the source's ticks — essential for a live/direct stream that never
     // reports a duration (the bridge can't infer "open" from such a stream).
-    _bridge.markSourceOpen(path);
+    _bridge?.markSourceOpen(path);
     _announceLoadedFile(path, sizeBytes: size);
     // `dispose()` doesn't bump the generation, so guard on `mounted` too.
     if (gen != _loadGeneration || !mounted) return false;
@@ -277,7 +277,7 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
     final fileName = _core.state.fileName;
     if (fileName == null) return;
     // Match on the full name (URL identity); show the short label in chat.
-    _chat.addSystem(
+    _chat?.addSystem(
       loadedFileMessage(fileName: mediaDisplayName(fileName), match: match),
     );
   }
@@ -317,10 +317,10 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
         fileName: state.fileName ?? path,
         fileSizeBytes: size,
         durationMs: state.duration.inMilliseconds,
-        room: widget.config.room,
-        username: widget.config.username,
-        server: widget.config.server,
-        port: widget.config.port,
+        room: _isSynced ? widget.config.room : null,
+        username: _isSynced ? widget.config.username : null,
+        server: _isSynced ? widget.config.server : null,
+        port: _isSynced ? widget.config.port : null,
       );
       appLog('db: recordOpen ok ${mediaDisplayName(path)}');
     } catch (e) {
@@ -409,10 +409,13 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
   }
 
   Future<void> _finishLeaveCleanup() async {
-    try {
-      await _sync.disconnect().timeout(const Duration(milliseconds: 800));
-    } on Object catch (e) {
-      appLog('life: leave disconnect cleanup skipped: ${redactUrls('$e')}');
+    final sync = _sync;
+    if (sync != null) {
+      try {
+        await sync.disconnect().timeout(const Duration(milliseconds: 800));
+      } on Object catch (e) {
+        appLog('life: leave disconnect cleanup skipped: ${redactUrls('$e')}');
+      }
     }
     try {
       await (_syncLog?.flush() ?? Future<void>.value()).timeout(
@@ -435,6 +438,8 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
   @override
   void _announceLoadedFile(String? path, {int? sizeBytes}) {
     if (path == null) return;
+    final sync = _sync;
+    if (sync == null) return;
     // For a URL, size is unknown (streams have no byte length) and the URL
     // itself is the name we share — matching official Syncplay.
     if (_loadedSource != path || !mounted) return;
@@ -442,7 +447,7 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
     final state = _core.state;
     final fallbackName = isHttpUrl(path) ? path : mediaDisplayName(path);
     appLog('sync: announce file ${mediaDisplayName(path)}');
-    _sync.announceFile(
+    sync.announceFile(
       name: state.filePath == path
           ? (state.fileName ?? fallbackName)
           : fallbackName,

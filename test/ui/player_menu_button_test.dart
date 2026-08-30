@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/app_version.dart';
 import 'package:meowwatch/core/data/history_mode.dart';
+import 'package:meowwatch/core/session/session_mode.dart';
 import 'package:meowwatch/core/debug/log_level.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/reduce_motion.dart';
@@ -16,6 +17,7 @@ Widget _host(Widget child) => MaterialApp(
 );
 
 PlayerMenuButton _button({
+  SessionMode sessionMode = SessionMode.synced,
   HistoryMode historyMode = HistoryMode.latestPerRoom,
   ValueChanged<HistoryMode>? onHistoryModeChanged,
   String? nowPlaying = 'Bocchi the Rock - 01.mkv',
@@ -41,6 +43,7 @@ PlayerMenuButton _button({
   ValueChanged<LogLevel>? onLogLevelChanged,
   VoidCallback? onExportLogs,
 }) => PlayerMenuButton(
+  sessionMode: sessionMode,
   historyMode: historyMode,
   onHistoryModeChanged: onHistoryModeChanged ?? (_) {},
   roomCode: 'MEOW42',
@@ -134,26 +137,28 @@ void main() {
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
   });
 
-  testWidgets('Load a video expands in place instead of opening a modal (#222)',
-      (tester) async {
-    await tester.pumpWidget(_host(_button()));
-    await tester.tap(find.byKey(const Key('player-menu-gear')));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'Load a video expands in place instead of opening a modal (#222)',
+    (tester) async {
+      await tester.pumpWidget(_host(_button()));
+      await tester.tap(find.byKey(const Key('player-menu-gear')));
+      await tester.pumpAndSettle();
 
-    // One entry, and its sources stay hidden until it's expanded.
-    expect(find.byKey(const Key('player-menu-load')), findsOneWidget);
-    expect(find.byKey(const Key('player-menu-paste-link')), findsNothing);
-    expect(find.byKey(const Key('load-video-from-computer')), findsNothing);
+      // One entry, and its sources stay hidden until it's expanded.
+      expect(find.byKey(const Key('player-menu-load')), findsOneWidget);
+      expect(find.byKey(const Key('player-menu-paste-link')), findsNothing);
+      expect(find.byKey(const Key('load-video-from-computer')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('player-menu-load')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('player-menu-load')));
+      await tester.pumpAndSettle();
 
-    // Choices appear inside the still-open menu — no dialog was pushed.
-    expect(find.byKey(const Key('load-video-from-computer')), findsOneWidget);
-    expect(find.byKey(const Key('url-input-field')), findsOneWidget);
-    expect(find.byType(AlertDialog), findsNothing);
-    expect(find.byKey(const Key('theme-swatch-noir')), findsOneWidget);
-  });
+      // Choices appear inside the still-open menu — no dialog was pushed.
+      expect(find.byKey(const Key('load-video-from-computer')), findsOneWidget);
+      expect(find.byKey(const Key('url-input-field')), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(const Key('theme-swatch-noir')), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'reduce motion expands the load section instantly (#235 review)',
@@ -192,7 +197,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('player-menu-load')));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('load-video-from-computer')));
+    await tester.ensureVisible(
+      find.byKey(const Key('load-video-from-computer')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('load-video-from-computer')));
     await tester.pumpAndSettle();
@@ -224,6 +231,27 @@ void main() {
 
     expect(loaded, 'https://x.test/a.mp4');
     expect(find.byKey(const Key('theme-swatch-noir')), findsNothing);
+  });
+
+  testWidgets('local session hides room code, roster, and chat-dim rows', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_host(_button(sessionMode: SessionMode.local)));
+    await tester.tap(find.byKey(const Key('player-menu-gear')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('player-menu-room-code')), findsNothing);
+    expect(find.text('In the room (2)'), findsNothing);
+    expect(find.text('me (you)'), findsNothing);
+    expect(find.text('Now playing'), findsOneWidget);
+    expect(find.text('Back'), findsOneWidget);
+    expect(find.text('Leave room'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('player-menu-settings')));
+    await tester.pumpAndSettle();
+    expect(find.text('Dim chat when idle'), findsNothing);
   });
 
   testWidgets('lists room members with "(you)" for self', (tester) async {
@@ -289,9 +317,7 @@ void main() {
   });
 
   testWidgets('shows the currently playing media name (#133)', (tester) async {
-    await tester.pumpWidget(
-      _host(_button(nowPlaying: 'Frieren - 12.mkv')),
-    );
+    await tester.pumpWidget(_host(_button(nowPlaying: 'Frieren - 12.mkv')));
     await tester.tap(find.byKey(const Key('player-menu-gear')));
     await tester.pumpAndSettle();
 
@@ -468,8 +494,9 @@ void main() {
     expect(find.text('v$appVersion'), findsOneWidget);
   });
 
-  testWidgets('tapping the version footer opens the UpdateDialog',
-      (tester) async {
+  testWidgets('tapping the version footer opens the UpdateDialog', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(_host(_button()));
@@ -479,8 +506,9 @@ void main() {
     expect(find.text('MeowWatch Updates'), findsOneWidget);
   });
 
-  testWidgets('version footer shows the update dot when one is available',
-      (tester) async {
+  testWidgets('version footer shows the update dot when one is available', (
+    tester,
+  ) async {
     updateAvailable.value = true;
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));

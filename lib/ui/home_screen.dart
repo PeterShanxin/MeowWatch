@@ -45,6 +45,8 @@ import '../core/resolve/resolve_flow.dart';
 import '../core/resolve/resolved_media.dart';
 import '../core/resolve/url_classifier.dart';
 import '../core/resolve/url_normalize.dart';
+import '../core/session/session_mode.dart';
+import '../core/session/session_services.dart';
 import '../core/video/media_kit_video_core.dart';
 import '../core/video/video_engine_pool.dart';
 import '../core/video/load_coordinator.dart';
@@ -119,8 +121,13 @@ class HomeScreen extends StatefulWidget {
 /// ([_HomeBody]) — onto this base; one part file per seam (#182).
 abstract class _HomeScreenStateBase extends State<HomeScreen> {
   late final MediaKitVideoCore _core;
-  late final SyncplayClient _sync;
-  late final PlaybackSyncBridge _bridge;
+  late final SessionServices _session;
+  late final SessionChrome _chrome;
+
+  bool get _isSynced => _session.isSynced;
+  SyncplayClient? get _sync => _session.sync;
+  PlaybackSyncBridge? get _bridge => _session.bridge;
+  ChatStore? get _chat => _session.chat;
 
   /// The process-wide rotating diagnostic log, installed once at startup in
   /// `main()` and shared by the lobby, every room, and the update service
@@ -132,8 +139,6 @@ abstract class _HomeScreenStateBase extends State<HomeScreen> {
   LogLevel _logLevel = LogLevel.verbose;
   HistoryMode _historyMode = HistoryMode.latestPerRoom;
   late final Player _audioPlayer;
-
-  late final ChatStore _chat;
 
   /// Keyboard focus for the player. Held here (not inside VideoSurface) so that
   /// after the chat collapses — which removes its auto-focused text field — we
@@ -279,10 +284,9 @@ class _HomeScreenState extends _HomeScreenStateBase
     // disposing a libmpv Player on leave can deadlock the UI thread on Windows
     // and permanently freeze the Connect screen (#137). See [VideoEnginePool].
     _core = VideoEnginePool.instance.videoCore;
-    // Hashed label, never the raw room: a private room's name is its access
-    // code, so logging it verbatim would leak the room credential (#146 review).
-    appLog('life: enter ${roomLogLabel(widget.config.room)}');
-    _sync = SyncplayClient(
+    _session = SessionServices.forMode(
+      mode: widget.config.sessionMode,
+      video: _core,
       onLog: appLog,
       shouldLog: ({required bool verboseOnly}) {
         final level = appLogInstance?.level;
@@ -290,45 +294,56 @@ class _HomeScreenState extends _HomeScreenStateBase
             (!verboseOnly && level == LogLevel.neat);
       },
     );
-    _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
-    _chat = ChatStore(sync: _sync);
+    _chrome = SessionChrome.forMode(_session.mode);
     _audioPlayer = VideoEnginePool.instance.audioPlayer;
-    // The stream wiring lives with its seam: chat/reaction/typing hookups in
-    // [_HomeChatState], connection/presence/file/activity/roster hookups in
-    // [_HomeSyncState]. Registration order is preserved from the pre-split
-    // screen (#182).
-    _initChatSubscriptions();
-    _initSyncSubscriptions();
+    if (_isSynced) {
+      // Hashed label, never the raw room: a private room's name is its access
+      // code, so logging it verbatim would leak the room credential (#146 review).
+      appLog('life: enter ${roomLogLabel(widget.config.room)}');
+      // The stream wiring lives with its seam: chat/reaction/typing hookups in
+      // [_HomeChatState], connection/presence/file/activity/roster hookups in
+      // [_HomeSyncState]. Registration order is preserved from the pre-split
+      // screen (#182).
+      _initChatSubscriptions();
+      _initSyncSubscriptions();
+    } else {
+      appLog('life: enter local session');
+    }
 
     _username = widget.config.username;
     _historyTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       unawaited(_saveResumePosition());
     });
-    unawaited(
-      _sync.connect(
-        server: widget.config.server,
-        port: widget.config.port,
-        username: widget.config.username,
-        room: widget.config.room,
-        password: widget.config.password,
-      ),
-    );
-    // Announce a deliberate leave if the window is closed (X button) while we're
-    // in the room — disconnect() sends the leaving signal with a bounded flush
-    // (#92). The Leave button already does this directly via _leave().
-    _closeHook = () async {
-      appLog('life: window-close hook fired (announcing leave)');
-      await _sync.disconnectForAppClose();
-      appLog('life: window-close leave sent');
-    };
-    appCloseHook.value = _closeHook;
+    final sync = _sync;
+    if (sync != null) {
+      unawaited(
+        sync.connect(
+          server: widget.config.server,
+          port: widget.config.port,
+          username: widget.config.username,
+          room: widget.config.room,
+          password: widget.config.password,
+        ),
+      );
+      // Announce a deliberate leave if the window is closed (X button) while
+      // we're in the room — disconnect() sends the leaving signal with a
+      // bounded flush (#92). The Leave button already does this directly via
+      // _leave().
+      _closeHook = () async {
+        appLog('life: window-close hook fired (announcing leave)');
+        await sync.disconnectForAppClose();
+        appLog('life: window-close leave sent');
+      };
+      appCloseHook.value = _closeHook;
+    }
     final resume = widget.config.resumeFilePath;
     if (resume != null) {
       unawaited(_resume(resume, widget.config.resumePositionMs));
     }
     // Landing on the load screen (no video yet): nudge the user that chat lives
     // behind Tab — a quick fading toast plus a pulse of the collapsed chat tab.
-    // Skipped if we're resuming straight into a video.
+    // Skipped if we're resuming straight into a video, or in a local session
+    // that has no chat.
     if (resume == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _core.state.fileName != null) return;
@@ -336,7 +351,7 @@ class _HomeScreenState extends _HomeScreenStateBase
         // chat toggle instead of being swallowed by default focus traversal —
         // otherwise the load screen needs two Tab presses to open chat.
         _rootFocus.requestFocus();
-        _showChatTabHint();
+        if (_chrome.chatTabHint) _showChatTabHint();
       });
     }
   }
@@ -423,7 +438,6 @@ class _HomeScreenState extends _HomeScreenStateBase
       t.cancel();
     }
     unawaited(_reactionFeed.close());
-    unawaited(_chat.dispose());
     unawaited(_connSub?.cancel());
     unawaited(_presenceSub?.cancel());
     unawaited(_noticeSub?.cancel());
@@ -443,8 +457,7 @@ class _HomeScreenState extends _HomeScreenStateBase
     _chatHasUnread.dispose();
     _presenceNotice.dispose();
     _resolveNotice.dispose();
-    unawaited(_bridge.dispose());
-    unawaited(_sync.dispose());
+    unawaited(_session.dispose());
     // Reset, don't dispose: the engines are shared (process-lifetime) and a
     // libmpv dispose here can deadlock-freeze the next screen on Windows (#137).
     // The bridge above already cancelled its subscriptions to _core, and each
