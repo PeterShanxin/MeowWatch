@@ -10,6 +10,24 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.47.1-alpha] - 2026-08-31
+
+> Joining a room now insists on an encrypted connection.
+
+### Fixed: Encrypted or not at all
+- MeowWatch always asks the Syncplay server to switch the connection to
+  encryption before it says who you are. If that switch did not happen, the app
+  used to sit there for twelve seconds and then blame the address — and one
+  branch of the old code was written to carry on unencrypted instead, which
+  would have put your username, room name and server password on the wire in
+  the clear. That branch never actually ran, but it is gone now (#264).
+- Any server that will not encrypt — it says no, it answers with nonsense, it
+  goes quiet, or its certificate does not check out — now fails straight away
+  with a message that says what happened, instead of a long pause and a
+  misleading "could not reach server".
+- MeowWatch has no unencrypted mode, by design. Public Syncplay servers, the
+  default `syncplay.pl` included, all support encryption and are unaffected.
+
 ## [0.47.0-alpha] - 2026-08-01
 
 > One "Load a video" choice instead of two — and a failed link now says so.
