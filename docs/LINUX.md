@@ -47,10 +47,12 @@ is unchanged.
   Linux. Do not change the Windows updater or R2 publish path for this.
 - **Pasted YouTube / Bilibili page URLs.** The resolver pins `yt-dlp.exe`.
   Load a local file or a direct stream URL instead.
-- **The test suite.** Some path assertions and chat-overlay goldens are
-  Windows-specific. PR CI stays on hosted Windows. Do not move the gate
-  to Linux.
+- **The test suite.** Windows-path basename asserts and chat-overlay
+  goldens skip on Linux. PR CI stays on hosted Windows. Do not move the
+  gate to Linux.
 
 `desktop_drop` and `file_selector` both have Linux implementations; drag
 and drop should work on a real desktop session. Headless / no-display
-environments can still `flutter build linux`.
+environments can still `flutter build linux`. Opening windows needs a
+display or Xvfb. Missing PipeWire or DRI3 prints a warning and does not
+block boot.
