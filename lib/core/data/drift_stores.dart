@@ -290,7 +290,9 @@ class DriftSettingsStore implements SettingsStore {
   @override
   Future<bool> hasAnySettings() async {
     final row = await (_db.select(_db.settings)
-          ..where((t) => t.key.equals(kLastSeenVersionKey).not())
+          ..where((t) =>
+              t.key.equals(kLastSeenVersionKey).not() &
+              t.key.equals(kSyncplayEndpointSettingKey).not())
           ..limit(1))
         .getSingleOrNull();
     return row != null;

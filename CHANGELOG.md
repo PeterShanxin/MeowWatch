@@ -10,6 +10,29 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.49.0-alpha] - 2026-09-01
+
+> When the public Syncplay server is down, MeowWatch finds another one itself.
+
+### Added: Finds a working server
+- MeowWatch now knows about every public Syncplay server port, not just one.
+  If the usual one is unreachable, **Start new room** quietly tries the others
+  and uses the first that works — no error, and nothing to type into Advanced
+  (#234). The button reads *Finding a server…* while it looks.
+- The server that worked is remembered, so the next launch goes straight
+  there. If it later stops answering, MeowWatch looks again and remembers the
+  new one.
+- Your friend still lands where you are: the code you share carries the server
+  you ended up on, so one paste is enough.
+- Saved rooms and **Continue watching** are checked the same way before you
+  rejoin, so a room does not fail just because its server moved.
+- A server you typed into **Advanced**, and a server carried in a friend's
+  code, are always used exactly as given.
+
+### Improved: A clearer failure
+- If nothing at all can be reached, MeowWatch says so — instead of asking you
+  to name a Syncplay server yourself.
+
 ## [0.48.0-alpha] - 2026-09-01
 
 > Linux is a local compile target so two windows can run on one machine.

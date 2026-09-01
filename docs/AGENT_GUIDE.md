@@ -218,6 +218,7 @@ Every release is signed with an **Ed25519** key so the app installs only genuine
 
 - `core/video/` — `VideoCore` (abstract) → `MediaKitVideoCore` (libmpv via `media_kit`). Emits immutable `PlaybackState`.
 - `core/sync/` — `SyncCore` (abstract, owns the broadcast controllers + `@protected emit*` + `@mustCallSuper dispose`) → `SyncplayClient` (custom Dart Syncplay client: TCP + startTLS, Hello handshake, State heartbeat, `ignoringOnTheFly`/`setBy` convergence). Data types in `peer_state.dart`; wire framing/encoders in `sync_messages.dart` / `syncplay_constants.dart`.
+- `core/sync/endpoint_discovery.dart` — picks which public Syncplay endpoint a default session uses, and remembers the winner in `SettingsStore`. Curated candidates live in `syncplay_endpoints.dart`.
 - `core/chat/` — `ChatStore` subscribes to `SyncCore.chat`, stamps each message's local arrival time, and republishes an immutable list.
 - `core/update/` — `UpdateService` checks a Cloudflare R2 bucket (`{updateBaseUrl}/releases/latest.json`) for new versions, downloads a zip, extracts it, then launches a PowerShell updater script that swaps the files and restarts. Version constant in `app_version.dart`.
 - `core/app_version.dart` — single source of truth for `appVersion` (keep in sync with `pubspec.yaml`) and `updateBaseUrl`.
@@ -230,6 +231,27 @@ Every release is signed with an **Ed25519** key so the app installs only genuine
 **Glue:** `PlaybackSyncBridge` wires `VideoCore` ⇄ `SyncCore` (local playback → outgoing State; incoming peer state → local seek/pause via `decideFollow`). `HomeScreen` owns the instances, subscribes to all streams, and composes the UI Stack: video surface + auto-hiding controls + sync-hint banner + chat overlay.
 
 **Chat data flow:** sending delegates to `SyncCore.sendChat`; the server echoes the sender's own message back to the whole room, so messages land via the normal receive path. There is **no optimistic local insert** — the stream is the single source of truth.
+
+**Where a session's server comes from (#234).** Two peers can only meet if
+"where is this room" resolves the same on both machines, so the rules are
+deliberately narrow:
+
+- **Discovery may only replace an endpoint MeowWatch itself chose** — one in
+  `kPublicSyncplayEndpoints`. An Advanced server/port, a `room@host:port` share
+  code, and any self-hosted host are used exactly as given, forever.
+- **Candidates are walked sequentially in the curated order**, never raced.
+  Racing would pick whichever answered fastest *from this machine*, which is how
+  two friends end up in the same room name on different servers.
+- **A bare share code means the first candidate** (`defaultServer` /
+  `publicServerPort`). Joining never runs discovery — the code is the
+  destination. `syncplay_endpoints_test.dart` pins the first candidate to those
+  constants; keep them together.
+- **A live session never fails over.** Reconnect re-dials the endpoint the
+  session started on; moving a running room would strand the peer.
+- **Probing reuses `SyncplayClient`** and counts an endpoint as working only at
+  `SyncConnectionStatus.connected` (the server's Hello, which can only arrive
+  over the TLS socket). Do not hand-roll a lighter handshake here — that would
+  be a second copy of the STARTTLS state machine to keep hardened.
 
 **Immutability:** state objects (`PlaybackState`, `ChatMessage`, `ChatOverlayLayout`, etc.) are `@immutable` with `copyWith`; never mutate in place.
 

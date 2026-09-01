@@ -40,6 +40,12 @@ const String kLogLevelSettingKey = 'log_level';
 /// `latestPerRoom`).
 const String kHistoryModeSettingKey = 'history_mode';
 
+/// Key for the last public Syncplay endpoint that completed a handshake
+/// (value = `"host:port"`). Written only by endpoint discovery, so it is an
+/// app-managed cache rather than a user setting — [SettingsStore.hasAnySettings]
+/// ignores it for the same reason it ignores [kLastSeenVersionKey].
+const String kSyncplayEndpointSettingKey = 'syncplay_endpoint';
+
 /// Key for the last app version the user has seen (value = an [appVersion]
 /// string). Drives the one-time post-update "what's new" modal: absent → fresh
 /// install (no modal); differs from the current version → the user updated.
@@ -51,8 +57,9 @@ abstract class SettingsStore {
   Future<void> set(String key, String value);
 
   /// Whether any user-persisted setting exists, ignoring the app-written
-  /// [kLastSeenVersionKey]. Lets startup tell an existing install (the user has
-  /// changed a setting before) apart from a fresh one when no version has been
-  /// recorded yet — so the post-update modal still reaches settings-only users.
+  /// [kLastSeenVersionKey] and [kSyncplayEndpointSettingKey]. Lets startup tell
+  /// an existing install (the user has changed a setting before) apart from a
+  /// fresh one when no version has been recorded yet — so the post-update modal
+  /// still reaches settings-only users.
   Future<bool> hasAnySettings();
 }

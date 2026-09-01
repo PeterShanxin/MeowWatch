@@ -215,6 +215,47 @@ void main() {
     expect(statuses, isNot(contains(SyncConnectionStatus.reconnecting)));
     expect(statuses.last, SyncConnectionStatus.disconnected);
   });
+
+  test('a reconnect returns to the endpoint the session started on', () async {
+    // Endpoint discovery belongs to the lobby and never to a live session:
+    // moving a running room to another candidate would silently leave the peer
+    // behind on the old one (#234).
+    final home = await ServerSocket.bind('127.0.0.1', 0);
+    final elsewhere = await ServerSocket.bind('127.0.0.1', 0);
+    var homeDials = 0;
+    var elsewhereDials = 0;
+    home.listen((s) {
+      homeDials++;
+      s.listen((_) {}, onError: (Object _) {});
+    });
+    elsewhere.listen((s) {
+      elsewhereDials++;
+      s.listen((_) {}, onError: (Object _) {});
+    });
+    addTearDown(() async {
+      await home.close();
+      await elsewhere.close();
+    });
+
+    await client.connect(
+      server: '127.0.0.1',
+      port: home.port,
+      username: 'me',
+      room: 'r',
+    );
+    await _until(() => homeDials == 1);
+
+    client.debugMarkLoggedIn('me');
+    client.debugSimulateConnectionLost();
+    await _until(() => homeDials == 2);
+
+    expect(homeDials, 2, reason: 'the same endpoint, dialled again');
+    expect(
+      elsewhereDials,
+      0,
+      reason: 'a live session never fails over to another candidate',
+    );
+  });
 }
 
 /// Poll [predicate] until true or a hard deadline, so tests don't hang forever.

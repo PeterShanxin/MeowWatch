@@ -9,6 +9,7 @@ import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
 import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
+import 'package:meowwatch/core/sync/syncplay_endpoints.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/brand/meow_logo.dart';
@@ -146,6 +147,9 @@ void main() {
     SettingsStore? settings,
     Future<void> Function(RoomConfig config)? onConnect,
   }) async {
+    // Endpoint discovery is stubbed to the default public endpoint so these
+    // tests never dial a real server; its own behaviour lives in
+    // connect_screen_endpoint_test.dart.
     connected = null;
     await tester.pumpWidget(
       MaterialApp(
@@ -156,6 +160,8 @@ void main() {
           settings: settings ?? _FakeSettingsStore(),
           currentTheme: MeowThemeId.cozy,
           onThemeChanged: (_) {},
+          resolveEndpoint: ({SyncplayEndpoint? preferred}) async =>
+              kPublicSyncplayEndpoints.first,
           onConnect:
               onConnect ??
               (config) async {

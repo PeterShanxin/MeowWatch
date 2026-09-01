@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/connect/room_share.dart';
 import 'package:meowwatch/core/sync/syncplay_constants.dart';
+import 'package:meowwatch/core/sync/syncplay_endpoints.dart';
 
 void main() {
   const sentence = 'sleepy-otter-counts-cozy-stars';
@@ -211,6 +212,33 @@ void main() {
         final r = parseShareCode(bad);
         expect(r.isValid, isFalse);
         expect(r.error, malformedShareCodeMessage);
+      });
+    }
+  });
+
+  group('a discovered endpoint reaches the joiner intact (#234)', () {
+    // Two peers only meet if the code answers "where is this room" the same way
+    // on both machines. Whatever the host's discovery settled on has to survive
+    // encode -> paste -> parse exactly, and the default has to stay the bare
+    // sentence, so old codes and older builds still line up.
+    for (final endpoint in kPublicSyncplayEndpoints) {
+      test('$endpoint round-trips', () {
+        final code = encodeShareCode(
+          room: sentence,
+          server: endpoint.host,
+          port: endpoint.port,
+        );
+        final parsed = parseShareCode(code);
+
+        expect(parsed.isValid, isTrue);
+        expect(parsed.room, sentence);
+        expect(
+          code.contains('@'),
+          endpoint != kPublicSyncplayEndpoints.first,
+          reason: 'only a moved room needs to name where it went',
+        );
+        expect(parsed.server ?? SyncplayConstants.defaultServer, endpoint.host);
+        expect(parsed.port ?? SyncplayConstants.publicServerPort, endpoint.port);
       });
     }
   });
