@@ -10,6 +10,30 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.49.1-alpha] - 2026-09-02
+
+> When the public Syncplay server is down, MeowWatch finds another one itself.
+
+### Added: Finds a working server
+- MeowWatch knows every public Syncplay server port, not just one. If the
+  usual one is unreachable, **Start new room** tries the others and uses
+  the first that answers — no error, and nothing to type into Advanced
+  (#234). The button reads *Finding a server…* while it looks.
+- The server that worked is remembered, so the next Start goes there first.
+  If it later stops answering, MeowWatch looks again and remembers the new
+  one.
+- The code you share names the server you landed on, so a friend pastes one
+  destination.
+- Saved rooms and **Continue watching** check their public server the same
+  way before you rejoin.
+- A server you typed into **Advanced**, and a server carried in a friend's
+  `room@host:port` code, are used exactly as given. A bare room code (no
+  `@host:port`) is the first public server.
+
+### Improved: A clearer failure
+- If nothing at all can be reached, MeowWatch says so — instead of asking you
+  to name a Syncplay server yourself.
+
 ## [0.49.0-alpha] - 2026-09-01
 
 > Watch alone — same player, no sync. Flip it live without leaving the video.

@@ -11,6 +11,7 @@ import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
 import 'package:meowwatch/core/data/watch_context.dart';
 import 'package:meowwatch/core/session/session_mode.dart';
+import 'package:meowwatch/core/sync/syncplay_endpoints.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/brand/meow_logo.dart';
@@ -175,6 +176,9 @@ void main() {
     SettingsStore? settings,
     Future<String?> Function(RoomConfig config)? onConnect,
   }) async {
+    // Endpoint discovery is stubbed to the default public endpoint so these
+    // tests never dial a real server; its own behaviour lives in
+    // connect_screen_endpoint_test.dart.
     connected = null;
     await tester.pumpWidget(
       MaterialApp(
@@ -185,6 +189,8 @@ void main() {
           settings: settings ?? _FakeSettingsStore(),
           currentTheme: MeowThemeId.cozy,
           onThemeChanged: (_) {},
+          resolveEndpoint: ({SyncplayEndpoint? preferred}) async =>
+              kPublicSyncplayEndpoints.first,
           onConnect:
               onConnect ??
               (config) async {
@@ -388,50 +394,49 @@ void main() {
     },
   );
 
-  testWidgets(
-    'the start screen stays visible while a join is pending (#265)',
-    (tester) async {
-      final gate = Completer<String?>();
-      await pump(
-        tester,
-        onConnect: (config) {
-          connected = config;
-          return gate.future;
-        },
-      );
-      await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
-      await tester.enterText(
-        find.byKey(const Key('connect-code')),
-        'sleepy-owl-13',
-      );
-      await tester.ensureVisible(find.byKey(const Key('connect-join')));
-      await tester.tap(find.byKey(const Key('connect-join')));
-      await tester.pump();
+  testWidgets('the start screen stays visible while a join is pending (#265)', (
+    tester,
+  ) async {
+    final gate = Completer<String?>();
+    await pump(
+      tester,
+      onConnect: (config) {
+        connected = config;
+        return gate.future;
+      },
+    );
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-owl-13',
+    );
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
 
-      expect(find.byKey(const Key('connect-join')), findsOneWidget);
-      expect(
-        tester
-            .widget<FilledButton>(find.byKey(const Key('connect-join')))
-            .onPressed,
-        isNull,
-      );
-      expect(find.text('Load a video'), findsNothing);
-      expect(find.text('Leave room'), findsNothing);
-      expect(find.byKey(const Key('connect-join-error')), findsNothing);
+    expect(find.byKey(const Key('connect-join')), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('connect-join')))
+          .onPressed,
+      isNull,
+    );
+    expect(find.text('Load a video'), findsNothing);
+    expect(find.text('Leave room'), findsNothing);
+    expect(find.byKey(const Key('connect-join-error')), findsNothing);
 
-      gate.complete(
-        'Could not open a secure connection to 127.0.0.1:1 '
-        '(server declined STARTTLS). '
-        'MeowWatch only joins rooms over TLS.',
-      );
-      await tester.pumpAndSettle();
+    gate.complete(
+      'Could not open a secure connection to 127.0.0.1:1 '
+      '(server declined STARTTLS). '
+      'MeowWatch only joins rooms over TLS.',
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('connect-join')), findsOneWidget);
-      expect(find.byKey(const Key('connect-join-error')), findsOneWidget);
-      expect(find.textContaining('declined STARTTLS'), findsOneWidget);
-      expect(find.text('Load a video'), findsNothing);
-    },
-  );
+    expect(find.byKey(const Key('connect-join')), findsOneWidget);
+    expect(find.byKey(const Key('connect-join-error')), findsOneWidget);
+    expect(find.textContaining('declined STARTTLS'), findsOneWidget);
+    expect(find.text('Load a video'), findsNothing);
+  });
 
   testWidgets('Enter code joins a folded private code verbatim', (
     tester,
@@ -1561,33 +1566,32 @@ void main() {
     },
   );
 
-  testWidgets(
-    'a Local Start that stays local does not save a room on return',
-    (tester) async {
-      final settings = _FakeSettingsStore();
-      final left = Completer<void>();
-      await pump(
-        tester,
-        settings: settings,
-        onConnect: (config) async {
-          connected = config;
-          await left.future;
-          return null;
-        },
-      );
-      await turnOnLocalMode(tester);
-      await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
-      await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
-      await tester.tap(find.byKey(const Key('connect-start-new')));
-      await tester.pump();
+  testWidgets('a Local Start that stays local does not save a room on return', (
+    tester,
+  ) async {
+    final settings = _FakeSettingsStore();
+    final left = Completer<void>();
+    await pump(
+      tester,
+      settings: settings,
+      onConnect: (config) async {
+        connected = config;
+        await left.future;
+        return null;
+      },
+    );
+    await turnOnLocalMode(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+    await tester.tap(find.byKey(const Key('connect-start-new')));
+    await tester.pump();
 
-      expect(connected!.sessionMode, SessionMode.local);
-      expect(profiles.saveUsedCalls, 0);
+    expect(connected!.sessionMode, SessionMode.local);
+    expect(profiles.saveUsedCalls, 0);
 
-      left.complete();
-      await tester.pumpAndSettle();
+    left.complete();
+    await tester.pumpAndSettle();
 
-      expect(profiles.saveUsedCalls, 0);
-    },
-  );
+    expect(profiles.saveUsedCalls, 0);
+  });
 }

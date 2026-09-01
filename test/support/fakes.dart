@@ -93,6 +93,7 @@ class FakeSettingsStore implements SettingsStore {
   Future<void> set(String key, String value) async => _map[key] = value;
 
   @override
-  Future<bool> hasAnySettings() async =>
-      _map.keys.any((k) => k != kLastSeenVersionKey);
+  Future<bool> hasAnySettings() async => _map.keys.any(
+    (k) => k != kLastSeenVersionKey && k != kSyncplayEndpointSettingKey,
+  );
 }

@@ -47,5 +47,14 @@ void main() {
       await store.set(kLogLevelSettingKey, 'neat');
       expect(await store.hasAnySettings(), isTrue);
     });
+
+    test('ignores the app-written Syncplay endpoint', () async {
+      // Endpoint discovery caches the server that answered. That is the app
+      // choosing for the user, not the user choosing — counting it would make
+      // a fresh install look like an existing one and misfire the post-update
+      // modal (#234).
+      await store.set(kSyncplayEndpointSettingKey, 'syncplay.pl:8997');
+      expect(await store.hasAnySettings(), isFalse);
+    });
   });
 }
