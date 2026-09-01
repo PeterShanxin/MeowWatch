@@ -100,6 +100,7 @@ Pure sync and layout logic is split from widgets for headless unit tests.
 | --- | --- |
 | Windows x64 | Available |
 | Windows ARM64 | Coming soon (x64 runs under emulation today) |
+| Linux desktop | Local compile target for two-window testing — not a release. See [docs/LINUX.md](docs/LINUX.md). |
 
 - Extract the zip and run `meowwatch.exe`.
 - Both friends need the same video file (or a shared URL to resolve).
@@ -121,6 +122,8 @@ flutter analyze
 flutter test
 flutter build windows --release
 ```
+
+Linux two-window testing (not a shipped build): see [docs/LINUX.md](docs/LINUX.md).
 
 ## License
 

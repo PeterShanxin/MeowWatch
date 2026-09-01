@@ -28,6 +28,10 @@ enum ResolveErrorKind {
 
   /// Anything we could not classify.
   unknown,
+
+  /// Page-URL resolve needs the Windows yt-dlp.exe pin. Linux can still
+  /// load a local file or a direct stream URL.
+  unsupportedOnThisOs,
 }
 
 /// A resolve failure with its classified [kind] and a raw [detail] string
@@ -91,5 +95,8 @@ String friendlyResolveError(ResolveErrorKind kind) {
     case ResolveErrorKind.unknown:
       return "Couldn't find a playable video behind that link. Check the "
           'link and try again.';
+    case ResolveErrorKind.unsupportedOnThisOs:
+      return 'Pasted page links work on Windows. Load a local file or a '
+          'direct video link here.';
   }
 }

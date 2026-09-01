@@ -103,6 +103,12 @@ void main() {
         "This site protects its videos, so they can't be played here.",
       );
     });
+
+    test('unsupportedOnThisOs tells testers to load a file or direct link', () {
+      final copy = friendlyResolveError(ResolveErrorKind.unsupportedOnThisOs);
+      expect(copy.toLowerCase(), contains('windows'));
+      expect(copy.toLowerCase(), contains('file'));
+    });
   });
 
   group('ResolveException', () {

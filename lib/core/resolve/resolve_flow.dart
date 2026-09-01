@@ -69,8 +69,10 @@ class ResolveFlow {
   static Future<String> _defaultProvision(
     Directory toolsDir,
     void Function(String status)? onStatus,
-  ) =>
-      ToolProvisioner(toolsDir: toolsDir).ensureYtDlp(onStatus: onStatus);
+  ) {
+    ensurePageUrlResolveSupported(isWindows: Platform.isWindows);
+    return ToolProvisioner(toolsDir: toolsDir).ensureYtDlp(onStatus: onStatus);
+  }
 
   static Future<ResolvedMedia> _defaultResolve(
     String exePath,
@@ -124,4 +126,15 @@ class ResolveFlow {
   static bool _updateWorthRetry(ResolveErrorKind kind) =>
       kind == ResolveErrorKind.unsupportedSite ||
       kind == ResolveErrorKind.unknown;
+}
+
+/// Page-URL resolve downloads and runs a pinned Windows `yt-dlp.exe`.
+/// Linux builds still play local files and direct stream URLs.
+void ensurePageUrlResolveSupported({required bool isWindows}) {
+  if (!isWindows) {
+    throw const ResolveException(
+      ResolveErrorKind.unsupportedOnThisOs,
+      'yt-dlp Windows exe',
+    );
+  }
 }
