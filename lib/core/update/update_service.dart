@@ -122,17 +122,26 @@ class UpdateService extends ChangeNotifier {
     String? baseUrl,
     http.Client? client,
     String? publicKeyBase64,
+    bool inAppUpdatesEnabled = true,
   })  : _baseUrl = baseUrl ?? updateBaseUrl,
         _client = client ?? http.Client(),
-        _publicKeyBase64 = publicKeyBase64 ?? releasePublicKeyBase64;
+        _publicKeyBase64 = publicKeyBase64 ?? releasePublicKeyBase64,
+        // Named params can't start with `_`, so this can't be an initializing formal.
+        // ignore: prefer_initializing_formals
+        _inAppUpdatesEnabled = inAppUpdatesEnabled;
 
   UpdateService._({String? baseUrl, http.Client? client})
       : _baseUrl = baseUrl ?? updateBaseUrl,
         _client = client ?? http.Client(),
-        _publicKeyBase64 = releasePublicKeyBase64;
+        _publicKeyBase64 = releasePublicKeyBase64,
+        _inAppUpdatesEnabled = Platform.isWindows;
 
   final String _baseUrl;
   final http.Client _client;
+
+  /// In-app apply/check is Windows-only. Linux has no R2 asset and must
+  /// not download or extract a Windows zip.
+  final bool _inAppUpdatesEnabled;
 
   /// Release public key updates are verified against. The baked-in key in
   /// production; tests inject their own so they can sign real payloads.
@@ -200,6 +209,10 @@ class UpdateService extends ChangeNotifier {
   /// Returns [UpdateStatus.updateAvailable] if a newer version exists,
   /// [UpdateStatus.upToDate] if current, or [UpdateStatus.checkFailed] on error.
   Future<UpdateStatus> checkForUpdate() async {
+    if (!_inAppUpdatesEnabled) {
+      appLog('update: skipped (in-app updates are Windows-only)');
+      return UpdateStatus.upToDate;
+    }
     try {
       final uri = Uri.parse('$_baseUrl/releases/latest.json');
       final response = await _client.get(uri).timeout(
@@ -415,6 +428,11 @@ class UpdateService extends ChangeNotifier {
   /// Pass [restartAfter] false to swap the files without relaunching — used by
   /// the apply-on-close path (#62), where the user is quitting.
   Future<void> applyUpdate(String zipPath, {bool restartAfter = true}) {
+    if (!_inAppUpdatesEnabled) {
+      return Future.error(
+        UnsupportedError('in-app updates are Windows-only'),
+      );
+    }
     // Single-flight: a second call (double-clicked Install, or the close path
     // firing mid-install) shares the in-flight apply instead of racing it.
     return _applyFuture ??= _applyUpdateImpl(zipPath, restartAfter: restartAfter);

@@ -6,13 +6,23 @@ Root tool entrypoints (`AGENTS.md`, `CLAUDE.md`) intentionally stay small and po
 
 **When you learn a general lesson** — a gotcha, a process rule, a fix worth not repeating — record it **here**, not only in a tool-specific or personal memory. Personal notes are private to one agent; this guide is what every agent and contributor inherits. Default to updating both.
 
-MeowWatch is a Flutter **desktop** (Windows-first) co-watch app: load a local video, connect to a public Syncplay room, stay in sync with a friend, and chat over a floating overlay. Built in six phases (see `docs/ROADMAP.md`); Phases 1–2 shipped, Phase 3 (chat) in progress.
+MeowWatch is a Flutter **desktop** (Windows-first) co-watch app: load a local video, connect to a public Syncplay room, stay in sync with a friend, and chat over a floating overlay. Linux is a local compile target for two-window testing (`docs/LINUX.md`); it is not a shipped release. Built in six phases (see `docs/ROADMAP.md`); Phases 1–2 shipped, Phase 3 (chat) in progress.
 
 ## Gotchas (read first — these have bitten us)
 
 - **Flutter is installed via Puro and is NOT on PATH.** Always use
   `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat` (Puro stable).
   Plain `flutter` will fail unless that `bin` directory is on PATH.
+- **Linux is a local two-window compile target, not a product.** `linux/`
+  exists so `flutter run -d linux` can open two processes on one VM
+  (`G_APPLICATION_NON_UNIQUE`; no single-instance lock). In-app updates
+  and the pinned `yt-dlp.exe` page-URL path stay Windows-only — gate them
+  rather than downloading a Windows zip or running an `.exe`. Syncplay
+  STARTTLS, the updater/R2 publish path, and hosted-Windows PR CI stay
+  as they are. Apt packages and the two-instance env vars are in
+  `docs/LINUX.md`. The suite is still not cross-platform (  Windows paths +
+  Windows goldens — those cases skip on Linux); do not move
+  `check-hosted` off `windows-2022`.
 - **Manual testing must use the Release build, not Debug.** A stale/Debug `meowwatch.exe` has caused "the fix isn't showing up" confusion. Verify the artifact you're launching is `build/windows/x64/runner/Release/meowwatch.exe`.
 - **Dead-connection detection can't rely on socket `onDone`/`onError`.** A half-open TCP (server vanishes, NAT idle-eviction, Wi-Fi blip — peer never sends FIN/RST) leaves the socket "open" on our side: writes succeed into a black hole, no callback ever fires, and the app would sit on "connected" forever while chats go nowhere. `SyncplayClient` runs a `ConnectionWatchdog` that `bump()`s on every incoming byte and trips after `livenessTimeout` (12s ≫ the ~1s State heartbeat) → emits `reconnecting` → backed-off auto-reconnect. Don't remove it assuming the socket callbacks cover drops — they only cover *clean* closes. Relatedly, `disconnect()` uses `_socket.destroy()` not `close()`: `close()` awaits a flush that a half-open socket can never complete, which is what once wedged the "Leave room" button.
 - **HW decode is the default; two instances on one PC need it forced OFF via env var.** `MediaKitVideoCore._configureDecoding()` defaults to hardware decode: `hwdec=d3d11va` on Windows (the **zero-copy** D3D11VA path — keeps decoded frames in GPU memory for media_kit's ANGLE texture path, avoiding the GPU→RAM→GPU copy-back `auto-safe` might pick; mpv auto-falls-back to software inside the decoder if d3d11va can't init), `hwdec=auto-safe` on every other platform (hardware decode on mpv's whitelist with automatic software fallback). Both are a big CPU/battery/heat win on Snapdragon X / Adreno. The catch: two app instances on one PC fight over the single HW decoder session — whichever opens its file *second* freezes at frame 0, and the sync layer then drags the healthy client backward forever (rewind-to-stay-together chasing the frozen peer). So for **two-instance-on-one-PC local testing**, set `MEOWWATCH_FORCE_SW_DECODE=1` before launching (PowerShell: `$env:MEOWWATCH_FORCE_SW_DECODE='1'`) — that flips back to `hwdec=no` and each instance decodes independently. Real two-machine use has one decoder per machine and needs nothing. The decision is pure logic in `video_decode_config.dart` (`resolveHwdec({forceSoftware, isWindows})` / `forceSoftwareDecodeFromEnv`), unit-tested in `test/core/video/video_decode_config_test.dart`. This HW-vs-SW split was once the root cause of a long "can't play in a room" hunt — the diagnostic was an `hwdec` contention issue, not the sync/auto-pause code.
@@ -42,6 +52,7 @@ $FLUTTER test path/to/file_test.dart --plain-name "name"  # single test by name 
 $FLUTTER test test/ui/chat/chat_overlay_golden_test.dart --update-goldens  # regenerate goldens
 $FLUTTER build windows                             # Release exe (kill running instances first)
 $FLUTTER run -d windows                            # debug run
+flutter run -d linux                               # local Linux target; see docs/LINUX.md
 ```
 
 ### Local fallback when GitHub-hosted Actions is unavailable
@@ -89,7 +100,7 @@ Standard hosted pull-request jobs are appropriate for this public repository.
   `R2_*` secrets or any other release credential. The suite is **not
   cross-platform** — `test/core/video/video_url_test.dart` asserts on Windows
   paths (`C:\…` → basename) and `test/ui/chat/chat_overlay_golden_test.dart`
-  uses Windows-rendered goldens — so on Linux 4 tests fail; the PR path must
+  uses Windows-rendered goldens. Those cases skip on Linux; the PR path must
   be Windows. Hosted image is **`windows-2022`**, not `windows-2025`: run
   33264970792 failed the two chat-overlay goldens on 2025 (0.05%/444px and
   15px). 2022 already ran untrusted PRs. Do not `--update-goldens` for 2025

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/video/video_url.dart';
 
@@ -50,8 +52,12 @@ void main() {
     });
 
     test('uses the base filename for a local path', () {
-      expect(mediaSourceName(r'C:\videos\demo.mkv'), 'demo.mkv');
       expect(mediaSourceName('/home/user/clips/demo.mp4'), 'demo.mp4');
+      // `package:path` uses this host's separators, so a `C:\…` path is
+      // only a basename on Windows. PR CI stays on windows-2022.
+      if (Platform.isWindows) {
+        expect(mediaSourceName(r'C:\videos\demo.mkv'), 'demo.mkv');
+      }
     });
   });
 
@@ -76,8 +82,10 @@ void main() {
     });
 
     test('a local path is left as its basename', () {
-      expect(mediaDisplayName(r'C:\videos\demo.mkv'), 'demo.mkv');
       expect(mediaDisplayName('/home/user/clips/demo.mp4'), 'demo.mp4');
+      if (Platform.isWindows) {
+        expect(mediaDisplayName(r'C:\videos\demo.mkv'), 'demo.mkv');
+      }
     });
   });
 
