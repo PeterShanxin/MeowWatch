@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/sync/peer_state.dart';
@@ -6,6 +8,10 @@ import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/chat/chat_overlay.dart';
 
 void main() {
+  // These PNGs were captured on hosted windows-2022. Linux pixels differ
+  // by a few hundred px; do not --update-goldens here. PR CI stays Windows.
+  final skipGoldens = !Platform.isWindows;
+
   testWidgets('GOLDEN: expanded card over black, bottom-left', (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1.0;
@@ -41,7 +47,7 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/chat_overlay_expanded.png'),
     );
-  });
+  }, skip: skipGoldens);
 
   testWidgets('GOLDEN: empty card over black, bottom-left', (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
@@ -74,5 +80,5 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/chat_overlay_empty.png'),
     );
-  });
+  }, skip: skipGoldens);
 }

@@ -86,3 +86,7 @@ flutter analyze
 flutter test
 flutter build windows --release
 ```
+
+Linux is a local compile target for two-window testing, not a release.
+See [`docs/LINUX.md`](docs/LINUX.md) for apt packages and
+`flutter run -d linux`.

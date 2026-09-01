@@ -10,6 +10,16 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.48.0-alpha] - 2026-09-01
+
+> Linux is a local compile target so two windows can run on one machine.
+
+### Added
+- Contributors can `flutter run -d linux` and open a second window for
+  A-B testing. Windows remains the supported release — there is no Linux
+  installer or auto-update. Load a local file (or a direct video link);
+  pasted YouTube / Bilibili pages still need the Windows build.
+
 ## [0.47.0-alpha] - 2026-08-01
 
 > One "Load a video" choice instead of two — and a failed link now says so.

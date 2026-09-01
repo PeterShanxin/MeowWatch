@@ -45,8 +45,8 @@ jobs:
   #
   # The suite is NOT cross-platform — `test/core/video/video_url_test.dart`
   # asserts on Windows paths (`C:\…` → basename) and
-  # `test/ui/chat/chat_overlay_golden_test.dart` uses Windows-rendered goldens —
-  # so on Linux 4 tests fail; both paths below must run on Windows.
+  # `test/ui/chat/chat_overlay_golden_test.dart` uses Windows-rendered goldens.
+  # Those cases skip on Linux; both paths below must still run on Windows.
 
   check-self-hosted:
     name: Analyze & Test (self-hosted)
