@@ -123,8 +123,8 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             onThemeChanged: _setTheme,
             playLobbyEntrance: widget.showLaunchReveal && _revealSettled,
             holdLobbyHidden: widget.showLaunchReveal && !_revealSettled,
-            onConnect: (RoomConfig config) => Navigator.of(context).push(
-              fadeUpRoute<void>(
+            onConnect: (RoomConfig config) => Navigator.of(context).push<String>(
+              fadeUpRoute<String>(
                 reduceMotion: context.reduceMotion,
                 // A builder, not a captured widget, so the room page rebuilds
                 // with the latest [_theme] when the in-room gear switches theme

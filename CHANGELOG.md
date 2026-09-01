@@ -25,6 +25,9 @@ in-app updater reads to show what changed.
   goes quiet, or its certificate does not check out — now fails straight away
   with a message that says what happened, instead of a long pause and a
   misleading "could not reach server".
+- If encryption is refused, you stay on the start screen with that named
+  error next to Join, so you can change the host or try again. Load a video
+  / Leave appear only after a room join has actually completed (#264).
 - MeowWatch has no unencrypted mode, by design. Public Syncplay servers, the
   default `syncplay.pl` included, all support encryption and are unaffected.
 

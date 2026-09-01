@@ -13,6 +13,9 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
   // Narrower than the media seam's implementation (which also takes a named
   // `sizeBytes`) — the sync-side callers only ever pass the path.
   void _announceLoadedFile(String? path);
+  /// Implemented by [_HomeMediaState]: a join that never logged in returns
+  /// to the start screen with [message] so the named error is on the lobby.
+  void _abortFailedJoin(String? message);
 
   // Start as "connecting", not "disconnected": entering a room immediately
   // begins a connection, so the first frame should read "Connecting to room …"
@@ -30,6 +33,11 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
 
   /// Previous connection status — used to detect the drop edge.
   SyncConnectionStatus _prevSyncStatus = SyncConnectionStatus.disconnected;
+
+  /// Latched the first time this room session reaches `connected`. A later
+  /// kick or drop stays on the watch UI; only a join that never logged in
+  /// returns to the start screen with the named error.
+  bool _everRoomConnected = false;
 
   /// Latched true on a local drop (connected → reconnecting) and cleared when we
   /// reconnect or stop trying. Needed because the reconnect path passes through
@@ -118,10 +126,19 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
 
   /// Wires every sync-side stream: connection state, deliberate-leave signals,
   /// presence, peer files, throttled sync activity, the initial roster, and
-  /// the playback-state notices. Called once from initState; the handler
-  /// bodies are unchanged from the pre-split screen (#182).
+  /// the playback-state notices. Called once from initState.
   void _initSyncSubscriptions() {
     _connSub = _sync.connectionState.listen((s) {
+      if (s.status == SyncConnectionStatus.connected) {
+        _everRoomConnected = true;
+      }
+      if (isFailedInitialJoin(
+        status: s.status,
+        everConnected: _everRoomConnected,
+      )) {
+        _abortFailedJoin(s.message);
+        return;
+      }
       if (mounted) {
         setState(() {
           _syncStatus = s.status;

@@ -53,7 +53,9 @@ class ConnectScreen extends StatefulWidget {
   final SettingsStore settings;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
-  final Future<void> Function(RoomConfig config) onConnect;
+  /// Pushes the watch route and completes when it pops. A non-null result is
+  /// a join that never logged in — shown on this screen as the named error.
+  final Future<String?> Function(RoomConfig config) onConnect;
 
   /// Cold-start card cascade signals, driven by the launch reveal completing.
   /// [playLobbyEntrance] starts the one-shot ripple; [holdLobbyHidden] keeps the
@@ -80,6 +82,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
   final _passwordFocus = FocusNode();
   final _scroll = ScrollController();
   bool _advancedOpen = false;
+
+  /// Named error from a join that never logged in (STARTTLS refused, unreachable
+  /// server, rejected room/password). Shown under Join on this screen.
+  String? _joinError;
 
   // Who a blank name field joins as (#172). Shown as the field's hint so the
   // user sees the name before connecting, rerollable via the dice button, and
@@ -321,12 +327,17 @@ class _ConnectScreenState extends State<ConnectScreen> {
     // can still be in flight when HomeScreen reads them (PR #131 review).
     await _settingsWrites;
     if (!mounted) return;
+    if (_joinError != null) setState(() => _joinError = null);
     // onConnect pushes the room route and completes when it pops, so control
-    // returns here on leaving. Re-read settings then: the in-room gear may have
-    // changed the level/sounds, and the lobby gear should reflect that, not the
-    // value captured at app start.
-    await widget.onConnect(config);
+    // returns here on leaving. A non-null result is a join that never logged
+    // in: stay on this screen with the named error. Re-read settings then
+    // only after a real visit — the in-room gear may have changed them.
+    final joinError = await widget.onConnect(config);
     if (!mounted) return;
+    if (joinError != null && joinError.isNotEmpty) {
+      setState(() => _joinError = joinError);
+      return;
+    }
     // Fresh suggestion for the next join: a blank name means "surprise me",
     // and the name just used is already remembered via the saved room (#172).
     setState(() => _suggestedName = generateUsername());
@@ -739,7 +750,33 @@ class _ConnectScreenState extends State<ConnectScreen> {
           ),
         ],
       ),
+      if (_joinError != null) ...[
+        const SizedBox(height: Spacing.lg),
+        _joinErrorBanner(),
+      ],
     ];
+  }
+
+  Widget _joinErrorBanner() {
+    final m = context.meow;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: m.error.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: m.error),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.lg,
+          vertical: Spacing.md,
+        ),
+        child: Text(
+          _joinError!,
+          key: const Key('connect-join-error'),
+          style: TextStyle(color: m.error, fontSize: TypeScale.body),
+        ),
+      ),
+    );
   }
 
   /// Saved rooms + continue-watching — the right column when wide, appended

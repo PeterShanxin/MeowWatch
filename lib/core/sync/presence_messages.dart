@@ -44,6 +44,15 @@ bool isReconnectSuccess({
 }) =>
     wasReconnecting && next == SyncConnectionStatus.connected;
 
+/// True when this room session never completed a login and the client has
+/// stopped trying. The start screen should show the named error; the watch
+/// UI is only for a completed join (#264, #265).
+bool isFailedInitialJoin({
+  required SyncConnectionStatus status,
+  required bool everConnected,
+}) =>
+    !everConnected && status == SyncConnectionStatus.error;
+
 /// The name of our own lingering ghost session to silence on its imminent
 /// departure, or null if there is none.
 ///
