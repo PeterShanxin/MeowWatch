@@ -14,6 +14,23 @@ void main() {
     expect(launched, 'https://example.test/x');
   });
 
+  test('externalUrlProcess uses cmd start on Windows and xdg-open elsewhere',
+      () {
+    final windows = externalUrlProcess(
+      'https://example.test/x',
+      isWindows: true,
+    );
+    expect(windows.executable, 'cmd');
+    expect(windows.arguments, ['/c', 'start', '', 'https://example.test/x']);
+
+    final linux = externalUrlProcess(
+      'https://example.test/x',
+      isWindows: false,
+    );
+    expect(linux.executable, 'xdg-open');
+    expect(linux.arguments, ['https://example.test/x']);
+  });
+
   test('openExternalUrl swallows launcher failures and never throws', () async {
     debugUrlLauncherOverride = (_) async => throw StateError('boom');
     await expectLater(

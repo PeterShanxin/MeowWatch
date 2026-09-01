@@ -67,6 +67,38 @@ void main() {
     expect(readLog(), contains('update: check failed (HTTP 503)'));
   });
 
+  test('disabled in-app updates skip the network and stay up to date',
+      () async {
+    final log = DebugLog.inDir(dir, baseName: 'meowwatch_sync')..start();
+    installAppLog(log);
+
+    var hits = 0;
+    final mock = MockClient((req) async {
+      hits++;
+      return http.Response('{}', 200);
+    });
+    final svc = UpdateService.forTest(
+      baseUrl: 'https://example.test',
+      client: mock,
+      inAppUpdatesEnabled: false,
+    );
+
+    final status = await svc.checkForUpdate();
+    await log.close();
+
+    expect(status, UpdateStatus.upToDate);
+    expect(hits, 0);
+    expect(readLog(), contains('update: skipped'));
+  });
+
+  test('applyUpdate refuses when in-app updates are disabled', () async {
+    final svc = UpdateService.forTest(inAppUpdatesEnabled: false);
+    await expectLater(
+      svc.applyUpdate('/tmp/meowwatch-no-update.zip'),
+      throwsA(isA<UnsupportedError>()),
+    );
+  });
+
   test('a thrown check (malformed JSON) logs the failure', () async {
     final log = DebugLog.inDir(dir, baseName: 'meowwatch_sync')..start();
     installAppLog(log);

@@ -10,14 +10,18 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
-## [0.48.0-alpha] - 2026-08-30
+## [0.48.0-alpha] - 2026-09-01
 
-> Watch alone — same player, no sync. Flip it live without leaving the video.
+> Watch alone — same player, no sync. Linux is a local compile target so two windows can run on one machine.
 
 ### Added
 - **Local Player Mode** in the lobby gear and the in-player gear. Local still gets a random room identity, just no Syncplay. Changing it in either place is remembered for future Start and Continue Watching sessions. Typing a code or opening a saved room still joins together for that session only, without changing the remembered default (#252, #254).
 - Turning Local Player Mode **off inside the player** now hands the room a session that is already watching: same room code, same video, same spot on the timeline, and full two-way control — a friend who joins afterwards lands where you are, and play, pause and seek work from either side (#252, #254).
 - Watch history now keeps **separate progress per room**. Room A and room B can stay at different times, while switching Local Player Mode inside one room keeps updating that same record (#254).
+- Contributors can `flutter run -d linux` and open a second window for
+  A-B testing. Windows remains the supported release — there is no Linux
+  installer or auto-update. Load a local file (or a direct video link);
+  pasted YouTube / Bilibili pages still need the Windows build.
 
 ### Fixed
 - A failed link during local playback now still shows the notice — it no longer fails silently (#252).

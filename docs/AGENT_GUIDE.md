@@ -6,13 +6,23 @@ Root tool entrypoints (`AGENTS.md`, `CLAUDE.md`) intentionally stay small and po
 
 **When you learn a general lesson** — a gotcha, a process rule, a fix worth not repeating — record it **here**, not only in a tool-specific or personal memory. Personal notes are private to one agent; this guide is what every agent and contributor inherits. Default to updating both.
 
-MeowWatch is a Flutter **desktop** (Windows-first) co-watch app: load a local video, connect to a public Syncplay room, stay in sync with a friend, and chat over a floating overlay. Built in six phases (see `docs/ROADMAP.md`); Phases 1–2 shipped, Phase 3 (chat) in progress.
+MeowWatch is a Flutter **desktop** (Windows-first) co-watch app: load a local video, connect to a public Syncplay room, stay in sync with a friend, and chat over a floating overlay. Linux is a local compile target for two-window testing (`docs/LINUX.md`); it is not a shipped release. Built in six phases (see `docs/ROADMAP.md`); Phases 1–2 shipped, Phase 3 (chat) in progress.
 
 ## Gotchas (read first — these have bitten us)
 
 - **Flutter is installed via Puro and is NOT on PATH.** Always use
   `%USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat` (Puro stable).
   Plain `flutter` will fail unless that `bin` directory is on PATH.
+- **Linux is a local two-window compile target, not a product.** `linux/`
+  exists so `flutter run -d linux` can open two processes on one VM
+  (`G_APPLICATION_NON_UNIQUE`; no single-instance lock). In-app updates
+  and the pinned `yt-dlp.exe` page-URL path stay Windows-only — gate them
+  rather than downloading a Windows zip or running an `.exe`. Syncplay
+  STARTTLS, the updater/R2 publish path, and hosted-Windows PR CI stay
+  as they are. Apt packages and the two-instance env vars are in
+  `docs/LINUX.md`. The suite is still not cross-platform (  Windows paths +
+  Windows goldens — those cases skip on Linux); do not move
+  `check-hosted` off `windows-2022`.
 - **Manual testing must use the Release build, not Debug.** A stale/Debug `meowwatch.exe` has caused "the fix isn't showing up" confusion. Verify the artifact you're launching is `build/windows/x64/runner/Release/meowwatch.exe`.
 - **Sync only flows out of a bridge whose source is *confirmed*, and a Syncplay room only moves on a *signalled* change.** `PlaybackSyncBridge` suppresses every outbound publish (`updateLocalState`, `notifyLocalChange`) until `markSourceOpen` names the source the load coordinator accepted — and that call comes only from `HomeScreen._load`. So any path that starts Syncplay *after* a video is already open (the live Local -> Synced switch, #252) must hand the new bridge the open source itself: `SessionServices.startSynced(openSource: …)` -> `PlaybackSyncBridge.adoptOpenSource`. Miss it and the failure is silent and one-directional — peers can drive you, you can never drive them, because your heartbeat reports a permanent `0:00 / paused`. The second half matters too: a Syncplay room's authoritative playstate changes only when a client sends an explicit `doSeek` or flips `paused`; a plain heartbeat moves nothing. That is why adoption *asserts* the current position as a local change — otherwise the room stays at 0:00 and a peer joining later converges to 0:00 instead of to you.
 - **Sync lifecycle bugs need a two-client test, not unit tests.** Every unit test passed while the live switch was one-way in the field. `test/support/syncplay_room_server.dart` is a loopback server that speaks the real `State` protocol (room state moves only on a signalled change; `ignoringOnTheFly` handshake), so two real `SyncplayClient` + `PlaybackSyncBridge` pairs can be wired together in one process — see `test/core/session/local_to_synced_two_client_test.dart`. Reach for it whenever a change touches connect/handshake ordering, who publishes what, or subscription lifetime.
@@ -44,20 +54,29 @@ $FLUTTER test path/to/file_test.dart --plain-name "name"  # single test by name 
 $FLUTTER test test/ui/chat/chat_overlay_golden_test.dart --update-goldens  # regenerate goldens
 $FLUTTER build windows                             # Release exe (kill running instances first)
 $FLUTTER run -d windows                            # debug run
+flutter run -d linux                               # local Linux target; see docs/LINUX.md
 ```
 
-### When hosted Actions is unavailable: the local gate
+### Local fallback when GitHub-hosted Actions is unavailable
 
-Hosted Actions is normally funded — the 3,000 included Pro minutes plus a small monthly **Actions budget** (a few dollars, with "stop usage when budget is reached" **on**). **Every pull request** runs analyze + test on GitHub-hosted Windows (2×). The self-hosted runner keeps the expensive **tag Windows build + sign** off the meter. Hosted overage is the PR Windows checks plus the 1× Ubuntu `gate` / `release` jobs.
+MeowWatch is public. Routine pull-request verification uses standard
+GitHub-hosted Windows and is not governed by the former private-repository
+minutes budget. The self-hosted runner remains reserved for trusted-admin
+push/tag signing because it holds the release key, not to avoid PR CI cost.
 
-Hosted Actions becomes **unavailable** only if both the included minutes *and* the budget cap are spent (or the budget is removed). When that happens hosted runs fail/stop instantly — **don't wait on or re-trigger the hosted check.** Use local verification on this dev PC as the substitute PR gate:
+During a GitHub-hosted Actions service outage, use local verification as the
+diagnostic fallback:
 
 ```bash
 %USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat analyze --no-pub
 %USERPROFILE%\.puro\envs\stable\flutter\bin\flutter.bat test --no-pub --concurrency=1 --reporter compact
 ```
 
-Then build Release and do the manual test (see the Gotchas: kill build-path `meowwatch.exe` first, verify the rebuild via `build/windows/x64/runner/Release/data/app.so` mtime, launch the Release exe). Merge only after local analyze + test + build are green and the manual test passes.
+Then build Release and do the manual test when the change affects behavior (see
+the Gotchas: kill the build-path `meowwatch.exe` first, verify the rebuild via
+`build/windows/x64/runner/Release/data/app.so` mtime, and launch the Release
+exe). A local pass does not silently replace the normal hosted required check;
+an admin bypass is an explicit recovery action that must be recorded.
 
 ## Continuous integration (CI)
 
@@ -72,8 +91,7 @@ is **trusted-admin push/tag sign only**: analyze on push/`v*` tag, and tag
 ianmeowmeow}` (Dependabot excluded). Write access alone is not host trust.
 GitHub's **fork-workflow approval does not cover a future write login adding
 a new workflow**, so remaining self-hosted jobs keep the YAML `if:` allowlist.
-GitHub-hosted Windows is billed at **2×**. Self-hosted runners themselves are
-not billed.
+Standard hosted pull-request jobs are appropriate for this public repository.
 
 - **PR gate (analyze + test)** → every `pull_request` takes **`check-hosted`**
   on `windows-2022`. There is no self-hosted PR path and no `ci-hosted` label.
@@ -81,10 +99,10 @@ not billed.
   only**. Hosted PR `actions/checkout` sets **`persist-credentials: false`**.
   Those jobs must **never** interpolate `TAURI_SIGNING_PRIVATE_KEY`, the
   MeowWatch Ed25519 seed / `MEOWWATCH_RELEASE_KEY` / `release-key.txt`,
-  `R2_*` secrets, or `RELEASE_MIRROR_TOKEN`. The suite is **not
+  `R2_*` secrets or any other release credential. The suite is **not
   cross-platform** — `test/core/video/video_url_test.dart` asserts on Windows
   paths (`C:\…` → basename) and `test/ui/chat/chat_overlay_golden_test.dart`
-  uses Windows-rendered goldens — so on Linux 4 tests fail; the PR path must
+  uses Windows-rendered goldens. Those cases skip on Linux; the PR path must
   be Windows. Hosted image is **`windows-2022`**, not `windows-2025`: run
   33264970792 failed the two chat-overlay goldens on 2025 (0.05%/444px and
   15px). 2022 already ran untrusted PRs. Do not `--update-goldens` for 2025
@@ -95,7 +113,7 @@ not billed.
     Dependabot). Any other login's branch or `v*` tag push does **not**
     schedule it.
   - **Single required check (`gate`)** → a tiny referee job on hosted Linux
-    (1×, seconds) whose check-run name is exactly **`Analyze & Test`** (that
+    (seconds) whose check-run name is exactly **`Analyze & Test`** (that
     exact string is the branch-protection context — **not** "Build / Analyze
     & Test", which is only the Checks-tab grouping by workflow name). It
     passes iff `check-hosted` went green. **`main` is protected to require
@@ -104,15 +122,19 @@ not billed.
     reviews — bot reviews gate by convention, not by rule), set via
     `gh api -X PUT repos/PeterShanxin/MeowWatch/branches/main/protection`.
     A queued self-hosted job on a PR is a bug — PRs never take that path.
-- **`build-windows-x64`** → `[self-hosted, windows, meowwatch-ci]`. The
-  expensive 2× Windows build runs on **our own PC** for free. **Tag-push only,
+- **`build-windows-x64`** → `[self-hosted, windows, meowwatch-ci]`. This build
+  uses the trusted physical host because the signing key lives there. **Tag-push only,
   and only when `github.actor` is PeterShanxin or ianmeowmeow** — pull requests
   cannot schedule it, and any other login's `v*` tag must not build or sign.
   Fork PRs never reach this job. Workflow default `permissions` are
   `contents: read`; this job is the one that gets `contents: write` to create
   GitHub Releases.
-- **`release`** (GitHub Release + R2 upload) → `ubuntu-latest`. Bash/rclone job, 1×. Tag-push only. This one **runs on hosted Linux**, so it needs hosted Actions to be available. **Failure path:** if a tag is pushed while hosted Actions is unavailable (budget cap reached, or minutes exhausted with no budget), the self-hosted check + `build-windows-x64` still produce the Windows artifact, but this `release` job fails or never starts — so **R2 is not updated and `latest.json` / `changelog.json` stay stale (the in-app updater keeps offering the old version).** The operator must then either **re-run the `release` job from the Actions UI once hosted Actions is restored** (no re-tag needed — re-running picks up the already-built artifact), or **manually publish** the build zip + a regenerated `latest.json` + `changelog.json` to R2. Fully self-hosting this job (rewriting its bash/rclone steps for Windows) would remove the dependency — a separate follow-up. `secrets.R2_*` are referenced **only** in this job; PR jobs must never interpolate them.
-- **`publish-showcase.yml`** → hosted Linux, **`workflow_dispatch` only**. It interpolates `secrets.RELEASE_MIRROR_TOKEN` to write the public MeowWatch-releases mirror. The job `if:` requires `github.actor` to be **PeterShanxin or ianmeowmeow**. GitHub evaluates that `if:` before the job starts, so any other login's click must not run it. Forks stay excluded.
+- **`release`** (GitHub Release + R2 upload) → `ubuntu-latest`. Bash/rclone job,
+  tag-push only. If GitHub-hosted Actions is temporarily unavailable, the
+  self-hosted build may finish while R2 remains stale. Re-run `release` after
+  service recovery (no re-tag needed), or use the documented signed manual
+  publish procedure. `secrets.R2_*` are referenced **only** in this job; PR jobs
+  must never interpolate them.
 
 ### Self-hosted Windows runner
 
@@ -138,7 +160,11 @@ Machine-local name and install directory live as parameters on `tool/runner.ps1`
   - **The job log will not tell you whether it worked.** The runner prints `Download action repository 'actions/checkout@v7' (SHA:…)` *before* it consults the cache, so that line appears either way. The real signal is `Found action archive '<file>' in cache directory '<dir>'` in `$RunnerDir\_diag\Worker_*.log`.
   - **Never restart a live runner to apply it.** `.env` is read once, in `Program.LoadAndSetEnv`, when the listener starts; restarting mid-job can sever a dispatched job and there is no drain API. Since the runner is on-demand, syncing before you start it costs nothing.
   - **Don't share this runner's action-archive cache with another runner on the same machine.** A directory every job on both reads is a wider blast radius than the few megabytes it would save. MeowWatch's runner must not execute pull-request code.
-- **If hosted Actions is unavailable** (included minutes *and* the Actions budget cap both spent): a **PeterShanxin or ianmeowmeow `v*` tag** push is unaffected for the build — its check + Windows build both run on the self-hosted runner for free — but the hosted `release` upload won't run (see the `release` failure path above: re-run it once hosted Actions is restored, or publish to R2 manually, else `latest.json`/`changelog.json` go stale). Any **other login's tag** does not take that self-hosted path. **Every PR** needs hosted Windows (`check-hosted` + `gate`), so no PR can pass CI while hosted Actions is down. Bridge with the local-verification gate (see "When hosted Actions is unavailable" above) and merge with admin override.
+- **If GitHub-hosted Actions is unavailable:** a trusted-admin `v*` tag can
+  still build and sign on the self-hosted runner, but the hosted `release` job
+  cannot update R2 until service returns. Every PR still needs hosted Windows
+  (`check-hosted` + `gate`); use the local fallback for diagnosis and record any
+  exceptional admin bypass.
 - **Runner hangs & watching a long run.** `flutter test` (occasionally `pub get` / the build) can wedge on the self-hosted runner — a stuck `flutter_tester` holds the job open with no progress. Each job now carries a **`timeout-minutes`** (checks 20/25, build 45, release 15) so a hang fails fast and frees the runner instead of sitting until GitHub's **6h default**; a timed-out run shows a clear status and re-runs with one click (no manual `flutter_tester` kill needed). The hang is flaky/environmental — the same commit passes on a clean retry — so the timeout is a backstop, not a root-cause fix. **Don't trust `gh run watch` for long self-hosted runs:** it has silently dropped the run mid-stream (~56 min in) and exited as if finished, hiding the hang. Poll `gh run view <run-id> --json status,conclusion,jobs` instead.
   - **One concrete, self-inflicted cause: local PC load.** The runner shares this dev PC, so a local `flutter build windows` (or a freshly launched app) running *while the runner executes the release's `Run tests` step* starves the tests past `timeout-minutes` → the tag run is **cancelled**, and because the test gate didn't pass, `build-windows-x64` + `release` (R2 publish) **skip** — nothing ships (happened on v0.33.0-alpha's first attempt). **Preventive:** do the final manual-test Release build *before* pushing the `v*` tag, then keep the PC idle while the release run is in flight. **Recover:** once idle, `gh run rerun <run-id>` — it re-uses the same run, and a green test step lets the build + R2 jobs proceed.
   - **Local test runs orphan `flutter_tester` processes — kill them before anything hits the runner.** A local full-suite `flutter test` (even one that passes) can leave several `flutter_tester.exe` orphans behind, and every failed/cancelled runner job orphans its own batch. Those orphans starve the *next* runner job: timing-sensitive tests flake, or the job hits `timeout-minutes`, or the runner dies outright with "runner lost communication with the server" — each of which strands more orphans, compounding. Rule of thumb (v0.40.0-alpha release): after every local suite run and between CI attempts, kill the leftover `flutter_tester.exe` processes, then rerun.
@@ -297,7 +323,7 @@ Keep the `-alpha` suffix until we move off alpha. CI parses `CHANGELOG.md` → `
 1. Land the work on a feature/fix branch and get it **locally green** (analyze + test). **If the change has visible/UX surface, do an early local look BEFORE opening the PR:** build the Release and open it so the user can inspect/test while iteration is still cheap — no PR, bots, or gates involved yet — and fold in their feedback (possibly several rounds). Once the user is happy with the look (or for non-visual changes, right away), **open a PR to `main`.** Don't push `v*` tags from the branch. This is the *early* checkpoint; step 3's manual test is the *final* one on the shippable commit — two distinct looks.
 2. Wait for the automatic **Copilot review**, then run the `address-pr-review` skill: fix or reject each comment with a real reason, reply, resolve the threads, push.
 3. If a manual test is warranted (visible behavior change), **request it only once the automated gates are clear** — bot reviews resolved/satisfied **and** CI green — never while a review or CI run is still pending. A new commit re-opens the gate, so a test exercised on a not-yet-final commit gets invalidated by the next change; the human's hands-on time is the scarce resource, so spend it once, on the version that will actually ship. (Building the Release artifact ahead of time is fine — just don't ask them to *exercise* it until the gates are clear.) Pure edge-case/defensive fixes with unit coverage don't need a manual test — say so. If the user already confirmed a manual test but later review/CI feedback requires any app-behavior patch, stop after CI/reviews clear, build/open the updated Release app again, and get a fresh manual confirmation before merging/tagging. Docs/comment/CI-only follow-ups do not invalidate an already-confirmed manual app test; say that explicitly.
-4. Wait for **CI green** (the `Analyze & Test` check — the PR gate, now required by branch protection on `main`). **Every PR** runs on hosted Windows (`check-hosted` → `gate`). Do **not** start the self-hosted runner for a PR; it is for trusted-admin push/tag sign only. The full `Windows x64` build does **not** run on PRs; it runs only on a **PeterShanxin or ianmeowmeow** tag push (`github.actor`). Then **merge** the PR to `main` (merge commit). _(If hosted Actions is ever unavailable — included minutes and the Actions budget cap both spent — use the local verification gate from "When hosted Actions is unavailable" above instead of waiting on this check.)_
+4. Wait for **CI green** (the `Analyze & Test` check — the PR gate, now required by branch protection on `main`). **Every PR** runs on hosted Windows (`check-hosted` → `gate`). Do **not** start the self-hosted runner for a PR; it is for trusted-admin push/tag sign only. The full `Windows x64` build does **not** run on PRs; it runs only on a **PeterShanxin or ianmeowmeow** tag push (`github.actor`). Then **merge** the PR to `main` (merge commit). If GitHub-hosted Actions has a service outage, use the local fallback for diagnosis and record any exceptional admin bypass.
 5. `git checkout main && git pull` → **tag** `v<version>` on the merge commit → `git push origin v<version>`. The tag fires the build + release jobs (build → R2 upload + `changelog.json`). Since this is the *first* clean-room Windows build for the change, watch it — a build-only breakage surfaces here, not at PR time.
 6. Wait for the release run green, then **verify R2**: `curl …/releases/latest.json` (version matches) and `…/releases/changelog.json` (array includes the new version).
 7. **Wrap up** once R2 is verified — run the `call-it-a-day` skill (or do it by hand): `git checkout main && git pull` so main is the merge+tag commit, delete the merged branch (local + remote), prune the feature worktree under the active agent's worktree directory (for example, `.claude/worktrees/` or `.Codex/worktrees/`), remove session scratch files, and stop any leftover `meowwatch.exe` dev/test instances. End on a clean `git status` on `main`. Don't start this until after the merge, tag, and R2 verification — the worktree is still needed for PR iteration before then.

@@ -177,6 +177,21 @@ void main() {
     expect(updateCalls, 0);
   });
 
+  test('ensurePageUrlResolveSupported refuses non-Windows hosts', () {
+    expect(
+      () => ensurePageUrlResolveSupported(isWindows: false),
+      throwsA(isA<ResolveException>().having(
+        (e) => e.kind,
+        'kind',
+        ResolveErrorKind.unsupportedOnThisOs,
+      )),
+    );
+    expect(
+      () => ensurePageUrlResolveSupported(isWindows: true),
+      returnsNormally,
+    );
+  });
+
   test('retries at most once even if the retry fails the same way', () async {
     var attempts = 0;
     var updateCalls = 0;

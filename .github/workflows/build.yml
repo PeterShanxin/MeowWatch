@@ -11,7 +11,7 @@ on:
 
 # Default: read-only. Hosted PR gates must stay contents:read and must never
 # interpolate TAURI_SIGNING_PRIVATE_KEY, MEOWWATCH_RELEASE_KEY / the Ed25519
-# seed / release-key.txt, R2_* secrets, or RELEASE_MIRROR_TOKEN. The tag-only
+# seed / release-key.txt, or R2_* secrets. The tag-only
 # `build-windows-x64` job grants `contents: write` to create GitHub Releases.
 permissions:
   contents: read
@@ -45,8 +45,8 @@ jobs:
   #
   # The suite is NOT cross-platform — `test/core/video/video_url_test.dart`
   # asserts on Windows paths (`C:\…` → basename) and
-  # `test/ui/chat/chat_overlay_golden_test.dart` uses Windows-rendered goldens —
-  # so on Linux 4 tests fail; both paths below must run on Windows.
+  # `test/ui/chat/chat_overlay_golden_test.dart` uses Windows-rendered goldens.
+  # Those cases skip on Linux; both paths below must still run on Windows.
 
   check-self-hosted:
     name: Analyze & Test (self-hosted)
@@ -111,14 +111,14 @@ jobs:
         shell: pwsh
         run: flutter test
 
-  # Every pull_request. GitHub-hosted `windows-2022` (paid, 2×). Forks,
+  # Every pull_request. Standard GitHub-hosted `windows-2022`. Forks,
   # Dependabot, trusted-admin same-repo PRs, and any other login all take
   # this path. Pinned to 2022 (not 2025): hosted 2025 failed the two
   # chat-overlay goldens (run 33264970792: 0.05%/444px and 15px). That
   # image already ran untrusted PRs. Do not --update-goldens for 2025
   # pixels. Trusted-admin push/tag stay on check-self-hosted. This job
   # must not interpolate TAURI_SIGNING_PRIVATE_KEY, MEOWWATCH_RELEASE_KEY,
-  # R2_*, or RELEASE_MIRROR_TOKEN.
+  # or R2_* secrets.
   check-hosted:
     name: Analyze & Test (hosted)
     if: ${{ github.event_name == 'pull_request' }}
@@ -183,10 +183,10 @@ jobs:
     if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) && github.actor != 'dependabot[bot]' && needs.check-self-hosted.result == 'success' }}
     permissions:
       contents: write # Create GitHub Release + upload zip/sig (tag-only).
-    # Runs on a self-hosted Windows runner (our own PC) so the expensive 2×
-    # Windows build consumes no GitHub-hosted minutes. Requires a runner
-    # registered with the `self-hosted` + `windows` + `meowwatch-ci` labels and
-    # the Visual Studio desktop C++ toolchain installed (see
+    # Runs on a self-hosted Windows runner because the release signing key is
+    # available only on that trusted physical host. Requires a runner registered
+    # with the `self-hosted` + `windows` + `meowwatch-ci` labels and the Visual
+    # Studio desktop C++ toolchain installed (see
     # docs/AGENT_GUIDE.md → CI). github.actor must be PeterShanxin or
     # ianmeowmeow — any other login's v* tag must not build or sign here.
     # pull_request never reaches this job. Falls back to nothing if no runner is
