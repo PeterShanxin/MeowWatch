@@ -2910,4 +2910,101 @@ void main() {
       expect(video.state.position, const Duration(minutes: 5));
     },
   );
+
+  test(
+    'markSourceOpen applies a room position FOLLOW never applied (no doSeek)',
+    () async {
+      // Debian SOP #6: syncplay.pl's first State to the joiner has
+      // doSeek=false, both paused, local 0 / global 309. decideFollow returns
+      // apply=false, so peerState never fires and _lastPeer stays null. The
+      // client still cached the room on lastObservedRoomState; opening the
+      // file must land it, and must not publish 0:00 as a local change.
+      sync.lastObservedRoomState = const PeerPlayState(
+        position: Duration(seconds: 309),
+        paused: true,
+        doSeek: false,
+        setBy: 'host',
+      );
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration.zero,
+          duration: Duration(minutes: 25),
+          fileName: 'a.mkv',
+          filePath: '/videos/a.mkv',
+          opened: true,
+        ),
+      );
+      await pumpEventQueue();
+      video.commands.clear();
+      sync.localUpdates.clear();
+      sync.changes.clear();
+
+      bridge.markSourceOpen('/videos/a.mkv');
+      await pumpEventQueue();
+
+      expect(
+        video.commands,
+        contains('seek:309000ms'),
+        reason: 'a doSeek=false room at 309s must still land once the file opens',
+      );
+      expect(video.state.position, const Duration(seconds: 309));
+      expect(
+        sync.changes,
+        isEmpty,
+        reason: 'the joiner must not publish 0:00 and overwrite the room',
+      );
+    },
+  );
+
+  test(
+    'markSourceOpen retries the room seek once duration becomes known',
+    () async {
+      sync.lastObservedRoomState = const PeerPlayState(
+        position: Duration(seconds: 309),
+        paused: true,
+        doSeek: false,
+        setBy: 'host',
+      );
+      video.emitFromSeek = false;
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration.zero,
+          duration: Duration.zero,
+          fileName: 'a.mkv',
+          filePath: '/videos/a.mkv',
+          opened: true,
+        ),
+      );
+      await pumpEventQueue();
+      bridge.markSourceOpen('/videos/a.mkv');
+      await pumpEventQueue();
+
+      expect(video.commands, contains('seek:309000ms'));
+      expect(
+        video.state.position,
+        Duration.zero,
+        reason: 'position_guard equivalent: no duration yet, the seek cannot land',
+      );
+      expect(sync.changes, isEmpty);
+
+      video.emitFromSeek = true;
+      video.commands.clear();
+      video.push(
+        video.state.copyWith(duration: const Duration(minutes: 25)),
+      );
+      await pumpEventQueue();
+
+      expect(
+        video.commands,
+        contains('seek:309000ms'),
+        reason: 'once duration is known the rejected open seek must be retried',
+      );
+      expect(video.state.position, const Duration(seconds: 309));
+      expect(sync.changes, isEmpty);
+    },
+  );
 }

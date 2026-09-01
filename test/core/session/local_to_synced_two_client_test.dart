@@ -205,15 +205,27 @@ void main() {
         peerVideo.state.position,
         _closeTo(hostStart),
         reason:
-            "the joiner loads after the room's first doSeek, so a FOLLOW "
-            'apply=false at 0s is the Debian Check 6 miss: the room position '
-            'must still be applied once the file is open',
+            "the joiner loads after connect; syncplay.pl's first State has "
+            'doSeek=false so FOLLOW apply=false at 0s is the Debian Check 6 '
+            'miss unless markSourceOpen still lands the room position',
       );
       expect(peerVideo.state.status, PlaybackStatus.paused);
       expect(
         hostVideo.state.position,
         _closeTo(hostStart),
         reason: 'the host must not be dragged to the joiner\'s load-at-zero',
+      );
+      expect(
+        server.acceptedChanges.where((c) => c.by == 'peer'),
+        isEmpty,
+        reason:
+            'the joiner must not publish 0s (doSeek or a pause flip) and '
+            'overwrite the room — the Debian SOP #6 failure',
+      );
+      expect(
+        server.roomPosition,
+        _closeTo(hostStart),
+        reason: 'room authorship must stay with the host at the live-switch spot',
       );
     },
   );

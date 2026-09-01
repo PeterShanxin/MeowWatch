@@ -280,10 +280,14 @@ class _Watcher {
   /// older update cannot be mistaken for the echo of a newer one.
   int forcedUpdates = 0;
 
-  /// Upstream aligns a newly joined watcher by pushing the room's position with
-  /// `doSeek` set — otherwise a joiner that is merely *behind* the room would
-  /// never catch up (a client only corrects itself when it runs AHEAD). Start
-  /// true so the first State a watcher receives carries that alignment.
-  bool forcedDoSeek = true;
+  /// Upstream does **not** set `doSeek` on the first State a newly joined
+  /// watcher receives — the official protocol trace has Alice join Bob at
+  /// ~309s with `doSeek: false`. A joiner that is merely *behind* the room
+  /// therefore never catches up via [decideFollow] (which only corrects when
+  /// ahead, or on an explicit seek). MeowWatch's client caches that State and
+  /// [PlaybackSyncBridge.markSourceOpen] applies it when the file opens.
+  /// Keep this false so Check 6 matches syncplay.pl rather than masking the
+  /// miss with a synthetic join seek.
+  bool forcedDoSeek = false;
   double? clientLatency;
 }
