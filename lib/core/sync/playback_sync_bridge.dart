@@ -68,6 +68,13 @@ class PlaybackSyncBridge {
   StreamSubscription<PlaybackState>? _videoSub;
   StreamSubscription<PeerPlayState>? _peerSub;
   StreamSubscription<PlaybackState>? _resumeSeekSub;
+  /// Last room state the bridge was told to apply. The product join order
+  /// (connect, then load) delivers the server's first `doSeek` while the
+  /// player is still empty; `_load` then resets to 0:00 and later heartbeats
+  /// have `doSeek=false`, so [decideFollow] returns apply=false. Remembering
+  /// the room here lets [markSourceOpen] land it once the file is actually
+  /// open.
+  PeerPlayState? _lastPeer;
   Timer? _resumeSeekTimer;
   Timer? _advanceWatchTimer;
   final List<PeerPlayState> _queuedPeerStates = [];
@@ -184,6 +191,7 @@ class PlaybackSyncBridge {
   }
 
   void _queuePeerState(PeerPlayState peer) {
+    _lastPeer = peer;
     if (_drainingPeerStates) {
       _queuedPeerStates.add(peer);
       return;
@@ -231,12 +239,30 @@ class PlaybackSyncBridge {
 
   /// Called by the load coordinator once [awaitOpenResult] has accepted [source]
   /// (including a paused live/direct stream that will never report a duration).
-  /// From now on that source's ticks drive the heartbeat. We immediately re-run
-  /// the current state through the gate: an accepted durationless stream may not
-  /// emit another tick until the user plays, so without this the heartbeat would
-  /// keep broadcasting the *previous* file's cached state until then.
+  /// From now on that source's ticks drive the heartbeat. If the room already
+  /// sent a playstate (the joiner connected before this load), re-apply it so
+  /// the file opens at the room position rather than 0:00. Otherwise replay the
+  /// current local state: an accepted durationless stream may not emit another
+  /// tick until the user plays, so without this the heartbeat would keep
+  /// broadcasting the *previous* file's cached state until then.
   void markSourceOpen(String source) {
     _confirmedOpenSource = source;
+    final pending = _lastPeer;
+    if (pending != null) {
+      // The room already told us where to be — usually while this source was
+      // still loading. Later heartbeats will not carry doSeek, so without this
+      // re-apply a joiner that loads after connect stays at 0:00 (Check 6).
+      // Skip the local replay: publishing 0:00/paused here would pause the room.
+      _queuePeerState(
+        PeerPlayState(
+          position: pending.position,
+          paused: pending.paused,
+          doSeek: true,
+          setBy: pending.setBy,
+        ),
+      );
+      return;
+    }
     _onLocalState(video.state);
     // If the user pressed play while this source was still unconfirmed, that
     // play tick was suppressed (not published, no change emitted) and the replay

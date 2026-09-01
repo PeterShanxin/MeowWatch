@@ -77,6 +77,27 @@ void main() {
     return session;
   }
 
+  /// Product Check 6: join the room first (empty player), then load the file.
+  /// HomeScreen connects on enter; the user loads afterwards. The server's
+  /// first State therefore lands before any source is open.
+  Future<SessionServices> joinThenLoad(
+    String name, {
+    required ScriptedVideoCore video,
+  }) async {
+    final session = track(
+      SessionServices.synced(
+        video: video,
+        onLog: (l) => logs.add('[$name] $l'),
+      ),
+    );
+    await server.dial(session.sync!, name: name);
+    await pumpEventQueue();
+    video.openAt(movie);
+    await pumpEventQueue();
+    session.bridge!.markSourceOpen(movie);
+    return session;
+  }
+
   /// A peer that watched locally first and then turned Local Player Mode OFF
   /// inside the player — the repro under test.
   Future<SessionServices> switchLocalToSynced(
@@ -159,6 +180,40 @@ void main() {
         hostVideo.state.position,
         _closeTo(hostStart),
         reason: 'and the host must not be dragged anywhere by the joiner',
+      );
+    },
+  );
+
+  test(
+    '2b. a peer that connects empty then loads still converges (Check 6)',
+    () async {
+      final hostVideo = newCore();
+      await switchLocalToSynced('host', video: hostVideo, at: hostStart);
+      await _until(() => server.roomSetBy == 'host');
+      expect(
+        server.roomPosition,
+        _closeTo(hostStart),
+        reason: 'the live switch must have published the host position to the '
+            'room before a joiner arrives',
+      );
+
+      final peerVideo = newCore();
+      await joinThenLoad('peer', video: peerVideo);
+      await _until(() => _near(peerVideo.state.position, hostStart));
+
+      expect(
+        peerVideo.state.position,
+        _closeTo(hostStart),
+        reason:
+            "the joiner loads after the room's first doSeek, so a FOLLOW "
+            'apply=false at 0s is the Debian Check 6 miss: the room position '
+            'must still be applied once the file is open',
+      );
+      expect(peerVideo.state.status, PlaybackStatus.paused);
+      expect(
+        hostVideo.state.position,
+        _closeTo(hostStart),
+        reason: 'the host must not be dragged to the joiner\'s load-at-zero',
       );
     },
   );

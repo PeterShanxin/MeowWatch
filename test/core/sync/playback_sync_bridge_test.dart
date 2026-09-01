@@ -2867,4 +2867,47 @@ void main() {
       expect(sync.changes, isEmpty);
     });
   });
+
+  test(
+    'markSourceOpen re-applies a room seek that landed before the file opened',
+    () async {
+      // Product Check 6: the joiner connects first. The server's first State
+      // carries doSeek, the empty player cannot hold it, then _load resets to
+      // 0:00. Later heartbeats have doSeek=false, so decideFollow returns
+      // apply=false and the joiner stays at 0. Re-applying on confirm is what
+      // actually puts them on the room position.
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(minutes: 5),
+          paused: true,
+          doSeek: true,
+          setBy: 'host',
+        ),
+      );
+      await pumpEventQueue();
+      video.commands.clear();
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration.zero,
+          duration: Duration(hours: 2),
+          fileName: 'a.mkv',
+          filePath: '/videos/a.mkv',
+          opened: true,
+        ),
+      );
+      await pumpEventQueue();
+      bridge.markSourceOpen('/videos/a.mkv');
+      await pumpEventQueue();
+
+      expect(
+        video.commands,
+        contains('seek:300000ms'),
+        reason: 'opening the file must land the room position that arrived '
+            'while the player was empty — otherwise FOLLOW apply=false at 0s',
+      );
+      expect(video.state.position, const Duration(minutes: 5));
+    },
+  );
 }
