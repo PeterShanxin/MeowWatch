@@ -69,9 +69,11 @@ void main() {
           showLaunchReveal: false,
         ),
       );
-      await tester.pump();
+      await _until(
+        tester,
+        () => find.text('secret-room').evaluate().isNotEmpty,
+      );
 
-      await tester.ensureVisible(find.text('secret-room'));
       await tester.tap(find.text('secret-room'));
       await tester.pump();
 
