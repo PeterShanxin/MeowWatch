@@ -2757,4 +2757,313 @@ void main() {
           'state so the room stops chasing it',
     );
   });
+
+  group('adoptOpenSource (live Local -> Synced switch, #252)', () {
+    const open = PlaybackState(
+      status: PlaybackStatus.paused,
+      position: Duration(minutes: 5),
+      duration: Duration(hours: 2),
+      fileName: 'a.mkv',
+      filePath: '/videos/a.mkv',
+      opened: true,
+    );
+
+    test(
+      'a bridge over an already-running player publishes nothing until it '
+      'adopts the source',
+      () async {
+        video.push(open);
+        await pumpEventQueue();
+        video.push(open.copyWith(status: PlaybackStatus.playing));
+        await pumpEventQueue();
+
+        expect(
+          sync.localUpdates,
+          isEmpty,
+          reason: 'this is the #252 regression: with no confirmed source the '
+              'heartbeat reports a permanent 0:00/paused',
+        );
+        expect(sync.changes, isEmpty);
+      },
+    );
+
+    test('adopting seeds the heartbeat and asserts the position as a seek', () async {
+      video.push(open);
+      await pumpEventQueue();
+
+      bridge.adoptOpenSource('/videos/a.mkv');
+
+      expect(sync.localUpdates.last.position, const Duration(minutes: 5));
+      expect(sync.localUpdates.last.paused, isTrue);
+      expect(
+        sync.changes,
+        [true],
+        reason: 'a Syncplay room only moves on a signalled change, so the '
+            'switch must assert its position with doSeek — otherwise a peer '
+            'joining later converges to 0:00 instead of to us',
+      );
+    });
+
+    test('adopting a playing source reports it as playing', () async {
+      video.push(open.copyWith(status: PlaybackStatus.playing));
+      await pumpEventQueue();
+
+      bridge.adoptOpenSource('/videos/a.mkv');
+
+      expect(sync.localUpdates.last.paused, isFalse);
+      expect(sync.changes, [true]);
+    });
+
+    test('after adopting, local play/pause and seeks are published', () async {
+      video.push(open);
+      await pumpEventQueue();
+      bridge.adoptOpenSource('/videos/a.mkv');
+      sync.changes.clear();
+
+      video.push(open.copyWith(status: PlaybackStatus.playing));
+      await pumpEventQueue();
+      expect(sync.changes, [false], reason: 'the play flip must reach the room');
+
+      video.push(
+        open.copyWith(
+          status: PlaybackStatus.playing,
+          position: const Duration(minutes: 20),
+        ),
+      );
+      await pumpEventQueue();
+      expect(sync.changes, [false, true], reason: 'and so must the seek');
+    });
+
+    test('adopting does not seed the bookkeeping as a jump from 0:00', () async {
+      video.push(open);
+      await pumpEventQueue();
+      bridge.adoptOpenSource('/videos/a.mkv');
+      sync.changes.clear();
+
+      // A steady tick at the adopted position is ordinary playback, not a seek —
+      // proof the detector was seeded from the player, not from zero.
+      video.push(open.copyWith(position: const Duration(minutes: 5)));
+      await pumpEventQueue();
+      expect(sync.changes, isEmpty);
+    });
+
+    test('a source that is not the one open is not adopted', () async {
+      video.push(open);
+      await pumpEventQueue();
+
+      bridge.adoptOpenSource('/videos/other.mkv');
+
+      expect(sync.localUpdates, isEmpty);
+      expect(sync.changes, isEmpty);
+    });
+
+    test('an errored source is not adopted', () async {
+      video.push(open.copyWith(status: PlaybackStatus.error));
+      await pumpEventQueue();
+
+      bridge.adoptOpenSource('/videos/a.mkv');
+
+      expect(sync.localUpdates, isEmpty);
+      expect(sync.changes, isEmpty);
+    });
+  });
+
+  test(
+    'markSourceOpen re-applies a room seek that landed before the file opened',
+    () async {
+      // Product Check 6: the joiner connects first. The server's first State
+      // carries doSeek, the empty player cannot hold it, then _load resets to
+      // 0:00. Later heartbeats have doSeek=false, so decideFollow returns
+      // apply=false and the joiner stays at 0. Re-applying on confirm is what
+      // actually puts them on the room position.
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(minutes: 5),
+          paused: true,
+          doSeek: true,
+          setBy: 'host',
+        ),
+      );
+      await pumpEventQueue();
+      video.commands.clear();
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration.zero,
+          duration: Duration(hours: 2),
+          fileName: 'a.mkv',
+          filePath: '/videos/a.mkv',
+          opened: true,
+        ),
+      );
+      await pumpEventQueue();
+      bridge.markSourceOpen('/videos/a.mkv');
+      await pumpEventQueue();
+
+      expect(
+        video.commands,
+        contains('seek:300000ms'),
+        reason: 'opening the file must land the room position that arrived '
+            'while the player was empty — otherwise FOLLOW apply=false at 0s',
+      );
+      expect(video.state.position, const Duration(minutes: 5));
+    },
+  );
+
+  test(
+    'markSourceOpen applies a room position FOLLOW never applied (no doSeek)',
+    () async {
+      // Debian SOP #6: syncplay.pl's first State to the joiner has
+      // doSeek=false, both paused, local 0 / global 309. decideFollow returns
+      // apply=false, so peerState never fires and _lastPeer stays null. The
+      // client still cached the room on lastObservedRoomState; opening the
+      // file must land it, and must not publish 0:00 as a local change.
+      sync.lastObservedRoomState = const PeerPlayState(
+        position: Duration(seconds: 309),
+        paused: true,
+        doSeek: false,
+        setBy: 'host',
+      );
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration.zero,
+          duration: Duration(minutes: 25),
+          fileName: 'a.mkv',
+          filePath: '/videos/a.mkv',
+          opened: true,
+        ),
+      );
+      await pumpEventQueue();
+      video.commands.clear();
+      sync.localUpdates.clear();
+      sync.changes.clear();
+
+      bridge.markSourceOpen('/videos/a.mkv');
+      await pumpEventQueue();
+
+      expect(
+        video.commands,
+        contains('seek:309000ms'),
+        reason: 'a doSeek=false room at 309s must still land once the file opens',
+      );
+      expect(video.state.position, const Duration(seconds: 309));
+      expect(
+        sync.changes,
+        isEmpty,
+        reason: 'the joiner must not publish 0:00 and overwrite the room',
+      );
+    },
+  );
+
+  test(
+    'markSourceOpen retries the room seek once duration becomes known',
+    () async {
+      sync.lastObservedRoomState = const PeerPlayState(
+        position: Duration(seconds: 309),
+        paused: true,
+        doSeek: false,
+        setBy: 'host',
+      );
+      video.emitFromSeek = false;
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration.zero,
+          duration: Duration.zero,
+          fileName: 'a.mkv',
+          filePath: '/videos/a.mkv',
+          opened: true,
+        ),
+      );
+      await pumpEventQueue();
+      bridge.markSourceOpen('/videos/a.mkv');
+      await pumpEventQueue();
+
+      expect(video.commands, contains('seek:309000ms'));
+      expect(
+        video.state.position,
+        Duration.zero,
+        reason: 'position_guard equivalent: no duration yet, the seek cannot land',
+      );
+      expect(sync.changes, isEmpty);
+
+      video.emitFromSeek = true;
+      video.commands.clear();
+      video.push(
+        video.state.copyWith(duration: const Duration(minutes: 25)),
+      );
+      await pumpEventQueue();
+
+      expect(
+        video.commands,
+        contains('seek:309000ms'),
+        reason: 'once duration is known the rejected open seek must be retried',
+      );
+      expect(video.state.position, const Duration(seconds: 309));
+      expect(sync.changes, isEmpty);
+    },
+  );
+
+  test(
+    'markSourceOpen applies lastObservedRoomState after a stale catch-up',
+    () async {
+      // Initial catch-up emits peerState and sets _lastPeer. Heartbeats then
+      // advance lastObservedRoomState during a slow load; open must land the
+      // later room, not the join-time command, and must not publish 0:00.
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(minutes: 5),
+          paused: false,
+          doSeek: true,
+          setBy: 'host',
+        ),
+      );
+      await pumpEventQueue();
+      video.commands.clear();
+      sync.changes.clear();
+      sync.localUpdates.clear();
+
+      sync.lastObservedRoomState = const PeerPlayState(
+        position: Duration(minutes: 5, seconds: 8),
+        paused: false,
+        doSeek: false,
+        setBy: 'host',
+      );
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration.zero,
+          duration: Duration(hours: 2),
+          fileName: 'a.mkv',
+          filePath: '/videos/a.mkv',
+          opened: true,
+        ),
+      );
+      await pumpEventQueue();
+      video.commands.clear();
+
+      bridge.markSourceOpen('/videos/a.mkv');
+      await pumpEventQueue();
+
+      expect(
+        video.commands,
+        contains('seek:308000ms'),
+        reason: 'a slow load must land the room as it is now, not the first catch-up',
+      );
+      expect(
+        video.state.position,
+        const Duration(minutes: 5, seconds: 8),
+      );
+      expect(
+        sync.changes,
+        isEmpty,
+        reason: 'the joiner must not publish 0:00 and overwrite the room',
+      );
+    },
+  );
 }

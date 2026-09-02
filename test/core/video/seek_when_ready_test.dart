@@ -5,6 +5,8 @@ import 'package:meowwatch/core/video/video_core.dart';
 
 class _FakeVideoCore extends VideoCore {
   Duration? seekedTo;
+  int seekCalls = 0;
+  int dropSeekCount = 0;
 
   @override
   Future<void> load(String filePath) async {}
@@ -17,6 +19,11 @@ class _FakeVideoCore extends VideoCore {
 
   @override
   Future<void> seek(Duration position) async {
+    seekCalls++;
+    if (dropSeekCount > 0) {
+      dropSeekCount--;
+      return;
+    }
     seekedTo = position;
     emit(state.copyWith(position: position));
   }
@@ -98,11 +105,27 @@ void main() {
       source: 'a.mp4',
     );
     await Future<void>.delayed(Duration.zero);
-    video.push(const PlaybackState(
-      filePath: 'a.mp4',
-      duration: Duration(minutes: 10),
-    ));
+    video.push(
+      const PlaybackState(filePath: 'a.mp4', duration: Duration(minutes: 10)),
+    );
     await future;
     expect(video.seekedTo, const Duration(minutes: 3));
+  });
+
+  test('retries a resume seek that the paused backend does not land', () async {
+    video.push(
+      const PlaybackState(filePath: 'a.mp4', duration: Duration(minutes: 10)),
+    );
+    video.dropSeekCount = 1;
+
+    await seekWhenReady(
+      video,
+      const Duration(minutes: 3),
+      source: 'a.mp4',
+      retryDelay: const Duration(milliseconds: 1),
+    );
+
+    expect(video.seekCalls, 2);
+    expect(video.state.position, const Duration(minutes: 3));
   });
 }

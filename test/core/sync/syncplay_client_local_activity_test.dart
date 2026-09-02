@@ -89,6 +89,51 @@ void main() {
     expect(playstate['doSeek'], true);
   });
 
+  test(
+    'a live Local -> Synced adopt still asserts position on syncplay.pl\'s '
+    'first forced State',
+    () {
+      // adoptOpenSource queues the change BEFORE connect. syncplay.pl's first
+      // State after Hello is the empty-room forced update (0:00 paused, doSeek,
+      // serverIgnore, no setBy). That reply is the only chance the room moves.
+      client.updateLocalState(
+        position: const Duration(minutes: 5),
+        paused: true,
+      );
+      client.notifyLocalChange(doSeek: true);
+
+      client.debugHandleMessage(const HelloMessage(username: 'host'));
+      client.debugHandleMessage(
+        const StateMessage(
+          peer: PeerPlayState(
+            position: Duration.zero,
+            paused: true,
+            doSeek: true,
+          ),
+          serverIgnore: 1,
+        ),
+      );
+
+      final states = client.debugSentMessages
+          .where((m) => m['State'] is Map)
+          .map((m) => (m['State'] as Map)['playstate'] as Map)
+          .toList();
+      expect(states, isNotEmpty);
+      expect(
+        states.first['position'],
+        300.0,
+        reason: 'the first reply after Hello must carry the adopted position, '
+            'not the empty-room 0:00',
+      );
+      expect(states.first['paused'], isTrue);
+      expect(
+        states.first['doSeek'],
+        isTrue,
+        reason: 'a Syncplay room only moves on a signalled change',
+      );
+    },
+  );
+
   test('local backward seek is announced as seekedBack', () async {
     client.debugMarkLoggedIn('me');
     client.updateLocalState(

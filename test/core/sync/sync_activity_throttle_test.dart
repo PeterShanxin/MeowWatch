@@ -5,17 +5,20 @@ import 'package:meowwatch/core/sync/sync_activity_throttle.dart';
 
 void main() {
   SyncActivity activity(SyncActivityKind kind, int seconds) => SyncActivity(
-        kind: kind,
-        username: 'lin',
-        position: Duration(seconds: seconds),
-      );
+    kind: kind,
+    username: 'lin',
+    position: Duration(seconds: seconds),
+  );
 
   // fake_async keeps the debounce deterministic — no wall-clock timers, so the
   // suite never flakes on a slow CI runner.
-  void withThrottle(void Function(FakeAsync, SyncActivityThrottle, List<SyncActivity>) body) {
+  void withThrottle(
+    void Function(FakeAsync, SyncActivityThrottle, List<SyncActivity>) body,
+  ) {
     fakeAsync((async) {
-      final throttle =
-          SyncActivityThrottle(window: const Duration(milliseconds: 40));
+      final throttle = SyncActivityThrottle(
+        window: const Duration(milliseconds: 40),
+      );
       final out = <SyncActivity>[];
       throttle.stream.listen(out.add);
       body(async, throttle, out);
@@ -29,8 +32,10 @@ void main() {
       throttle.add(activity(SyncActivityKind.paused, 12));
       throttle.add(activity(SyncActivityKind.played, 12));
       async.flushMicrotasks();
-      expect(out.map((a) => a.kind),
-          [SyncActivityKind.paused, SyncActivityKind.played]);
+      expect(out.map((a) => a.kind), [
+        SyncActivityKind.paused,
+        SyncActivityKind.played,
+      ]);
     });
   });
 
@@ -67,8 +72,10 @@ void main() {
       throttle.add(activity(SyncActivityKind.paused, 20));
       async.flushMicrotasks();
       // Seek flushed immediately ahead of the pause, preserving order.
-      expect(out.map((a) => a.kind),
-          [SyncActivityKind.seekedForward, SyncActivityKind.paused]);
+      expect(out.map((a) => a.kind), [
+        SyncActivityKind.seekedForward,
+        SyncActivityKind.paused,
+      ]);
     });
   });
 
@@ -119,14 +126,27 @@ void main() {
     });
   });
 
-  test('drift flushes a pending seek ahead of itself, preserving order (#98)',
-      () {
+  test(
+    'drift flushes a pending seek ahead of itself, preserving order (#98)',
+    () {
+      withThrottle((async, throttle, out) {
+        throttle.add(activity(SyncActivityKind.seekedForward, 20));
+        throttle.add(activity(SyncActivityKind.driftRewound, 18));
+        async.flushMicrotasks();
+        expect(out.map((a) => a.kind), [
+          SyncActivityKind.seekedForward,
+          SyncActivityKind.driftRewound,
+        ]);
+      });
+    },
+  );
+
+  test('clearPending drops a queued seek so it cannot fire later', () {
     withThrottle((async, throttle, out) {
       throttle.add(activity(SyncActivityKind.seekedForward, 20));
-      throttle.add(activity(SyncActivityKind.driftRewound, 18));
-      async.flushMicrotasks();
-      expect(out.map((a) => a.kind),
-          [SyncActivityKind.seekedForward, SyncActivityKind.driftRewound]);
+      throttle.clearPending();
+      async.elapse(const Duration(milliseconds: 40));
+      expect(out, isEmpty);
     });
   });
 

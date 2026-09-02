@@ -63,6 +63,30 @@ void main() {
     expect(exported, isTrue);
   });
 
+  testWidgets('Local Player Mode is title + toggle only', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        SettingsPanel(
+          localPlayerMode: false,
+          onLocalPlayerModeChanged: (_) {},
+          historyMode: HistoryMode.latestPerRoom,
+          onHistoryModeChanged: (_) {},
+          primarySoundId: kDefaultPrimarySoundId,
+          onPrimarySoundChanged: (_) {},
+          secondarySoundId: kDefaultSecondarySoundId,
+          onSecondarySoundChanged: (_) {},
+          onPreviewSound: (_) {},
+          logLevel: LogLevel.verbose,
+          onLogLevelChanged: (_) {},
+          onExportLogs: () {},
+        ),
+      ),
+    );
+    expect(find.text('Local Player Mode'), findsOneWidget);
+    expect(find.byKey(const Key('local-player-mode-toggle')), findsOneWidget);
+    expect(find.text('Start watching without a room'), findsNothing);
+  });
+
   testWidgets('renders the Continue watching toggle', (tester) async {
     await tester.pumpWidget(_host(_panel()));
     expect(find.text('Continue watching'), findsOneWidget);
@@ -81,8 +105,9 @@ void main() {
     await tester.pumpWidget(
       _host(_panel(onHistoryModeChanged: (v) => picked = v)),
     );
-    await tester
-        .tap(find.byKey(Key('history-mode-${HistoryMode.everyVideo.storageName}')));
+    await tester.tap(
+      find.byKey(Key('history-mode-${HistoryMode.everyVideo.storageName}')),
+    );
     expect(picked, HistoryMode.everyVideo);
   });
 

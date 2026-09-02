@@ -33,7 +33,8 @@ mixin _HomeBody
         skipTraversal: true,
         onKeyEvent: (node, event) {
           _onUserInteraction();
-          if (event is KeyDownEvent &&
+          if (_chrome.chat &&
+              event is KeyDownEvent &&
               event.logicalKey == LogicalKeyboardKey.tab) {
             _toggleChat();
             return KeyEventResult.handled;
@@ -61,7 +62,9 @@ mixin _HomeBody
                 // closure must load exactly the link the visible notice
                 // describes, even if _joinPrompt is cleared or replaced
                 // before the tap lands (#214 review).
-                final peerOfferUrl = _joinPrompt?.url;
+                final peerOfferUrl = _chrome.peerLoadPrompt
+                    ? _joinPrompt?.url
+                    : null;
                 // True only while a video surface is actually on screen — not on
                 // the empty/load screen, and not on the load-error screen.
                 final videoVisible =
@@ -89,8 +92,11 @@ mixin _HomeBody
                         key: const ValueKey<String>('empty-state'),
                         onBrowse: _browse,
                         onLeave: () => unawaited(_leave()),
+                        leaveLabel: _isSynced ? 'Leave room' : 'Back',
                         onLoadUrl: (url) => unawaited(_load(url)),
-                        notice: _joinPrompt?.message,
+                        notice: _chrome.peerLoadPrompt
+                            ? _joinPrompt?.message
+                            : null,
                         onWatchPeerUrl: peerOfferUrl == null
                             ? null
                             : () => unawaited(_load(peerOfferUrl)),
@@ -118,7 +124,7 @@ mixin _HomeBody
                         isUiIdle: _isUiIdle,
                         onUserInteraction: _onUserInteraction,
                       ),
-                    if (videoVisible)
+                    if (videoVisible && _chrome.reactions)
                       Positioned.fill(
                         key: const ValueKey<String>('reactions-overlay'),
                         child: FloatingReactionsOverlay(
@@ -133,77 +139,81 @@ mixin _HomeBody
                     Align(
                       key: const ValueKey<String>('sync-hint'),
                       alignment: const Alignment(0, -0.8),
-                      // Transient notices (join/leave, throttled sync actions)
-                      // are the banner's hottest source; they flow through
-                      // their own notifier so a scrub burst dirties only this
-                      // subtree (#196). A live notice wins over the derived
-                      // banner; _leavingRoom (via _banner's guard) silences
-                      // both.
-                      // An in-flight page-URL resolve ("Finding the video…")
-                      // outranks presence notices: it is the only feedback the
-                      // user has that their paste is being worked on.
+                      // Transient notices (join/leave, throttled sync actions,
+                      // and media/load failures) flow through their own
+                      // notifier so a scrub burst dirties only this subtree
+                      // (#196). Resolve progress outranks them; derived sync
+                      // banners (waiting / connecting) only mount in synced
+                      // sessions. Local still shows media-side notices — a
+                      // bad paste during playback has no other failure
+                      // surface (#254).
                       child: ValueListenableBuilder<String?>(
                         valueListenable: _resolveNotice,
                         builder: (context, resolving, _) =>
                             ValueListenableBuilder<String?>(
                               valueListenable: _presenceNotice,
                               builder: (context, notice, _) => SyncHintBanner(
-                                text: _leavingRoom
-                                    ? _banner
-                                    : resolving ?? notice ?? _banner,
+                                text: selectSessionBanner(
+                                  leavingRoom: _leavingRoom,
+                                  resolving: resolving,
+                                  notice: notice,
+                                  derivedSync: _banner,
+                                  syncBanners: _chrome.syncBanners,
+                                ),
                               ),
                             ),
                       ),
                     ),
-                    ChatOverlayRegion(
-                      key: const ValueKey<String>('chat-overlay'),
-                      messages: _messages,
-                      typingLabel: _typingLabel,
-                      pulsing: _peekPulsing,
-                      hasUnread: _chatHasUnread,
-                      layout: _chatLayout,
-                      isUiIdle: _isUiIdle,
-                      isUiDeepIdle: _isUiDeepIdle,
-                      autoDim: _chatAutoDim,
-                      wakeOnMessage: _chatWakeOnMessage,
-                      idleDimOpacity: _chatIdleDim,
-                      onSend: _chat.send,
-                      onTypingChanged: (t) => _chat.sendTyping(isTyping: t),
-                      onToggleCollapsed: _toggleChat,
-                      onSnap: (result) {
-                        setState(
-                          () => _chatLayout = _chatLayout.applySnap(result),
-                        );
-                        if (_chatLayout.collapsed) _restorePlayerFocus();
-                        // Persist the docked corner like the size, so the
-                        // card comes back where it was left. A collapse
-                        // keeps .corner unchanged, so it is always the
-                        // docked corner.
-                        widget.settings.set(
-                          kChatCardCornerSettingKey,
-                          formatCardCorner(_chatLayout.corner),
-                        );
-                      },
-                      onDraggingChanged: (d) =>
-                          setState(() => _chatDragging = d),
-                      onUnreadChanged: (has) => _chatHasUnread.value = has,
-                      onResize: (size) {
-                        setState(
-                          () => _chatLayout = _chatLayout.applyResize(size),
-                        );
-                        widget.settings.set(
-                          kChatCardSizeSettingKey,
-                          formatCardSize(
-                            _chatLayout.widthPx!,
-                            _chatLayout.heightPx!,
-                          ),
-                        );
-                      },
-                      onResetSize: () {
-                        setState(() => _chatLayout = _chatLayout.resetSize());
-                        widget.settings.set(kChatCardSizeSettingKey, '');
-                      },
-                    ),
+                    if (_chrome.chat)
+                      ChatOverlayRegion(
+                        key: const ValueKey<String>('chat-overlay'),
+                        messages: _messages,
+                        typingLabel: _typingLabel,
+                        pulsing: _peekPulsing,
+                        hasUnread: _chatHasUnread,
+                        layout: _chatLayout,
+                        isUiIdle: _isUiIdle,
+                        isUiDeepIdle: _isUiDeepIdle,
+                        autoDim: _chatAutoDim,
+                        wakeOnMessage: _chatWakeOnMessage,
+                        idleDimOpacity: _chatIdleDim,
+                        onSend: _chat!.send,
+                        onTypingChanged: (t) => _chat!.sendTyping(isTyping: t),
+                        onToggleCollapsed: _toggleChat,
+                        onSnap: (result) {
+                          setState(
+                            () => _chatLayout = _chatLayout.applySnap(result),
+                          );
+                          if (_chatLayout.collapsed) _restorePlayerFocus();
+                          // Persist the docked corner like the size, so the
+                          // card comes back where it was left. A collapse
+                          // keeps .corner unchanged, so it is always the
+                          // docked corner.
+                          widget.settings.set(
+                            kChatCardCornerSettingKey,
+                            formatCardCorner(_chatLayout.corner),
+                          );
+                        },
+                        onDraggingChanged: (d) =>
+                            setState(() => _chatDragging = d),
+                        onUnreadChanged: (has) => _chatHasUnread.value = has,
+                        onResize: (size) {
+                          setState(
+                            () => _chatLayout = _chatLayout.applyResize(size),
+                          );
+                          widget.settings.set(
+                            kChatCardSizeSettingKey,
+                            formatCardSize(
+                              _chatLayout.widthPx!,
+                              _chatLayout.heightPx!,
+                            ),
+                          );
+                        },
+                        onResetSize: () {
+                          setState(() => _chatLayout = _chatLayout.resetSize());
+                          widget.settings.set(kChatCardSizeSettingKey, '');
+                        },
+                      ),
                     Positioned(
                       key: const ValueKey<String>('player-menu'),
                       top: 12,
@@ -216,6 +226,11 @@ mixin _HomeBody
                         child: IgnorePointer(
                           ignoring: _chatDragging || _isUiIdle,
                           child: PlayerMenuButton(
+                            sessionMode: _session.mode,
+                            localPlayerMode: _isLocal,
+                            onLocalPlayerModeChanged: (enabled) {
+                              unawaited(_setEffectiveLocalMode(enabled));
+                            },
                             historyMode: _historyMode,
                             onHistoryModeChanged: (mode) {
                               appLog(
@@ -301,7 +316,7 @@ mixin _HomeBody
                         ),
                       ),
                     ),
-                    if (videoVisible)
+                    if (videoVisible && _chrome.reactionBar)
                       Positioned(
                         key: const ValueKey<String>('reaction-bar'),
                         right: 16,
@@ -311,12 +326,12 @@ mixin _HomeBody
                           duration: Motion.base,
                           child: IgnorePointer(
                             ignoring: _isUiIdle,
-                            child: ReactionBar(onReact: _chat.sendReaction),
+                            child: ReactionBar(onReact: _chat!.sendReaction),
                           ),
                         ),
                       ),
                     // Load-screen "Press Tab" hint — a self-fading bottom toast.
-                    if (_chatHintToken != null)
+                    if (_chrome.chatTabHint && _chatHintToken != null)
                       Align(
                         key: const ValueKey<String>('chat-tab-hint'),
                         alignment: const Alignment(0, 0.92),

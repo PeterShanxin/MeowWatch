@@ -13,6 +13,7 @@ import 'sync_activity.dart';
 import 'sync_core.dart';
 import 'sync_follow.dart';
 import 'sync_messages.dart';
+import 'syncplay_constants.dart';
 
 /// Upgrades a connected plaintext [Socket] to TLS for [host]. Injectable only
 /// so tests can reach the post-handshake branch; see [SyncplayClient].
@@ -157,6 +158,11 @@ class SyncplayClient extends SyncCore {
   int _serverIgnore = 0;
   bool _pendingStateChange = false;
   bool _pendingDoSeek = false;
+
+  /// False until we have applied a named-setter room state (or caught up to
+  /// one). syncplay.pl does not set `doSeek` on a joiner's first State, so
+  /// [decideFollow] would otherwise leave us at 0 forever.
+  bool _initialCatchUpDone = false;
 
   // The most recent server latencyCalculation we must echo back.
   double? _serverLatencyCalculation;
@@ -724,14 +730,7 @@ class SyncplayClient extends SyncCore {
     // stale global state the server is still echoing).
     final ignoringOwnChange =
         _pendingStateChange || (_clientIgnore != 0 && _serverIgnore == 0);
-    if (msg.peer != null && !ignoringOwnChange) {
-      // Feed the stall detector the peer's RAW state (the forward-delay offset
-      // below is constant, so it would only add noise to advancement tracking).
-      _peerStall.update(
-        position: msg.peer!.position,
-        paused: msg.peer!.paused,
-        doSeek: msg.peer!.doSeek,
-      );
+    if (msg.peer != null) {
       // Advance position by the one-way delay if the room is playing.
       final global = msg.peer!.paused
           ? msg.peer!
@@ -743,46 +742,76 @@ class SyncplayClient extends SyncCore {
               doSeek: msg.peer!.doSeek,
               setBy: msg.peer!.setBy,
             );
-      final action = decideFollow(
-        global: global,
-        localPaused: _localPaused,
-        localPosition: _localPosition,
-        username: _username,
-        peerStalled: _peerStall.stalled,
-      );
-      if (_shouldFormatLog(verboseOnly: !action.shouldApply)) {
-        onLog?.call(
-          'FOLLOW global(pos=${global.positionSeconds}s paused=${global.paused} '
-          'doSeek=${global.doSeek} setBy=${global.setBy}) '
-          'local(pos=${_localPosition.inMilliseconds / 1000}s paused=$_localPaused) '
-          'stalled=${_peerStall.stalled} => apply=${action.shouldApply}',
+      // Remember even when we do not apply: markSourceOpen needs the room
+      // position after a load that FOLLOW left at 0 (Check 6 / Debian SOP #6).
+      if (global.setBy != null) lastObservedRoomState = global;
+      if (!ignoringOwnChange) {
+        // Feed the stall detector the peer's RAW state (the forward-delay offset
+        // above is constant, so it would only add noise to advancement tracking).
+        _peerStall.update(
+          position: msg.peer!.position,
+          paused: msg.peer!.paused,
+          doSeek: msg.peer!.doSeek,
         );
-      }
-      if (action.shouldApply) {
-        // Surface this as a notification BEFORE we overwrite our local snapshot
-        // below — the classifier compares the peer's target to where we were.
-        final activity = classifySyncActivity(
+        var action = decideFollow(
           global: global,
           localPaused: _localPaused,
           localPosition: _localPosition,
+          username: _username,
+          peerStalled: _peerStall.stalled,
         );
-        if (activity != null) emitActivity(activity);
+        // Official Syncplay initialises the player from the first named-setter
+        // global even when that State has doSeek=false. Without this, a joiner
+        // who is merely *behind* the room (the product connect-then-load path)
+        // logs FOLLOW apply=false forever and never emits peerState.
+        if (!action.shouldApply &&
+            !_initialCatchUpDone &&
+            global.setBy != null &&
+            global.setBy != _username) {
+          final behindBy = global.position - _localPosition;
+          if (global.paused != _localPaused ||
+              behindBy > SyncplayConstants.rewindThreshold) {
+            action = FollowAction.apply(
+              position: global.position,
+              paused: global.paused,
+            );
+          }
+        }
+        if (_shouldFormatLog(verboseOnly: !action.shouldApply)) {
+          onLog?.call(
+            'FOLLOW global(pos=${global.positionSeconds}s paused=${global.paused} '
+            'doSeek=${global.doSeek} setBy=${global.setBy}) '
+            'local(pos=${_localPosition.inMilliseconds / 1000}s paused=$_localPaused) '
+            'stalled=${_peerStall.stalled} => apply=${action.shouldApply}',
+          );
+        }
+        if (action.shouldApply) {
+          _initialCatchUpDone = true;
+          // Surface this as a notification BEFORE we overwrite our local snapshot
+          // below — the classifier compares the peer's target to where we were.
+          final activity = classifySyncActivity(
+            global: global,
+            localPaused: _localPaused,
+            localPosition: _localPosition,
+          );
+          if (activity != null) emitActivity(activity);
 
-        // Adopt the applied state into our local cache immediately. The video
-        // applies it asynchronously, so without this the very next heartbeat
-        // would report the STALE pre-apply state (e.g. pos=0 paused=true) and
-        // the server would treat that as a brand-new change — the root of the
-        // ping-pong fight.
-        _localPosition = action.position;
-        _localPaused = action.paused;
-        emitPeerState(
-          PeerPlayState(
-            position: action.position,
-            paused: action.paused,
-            doSeek: global.doSeek,
-            setBy: global.setBy,
-          ),
-        );
+          // Adopt the applied state into our local cache immediately. The video
+          // applies it asynchronously, so without this the very next heartbeat
+          // would report the STALE pre-apply state (e.g. pos=0 paused=true) and
+          // the server would treat that as a brand-new change — the root of the
+          // ping-pong fight.
+          _localPosition = action.position;
+          _localPaused = action.paused;
+          emitPeerState(
+            PeerPlayState(
+              position: action.position,
+              paused: action.paused,
+              doSeek: global.doSeek,
+              setBy: global.setBy,
+            ),
+          );
+        }
       }
     }
 
@@ -843,7 +872,18 @@ class SyncplayClient extends SyncCore {
     if (_shouldFormatLog(verboseOnly: true)) {
       onLog?.call('>> ${redactSecretsForLog(message)}');
     }
-    socket.add(utf8.encode('$line\r\n'));
+    try {
+      socket.add(utf8.encode('$line\r\n'));
+    } on Object catch (e) {
+      // A socket write can legitimately fail while the link is going away: a
+      // deliberate leave flushes the socket, and dart:io marks the sink "bound
+      // to a stream" for the duration of that flush, so an inbound State landing
+      // in the same window would otherwise throw a StateError straight out of
+      // the socket's data handler and abort the message pump. A half-open link
+      // behaves the same way. Never silent — the watchdog owns recovery, this
+      // only records that the byte never left.
+      onLog?.call('send failed (link closing): $e');
+    }
   }
 
   /// Most-recent outbound messages kept in [debugSentMessages]; older entries

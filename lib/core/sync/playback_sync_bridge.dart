@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../debug/app_log.dart';
 import '../video/playback_state.dart';
+import '../video/source_announce.dart';
 import '../video/video_core.dart';
 import 'peer_state.dart';
 import 'sync_core.dart';
@@ -67,6 +68,20 @@ class PlaybackSyncBridge {
   StreamSubscription<PlaybackState>? _videoSub;
   StreamSubscription<PeerPlayState>? _peerSub;
   StreamSubscription<PlaybackState>? _resumeSeekSub;
+  /// Last room state the bridge was told to apply. Used to know whether that
+  /// open-seek has landed. [markSourceOpen] itself reads
+  /// [SyncCore.lastObservedRoomState]: a slow load leaves [_lastPeer] on the
+  /// first catch-up while heartbeats keep advancing the room.
+  PeerPlayState? _lastPeer;
+  /// True while [markSourceOpen] has asked the player to land on the room
+  /// snapshot from open time and that seek has not yet stuck.
+  /// Outbound publishes stay suppressed so a joiner at 0:00 cannot overwrite
+  /// the room.
+  bool _awaitingOpenSeek = false;
+  /// One retry is reserved for the case where the first open seek ran before
+  /// the player reported a duration: media_kit's position guard drops non-zero
+  /// ticks until duration is known, so the playhead would otherwise stay at 0.
+  bool _openSeekNeedsDuration = false;
   Timer? _resumeSeekTimer;
   Timer? _advanceWatchTimer;
   final List<PeerPlayState> _queuedPeerStates = [];
@@ -138,7 +153,52 @@ class PlaybackSyncBridge {
     _peerSub = sync.peerState.listen(_queuePeerState);
   }
 
+  /// Adopt a source that was already open *before this bridge existed*.
+  ///
+  /// The live Local -> Synced switch (#252) builds the Syncplay trio around a
+  /// player that is already running, so [markSourceOpen] — the only other way a
+  /// source is ever confirmed — fired long ago, against a bridge that no longer
+  /// exists. Without this the fresh bridge sits at `_confirmedOpenSource == null`
+  /// and suppresses every outbound publish: the new client heartbeats a permanent
+  /// `0:00 / paused` and none of our play/pause/seek is ever announced. The room
+  /// can still drive us (the peer-state path never consults the marker), so the
+  /// session ends up drivable but not driving — the exact asymmetry reported in
+  /// #252.
+  ///
+  /// Adoption also does one thing a plain [markSourceOpen] cannot: it publishes
+  /// the current position as an explicit local change (`doSeek`). A Syncplay
+  /// room's authoritative playstate only moves when a client *signals* a change,
+  /// so without the assert the room would sit at 0:00 with no setter and a peer
+  /// joining later would converge to 0:00 rather than to us. That is the same
+  /// state a synced-from-the-start session publishes when its Continue-Watching
+  /// resume seek lands before the room is joined — precisely the equivalence the
+  /// switch is supposed to deliver.
+  void adoptOpenSource(String source) {
+    final s = video.state;
+    // Reuse the connect-time announce gate: adopt only a source that is still
+    // the one the load coordinator accepted and has not since errored.
+    if (!canAnnounceOnConnect(
+      currentPath: s.filePath,
+      acceptedPath: source,
+      status: s.status,
+    )) {
+      return;
+    }
+    final paused = s.status != PlaybackStatus.playing;
+    _confirmedOpenSource = source;
+    // Seed the seek-detection bookkeeping from where the player already is, so
+    // the next tick reads as ordinary playback rather than a jump from 0:00.
+    _lastFilePath = s.filePath;
+    _lastPaused = paused;
+    _lastPosition = s.position;
+    _lastTick = DateTime.now();
+    _preOpenPlayRemote = false;
+    sync.updateLocalState(position: s.position, paused: paused);
+    sync.notifyLocalChange(doSeek: true);
+  }
+
   void _queuePeerState(PeerPlayState peer) {
+    _lastPeer = peer;
     if (_drainingPeerStates) {
       _queuedPeerStates.add(peer);
       return;
@@ -186,12 +246,25 @@ class PlaybackSyncBridge {
 
   /// Called by the load coordinator once [awaitOpenResult] has accepted [source]
   /// (including a paused live/direct stream that will never report a duration).
-  /// From now on that source's ticks drive the heartbeat. We immediately re-run
-  /// the current state through the gate: an accepted durationless stream may not
-  /// emit another tick until the user plays, so without this the heartbeat would
-  /// keep broadcasting the *previous* file's cached state until then.
+  /// From now on that source's ticks drive the heartbeat. If the room already
+  /// sent a playstate (the joiner connected before this load), re-apply it so
+  /// the file opens at the room position rather than 0:00. Otherwise replay the
+  /// current local state: an accepted durationless stream may not emit another
+  /// tick until the user plays, so without this the heartbeat would keep
+  /// broadcasting the *previous* file's cached state until then.
   void markSourceOpen(String source) {
     _confirmedOpenSource = source;
+    final pending = _roomToApply();
+    if (pending != null && _roomDiffersFromLocal(pending, video.state)) {
+      // The room already told us where to be — usually while this source was
+      // still loading, and often via heartbeats with doSeek=false that
+      // decideFollow never applied. Later heartbeats will not catch us up, so
+      // without this re-apply a joiner that loads after connect stays at 0:00
+      // (Check 6). Skip the local replay: publishing 0:00/paused here would
+      // pause the room and stamp the joiner as setBy.
+      _applyRoomOnOpen(pending);
+      return;
+    }
     _onLocalState(video.state);
     // If the user pressed play while this source was still unconfirmed, that
     // play tick was suppressed (not published, no change emitted) and the replay
@@ -209,13 +282,49 @@ class PlaybackSyncBridge {
     }
   }
 
+  PeerPlayState? _roomToApply() {
+    final observed = sync.lastObservedRoomState;
+    if (observed != null && observed.setBy != null) return observed;
+    final pending = _lastPeer;
+    if (pending == null || pending.setBy == null) return null;
+    return pending;
+  }
+
+  bool _roomDiffersFromLocal(PeerPlayState room, PlaybackState s) {
+    final paused = s.status != PlaybackStatus.playing;
+    if (room.paused != paused) return true;
+    return (room.position - s.position).abs() > remoteSeekThreshold;
+  }
+
+  void _applyRoomOnOpen(PeerPlayState pending) {
+    _awaitingOpenSeek = true;
+    _openSeekNeedsDuration =
+        pending.position > Duration.zero && video.state.duration <= Duration.zero;
+    appLog(
+      'sync bridge: apply room pos=${pending.positionSeconds}s '
+      'setBy=${pending.setBy} on source open',
+    );
+    _queuePeerState(
+      PeerPlayState(
+        position: pending.position,
+        paused: pending.paused,
+        doSeek: true,
+        setBy: pending.setBy,
+      ),
+    );
+  }
+
   void _onLocalState(PlaybackState s) {
     final paused = s.status != PlaybackStatus.playing;
     final now = DateTime.now();
 
     // A reload re-enters `loading`; require the coordinator to re-confirm before
     // the source's ticks rejoin the heartbeat.
-    if (s.status == PlaybackStatus.loading) _confirmedOpenSource = null;
+    if (s.status == PlaybackStatus.loading) {
+      _confirmedOpenSource = null;
+      _awaitingOpenSeek = false;
+      _openSeekNeedsDuration = false;
+    }
 
     // A source feeds the heartbeat only once the load coordinator has accepted
     // *this exact* source ([markSourceOpen] → [_confirmedOpenSource]). We do NOT
@@ -232,6 +341,41 @@ class PlaybackSyncBridge {
     final confirmed = source != null && source == _confirmedOpenSource;
     final settlingRemote = _isSettlingRemoteState(s, now);
     final lateRemoteFallout = _isLateRemoteFallout(s, now);
+
+    if (_awaitingOpenSeek && confirmed) {
+      final applied = _lastPeer;
+      if (applied == null || !_roomDiffersFromLocal(applied, s)) {
+        _awaitingOpenSeek = false;
+        _openSeekNeedsDuration = false;
+        // Landed: feed the heartbeat the room position, but do not advertise a
+        // local change — that would stamp the joiner as setBy at 0:00 or at
+        // the catch-up frame.
+        sync.updateLocalState(position: s.position, paused: paused);
+        _lastFilePath = s.filePath;
+        _lastPaused = paused;
+        _lastPosition = s.position;
+        _lastTick = now;
+        return;
+      }
+      if (_openSeekNeedsDuration && s.duration > Duration.zero) {
+        _openSeekNeedsDuration = false;
+        final room = _roomToApply();
+        if (room != null) _applyRoomOnOpen(room);
+      } else if (s.duration <= Duration.zero &&
+          s.opened &&
+          !_openSeekNeedsDuration) {
+        // Durationless live/direct: the room position cannot land. Stop
+        // waiting so we do not mute the heartbeat forever.
+        _awaitingOpenSeek = false;
+      }
+      if (_awaitingOpenSeek) {
+        _lastFilePath = s.filePath;
+        _lastPaused = paused;
+        _lastPosition = s.position;
+        _lastTick = now;
+        return;
+      }
+    }
 
     if (!confirmed ||
         s.status == PlaybackStatus.loading ||

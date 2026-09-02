@@ -48,11 +48,12 @@ String formatFileSize(int bytes) {
   return '${(bytes / unit).toStringAsFixed(0)} KB';
 }
 
-/// Second card line: where it was watched — `in <room> as <name>`. Null when
-/// no room was recorded (pre-schema or watched solo).
+/// Second card line: where it was watched. Rows with a retained room identity
+/// say `in <room>` or `in <room> as <name>`; legacy roomless Local rows say
+/// `Local`.
 String? historyRoomLine(HistoryEntry e) {
   final room = e.room;
-  if (room == null || room.isEmpty) return null;
+  if (room == null || room.isEmpty) return 'Local';
   final name = e.username;
   if (name == null || name.isEmpty) return 'in $room';
   return 'in $room as $name';

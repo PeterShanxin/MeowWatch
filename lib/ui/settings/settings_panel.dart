@@ -29,8 +29,15 @@ class SettingsPanel extends StatelessWidget {
     required this.logLevel,
     required this.onLogLevelChanged,
     required this.onExportLogs,
+    this.localPlayerMode,
+    this.onLocalPlayerModeChanged,
     super.key,
   });
+
+  /// When both are set, Settings shows the Local Player Mode toggle. Lobby and
+  /// player hosts both persist changes; the player also switches live.
+  final bool? localPlayerMode;
+  final ValueChanged<bool>? onLocalPlayerModeChanged;
 
   final HistoryMode historyMode;
   final ValueChanged<HistoryMode> onHistoryModeChanged;
@@ -50,10 +57,14 @@ class SettingsPanel extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        HistoryModeControl(
-          value: historyMode,
-          onChanged: onHistoryModeChanged,
-        ),
+        if (localPlayerMode != null && onLocalPlayerModeChanged != null) ...[
+          LocalPlayerModeControl(
+            value: localPlayerMode!,
+            onChanged: onLocalPlayerModeChanged!,
+          ),
+          Divider(color: m.border, height: Spacing.lg),
+        ],
+        HistoryModeControl(value: historyMode, onChanged: onHistoryModeChanged),
         Divider(color: m.border, height: Spacing.lg),
         SoundPickerRow(
           key: const Key('primary-sound-picker'),
@@ -166,6 +177,46 @@ class SoundPickerRow extends StatelessWidget {
               color: m.accent,
             ),
             onPressed: () => onPreview(current.asset),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Local Player Mode switch. Public so it can be unit-tested directly.
+class LocalPlayerModeControl extends StatelessWidget {
+  const LocalPlayerModeControl({
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = context.meow;
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.sm,
+        vertical: Spacing.sm,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Local Player Mode',
+              style: TextStyle(color: m.textDim, fontSize: TypeScale.body),
+            ),
+          ),
+          Switch(
+            key: const Key('local-player-mode-toggle'),
+            value: value,
+            onChanged: onChanged,
+            activeTrackColor: m.accent.withValues(alpha: 0.5),
+            activeThumbColor: m.accent,
           ),
         ],
       ),

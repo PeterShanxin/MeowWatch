@@ -586,7 +586,6 @@ class $HistoryEntriesTable extends HistoryEntries
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
   );
   static const VerificationMeta _fileNameMeta = const VerificationMeta(
     'fileName',
@@ -645,6 +644,17 @@ class $HistoryEntriesTable extends HistoryEntries
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _contextKeyMeta = const VerificationMeta(
+    'contextKey',
+  );
+  @override
+  late final GeneratedColumn<String> contextKey = GeneratedColumn<String>(
+    'context_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _roomMeta = const VerificationMeta('room');
   @override
   late final GeneratedColumn<String> room = GeneratedColumn<String>(
@@ -692,6 +702,7 @@ class $HistoryEntriesTable extends HistoryEntries
     durationMs,
     lastPositionMs,
     playedAt,
+    contextKey,
     room,
     username,
     server,
@@ -760,6 +771,14 @@ class $HistoryEntriesTable extends HistoryEntries
     } else if (isInserting) {
       context.missing(_playedAtMeta);
     }
+    if (data.containsKey('context_key')) {
+      context.handle(
+        _contextKeyMeta,
+        contextKey.isAcceptableOrUnknown(data['context_key']!, _contextKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_contextKeyMeta);
+    }
     if (data.containsKey('room')) {
       context.handle(
         _roomMeta,
@@ -789,6 +808,10 @@ class $HistoryEntriesTable extends HistoryEntries
 
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {filePath, contextKey},
+  ];
   @override
   HistoryRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
@@ -820,6 +843,10 @@ class $HistoryEntriesTable extends HistoryEntries
       playedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}played_at'],
+      )!,
+      contextKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}context_key'],
       )!,
       room: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -854,6 +881,10 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
   final int? durationMs;
   final int lastPositionMs;
   final DateTime playedAt;
+
+  /// Legacy roomless `local`, or stable `synced|server|port|room` regardless of
+  /// the effective session mode. Unique with [filePath].
+  final String contextKey;
   final String? room;
   final String? username;
   final String? server;
@@ -866,6 +897,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     this.durationMs,
     required this.lastPositionMs,
     required this.playedAt,
+    required this.contextKey,
     this.room,
     this.username,
     this.server,
@@ -883,6 +915,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     }
     map['last_position_ms'] = Variable<int>(lastPositionMs);
     map['played_at'] = Variable<DateTime>(playedAt);
+    map['context_key'] = Variable<String>(contextKey);
     if (!nullToAbsent || room != null) {
       map['room'] = Variable<String>(room);
     }
@@ -909,6 +942,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           : Value(durationMs),
       lastPositionMs: Value(lastPositionMs),
       playedAt: Value(playedAt),
+      contextKey: Value(contextKey),
       room: room == null && nullToAbsent ? const Value.absent() : Value(room),
       username: username == null && nullToAbsent
           ? const Value.absent()
@@ -933,6 +967,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
       durationMs: serializer.fromJson<int?>(json['durationMs']),
       lastPositionMs: serializer.fromJson<int>(json['lastPositionMs']),
       playedAt: serializer.fromJson<DateTime>(json['playedAt']),
+      contextKey: serializer.fromJson<String>(json['contextKey']),
       room: serializer.fromJson<String?>(json['room']),
       username: serializer.fromJson<String?>(json['username']),
       server: serializer.fromJson<String?>(json['server']),
@@ -950,6 +985,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
       'durationMs': serializer.toJson<int?>(durationMs),
       'lastPositionMs': serializer.toJson<int>(lastPositionMs),
       'playedAt': serializer.toJson<DateTime>(playedAt),
+      'contextKey': serializer.toJson<String>(contextKey),
       'room': serializer.toJson<String?>(room),
       'username': serializer.toJson<String?>(username),
       'server': serializer.toJson<String?>(server),
@@ -965,6 +1001,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     Value<int?> durationMs = const Value.absent(),
     int? lastPositionMs,
     DateTime? playedAt,
+    String? contextKey,
     Value<String?> room = const Value.absent(),
     Value<String?> username = const Value.absent(),
     Value<String?> server = const Value.absent(),
@@ -977,6 +1014,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     durationMs: durationMs.present ? durationMs.value : this.durationMs,
     lastPositionMs: lastPositionMs ?? this.lastPositionMs,
     playedAt: playedAt ?? this.playedAt,
+    contextKey: contextKey ?? this.contextKey,
     room: room.present ? room.value : this.room,
     username: username.present ? username.value : this.username,
     server: server.present ? server.value : this.server,
@@ -997,6 +1035,9 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           ? data.lastPositionMs.value
           : this.lastPositionMs,
       playedAt: data.playedAt.present ? data.playedAt.value : this.playedAt,
+      contextKey: data.contextKey.present
+          ? data.contextKey.value
+          : this.contextKey,
       room: data.room.present ? data.room.value : this.room,
       username: data.username.present ? data.username.value : this.username,
       server: data.server.present ? data.server.value : this.server,
@@ -1014,6 +1055,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           ..write('durationMs: $durationMs, ')
           ..write('lastPositionMs: $lastPositionMs, ')
           ..write('playedAt: $playedAt, ')
+          ..write('contextKey: $contextKey, ')
           ..write('room: $room, ')
           ..write('username: $username, ')
           ..write('server: $server, ')
@@ -1031,6 +1073,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     durationMs,
     lastPositionMs,
     playedAt,
+    contextKey,
     room,
     username,
     server,
@@ -1047,6 +1090,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           other.durationMs == this.durationMs &&
           other.lastPositionMs == this.lastPositionMs &&
           other.playedAt == this.playedAt &&
+          other.contextKey == this.contextKey &&
           other.room == this.room &&
           other.username == this.username &&
           other.server == this.server &&
@@ -1061,6 +1105,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
   final Value<int?> durationMs;
   final Value<int> lastPositionMs;
   final Value<DateTime> playedAt;
+  final Value<String> contextKey;
   final Value<String?> room;
   final Value<String?> username;
   final Value<String?> server;
@@ -1073,6 +1118,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     this.durationMs = const Value.absent(),
     this.lastPositionMs = const Value.absent(),
     this.playedAt = const Value.absent(),
+    this.contextKey = const Value.absent(),
     this.room = const Value.absent(),
     this.username = const Value.absent(),
     this.server = const Value.absent(),
@@ -1086,13 +1132,15 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     this.durationMs = const Value.absent(),
     this.lastPositionMs = const Value.absent(),
     required DateTime playedAt,
+    required String contextKey,
     this.room = const Value.absent(),
     this.username = const Value.absent(),
     this.server = const Value.absent(),
     this.port = const Value.absent(),
   }) : filePath = Value(filePath),
        fileName = Value(fileName),
-       playedAt = Value(playedAt);
+       playedAt = Value(playedAt),
+       contextKey = Value(contextKey);
   static Insertable<HistoryRow> custom({
     Expression<int>? id,
     Expression<String>? filePath,
@@ -1101,6 +1149,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     Expression<int>? durationMs,
     Expression<int>? lastPositionMs,
     Expression<DateTime>? playedAt,
+    Expression<String>? contextKey,
     Expression<String>? room,
     Expression<String>? username,
     Expression<String>? server,
@@ -1114,6 +1163,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
       if (durationMs != null) 'duration_ms': durationMs,
       if (lastPositionMs != null) 'last_position_ms': lastPositionMs,
       if (playedAt != null) 'played_at': playedAt,
+      if (contextKey != null) 'context_key': contextKey,
       if (room != null) 'room': room,
       if (username != null) 'username': username,
       if (server != null) 'server': server,
@@ -1129,6 +1179,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     Value<int?>? durationMs,
     Value<int>? lastPositionMs,
     Value<DateTime>? playedAt,
+    Value<String>? contextKey,
     Value<String?>? room,
     Value<String?>? username,
     Value<String?>? server,
@@ -1142,6 +1193,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
       durationMs: durationMs ?? this.durationMs,
       lastPositionMs: lastPositionMs ?? this.lastPositionMs,
       playedAt: playedAt ?? this.playedAt,
+      contextKey: contextKey ?? this.contextKey,
       room: room ?? this.room,
       username: username ?? this.username,
       server: server ?? this.server,
@@ -1173,6 +1225,9 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     if (playedAt.present) {
       map['played_at'] = Variable<DateTime>(playedAt.value);
     }
+    if (contextKey.present) {
+      map['context_key'] = Variable<String>(contextKey.value);
+    }
     if (room.present) {
       map['room'] = Variable<String>(room.value);
     }
@@ -1198,6 +1253,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
           ..write('durationMs: $durationMs, ')
           ..write('lastPositionMs: $lastPositionMs, ')
           ..write('playedAt: $playedAt, ')
+          ..write('contextKey: $contextKey, ')
           ..write('room: $room, ')
           ..write('username: $username, ')
           ..write('server: $server, ')
@@ -1710,6 +1766,7 @@ typedef $$HistoryEntriesTableCreateCompanionBuilder =
       Value<int?> durationMs,
       Value<int> lastPositionMs,
       required DateTime playedAt,
+      required String contextKey,
       Value<String?> room,
       Value<String?> username,
       Value<String?> server,
@@ -1724,6 +1781,7 @@ typedef $$HistoryEntriesTableUpdateCompanionBuilder =
       Value<int?> durationMs,
       Value<int> lastPositionMs,
       Value<DateTime> playedAt,
+      Value<String> contextKey,
       Value<String?> room,
       Value<String?> username,
       Value<String?> server,
@@ -1771,6 +1829,11 @@ class $$HistoryEntriesTableFilterComposer
 
   ColumnFilters<DateTime> get playedAt => $composableBuilder(
     column: $table.playedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contextKey => $composableBuilder(
+    column: $table.contextKey,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1839,6 +1902,11 @@ class $$HistoryEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get contextKey => $composableBuilder(
+    column: $table.contextKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get room => $composableBuilder(
     column: $table.room,
     builder: (column) => ColumnOrderings(column),
@@ -1896,6 +1964,11 @@ class $$HistoryEntriesTableAnnotationComposer
   GeneratedColumn<DateTime> get playedAt =>
       $composableBuilder(column: $table.playedAt, builder: (column) => column);
 
+  GeneratedColumn<String> get contextKey => $composableBuilder(
+    column: $table.contextKey,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get room =>
       $composableBuilder(column: $table.room, builder: (column) => column);
 
@@ -1949,6 +2022,7 @@ class $$HistoryEntriesTableTableManager
                 Value<int?> durationMs = const Value.absent(),
                 Value<int> lastPositionMs = const Value.absent(),
                 Value<DateTime> playedAt = const Value.absent(),
+                Value<String> contextKey = const Value.absent(),
                 Value<String?> room = const Value.absent(),
                 Value<String?> username = const Value.absent(),
                 Value<String?> server = const Value.absent(),
@@ -1961,6 +2035,7 @@ class $$HistoryEntriesTableTableManager
                 durationMs: durationMs,
                 lastPositionMs: lastPositionMs,
                 playedAt: playedAt,
+                contextKey: contextKey,
                 room: room,
                 username: username,
                 server: server,
@@ -1975,6 +2050,7 @@ class $$HistoryEntriesTableTableManager
                 Value<int?> durationMs = const Value.absent(),
                 Value<int> lastPositionMs = const Value.absent(),
                 required DateTime playedAt,
+                required String contextKey,
                 Value<String?> room = const Value.absent(),
                 Value<String?> username = const Value.absent(),
                 Value<String?> server = const Value.absent(),
@@ -1987,6 +2063,7 @@ class $$HistoryEntriesTableTableManager
                 durationMs: durationMs,
                 lastPositionMs: lastPositionMs,
                 playedAt: playedAt,
+                contextKey: contextKey,
                 room: room,
                 username: username,
                 server: server,

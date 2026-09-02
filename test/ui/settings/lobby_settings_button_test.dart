@@ -13,6 +13,8 @@ Widget _host(Widget child) => MaterialApp(
 );
 
 LobbySettingsButton _button({
+  bool localPlayerMode = false,
+  ValueChanged<bool>? onLocalPlayerModeChanged,
   HistoryMode historyMode = HistoryMode.latestPerRoom,
   ValueChanged<HistoryMode>? onHistoryModeChanged,
   ValueChanged<MeowThemeId>? onThemeChanged,
@@ -20,6 +22,8 @@ LobbySettingsButton _button({
   ValueChanged<LogLevel>? onLogLevelChanged,
   VoidCallback? onExportLogs,
 }) => LobbySettingsButton(
+  localPlayerMode: localPlayerMode,
+  onLocalPlayerModeChanged: onLocalPlayerModeChanged ?? (_) {},
   historyMode: historyMode,
   onHistoryModeChanged: onHistoryModeChanged ?? (_) {},
   currentTheme: MeowThemeId.cozy,
@@ -66,6 +70,7 @@ void main() {
 
     // The settings the lobby exposes.
     expect(find.text('Theme'), findsOneWidget);
+    expect(find.text('Local Player Mode'), findsOneWidget);
     expect(find.text('Diagnostic logging'), findsOneWidget);
     expect(find.byKey(const Key('primary-sound-picker')), findsOneWidget);
     expect(find.byKey(const Key('player-menu-export-logs')), findsOneWidget);
@@ -74,6 +79,18 @@ void main() {
     expect(find.byKey(const Key('player-menu-leave')), findsNothing);
     expect(find.byKey(const Key('player-menu-room-code')), findsNothing);
     expect(find.byKey(const Key('player-menu-load')), findsNothing);
+  });
+
+  testWidgets('toggling Local Player Mode fires onLocalPlayerModeChanged', (
+    tester,
+  ) async {
+    bool? picked;
+    await tester.pumpWidget(
+      _host(_button(onLocalPlayerModeChanged: (v) => picked = v)),
+    );
+    await _open(tester);
+    await _tap(tester, find.byKey(const Key('local-player-mode-toggle')));
+    expect(picked, isTrue);
   });
 
   testWidgets('tapping a swatch fires onThemeChanged', (tester) async {

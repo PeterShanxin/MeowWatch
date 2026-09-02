@@ -9,6 +9,8 @@ import 'package:meowwatch/core/data/history_mode.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
 import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
+import 'package:meowwatch/core/data/watch_context.dart';
+import 'package:meowwatch/core/session/session_mode.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/brand/meow_logo.dart';
@@ -20,6 +22,7 @@ class _FakeProfileStore implements ProfileStore {
   final List<SavedProfile> profiles = [];
   final List<int> deleted = [];
   final List<String> savedUsernames = [];
+  String? lastSavedPassword;
   int saveUsedCalls = 0;
 
   void emit() => _ctrl.add(List.unmodifiable(profiles));
@@ -41,6 +44,7 @@ class _FakeProfileStore implements ProfileStore {
   }) async {
     saveUsedCalls++;
     savedUsernames.add(username);
+    lastSavedPassword = password;
   }
 
   @override
@@ -62,6 +66,32 @@ class _FakeSettingsStore implements SettingsStore {
 
   @override
   Future<bool> hasAnySettings() async => _map.isNotEmpty;
+}
+
+/// Settings store whose *reads* block on a caller-controlled gate, to test
+/// that Start waits for the persisted Local Player Mode before launching.
+///
+/// [get] snapshots the value at call time, then waits. A later [set] must
+/// not change what that in-flight read returns — otherwise a stale-vs-toggle
+/// race cannot be forced.
+class _GatedGetSettingsStore implements SettingsStore {
+  _GatedGetSettingsStore(this._gate);
+
+  final Future<void> _gate;
+  final Map<String, String> map = {};
+
+  @override
+  Future<String?> get(String key) async {
+    final snapshot = map[key];
+    await _gate;
+    return snapshot;
+  }
+
+  @override
+  Future<void> set(String key, String value) async => map[key] = value;
+
+  @override
+  Future<bool> hasAnySettings() async => map.isNotEmpty;
 }
 
 /// Settings store whose writes block on a caller-controlled gate, to test that
@@ -109,16 +139,15 @@ class _FakeHistoryStore implements HistoryStore {
     required String filePath,
     required String fileName,
     required int fileSizeBytes,
+    required WatchContext context,
     int? durationMs,
-    String? room,
     String? username,
-    String? server,
-    int? port,
   }) async {}
 
   @override
   Future<bool> updatePosition({
     required String filePath,
+    required WatchContext context,
     required int positionMs,
     int? durationMs,
   }) async => true;
@@ -894,6 +923,14 @@ void main() {
     durationMs: 600000,
     lastPositionMs: 120000,
     playedAt: DateTime(2026, 5, 29),
+    contextKey: syncedWatchContextKey(
+      server: 'syncplay.pl',
+      port: 8999,
+      room: 'room-$id',
+    ),
+    room: 'room-$id',
+    server: 'syncplay.pl',
+    port: 8999,
   );
 
   testWidgets('continue-watching row shows progress and can be deleted', (
@@ -1218,4 +1255,339 @@ void main() {
     expect(find.byKey(const Key('continue-2')), findsNothing);
     expect(find.text('Continue watching'), findsNothing);
   });
+
+  Future<void> turnOnLocalMode(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('local-player-mode-toggle')),
+    );
+    await tester.tap(find.byKey(const Key('local-player-mode-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('Local Player Mode start is a local session with a real room', (
+    tester,
+  ) async {
+    await pump(tester);
+    await turnOnLocalMode(tester);
+    expect(find.text('Start watching'), findsOneWidget);
+    expect(
+      find.text('Play on this computer — no sync. This choice is remembered.'),
+      findsOneWidget,
+    );
+
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+    await tester.tap(find.byKey(const Key('connect-start-new')));
+    await tester.pumpAndSettle();
+
+    expect(connected, isNotNull);
+    expect(connected!.sessionMode, SessionMode.local);
+    expect(connected!.room, isNotEmpty);
+    expect(connected!.server, isNotEmpty);
+    expect(connected!.port, greaterThan(0));
+    expect(connected!.username, 'lin');
+    expect(profiles.saveUsedCalls, 0);
+    expect(find.textContaining('copied'), findsNothing);
+  });
+
+  testWidgets(
+    'Local Player Mode Continue Watching resumes locally at saved position',
+    (tester) async {
+      history.recent.add(historyEntryAs(1, 'ep1', 'meowPEOW'));
+      await pump(tester);
+      await turnOnLocalMode(tester);
+
+      await tester.ensureVisible(find.byKey(const Key('continue-1')));
+      await tester.tap(find.byKey(const Key('continue-1')));
+      await tester.pumpAndSettle();
+
+      expect(connected!.sessionMode, SessionMode.local);
+      expect(connected!.resumeFilePath, '/ep1.mkv');
+      expect(connected!.resumePositionMs, 120000);
+      expect(connected!.room, 'cozy-fox-42');
+      expect(profiles.saveUsedCalls, 0);
+    },
+  );
+
+  testWidgets('Local Player Mode still joins a typed room as synced', (
+    tester,
+  ) async {
+    await pump(tester);
+    await turnOnLocalMode(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-owl-13',
+    );
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+
+    expect(connected!.sessionMode, SessionMode.synced);
+    expect(connected!.room, 'sleepy-owl-13');
+    expect(profiles.saveUsedCalls, 1);
+    expect(find.text(kLocalJoinOverrideNotice), findsOneWidget);
+  });
+
+  testWidgets('Local ON + invalid join code does not override or launch', (
+    tester,
+  ) async {
+    await pump(tester);
+    await turnOnLocalMode(tester);
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-otter-counts-cozy-stars@cozy.example.net:notaport',
+    );
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+
+    expect(connected, isNull);
+    expect(find.text(kLocalJoinOverrideNotice), findsNothing);
+    expect(find.text('Start watching'), findsOneWidget);
+  });
+
+  testWidgets('Local OFF + valid join has no override notice', (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-owl-13',
+    );
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
+
+    expect(connected!.sessionMode, SessionMode.synced);
+    expect(find.text(kLocalJoinOverrideNotice), findsNothing);
+  });
+
+  testWidgets('after Join override, lobby Local stays ON', (tester) async {
+    final settings = _FakeSettingsStore();
+    await pump(tester, settings: settings);
+    await turnOnLocalMode(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-owl-13',
+    );
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pumpAndSettle();
+
+    expect(connected!.sessionMode, SessionMode.synced);
+    expect(await settings.get(kLocalPlayerModeSettingKey), 'true');
+    expect(find.text('Start watching'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Switch>(find.byKey(const Key('local-player-mode-toggle')))
+          .value,
+      isTrue,
+    );
+  });
+
+  testWidgets('Local Player Mode still opens a saved room as synced', (
+    tester,
+  ) async {
+    profiles.profiles.add(
+      SavedProfile(
+        id: 1,
+        name: 'happy-otter-99',
+        server: 'syncplay.pl',
+        port: 8999,
+        room: 'happy-otter-99',
+        username: 'lin',
+        password: null,
+        lastUsedAt: DateTime(2026, 5, 29),
+      ),
+    );
+    await pump(tester);
+    await turnOnLocalMode(tester);
+    await tester.tap(find.text('happy-otter-99'));
+    await tester.pumpAndSettle();
+
+    expect(connected!.sessionMode, SessionMode.synced);
+    expect(connected!.room, 'happy-otter-99');
+    expect(profiles.saveUsedCalls, 1);
+    expect(find.text(kLocalJoinOverrideNotice), findsOneWidget);
+  });
+
+  testWidgets('Local Player Mode toggle persists across a remount', (
+    tester,
+  ) async {
+    final settings = _FakeSettingsStore();
+    await pump(tester, settings: settings);
+    await turnOnLocalMode(tester);
+    expect(await settings.get(kLocalPlayerModeSettingKey), 'true');
+
+    await pump(tester, settings: settings);
+    await tester.pumpAndSettle();
+    expect(find.text('Start watching'), findsOneWidget);
+
+    await tester.binding.setSurfaceSize(const Size(800, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+    await tester.pumpAndSettle();
+    final toggle = tester.widget<Switch>(
+      find.byKey(const Key('local-player-mode-toggle')),
+    );
+    expect(toggle.value, isTrue);
+  });
+
+  testWidgets(
+    'persisted Local Player Mode wins even if Start is tapped before settings return',
+    (tester) async {
+      final gate = Completer<void>();
+      final settings = _GatedGetSettingsStore(gate.future);
+      settings.map[kLocalPlayerModeSettingKey] = 'true';
+      await pump(tester, settings: settings);
+
+      // Cold start: the toggle has not landed, so the button still reads as
+      // the synced default. The tap must not launch a room on that seed.
+      expect(find.text('Start new room'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+      await tester.tap(find.byKey(const Key('connect-start-new')));
+      await tester.pump();
+      expect(connected, isNull);
+      expect(profiles.saveUsedCalls, 0);
+
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      expect(connected, isNotNull);
+      expect(connected!.sessionMode, SessionMode.local);
+      expect(connected!.room, isNotEmpty);
+      expect(profiles.saveUsedCalls, 0);
+    },
+  );
+
+  testWidgets(
+    'toggling Local Player Mode ON while the initial read is in flight keeps ON',
+    (tester) async {
+      final gate = Completer<void>();
+      final settings = _GatedGetSettingsStore(gate.future);
+      settings.map[kLocalPlayerModeSettingKey] = 'false';
+      await tester.binding.setSurfaceSize(const Size(800, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await pump(tester, settings: settings);
+
+      await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('local-player-mode-toggle')),
+      );
+      await tester.tap(find.byKey(const Key('local-player-mode-toggle')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Switch>(find.byKey(const Key('local-player-mode-toggle')))
+            .value,
+        isTrue,
+      );
+      expect(find.text('Start watching'), findsOneWidget);
+
+      // Stale initial get (persisted false) now lands. It must not undo the
+      // toggle the user already made.
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Start watching'), findsOneWidget);
+      expect(
+        tester
+            .widget<Switch>(find.byKey(const Key('local-player-mode-toggle')))
+            .value,
+        isTrue,
+      );
+
+      await tester.tap(find.byKey(const Key('lobby-settings-gear')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+      await tester.tap(find.byKey(const Key('connect-start-new')));
+      await tester.pumpAndSettle();
+
+      expect(connected, isNotNull);
+      expect(connected!.sessionMode, SessionMode.local);
+      expect(connected!.room, isNotEmpty);
+      expect(profiles.saveUsedCalls, 0);
+      expect(settings.map[kLocalPlayerModeSettingKey], 'true');
+    },
+  );
+
+  testWidgets(
+    'a Local Start that becomes synced on return saves the room and password',
+    (tester) async {
+      final settings = _FakeSettingsStore();
+      final left = Completer<void>();
+      await pump(
+        tester,
+        settings: settings,
+        onConnect: (config) async {
+          connected = config;
+          await settings.set(kLocalPlayerModeSettingKey, 'false');
+          await left.future;
+          return null;
+        },
+      );
+      await turnOnLocalMode(tester);
+      await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+      await tester.tap(find.byKey(const Key('connect-advanced')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('connect-advanced-password')),
+        'secret',
+      );
+      await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+      await tester.tap(find.byKey(const Key('connect-start-new')));
+      await tester.pump();
+
+      expect(connected, isNotNull);
+      expect(connected!.sessionMode, SessionMode.local);
+      expect(connected!.password, 'secret');
+      expect(profiles.saveUsedCalls, 0);
+
+      left.complete();
+      await tester.pumpAndSettle();
+
+      expect(profiles.saveUsedCalls, 1);
+      expect(profiles.lastSavedPassword, 'secret');
+      expect(profiles.savedUsernames, ['lin']);
+    },
+  );
+
+  testWidgets(
+    'a Local Start that stays local does not save a room on return',
+    (tester) async {
+      final settings = _FakeSettingsStore();
+      final left = Completer<void>();
+      await pump(
+        tester,
+        settings: settings,
+        onConnect: (config) async {
+          connected = config;
+          await left.future;
+          return null;
+        },
+      );
+      await turnOnLocalMode(tester);
+      await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+      await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+      await tester.tap(find.byKey(const Key('connect-start-new')));
+      await tester.pump();
+
+      expect(connected!.sessionMode, SessionMode.local);
+      expect(profiles.saveUsedCalls, 0);
+
+      left.complete();
+      await tester.pumpAndSettle();
+
+      expect(profiles.saveUsedCalls, 0);
+    },
+  );
 }

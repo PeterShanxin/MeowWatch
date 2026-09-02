@@ -43,6 +43,13 @@ abstract class SyncCore {
   Stream<PresenceEvent> get presence => _presence.stream;
   Stream<ChatMessage> get chat => _chat.stream;
 
+  /// Last room playstate observed from the server, including heartbeats that
+  /// [decideFollow] did not apply. Joiners need this: syncplay.pl's first State
+  /// to a new watcher has `doSeek=false`, so nothing is emitted on [peerState]
+  /// until a later pause or seek, and [PlaybackSyncBridge.markSourceOpen] must
+  /// still land the room.
+  PeerPlayState? lastObservedRoomState;
+
   /// Files announced by peers (on join, on the roster, and on mid-session file
   /// changes). Drives the file-mismatch warning.
   Stream<PeerFile> get peerFile => _peerFile.stream;

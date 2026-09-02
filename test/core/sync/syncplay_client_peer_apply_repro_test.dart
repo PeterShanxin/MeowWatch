@@ -48,6 +48,8 @@ class _FakeVideoCore extends VideoCore {
 
   @override
   Future<void> disposeBackend() async {}
+
+  void push(PlaybackState s) => emit(s);
 }
 
 void main() {
@@ -176,4 +178,64 @@ void main() {
 
     await client.dispose();
   });
+
+  test(
+    'a doSeek=false room at 309s is cached and the first catch-up applies',
+    () async {
+      final video = _FakeVideoCore();
+      final logs = <String>[];
+      final client = SyncplayClient(onLog: logs.add);
+      final bridge = PlaybackSyncBridge(video: video, sync: client)..start();
+      addTearDown(() async {
+        await bridge.dispose();
+        await client.dispose();
+      });
+
+      client.debugMarkLoggedIn('SmokeB');
+      client.updateLocalState(position: Duration.zero, paused: true);
+
+      client.debugHandleMessage(
+        const StateMessage(
+          peer: PeerPlayState(
+            position: Duration(seconds: 309),
+            paused: true,
+            doSeek: false,
+            setBy: 'SmokeA',
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        client.lastObservedRoomState?.position,
+        const Duration(seconds: 309),
+        reason: 'the room must be remembered even when the State has no doSeek',
+      );
+      expect(
+        logs.where((l) => l.startsWith('FOLLOW') && l.contains('apply=true')),
+        isNotEmpty,
+        reason: 'a joiner far behind a named setter must catch up once',
+      );
+
+      // Simulate the product load that resets to 0 after that first State.
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration.zero,
+          duration: Duration(minutes: 25),
+          fileName: 'mw-long.webm',
+          filePath: '/videos/mw-long.webm',
+          opened: true,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      video.commands.clear();
+
+      bridge.markSourceOpen('/videos/mw-long.webm');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(video.commands, contains('seek:309000ms'));
+      expect(video.state.position, const Duration(seconds: 309));
+    },
+  );
 }

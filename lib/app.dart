@@ -100,11 +100,49 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
     widget.settings.set(kThemeSettingKey, id.name);
   }
 
-  /// Stay on the lobby until login completes. A refused join returns the named
-  /// error; the watch route is only pushed after a completed Hello (#265).
+  /// Stay on the lobby until a synced Start/Join login completes. A refused
+  /// join returns the named error; the watch route is only pushed after a
+  /// completed Hello (#265). Local Start skips Syncplay. Continue Watching
+  /// restores the saved position before HomeScreen dials so the room cannot
+  /// be overwritten with 0:00 (#254).
   /// [connectUntilJoin] keeps listening through this handoff so a Hello-then-
   /// Error is not dropped by the broadcast stream before [HomeScreen] attaches.
   Future<String?> _joinAndOpenRoom(RoomConfig config) async {
+    BuildContext? navContext() {
+      final context = _navKey.currentContext;
+      return (context != null && context.mounted) ? context : null;
+    }
+
+    Future<String?> pushWatch({SyncplayClient? sync}) {
+      final context = navContext();
+      if (context == null) {
+        return Future<String?>.value(null);
+      }
+      return Navigator.of(context).push<String>(
+        fadeUpRoute<String>(
+          reduceMotion: context.reduceMotion,
+          // A builder, not a captured widget, so the room page rebuilds
+          // with the latest [_theme] when the in-room gear switches theme
+          // (the swatch highlight tracks it) — see [fadeUpRoute].
+          builder: (_) => HomeScreen(
+            config: config,
+            sync: sync,
+            history: widget.history,
+            settings: widget.settings,
+            initialWidthPx: widget.initialCardWidthPx,
+            initialHeightPx: widget.initialCardHeightPx,
+            initialCorner: widget.initialChatCorner,
+            currentTheme: _theme,
+            onThemeChanged: _setTheme,
+          ),
+        ),
+      );
+    }
+
+    if (config.sessionMode.isLocal || config.resumeFilePath != null) {
+      return pushWatch();
+    }
+
     final client = SyncplayClient(
       onLog: appLog,
       shouldLog: ({required bool verboseOnly}) {
@@ -113,11 +151,6 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             (!verboseOnly && level == LogLevel.neat);
       },
     );
-    BuildContext? navContext() {
-      final context = _navKey.currentContext;
-      return (context != null && context.mounted) ? context : null;
-    }
-
     Future<String?>? watchRoute;
     final error = await client.connectUntilJoin(
       server: config.server,
@@ -136,25 +169,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
         }
         // Don't await the route here: connectUntilJoin must keep listening
         // only until HomeScreen's subscriptions exist, not until Leave.
-        watchRoute = Navigator.of(context).push<String>(
-          fadeUpRoute<String>(
-            reduceMotion: context.reduceMotion,
-            // A builder, not a captured widget, so the room page rebuilds
-            // with the latest [_theme] when the in-room gear switches theme
-            // (the swatch highlight tracks it) — see [fadeUpRoute].
-            builder: (_) => HomeScreen(
-              config: config,
-              sync: client,
-              history: widget.history,
-              settings: widget.settings,
-              initialWidthPx: widget.initialCardWidthPx,
-              initialHeightPx: widget.initialCardHeightPx,
-              initialCorner: widget.initialChatCorner,
-              currentTheme: _theme,
-              onThemeChanged: _setTheme,
-            ),
-          ),
-        );
+        watchRoute = pushWatch(sync: client);
         await WidgetsBinding.instance.endOfFrame;
       },
     );

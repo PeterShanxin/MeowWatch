@@ -16,6 +16,7 @@ import '../../core/data/history_mode.dart';
 import '../../core/data/saved_profile.dart';
 import '../../core/data/settings_store.dart';
 import '../../core/data/stores.dart';
+import '../../core/session/session_mode.dart';
 import '../../core/debug/app_log.dart';
 import '../../core/debug/log_archive.dart';
 import '../../core/debug/log_level.dart';
@@ -109,6 +110,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
   String _secondarySoundId = kDefaultSecondarySoundId;
   LogLevel _logLevel = LogLevel.verbose;
   HistoryMode _historyMode = HistoryMode.latestPerRoom;
+  bool _localPlayerMode = false;
+
+  /// Bumped by [_setLocalPlayerMode]. An in-flight [_loadSettings] that
+  /// started before the bump must not write [_localPlayerMode] — the user's
+  /// explicit choice is newer than the persisted snapshot it is about to
+  /// apply.
+  int _localPlayerModeRevision = 0;
 
   // Created lazily on the first sound preview so headless tests (and the common
   // case of never previewing) don't spin up a media player needlessly.
@@ -120,6 +128,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
   // Errors are swallowed so a failed persist can't wedge the queue or block a
   // join.
   Future<void> _settingsWrites = Future<void>.value();
+
+  // Completes when the first [_loadSettings] lands. Start / Continue Watching
+  // await this so a persisted Local Player Mode can't lose a cold-start race
+  // to the default-off [_localPlayerMode] seed (#254).
+  late final Future<void> _settingsReady;
 
   @override
   void initState() {
@@ -152,7 +165,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         (value) => _passwordFocusStart = value,
       ),
     );
-    _loadSettings();
+    _settingsReady = _loadSettings();
   }
 
   @override
@@ -195,6 +208,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _loadSettings() async {
+    // Mode first: Start / Continue Watching wait on [_settingsReady], and
+    // this key must be authoritative before those actions run. Reading it
+    // last used to leave a cold-start window where the default-off seed won.
+    final loadRevision = _localPlayerModeRevision;
+    final localPlayerMode = localPlayerModeFromSetting(
+      await widget.settings.get(kLocalPlayerModeSettingKey),
+    );
+    if (!mounted) return;
+    if (loadRevision == _localPlayerModeRevision) {
+      _localPlayerMode = localPlayerMode;
+    }
+
     final primary = await widget.settings.get(kNotifyPrimarySoundKey);
     final secondary = await widget.settings.get(kNotifySecondarySoundKey);
     final level = logLevelFromName(
@@ -209,7 +234,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _secondarySoundId = resolveSecondary(secondary).id;
       _logLevel = level;
       _historyMode = historyMode;
+      if (loadRevision == _localPlayerModeRevision) {
+        _localPlayerMode = localPlayerMode;
+      }
     });
+  }
+
+  Future<void> _awaitInitialSettings() async {
+    await _settingsReady;
   }
 
   void _setPrimarySound(String id) {
@@ -237,6 +269,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
     appLog('settings: history mode=${mode.storageName}');
     setState(() => _historyMode = mode);
     _persistSetting(kHistoryModeSettingKey, mode.storageName);
+  }
+
+  void _setLocalPlayerMode(bool enabled) {
+    appLog('settings: local player mode=$enabled');
+    _localPlayerModeRevision++;
+    setState(() => _localPlayerMode = enabled);
+    _persistSetting(kLocalPlayerModeSettingKey, enabled.toString());
   }
 
   /// Queue a settings write, chaining it onto [_settingsWrites] so [_connect]
@@ -317,6 +356,20 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   String? get _passwordValue => _password.text.isEmpty ? null : _password.text;
 
+  Future<void> _saveUsedProfile(
+    RoomConfig config, {
+    String? profileUsername,
+  }) {
+    return widget.profiles.saveUsed(
+      name: config.room,
+      server: config.server,
+      port: config.port,
+      room: config.room,
+      username: profileUsername ?? config.username,
+      password: config.password,
+    );
+  }
+
   Future<void> _connect(RoomConfig config, {String? profileUsername}) async {
     if (_joining) return;
     _joining = true;
@@ -326,14 +379,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
       });
     }
     try {
-      await widget.profiles.saveUsed(
-        name: config.room,
-        server: config.server,
-        port: config.port,
-        room: config.room,
-        username: profileUsername ?? config.username,
-        password: config.password,
-      );
+      if (config.sessionMode.isSynced) {
+        await _saveUsedProfile(config, profileUsername: profileUsername);
+      }
       if (!mounted) return;
       // Flush any pending lobby-settings writes first, so the room reads the
       // values the user just picked rather than the previous ones — a Drift set()
@@ -344,6 +392,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       // watch route and completes when it pops. A non-null result is a join
       // that never logged in: stay here with the named error. Re-read settings
       // only after a real visit — the in-room gear may have changed them.
+      // Local Start and Continue Watching push immediately (#252, #254).
       final joinError = await widget.onConnect(config);
       if (!mounted) return;
       if (joinError != null && joinError.isNotEmpty) {
@@ -354,10 +403,40 @@ class _ConnectScreenState extends State<ConnectScreen> {
       // and the name just used is already remembered via the saved room (#172).
       setState(() => _suggestedName = generateUsername());
       await _loadSettings();
+      // A Local Start that became synced in-player now has a real Syncplay
+      // room. Persist it so Continue Watching can recover the server password.
+      if (config.sessionMode.isLocal && !_localPlayerMode) {
+        await _saveUsedProfile(config, profileUsername: profileUsername);
+      }
     } finally {
       _joining = false;
       if (mounted) setState(() {});
     }
+  }
+
+  Future<void> _startPlayback() async {
+    await _awaitInitialSettings();
+    if (!mounted) return;
+    final mode = resolveSessionMode(
+      localPlayerMode: _localPlayerMode,
+      launch: SessionLaunch.start,
+    );
+    if (mode.isLocal) {
+      // Real room identity so this session can become synced later. No
+      // clipboard copy — Local Start is not a share action.
+      final code = generateRoomCode();
+      await _connect(
+        RoomConfig.local(
+          username: _username,
+          server: _serverValue,
+          port: _portValue,
+          room: code,
+          password: _passwordValue,
+        ),
+      );
+      return;
+    }
+    await _startNewRoom();
   }
 
   Future<void> _startNewRoom() async {
@@ -417,7 +496,27 @@ class _ConnectScreenState extends State<ConnectScreen> {
       );
   }
 
+  /// Shown on the app-level messenger so it survives the push into the player.
+  void _showLocalJoinOverrideSnack() {
+    final m = context.meow;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: m.surface,
+          duration: const Duration(seconds: 3),
+          content: Text(
+            kLocalJoinOverrideNotice,
+            style: TextStyle(color: m.textPrimary),
+          ),
+        ),
+      );
+  }
+
   Future<void> _joinTypedCode() async {
+    await _awaitInitialSettings();
+    if (!mounted) return;
     final raw = _code.text.trim();
     if (raw.isEmpty) return;
     // Parse the pasted code: a plain string (magic sentence, bare `happy-cat-11`,
@@ -430,6 +529,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
     if (!parsed.isValid) {
       _showSnack(parsed.error!);
       return;
+    }
+    if (shouldShowLocalJoinOverride(
+      persistedLocal: _localPlayerMode,
+      launch: SessionLaunch.joinCode,
+    )) {
+      _showLocalJoinOverrideSnack();
     }
     // A code that names a server describes a complete destination: it carries a
     // port only when non-default, so an omitted port means the Syncplay default
@@ -453,6 +558,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
     SavedProfile p, {
     String? usernameOverride,
   }) async {
+    await _awaitInitialSettings();
+    if (!mounted) return;
+    if (shouldShowLocalJoinOverride(
+      persistedLocal: _localPlayerMode,
+      launch: SessionLaunch.savedRoom,
+    )) {
+      _showLocalJoinOverrideSnack();
+    }
     final username = usernameOverride ?? p.username;
     await _connect(
       RoomConfig(
@@ -471,6 +584,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
     List<SavedProfile> profiles, {
     String? usernameOverride,
   }) async {
+    await _awaitInitialSettings();
+    if (!mounted) return;
     // Identity priority: tapping a history card means "resume as watched
     // before"; the inline "Join as current name" action is the explicit
     // override.
@@ -500,19 +615,42 @@ class _ConnectScreenState extends State<ConnectScreen> {
     final savedUsername = (entryName != null && entryName.isNotEmpty)
         ? entryName
         : roomProfile?.username;
+    final mode = resolveSessionMode(
+      localPlayerMode: _localPlayerMode,
+      launch: SessionLaunch.continueWatching,
+    );
     // A stored endpoint is authoritative. Never carry a same-room password
     // across servers/ports; only legacy rows may borrow their room profile.
     final legacyEntry = entry.server == null || entry.port == null;
+    final password =
+        endpointProfile?.password ??
+        (legacyEntry ? roomProfile?.password : null) ??
+        _passwordValue;
+    if (mode.isLocal) {
+      // Resume this card's progress locally. Keep the card's room identity so
+      // the same session can become synced later. Do not treat old room
+      // metadata as permission to sync now.
+      await _connect(
+        RoomConfig.local(
+          username: username,
+          server: server,
+          port: port,
+          room: room,
+          password: password,
+          resumeFilePath: entry.filePath,
+          resumePositionMs: entry.lastPositionMs,
+        ),
+        profileUsername: usernameOverride == null ? null : savedUsername,
+      );
+      return;
+    }
     await _connect(
       RoomConfig(
         server: server,
         port: port,
         room: room,
         username: username,
-        password:
-            endpointProfile?.password ??
-            (legacyEntry ? roomProfile?.password : null) ??
-            _passwordValue,
+        password: password,
         resumeFilePath: entry.filePath,
         resumePositionMs: entry.lastPositionMs,
       ),
@@ -673,6 +811,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
             top: Spacing.md,
             right: Spacing.md,
             child: LobbySettingsButton(
+              localPlayerMode: _localPlayerMode,
+              onLocalPlayerModeChanged: _setLocalPlayerMode,
               historyMode: _historyMode,
               onHistoryModeChanged: _setHistoryMode,
               currentTheme: widget.currentTheme,
@@ -732,15 +872,17 @@ class _ConnectScreenState extends State<ConnectScreen> {
           foregroundColor: m.background,
           padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
         ),
-        onPressed: _joining ? null : _startNewRoom,
-        child: const Text(
-          'Start new room',
-          style: TextStyle(fontWeight: TypeScale.bold),
+        onPressed: _joining ? null : _startPlayback,
+        child: Text(
+          _localPlayerMode ? 'Start watching' : 'Start new room',
+          style: const TextStyle(fontWeight: TypeScale.bold),
         ),
       ),
       const SizedBox(height: 8),
       Text(
-        'A private code is generated and copied to clipboard.',
+        _localPlayerMode
+            ? 'Play on this computer — no sync. This choice is remembered.'
+            : 'A private code is generated and copied to clipboard.',
         style: context.meowText.body.copyWith(color: m.textDim),
       ),
       const SizedBox(height: Spacing.xl),

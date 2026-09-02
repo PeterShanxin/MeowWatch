@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 
-/// A file the user has watched, with the position to resume from.
+import 'watch_context.dart';
+
+/// A file the user has watched in one room context, with the position to resume
+/// from. Effective Local/synced mode does not split a real room into two rows.
 @immutable
 class HistoryEntry {
   const HistoryEntry({
@@ -11,6 +14,7 @@ class HistoryEntry {
     required this.durationMs,
     required this.lastPositionMs,
     required this.playedAt,
+    this.contextKey = kLocalWatchContextKey,
     this.room,
     this.username,
     this.server,
@@ -25,8 +29,13 @@ class HistoryEntry {
   final int lastPositionMs;
   final DateTime playedAt;
 
-  /// Room code and the name used when this file was last opened in a room.
-  /// Null for entries recorded before the schema added them (or outside a room).
+  /// `local` for legacy roomless playback, otherwise the stable
+  /// `synced|{server}|{port}|{room}` room key (also used by Local sessions).
+  final String contextKey;
+
+  /// Room code and the name used when this file was last opened in a session.
+  /// Legacy roomless rows can be null; real Local sessions retain their random
+  /// room and use the same [contextKey] as synced mode in that room.
   final String? room;
   final String? username;
 
@@ -34,6 +43,16 @@ class HistoryEntry {
   /// without borrowing another saved room's connection details (#194).
   final String? server;
   final int? port;
+
+  bool get isLocalContext => contextKey == kLocalWatchContextKey;
+
+  WatchContext get watchContext => isLocalContext
+      ? WatchContext.local(server: server, port: port, room: room)
+      : WatchContext.synced(
+          server: server ?? '',
+          port: port ?? 0,
+          room: room ?? '',
+        );
 
   HistoryEntry copyWith({
     int? id,
@@ -43,6 +62,7 @@ class HistoryEntry {
     int? durationMs,
     int? lastPositionMs,
     DateTime? playedAt,
+    String? contextKey,
     String? room,
     String? username,
     String? server,
@@ -56,6 +76,7 @@ class HistoryEntry {
       durationMs: durationMs ?? this.durationMs,
       lastPositionMs: lastPositionMs ?? this.lastPositionMs,
       playedAt: playedAt ?? this.playedAt,
+      contextKey: contextKey ?? this.contextKey,
       room: room ?? this.room,
       username: username ?? this.username,
       server: server ?? this.server,
@@ -73,6 +94,7 @@ class HistoryEntry {
       other.durationMs == durationMs &&
       other.lastPositionMs == lastPositionMs &&
       other.playedAt == playedAt &&
+      other.contextKey == contextKey &&
       other.room == room &&
       other.username == username &&
       other.server == server &&
@@ -87,6 +109,7 @@ class HistoryEntry {
     durationMs,
     lastPositionMs,
     playedAt,
+    contextKey,
     room,
     username,
     server,

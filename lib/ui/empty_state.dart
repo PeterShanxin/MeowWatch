@@ -12,6 +12,7 @@ class EmptyState extends StatelessWidget {
     required this.onBrowse,
     this.onLoadUrl,
     this.onLeave,
+    this.leaveLabel = 'Leave room',
     this.notice,
     this.onWatchPeerUrl,
     super.key,
@@ -19,6 +20,7 @@ class EmptyState extends StatelessWidget {
 
   final VoidCallback onBrowse;
   final VoidCallback? onLeave;
+  final String leaveLabel;
 
   /// Loads a pasted link. When non-null the link half of the load choice is
   /// shown beneath the local-file button; omitted (e.g. in the design gallery)
@@ -141,7 +143,7 @@ class EmptyState extends StatelessWidget {
                       style: TextButton.styleFrom(foregroundColor: m.textDim),
                       onPressed: onLeave,
                       icon: const Icon(Icons.logout, size: 18),
-                      label: const Text('Leave room'),
+                      label: Text(leaveLabel),
                     ),
                   ],
                 ],

@@ -52,7 +52,8 @@ class SyncActivityThrottle {
       });
       return;
     }
-    final isSeek = activity.kind == SyncActivityKind.seekedForward ||
+    final isSeek =
+        activity.kind == SyncActivityKind.seekedForward ||
         activity.kind == SyncActivityKind.seekedBack;
     if (!isSeek) {
       _flushSeek();
@@ -72,13 +73,19 @@ class SyncActivityThrottle {
     if (pending != null && !_disposed) _out.add(pending);
   }
 
-  Future<void> dispose() async {
-    _disposed = true;
+  /// Drop queued seek / drift notices without closing the stream. Used when
+  /// the session leaves Syncplay so a pending timer cannot fire later.
+  void clearPending() {
     _seekTimer?.cancel();
     _seekTimer = null;
     _pendingSeek = null;
     _driftCooldownTimer?.cancel();
     _driftCooldownTimer = null;
+  }
+
+  Future<void> dispose() async {
+    _disposed = true;
+    clearPending();
     await _out.close();
   }
 }

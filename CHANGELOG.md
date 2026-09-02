@@ -10,6 +10,26 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.49.0-alpha] - 2026-09-01
+
+> Watch alone — same player, no sync. Flip it live without leaving the video.
+
+### Added
+- **Local Player Mode** in the lobby gear and the in-player gear. Local still gets a random room identity, just no Syncplay. Changing it in either place is remembered for future Start and Continue Watching sessions. Typing a code or opening a saved room still joins together for that session only, without changing the remembered default (#252, #254).
+- Turning Local Player Mode **off inside the player** now hands the room a session that is already watching: same room code, same video, same spot on the timeline, and full two-way control — a friend who joins afterwards lands where you are, and play, pause and seek work from either side (#252, #254).
+- Watch history now keeps **separate progress per room**. Room A and room B can stay at different times, while switching Local Player Mode inside one room keeps updating that same record (#254).
+
+### Fixed
+- A failed link during local playback now still shows the notice — it no longer fails silently (#252).
+- Starting or continuing right after launch now waits for the saved Local Player Mode, so a persisted ON cannot open a room by accident (#252).
+- Flipping Local Player Mode in the lobby gear right after launch no longer gets overwritten by the still-loading saved value (#252).
+- Watching in different rooms no longer overwrites their progress, and switching Local Player Mode inside one room no longer creates a duplicate history card (#254).
+- Continue Watching now reliably opens at the saved position instead of starting again from the beginning (#254).
+- After you turn Local Player Mode off, a friend who then joins that room and loads the same file lands on the room's current progress — even if they connect first and the file takes a while to open — and that join does not write 0:00 back over the room (#254).
+- Flipping Local Player Mode in the player is remembered when you return to the lobby, including if you leave right after the flip (#254).
+- A Local Start that you later turn into a synced room is saved, so Continue Watching can reopen that room and its server password (#254).
+- When a local video ends, the controls come back on their own (#254).
+
 ## [0.48.1-alpha] - 2026-09-01
 
 > Joining a room insists on an encrypted connection.

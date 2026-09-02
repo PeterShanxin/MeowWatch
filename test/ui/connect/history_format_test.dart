@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/data/history_entry.dart';
+import 'package:meowwatch/core/data/watch_context.dart';
 import 'package:meowwatch/ui/connect/history_format.dart';
 
 HistoryEntry entry({
@@ -9,18 +10,21 @@ HistoryEntry entry({
   int fileSizeBytes = 0,
   String? room,
   String? username,
-}) =>
-    HistoryEntry(
-      id: 1,
-      filePath: '/x.mkv',
-      fileName: 'x.mkv',
-      fileSizeBytes: fileSizeBytes,
-      durationMs: durationMs,
-      lastPositionMs: lastPositionMs,
-      playedAt: playedAt ?? DateTime(2026, 5, 30),
-      room: room,
-      username: username,
-    );
+  bool local = false,
+}) => HistoryEntry(
+  id: 1,
+  filePath: '/x.mkv',
+  fileName: 'x.mkv',
+  fileSizeBytes: fileSizeBytes,
+  durationMs: durationMs,
+  lastPositionMs: lastPositionMs,
+  playedAt: playedAt ?? DateTime(2026, 5, 30),
+  contextKey: !local && room != null && room.isNotEmpty
+      ? syncedWatchContextKey(server: 's', port: 8999, room: room)
+      : kLocalWatchContextKey,
+  room: room,
+  username: username,
+);
 
 void main() {
   group('formatRuntime', () {
@@ -43,20 +47,34 @@ void main() {
   group('relativeTime', () {
     final now = DateTime(2026, 5, 30, 12, 0, 0);
     test('buckets', () {
-      expect(relativeTime(now.subtract(const Duration(seconds: 10)), now),
-          'just now');
-      expect(relativeTime(now.subtract(const Duration(minutes: 5)), now),
-          '5m ago');
       expect(
-          relativeTime(now.subtract(const Duration(hours: 3)), now), '3h ago');
-      expect(relativeTime(now.subtract(const Duration(days: 1)), now),
-          'yesterday');
-      expect(relativeTime(now.subtract(const Duration(days: 3)), now),
-          '3 days ago');
-      expect(relativeTime(now.subtract(const Duration(days: 14)), now),
-          '2 weeks ago');
-      expect(relativeTime(now.subtract(const Duration(days: 60)), now),
-          '2 months ago');
+        relativeTime(now.subtract(const Duration(seconds: 10)), now),
+        'just now',
+      );
+      expect(
+        relativeTime(now.subtract(const Duration(minutes: 5)), now),
+        '5m ago',
+      );
+      expect(
+        relativeTime(now.subtract(const Duration(hours: 3)), now),
+        '3h ago',
+      );
+      expect(
+        relativeTime(now.subtract(const Duration(days: 1)), now),
+        'yesterday',
+      );
+      expect(
+        relativeTime(now.subtract(const Duration(days: 3)), now),
+        '3 days ago',
+      );
+      expect(
+        relativeTime(now.subtract(const Duration(days: 14)), now),
+        '2 weeks ago',
+      );
+      expect(
+        relativeTime(now.subtract(const Duration(days: 60)), now),
+        '2 months ago',
+      );
     });
   });
 
@@ -66,10 +84,14 @@ void main() {
       expect(progressFraction(entry(durationMs: 0)), isNull);
     });
     test('ratio, clamped', () {
-      expect(progressFraction(entry(durationMs: 1000, lastPositionMs: 250)),
-          0.25);
       expect(
-          progressFraction(entry(durationMs: 1000, lastPositionMs: 5000)), 1.0);
+        progressFraction(entry(durationMs: 1000, lastPositionMs: 250)),
+        0.25,
+      );
+      expect(
+        progressFraction(entry(durationMs: 1000, lastPositionMs: 5000)),
+        1.0,
+      );
     });
   });
 
@@ -78,23 +100,38 @@ void main() {
     test('KB / MB / GB buckets', () {
       expect(formatFileSize(512 * 1024), '512 KB');
       expect(formatFileSize(720 * 1024 * 1024), '720 MB');
-      expect(
-          formatFileSize((1.4 * 1024 * 1024 * 1024).round()), '1.4 GB');
+      expect(formatFileSize((1.4 * 1024 * 1024 * 1024).round()), '1.4 GB');
     });
   });
 
   group('historyRoomLine', () {
-    test('null when no room recorded', () {
-      expect(historyRoomLine(entry()), isNull);
-      expect(historyRoomLine(entry(room: '')), isNull);
+    test('Local context says Local', () {
+      expect(historyRoomLine(entry()), 'Local');
+      expect(historyRoomLine(entry(room: '')), 'Local');
+    });
+    test('Local context with a real room shows its random room code', () {
+      expect(
+        historyRoomLine(
+          entry(
+            room: 'quiet-otter-counts-stars',
+            username: 'meow',
+            local: true,
+          ),
+        ),
+        'in quiet-otter-counts-stars as meow',
+      );
     });
     test('room only', () {
-      expect(historyRoomLine(entry(room: 'breezy-crow-66')),
-          'in breezy-crow-66');
+      expect(
+        historyRoomLine(entry(room: 'breezy-crow-66')),
+        'in breezy-crow-66',
+      );
     });
     test('room + username', () {
-      expect(historyRoomLine(entry(room: 'breezy-crow-66', username: 'meow')),
-          'in breezy-crow-66 as meow');
+      expect(
+        historyRoomLine(entry(room: 'breezy-crow-66', username: 'meow')),
+        'in breezy-crow-66 as meow',
+      );
     });
   });
 
@@ -116,13 +153,17 @@ void main() {
         playedAt: now.subtract(const Duration(days: 2)),
         fileSizeBytes: 720 * 1024 * 1024,
       );
-      expect(historySubtitle(e, now),
-          '47:32 / 1:45:00 · 45% · 2 days ago · 720 MB');
+      expect(
+        historySubtitle(e, now),
+        '47:32 / 1:45:00 · 45% · 2 days ago · 720 MB',
+      );
     });
 
     test('just the played label when duration unknown', () {
       final e = entry(
-          durationMs: null, playedAt: now.subtract(const Duration(hours: 2)));
+        durationMs: null,
+        playedAt: now.subtract(const Duration(hours: 2)),
+      );
       expect(historySubtitle(e, now), '2h ago');
     });
   });
