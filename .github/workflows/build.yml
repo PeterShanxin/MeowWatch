@@ -29,13 +29,14 @@ jobs:
   # That is the only PR path. `gate` stays the required check name
   # (`Analyze & Test`).
   #
-  # The self-hosted host holds the release-signing seed, so pull-request
-  # code must never schedule there — including trusted-admin same-repo PRs.
-  # Fork-workflow approval does not cover a future write login adding a
-  # new workflow, so remaining self-hosted jobs keep a YAML `if:` allowlist
-  # `{PeterShanxin, ianmeowmeow}` and exclude Dependabot.
-  # `check-self-hosted` is push/tag analyze only (trusted-admin actor).
-  # Tag sign stays on `build-windows-x64` (same allowlist).
+  # Pull-request code must never schedule on the self-hosted host —
+  # including trusted-admin same-repo PRs. Fork-workflow approval does
+  # not cover a future write login adding a new workflow, so remaining
+  # self-hosted jobs keep a YAML `if:` allowlist `{PeterShanxin,
+  # ianmeowmeow}` and exclude Dependabot.
+  # `check-self-hosted` is trusted-admin push-to-main analyze only.
+  # Tag Windows sign is `build-windows-x64` on hosted windows-2022
+  # (same allowlist; `environment: release`).
   #
   # Keep self-hosted jobs free of hosted-only composite actions:
   # self-hosted runners prepare composite action dependencies before
@@ -50,10 +51,12 @@ jobs:
 
   check-self-hosted:
     name: Analyze & Test (self-hosted)
-    # Push/tag only. Never pull_request. Write access is not host trust.
+    # Push to main only. Never pull_request, never a v* tag. Write access
+    # is not host trust. Tag product release does not wait on this job.
     if: >-
       ${{
-        github.event_name != 'pull_request' &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
         contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) &&
         github.actor != 'dependabot[bot]'
       }}
@@ -75,6 +78,10 @@ jobs:
           $trusted = @('PeterShanxin', 'ianmeowmeow')
           if ($env:EVENT_NAME -eq 'pull_request') {
             Write-Error "pull_request must never run on the self-hosted runner (actor=$($env:ACTOR))."
+            exit 1
+          }
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            Write-Error "v* tags must not run on the self-hosted runner (actor=$($env:ACTOR))."
             exit 1
           }
           if ($env:ACTOR -eq 'dependabot[bot]') {
@@ -116,9 +123,9 @@ jobs:
   # this path. Pinned to 2022 (not 2025): hosted 2025 failed the two
   # chat-overlay goldens (run 33264970792: 0.05%/444px and 15px). That
   # image already ran untrusted PRs. Do not --update-goldens for 2025
-  # pixels. Trusted-admin push/tag stay on check-self-hosted. This job
-  # must not interpolate TAURI_SIGNING_PRIVATE_KEY, MEOWWATCH_RELEASE_KEY,
-  # or R2_* secrets.
+  # pixels. Trusted-admin push-to-main analyze stays on check-self-hosted.
+  # This job must not interpolate TAURI_SIGNING_PRIVATE_KEY,
+  # MEOWWATCH_RELEASE_KEY, or R2_* secrets.
   check-hosted:
     name: Analyze & Test (hosted)
     if: ${{ github.event_name == 'pull_request' }}
@@ -179,51 +186,61 @@ jobs:
   # ── Build Windows x64 (tag pushes only — release builds anyway) ────
   build-windows-x64:
     name: Windows x64
-    needs: [check-self-hosted]
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) && github.actor != 'dependabot[bot]' && needs.check-self-hosted.result == 'success' }}
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        startsWith(github.ref, 'refs/tags/v') &&
+        contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) &&
+        github.actor != 'dependabot[bot]'
+      }}
     permissions:
       contents: write # Create GitHub Release + upload zip/sig (tag-only).
-    # Runs on a self-hosted Windows runner because the release signing key is
-    # available only on that trusted physical host. Requires a runner registered
-    # with the `self-hosted` + `windows` + `meowwatch-ci` labels and the Visual
-    # Studio desktop C++ toolchain installed (see
-    # docs/AGENT_GUIDE.md → CI). github.actor must be PeterShanxin or
-    # ianmeowmeow — any other login's v* tag must not build or sign here.
-    # pull_request never reaches this job. Falls back to nothing if no runner is
-    # online — the job queues until one is.
-    runs-on: [self-hosted, windows, meowwatch-ci]
+    # Hosted windows-2022. Tag v* only; github.actor must be PeterShanxin
+    # or ianmeowmeow. pull_request never reaches this job. Fork PRs never
+    # reach it. Signs with secrets.MEOWWATCH_RELEASE_KEY on the `release`
+    # environment (seed file contents, not a path). See
+    # docs/AGENT_GUIDE.md → CI / Release signing.
+    environment: release
+    runs-on: windows-2022
     # Bound runaway hangs/builds: a release build is normally ~18m.
     timeout-minutes: 45
     steps:
-      # Belt-and-braces with the job `if`: any other login's v* tag must
-      # never checkout or sign on this host.
+      # Belt-and-braces with the job `if`: any other login, a PR, or a
+      # fork must never checkout or sign here.
       - name: Refuse untrusted workflow actors
         shell: pwsh
         env:
           ACTOR: ${{ github.actor }}
+          EVENT_NAME: ${{ github.event_name }}
+          IS_FORK: ${{ github.event.repository.fork }}
         run: |
           $trusted = @('PeterShanxin', 'ianmeowmeow')
+          if ($env:EVENT_NAME -eq 'pull_request') {
+            Write-Error "pull_request must never run tag signing (actor=$($env:ACTOR))."
+            exit 1
+          }
+          if ($env:IS_FORK -eq 'true') {
+            Write-Error "Fork repositories must never run tag signing."
+            exit 1
+          }
           if ($env:ACTOR -eq 'dependabot[bot]') {
-            Write-Error "Dependabot must never run tag signing on the self-hosted runner."
+            Write-Error "Dependabot must never run tag signing."
             exit 1
           }
           if ($trusted -notcontains $env:ACTOR) {
-            Write-Error "Only PeterShanxin or ianmeowmeow may run tag signing on the self-hosted runner (actor=$($env:ACTOR))."
+            Write-Error "Only PeterShanxin or ianmeowmeow may run tag signing (actor=$($env:ACTOR) event=$($env:EVENT_NAME))."
             exit 1
           }
 
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
-      - name: Setup Flutter (self-hosted, pre-installed via Puro)
-        shell: pwsh
-        run: |
-          $flutterBin = Join-Path $env:USERPROFILE '.puro\envs\stable\flutter\bin'
-          if (-not (Test-Path (Join-Path $flutterBin 'flutter.bat'))) {
-            Write-Error "Flutter not found at $flutterBin — is Puro's stable env installed on the runner?"
-            exit 1
-          }
-          Add-Content -Path $env:GITHUB_PATH -Value $flutterBin
-          Write-Host "Using pre-installed Flutter at $flutterBin"
+      - name: Setup Flutter (hosted)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
       - name: Install dependencies
         shell: pwsh
@@ -239,50 +256,57 @@ jobs:
           $releaseDir = "build\windows\x64\runner\Release"
           Compress-Archive -Path "$releaseDir\*" -DestinationPath "MeowWatch-windows-x64.zip" -Force
 
-      # Authenticity: sign the zip with the Ed25519 release key that lives ONLY
-      # on this PC (never in the repo, GitHub secrets, or R2). The app verifies
-      # this signature against its baked-in public key before installing, so a
-      # poisoned bucket can't forge an update. Fail-closed: no key => no release,
-      # because shipping an unsigned build would brick every install's updater.
+      # Authenticity: sign the zip with the Ed25519 seed from
+      # secrets.MEOWWATCH_RELEASE_KEY (release environment). The app
+      # verifies this signature against its baked-in public key before
+      # installing, so a poisoned bucket can't forge an update.
+      # Fail-closed: missing/empty secret => no release, because shipping
+      # an unsigned build would brick every install's updater.
       # See docs/AGENT_GUIDE.md -> Release signing.
       - name: Sign release
         shell: pwsh
         env:
+          # Seed file contents, not a path. Never echo this value.
+          MEOWWATCH_RELEASE_KEY: ${{ secrets.MEOWWATCH_RELEASE_KEY }}
           # Set the repo/workflow variable MEOWWATCH_ALLOW_KEY_MISMATCH to 'true'
           # for a single key-rotation transitional release (baking the NEW public
-          # key while the runner still holds the OLD seed) — then clear it. Empty
+          # key while signing with the OLD seed) — then clear it. Empty
           # on normal releases. See docs/AGENT_GUIDE.md -> Release signing.
           MEOWWATCH_ALLOW_KEY_MISMATCH: ${{ vars.MEOWWATCH_ALLOW_KEY_MISMATCH }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $keyPath = if ($env:MEOWWATCH_RELEASE_KEY) {
-            $env:MEOWWATCH_RELEASE_KEY
-          } else {
-            Join-Path $env:USERPROFILE '.meowwatch\release-key.txt'
-          }
-          if (-not (Test-Path $keyPath)) {
-            Write-Error "Release signing key not found at $keyPath. A release must be signed (fail-closed). Place the private seed on this runner, or set MEOWWATCH_RELEASE_KEY to its path. See docs/AGENT_GUIDE.md -> Release signing."
+          if ([string]::IsNullOrWhiteSpace($env:MEOWWATCH_RELEASE_KEY)) {
+            Write-Error "MEOWWATCH_RELEASE_KEY is missing or empty. A release must be signed (fail-closed). Set the seed-file contents on the release environment secret. See docs/AGENT_GUIDE.md -> Release signing."
             exit 1
           }
-          # The signature binds the version, so sign with the tag's version
-          # (matches the "version" the R2 job writes into latest.json).
-          $version = ($env:GITHUB_REF -replace '^refs/tags/v', '')
-          $signArgs = @('run', 'tool/release_signer.dart', 'sign', '--version', $version)
-          if ($env:MEOWWATCH_ALLOW_KEY_MISMATCH -in @('1', 'true', 'TRUE', 'True')) {
-            Write-Host 'MEOWWATCH_ALLOW_KEY_MISMATCH set -> signing with --allow-key-mismatch (key-rotation transitional release).'
-            $signArgs += '--allow-key-mismatch'
+          $keyPath = Join-Path $env:RUNNER_TEMP 'meowwatch-release-key.txt'
+          try {
+            $utf8 = [System.Text.UTF8Encoding]::new($false)
+            [System.IO.File]::WriteAllText($keyPath, $env:MEOWWATCH_RELEASE_KEY.Trim(), $utf8)
+            # The signature binds the version, so sign with the tag's version
+            # (matches the "version" the R2 job writes into latest.json).
+            $version = ($env:GITHUB_REF -replace '^refs/tags/v', '')
+            $signArgs = @('run', 'tool/release_signer.dart', 'sign', '--version', $version)
+            if ($env:MEOWWATCH_ALLOW_KEY_MISMATCH -in @('1', 'true', 'TRUE', 'True')) {
+              Write-Host 'MEOWWATCH_ALLOW_KEY_MISMATCH set -> signing with --allow-key-mismatch (key-rotation transitional release).'
+              $signArgs += '--allow-key-mismatch'
+            }
+            $signArgs += @($keyPath, 'MeowWatch-windows-x64.zip', 'MeowWatch-windows-x64.zip.sig')
+            & dart @signArgs
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Signing failed (exit $LASTEXITCODE)"
+              exit 1
+            }
+            if (-not (Test-Path 'MeowWatch-windows-x64.zip.sig')) {
+              Write-Error "Signing produced no .sig file"
+              exit 1
+            }
+            Write-Host "Signed release v$version; sig bytes: $((Get-Item 'MeowWatch-windows-x64.zip.sig').Length)"
+          } finally {
+            if (Test-Path -LiteralPath $keyPath) {
+              Remove-Item -LiteralPath $keyPath -Force -ErrorAction SilentlyContinue
+            }
           }
-          $signArgs += @("$keyPath", 'MeowWatch-windows-x64.zip', 'MeowWatch-windows-x64.zip.sig')
-          & dart @signArgs
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Signing failed (exit $LASTEXITCODE)"
-            exit 1
-          }
-          if (-not (Test-Path 'MeowWatch-windows-x64.zip.sig')) {
-            Write-Error "Signing produced no .sig file"
-            exit 1
-          }
-          Write-Host "Signed release v$version; sig bytes: $((Get-Item 'MeowWatch-windows-x64.zip.sig').Length)"
 
       - name: Create GitHub Release
         shell: pwsh
@@ -363,12 +387,10 @@ jobs:
   release:
     name: Publish R2 Metadata
     needs: [build-windows-x64]
-    # build-windows-x64 uses always() so a skipped check-self-hosted (wrong
-    # actor) does not silently drop the result check. That skip can propagate
-    # through `needs`, so a plain `if` here lets the implicit success() gate
-    # skip R2 even when the build succeeded. Guard with always() + an explicit
-    # result check so R2 publishes whenever the build is green.
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.build-windows-x64.result == 'success' }}
+    # Tag-only. Runs after a green hosted Windows sign + GitHub Release.
+    # A skipped or failed build-windows-x64 (wrong actor, missing secret)
+    # skips this job. secrets.R2_* are referenced only here.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && needs.build-windows-x64.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15 # bound hangs; R2 publish normally ~3m
     steps:

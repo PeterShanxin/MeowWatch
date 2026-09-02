@@ -37,20 +37,22 @@ always runs on a Windows runner.
 
 **Untrusted PRs always run on GitHub-hosted Windows.** That includes forks,
 Dependabot, trusted-admin same-repo PRs, and every other login. There is no
-self-hosted PR path. The privileged self-hosted PC holds the release-signing
-seed; pull-request code must never execute there.
+self-hosted PR path. Pull-request jobs must never execute on the
+self-hosted host and must never receive signing or R2 secrets.
 
 | Who | Runner | When |
 | --- | --- | --- |
 | **Every pull request** | GitHub-hosted `windows-2022` | Automatic. The `check-hosted` job, then the `gate` referee. Pinned to 2022: hosted 2025 failed the two chat-overlay goldens. |
-| **Trusted-admin push / `v*` tag** (`PeterShanxin` or `ianmeowmeow`, not Dependabot) | Self-hosted Windows (`meowwatch-ci`) | Analyze + test on push/tag, and tag-only **Sign release**. Any other login's branch or tag push does **not** run on that host and does **not** sign. |
+| **Trusted-admin push to `main`** (`PeterShanxin` or `ianmeowmeow`, not Dependabot) | Self-hosted Windows (`meowwatch-ci`) | Optional analyze + test (`check-self-hosted`). Any other login's branch push does **not** run on that host. |
+| **Trusted-admin `v*` tag** (`PeterShanxin` or `ianmeowmeow`, not Dependabot) | GitHub-hosted `windows-2022` | Tag-only **Windows x64** zip, sign with `MEOWWATCH_RELEASE_KEY`, GitHub Release. Then hosted Ubuntu publishes R2 metadata. Any other login's tag does **not** sign. |
 
 The merge gate is the `gate` job. Its check-run name is exactly
 **`Analyze & Test`** — that is the required check. It passes when the hosted
 PR job is green.
 
 Write access is not host trust. GitHub's fork-workflow approval does not
-replace the YAML actor allowlist on remaining self-hosted jobs.
+replace the YAML actor allowlist on remaining self-hosted jobs or the
+tag-signing job.
 
 Hosted PR jobs use `permissions: contents: read` only. Their checkout
 sets `persist-credentials: false`. They must not see
@@ -66,9 +68,11 @@ PR is a bug — say so on the PR.
 ## Self-hosted runners
 
 Do **not** attach a self-hosted runner to this canonical repository. The
-privileged Windows host is **trusted-admin push/tag sign only**
-(`PeterShanxin` and `ianmeowmeow`). Pull requests never schedule jobs there.
-Outsiders registering runners here is not supported.
+self-hosted Windows host is **trusted-admin push-to-main analyze only**
+(`PeterShanxin` and `ianmeowmeow`). Tag product release signs on
+GitHub-hosted Windows with the `release` environment secret
+`MEOWWATCH_RELEASE_KEY`. Pull requests never schedule jobs on the
+self-hosted host. Outsiders registering runners here is not supported.
 
 If you maintain your own **fork**, you may register runners on that fork
 alone. Never point a runner at this repo.

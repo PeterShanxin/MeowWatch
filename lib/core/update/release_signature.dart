@@ -7,12 +7,12 @@ import 'package:ed25519_edwards/ed25519_edwards.dart' as ed;
 /// Base64-encoded Ed25519 public key (32 bytes) that every genuine MeowWatch
 /// release is signed against.
 ///
-/// The matching private key never touches this repo, GitHub, or the R2 bucket —
-/// it lives only on the release PC (see `tool/release_signer.dart`). That is the
-/// whole point: the download's SHA-256 lives in the same bucket as the zip, so
-/// anyone who can swap the zip can swap the hash to match. A signature made with
-/// a key the bucket never sees can't be forged that way, so it — not the hash —
-/// is the real trust root.
+/// The matching private seed is not in this repo or the R2 bucket. Tag CI
+/// reads it from the `MEOWWATCH_RELEASE_KEY` GitHub secret (see
+/// `tool/release_signer.dart`). The download's SHA-256 lives in the same
+/// bucket as the zip, so anyone who can swap the zip can swap the hash to
+/// match. A signature made with a key the bucket never sees can't be forged
+/// that way, so it — not the hash — is the real trust root.
 ///
 /// Rotating this key means shipping a build carrying the NEW key BEFORE the first
 /// release signed by it, or existing installs can't verify the update and will
