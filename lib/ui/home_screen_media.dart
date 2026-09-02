@@ -385,6 +385,27 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
     }
   }
 
+  @override
+  void _abortFailedJoin(String? message) {
+    if (_leavingRoom) return;
+    // Rebuild this frame so the watch empty-state is gone before the route
+    // pops, then hand the named error to the start screen.
+    if (mounted) {
+      setState(() => _leavingRoom = true);
+    } else {
+      _leavingRoom = true;
+    }
+    appLog('life: join failed — returning to start screen');
+    if (mounted) {
+      Navigator.of(context).pop(
+        (message != null && message.isNotEmpty)
+            ? message
+            : 'Couldn\'t connect to room ${widget.config.room}',
+      );
+    }
+    unawaited(_finishLeaveCleanup());
+  }
+
   Future<void> _leave() async {
     if (_leavingRoom) return;
     // setState so the banner clears this frame (see [_banner]) — the resume-save

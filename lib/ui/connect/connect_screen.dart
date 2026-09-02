@@ -54,7 +54,10 @@ class ConnectScreen extends StatefulWidget {
   final SettingsStore settings;
   final MeowThemeId currentTheme;
   final ValueChanged<MeowThemeId> onThemeChanged;
-  final Future<void> Function(RoomConfig config) onConnect;
+
+  /// Completes when the watch route pops, or with a named error if the join
+  /// never logged in. The lobby stays visible until login succeeds.
+  final Future<String?> Function(RoomConfig config) onConnect;
 
   /// Cold-start card cascade signals, driven by the launch reveal completing.
   /// [playLobbyEntrance] starts the one-shot ripple; [holdLobbyHidden] keeps the
@@ -81,6 +84,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
   final _passwordFocus = FocusNode();
   final _scroll = ScrollController();
   bool _advancedOpen = false;
+
+  /// Named error from a join that never logged in (STARTTLS refused, unreachable
+  /// server, rejected room/password). Shown under Join on this screen.
+  String? _joinError;
+
+  /// True while [onConnect] is in flight. The lobby stays up for that wait;
+  /// a second tap must not start another join.
+  bool _joining = false;
 
   // Who a blank name field joins as (#172). Shown as the field's hint so the
   // user sees the name before connecting, rerollable via the dice button, and
@@ -360,29 +371,46 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _connect(RoomConfig config, {String? profileUsername}) async {
-    if (config.sessionMode.isSynced) {
-      await _saveUsedProfile(config, profileUsername: profileUsername);
+    if (_joining) return;
+    _joining = true;
+    if (mounted) {
+      setState(() {
+        if (_joinError != null) _joinError = null;
+      });
     }
-    if (!mounted) return;
-    // Flush any pending lobby-settings writes first, so the room reads the
-    // values the user just picked rather than the previous ones — a Drift set()
-    // can still be in flight when HomeScreen reads them (PR #131 review).
-    await _settingsWrites;
-    if (!mounted) return;
-    // onConnect pushes the room route and completes when it pops, so control
-    // returns here on leaving. Re-read settings then: the in-room gear may have
-    // changed the level/sounds, and the lobby gear should reflect that, not the
-    // value captured at app start.
-    await widget.onConnect(config);
-    if (!mounted) return;
-    // Fresh suggestion for the next join: a blank name means "surprise me",
-    // and the name just used is already remembered via the saved room (#172).
-    setState(() => _suggestedName = generateUsername());
-    await _loadSettings();
-    // A Local Start that became synced in-player now has a real Syncplay
-    // room. Persist it so Continue Watching can recover the server password.
-    if (config.sessionMode.isLocal && !_localPlayerMode) {
-      await _saveUsedProfile(config, profileUsername: profileUsername);
+    try {
+      if (config.sessionMode.isSynced) {
+        await _saveUsedProfile(config, profileUsername: profileUsername);
+      }
+      if (!mounted) return;
+      // Flush any pending lobby-settings writes first, so the room reads the
+      // values the user just picked rather than the previous ones — a Drift set()
+      // can still be in flight when HomeScreen reads them (PR #131 review).
+      await _settingsWrites;
+      if (!mounted) return;
+      // onConnect stays on this route until login completes, then pushes the
+      // watch route and completes when it pops. A non-null result is a join
+      // that never logged in: stay here with the named error. Re-read settings
+      // only after a real visit — the in-room gear may have changed them.
+      // Local Start and Continue Watching push immediately (#252, #254).
+      final joinError = await widget.onConnect(config);
+      if (!mounted) return;
+      if (joinError != null && joinError.isNotEmpty) {
+        setState(() => _joinError = joinError);
+        return;
+      }
+      // Fresh suggestion for the next join: a blank name means "surprise me",
+      // and the name just used is already remembered via the saved room (#172).
+      setState(() => _suggestedName = generateUsername());
+      await _loadSettings();
+      // A Local Start that became synced in-player now has a real Syncplay
+      // room. Persist it so Continue Watching can recover the server password.
+      if (config.sessionMode.isLocal && !_localPlayerMode) {
+        await _saveUsedProfile(config, profileUsername: profileUsername);
+      }
+    } finally {
+      _joining = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -844,7 +872,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
           foregroundColor: m.background,
           padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
         ),
-        onPressed: _startPlayback,
+        onPressed: _joining ? null : _startPlayback,
         child: Text(
           _localPlayerMode ? 'Start watching' : 'Start new room',
           style: const TextStyle(fontWeight: TypeScale.bold),
@@ -875,12 +903,38 @@ class _ConnectScreenState extends State<ConnectScreen> {
               backgroundColor: m.surface,
               foregroundColor: m.textPrimary,
             ),
-            onPressed: _joinTypedCode,
+            onPressed: _joining ? null : _joinTypedCode,
             child: const Text('Join'),
           ),
         ],
       ),
+      if (_joinError != null) ...[
+        const SizedBox(height: Spacing.lg),
+        _joinErrorBanner(),
+      ],
     ];
+  }
+
+  Widget _joinErrorBanner() {
+    final m = context.meow;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: m.error.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: m.error),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.lg,
+          vertical: Spacing.md,
+        ),
+        child: Text(
+          _joinError!,
+          key: const Key('connect-join-error'),
+          style: TextStyle(color: m.error, fontSize: TypeScale.body),
+        ),
+      ),
+    );
   }
 
   /// Saved rooms + continue-watching — the right column when wide, appended

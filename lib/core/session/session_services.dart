@@ -13,22 +13,29 @@ class SessionServices {
 
   factory SessionServices.synced({
     required VideoCore video,
+    SyncplayClient? client,
     void Function(String line)? onLog,
     bool Function({required bool verboseOnly})? shouldLog,
   }) {
-    return SessionServices.local()
-      ..startSynced(video: video, onLog: onLog, shouldLog: shouldLog);
+    return SessionServices.local()..startSynced(
+      video: video,
+      client: client,
+      onLog: onLog,
+      shouldLog: shouldLog,
+    );
   }
 
   factory SessionServices.forMode({
     required SessionMode mode,
     required VideoCore video,
+    SyncplayClient? client,
     void Function(String line)? onLog,
     bool Function({required bool verboseOnly})? shouldLog,
   }) {
     if (mode.isLocal) return SessionServices.local();
     return SessionServices.synced(
       video: video,
+      client: client,
       onLog: onLog,
       shouldLog: shouldLog,
     );
@@ -52,16 +59,26 @@ class SessionServices {
   void startSynced({
     required VideoCore video,
     String? openSource,
+    SyncplayClient? client,
     void Function(String line)? onLog,
     bool Function({required bool verboseOnly})? shouldLog,
   }) {
     if (_mode.isSynced) return;
-    final client = SyncplayClient(onLog: onLog, shouldLog: shouldLog);
-    sync = client;
-    final playbackBridge = PlaybackSyncBridge(video: video, sync: client)
+    final syncClient =
+        client ?? SyncplayClient(onLog: onLog, shouldLog: shouldLog);
+    sync = syncClient;
+    final playbackBridge = PlaybackSyncBridge(video: video, sync: syncClient)
       ..start();
     bridge = playbackBridge;
-    chat = ChatStore(sync: client);
+    chat = ChatStore(
+      sync: syncClient,
+      // connectionState is broadcast with no replay. A lobby-joined
+      // client already emitted `connected`, so the store must take the
+      // wire name here or own chat stamps isMine: false (#265).
+      initialUsername: syncClient.username.isEmpty
+          ? null
+          : syncClient.username,
+    );
     _mode = SessionMode.synced;
     // A live Local -> Synced switch hands the new bridge a player that is
     // ALREADY open, and the load coordinator will never call markSourceOpen for

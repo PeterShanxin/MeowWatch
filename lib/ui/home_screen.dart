@@ -93,6 +93,7 @@ class HomeScreen extends StatefulWidget {
     required this.settings,
     required this.currentTheme,
     required this.onThemeChanged,
+    this.sync,
     this.initialWidthPx,
     this.initialHeightPx,
     this.initialCorner,
@@ -100,6 +101,11 @@ class HomeScreen extends StatefulWidget {
   });
 
   final RoomConfig config;
+
+  /// Already-logged-in room client from a lobby join. Null for Local Start
+  /// and for Continue Watching, which restores the saved position before
+  /// dialing so the room cannot be overwritten with 0:00 (#254, #265).
+  final SyncplayClient? sync;
   final HistoryStore history;
   final SettingsStore settings;
   final double? initialWidthPx;
@@ -310,6 +316,7 @@ class _HomeScreenState extends _HomeScreenStateBase
     _session = SessionServices.forMode(
       mode: widget.config.sessionMode,
       video: _core,
+      client: widget.sync,
       onLog: appLog,
       shouldLog: _shouldLog,
     );
@@ -318,10 +325,18 @@ class _HomeScreenState extends _HomeScreenStateBase
     // Playback-stop wake is local and synced: EOF after the controls fade
     // must show them again. Collaboration streams stay behind [_isSynced].
     _initPlaybackWakeSubscription();
+    _username = widget.sync?.username ?? widget.config.username;
     if (_isSynced) {
       // Hashed label, never the raw room: a private room's name is its access
       // code, so logging it verbatim would leak the room credential (#146 review).
       appLog('life: enter ${roomLogLabel(widget.config.room)}');
+      if (widget.sync != null) {
+        _everRoomConnected = true;
+        _syncStatus = SyncConnectionStatus.connected;
+        _prevSyncStatus = SyncConnectionStatus.connected;
+        _lastConnectedUsername = _username;
+        _installCloseHook();
+      }
       // The stream wiring lives with its seam: chat/reaction/typing hookups in
       // [_HomeChatState], connection/presence/file/activity/roster hookups in
       // [_HomeSyncState]. Registration order is preserved from the pre-split
@@ -332,7 +347,6 @@ class _HomeScreenState extends _HomeScreenStateBase
       appLog('life: enter local session');
     }
 
-    _username = widget.config.username;
     _historyTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       unawaited(_saveResumePosition());
     });
@@ -345,10 +359,10 @@ class _HomeScreenState extends _HomeScreenStateBase
         _resumeForLaunch(
           resume,
           widget.config.resumePositionMs,
-          connectAfterResume: _isSynced,
+          connectAfterResume: _isSynced && widget.sync == null,
         ),
       );
-    } else if (_isSynced) {
+    } else if (_isSynced && widget.sync == null) {
       unawaited(_connectExistingRoom());
     }
     // Landing on the load screen (no video yet): nudge the user that chat lives
@@ -426,7 +440,7 @@ class _HomeScreenState extends _HomeScreenStateBase
     if (mounted) setState(() => _logLevel = level);
   }
 
-  Future<void> _connectExistingRoom() async {
+  void _installCloseHook() {
     final sync = _sync;
     if (sync == null) return;
     _closeHook = () async {
@@ -435,6 +449,12 @@ class _HomeScreenState extends _HomeScreenStateBase
       appLog('life: window-close leave sent');
     };
     appCloseHook.value = _closeHook;
+  }
+
+  Future<void> _connectExistingRoom() async {
+    final sync = _sync;
+    if (sync == null) return;
+    _installCloseHook();
     await sync.connect(
       server: widget.config.server,
       port: widget.config.port,
@@ -513,6 +533,7 @@ class _HomeScreenState extends _HomeScreenStateBase
       shouldLog: _shouldLog,
     );
     _chrome = SessionChrome.forMode(SessionMode.synced);
+    _everRoomConnected = true;
     _syncStatus = SyncConnectionStatus.connecting;
     _syncError = null;
     _initChatSubscriptions();

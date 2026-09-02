@@ -30,8 +30,15 @@ abstract class SyncCore {
       StreamController<List<String>>.broadcast();
 
   bool _disposed = false;
+  SyncConnectionState? _lastConnectionState;
 
   Stream<SyncConnectionState> get connectionState => _connection.stream;
+
+  /// Last emitted connection state. Broadcast listeners miss events that fire
+  /// with nobody attached; the lobby and watch route use this so a terminal
+  /// Error during the join handoff is not dropped (#265).
+  SyncConnectionState? get lastConnectionState => _lastConnectionState;
+
   Stream<PeerPlayState> get peerState => _peer.stream;
   Stream<PresenceEvent> get presence => _presence.stream;
   Stream<ChatMessage> get chat => _chat.stream;
@@ -55,6 +62,7 @@ abstract class SyncCore {
 
   @protected
   void emitConnectionState(SyncConnectionState s) {
+    _lastConnectionState = s;
     if (!_disposed) _connection.add(s);
   }
 

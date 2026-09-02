@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/session/session_mode.dart';
 import 'package:meowwatch/core/session/session_services.dart';
+import 'package:meowwatch/core/sync/syncplay_client.dart';
 import 'package:meowwatch/core/video/video_core.dart';
 
 class _FakeVideoCore extends VideoCore {
@@ -41,6 +42,14 @@ void main() {
     expect(session.sync, isNull);
     expect(session.bridge, isNull);
     expect(session.chat, isNull);
+  });
+
+  test('startSynced reuses a lobby-joined client', () async {
+    final existing = SyncplayClient();
+    final session = SessionServices.local();
+    session.startSynced(video: _FakeVideoCore(), client: existing);
+    expect(identical(session.sync, existing), isTrue);
+    await session.dispose();
   });
 
   test('startSynced then stopToLocal tears the trio down', () async {

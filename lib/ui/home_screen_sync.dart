@@ -14,9 +14,13 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
   // `sizeBytes`) — the sync-side callers only ever pass the path.
   void _announceLoadedFile(String? path);
 
-  // Start as "connecting", not "disconnected": entering a room immediately
-  // begins a connection, so the first frame should read "Connecting to room …"
-  // rather than flashing "Disconnected from room …" before the socket dials.
+  /// Implemented by [_HomeMediaState]: a join that never logged in returns
+  /// to the start screen with [message] so the named error is on the lobby.
+  void _abortFailedJoin(String? message);
+
+  // Start as "connecting": Local Start and Continue Watching dial from
+  // this screen. A lobby join that already completed login flips these
+  // to connected in initState before the first frame.
   SyncConnectionStatus _syncStatus = SyncConnectionStatus.connecting;
   String? _syncError;
   final Set<String> _peers = <String>{};
@@ -30,6 +34,12 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
 
   /// Previous connection status — used to detect the drop edge.
   SyncConnectionStatus _prevSyncStatus = SyncConnectionStatus.disconnected;
+
+  /// Latched the first time this room session reaches `connected`. A later
+  /// kick or drop stays on the watch UI; only a join that never logged in
+  /// returns to the start screen with the named error. Lobby joins that
+  /// already completed Hello set this true in initState.
+  bool _everRoomConnected = false;
 
   /// Latched true on a local drop (connected → reconnecting) and cleared when we
   /// reconnect or stop trying. Needed because the reconnect path passes through
@@ -123,7 +133,24 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
     final sync = _sync;
     final chat = _chat;
     if (sync == null || chat == null) return;
+    final last = sync.lastConnectionState;
+    if (last != null && last.status == SyncConnectionStatus.error) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _abortFailedJoin(last.message);
+      });
+      return;
+    }
     _connSub = sync.connectionState.listen((s) {
+      if (s.status == SyncConnectionStatus.connected) {
+        _everRoomConnected = true;
+      }
+      if (isFailedInitialJoin(
+        status: s.status,
+        everConnected: _everRoomConnected,
+      )) {
+        _abortFailedJoin(s.message);
+        return;
+      }
       if (mounted) {
         setState(() {
           _syncStatus = s.status;
@@ -371,6 +398,9 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
         setState(() => _autoPausedNotice = false);
       }
     });
+    // The lobby join completes Hello before this route mounts, so the
+    // one-shot roster greeting would otherwise miss the watch UI.
+    sync.requestList();
   }
 
   /// Show a transient banner (friend joined/left, or a sync action); auto-clears
