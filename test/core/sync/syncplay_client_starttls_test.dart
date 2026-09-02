@@ -84,6 +84,19 @@ void main() {
       expect(probe.terminalMessage, contains('malformed STARTTLS answer'));
     });
 
+    test('an oversized STARTTLS answer with no newline is malformed', () async {
+      final probe = await _connectAgainst(
+        rawBytes: Uint8List.fromList(
+          List<int>.filled(LineFramer.defaultMaxLineBytes + 1, 0x41),
+        ),
+      );
+
+      probe.expectNothingSensitiveOnTheWire();
+      expect(probe.terminalStatus, SyncConnectionStatus.error);
+      expect(probe.terminalMessage, contains('malformed STARTTLS answer'));
+      expect(probe.channelSecure, isFalse);
+    });
+
     test('invalid UTF-8 in the STARTTLS answer is refused', () async {
       final probe = await _connectAgainst(
         rawBytes: Uint8List.fromList(const [0xC3, 0x28, 0x0D, 0x0A]),
@@ -113,6 +126,51 @@ void main() {
         isFalse,
         reason: 'a Hello frame must not be able to log the client in',
       );
+    });
+
+    test('connectUntilJoin returns a Hello-then-Error', () async {
+      final harness = await _tlsJoinHarness();
+      addTearDown(harness.dispose);
+
+      final joining = harness.client.connectUntilJoin(
+        server: '127.0.0.1',
+        port: harness.port,
+        username: 'me',
+        room: 'secret-room',
+        password: 'hunter2',
+      );
+      await _until(() => harness.client.debugChannelSecure);
+      harness.client.debugHandleMessage(const HelloMessage(username: 'me'));
+      harness.client.debugHandleMessage(const ErrorMessage('room is full'));
+
+      expect(await joining, contains('room is full'));
+      expect(
+        harness.client.lastConnectionState?.status,
+        SyncConnectionStatus.error,
+      );
+    });
+
+    test('connectUntilJoin keeps listening through the handoff', () async {
+      final harness = await _tlsJoinHarness();
+      addTearDown(harness.dispose);
+
+      final joining = harness.client.connectUntilJoin(
+        server: '127.0.0.1',
+        port: harness.port,
+        username: 'me',
+        room: 'secret-room',
+        password: 'hunter2',
+        onHandoff: () async {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          harness.client.debugHandleMessage(
+            const ErrorMessage('room is full'),
+          );
+        },
+      );
+      await _until(() => harness.client.debugChannelSecure);
+      harness.client.debugHandleMessage(const HelloMessage(username: 'me'));
+
+      expect(await joining, contains('room is full'));
     });
 
     test('connectUntilJoin returns the named refusal', () async {
@@ -293,6 +351,60 @@ void main() {
       },
     );
   });
+}
+
+/// Loopback server that accepts STARTTLS via the test upgrade seam, so a
+/// test can drive Hello / Error after the channel is secure.
+Future<_TlsJoinHarness> _tlsJoinHarness() async {
+  final server = await ServerSocket.bind('127.0.0.1', 0);
+  final accepted = <Socket>[];
+  server.listen((s) {
+    accepted.add(s);
+    s.listen((bytes) {
+      if (utf8.decode(bytes, allowMalformed: true).contains('startTLS')) {
+        s.add(
+          utf8.encode(
+            '${json.encode({
+              'TLS': {'startTLS': 'true'},
+            })}\r\n',
+          ),
+        );
+      }
+    }, onError: (_) {});
+  });
+  final client = SyncplayClient(
+    livenessTimeout: const Duration(seconds: 3),
+    secureUpgrade: (plain, {required host}) async {
+      return _RecordingSocket(plain, <String>[]);
+    },
+  );
+  return _TlsJoinHarness(
+    client: client,
+    server: server,
+    accepted: accepted,
+  );
+}
+
+class _TlsJoinHarness {
+  _TlsJoinHarness({
+    required this.client,
+    required this.server,
+    required this.accepted,
+  });
+
+  final SyncplayClient client;
+  final ServerSocket server;
+  final List<Socket> accepted;
+
+  int get port => server.port;
+
+  Future<void> dispose() async {
+    await client.dispose();
+    for (final s in accepted) {
+      s.destroy();
+    }
+    await server.close();
+  }
 }
 
 /// Drives a real [SyncplayClient] against a loopback server that answers the

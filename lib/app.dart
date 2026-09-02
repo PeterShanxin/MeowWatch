@@ -101,6 +101,8 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
 
   /// Stay on the lobby until login completes. A refused join returns the named
   /// error; the watch route is only pushed after a completed Hello (#265).
+  /// [connectUntilJoin] keeps listening through this handoff so a Hello-then-
+  /// Error is not dropped by the broadcast stream before [HomeScreen] attaches.
   Future<String?> _joinAndOpenRoom(
     BuildContext context,
     RoomConfig config,
@@ -113,40 +115,57 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             (!verboseOnly && level == LogLevel.neat);
       },
     );
+    Future<String?>? watchRoute;
     final error = await client.connectUntilJoin(
       server: config.server,
       port: config.port,
       username: config.username,
       room: config.room,
       password: config.password,
+      onHandoff: () async {
+        if (!context.mounted) {
+          await client.dispose();
+          return;
+        }
+        // Don't await the route here: connectUntilJoin must keep listening
+        // only until HomeScreen's subscriptions exist, not until Leave.
+        watchRoute = Navigator.of(context).push<String>(
+          fadeUpRoute<String>(
+            reduceMotion: context.reduceMotion,
+            // A builder, not a captured widget, so the room page rebuilds
+            // with the latest [_theme] when the in-room gear switches theme
+            // (the swatch highlight tracks it) — see [fadeUpRoute].
+            builder: (_) => HomeScreen(
+              config: config,
+              sync: client,
+              history: widget.history,
+              settings: widget.settings,
+              initialWidthPx: widget.initialCardWidthPx,
+              initialHeightPx: widget.initialCardHeightPx,
+              initialCorner: widget.initialChatCorner,
+              currentTheme: _theme,
+              onThemeChanged: _setTheme,
+            ),
+          ),
+        );
+        await WidgetsBinding.instance.endOfFrame;
+      },
     );
     if (error != null) {
-      await client.dispose();
+      if (watchRoute != null &&
+          context.mounted &&
+          Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(error);
+      } else {
+        await client.dispose();
+      }
       return error;
     }
-    if (!context.mounted) {
+    if (watchRoute == null) {
       await client.dispose();
       return null;
     }
-    return Navigator.of(context).push<String>(
-      fadeUpRoute<String>(
-        reduceMotion: context.reduceMotion,
-        // A builder, not a captured widget, so the room page rebuilds
-        // with the latest [_theme] when the in-room gear switches theme
-        // (the swatch highlight tracks it) — see [fadeUpRoute].
-        builder: (_) => HomeScreen(
-          config: config,
-          sync: client,
-          history: widget.history,
-          settings: widget.settings,
-          initialWidthPx: widget.initialCardWidthPx,
-          initialHeightPx: widget.initialCardHeightPx,
-          initialCorner: widget.initialChatCorner,
-          currentTheme: _theme,
-          onThemeChanged: _setTheme,
-        ),
-      ),
-    );
+    return watchRoute;
   }
 
   @override

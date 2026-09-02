@@ -187,24 +187,40 @@ class SyncplayClient extends SyncCore {
   /// Connect and complete when login succeeds or the attempt ends in a named
   /// error. The lobby uses this so the watch route is only pushed after a
   /// completed join (#265).
+  ///
+  /// A Hello-then-Error is a failed join: an Error after Connected, while
+  /// this method is still listening, wins. [onHandoff] runs after Hello
+  /// with that listener still attached so the watch route can subscribe
+  /// before the broadcast stream would drop a following Error.
   Future<String?> connectUntilJoin({
     required String server,
     required int port,
     required String username,
     required String room,
     String? password,
+    Future<void> Function()? onHandoff,
   }) async {
-    final done = Completer<String?>();
+    String? terminalError;
+    String? failedJoin() {
+      if (terminalError != null) return terminalError;
+      final last = lastConnectionState;
+      if (last != null && last.status == SyncConnectionStatus.error) {
+        return (last.message != null && last.message!.isNotEmpty)
+            ? last.message
+            : 'Couldn\'t connect to room $room';
+      }
+      return null;
+    }
+
+    final firstOutcome = Completer<void>();
     final sub = connectionState.listen((s) {
-      if (done.isCompleted) return;
       if (s.status == SyncConnectionStatus.connected) {
-        done.complete(null);
+        if (!firstOutcome.isCompleted) firstOutcome.complete();
       } else if (s.status == SyncConnectionStatus.error) {
-        done.complete(
-          (s.message != null && s.message!.isNotEmpty)
-              ? s.message
-              : 'Couldn\'t connect to room $room',
-        );
+        terminalError = (s.message != null && s.message!.isNotEmpty)
+            ? s.message
+            : 'Couldn\'t connect to room $room';
+        if (!firstOutcome.isCompleted) firstOutcome.complete();
       }
     });
     try {
@@ -215,7 +231,15 @@ class SyncplayClient extends SyncCore {
         room: room,
         password: password,
       );
-      return await done.future;
+      await firstOutcome.future;
+      // Same-turn Error after Hello (one chunk, two frames) is applied
+      // before the lobby decides the join succeeded. Broadcast delivery
+      // is async; lastConnectionState is set when the Error is emitted.
+      await Future<void>.delayed(Duration.zero);
+      final afterHello = failedJoin();
+      if (afterHello != null) return afterHello;
+      if (onHandoff != null) await onHandoff();
+      return failedJoin();
     } finally {
       await sub.cancel();
     }
@@ -401,8 +425,7 @@ class SyncplayClient extends SyncCore {
         } on LineOverflowException catch (e) {
           settled = true;
           if (stale()) return;
-          onLog?.call('tls negotiation protocol error: $e');
-          _onConnectionLost();
+          _failTlsNegotiation('malformed STARTTLS answer: $e');
           return;
         } on FormatException catch (e) {
           // utf8.decode throws here. An uncaught throw from this async

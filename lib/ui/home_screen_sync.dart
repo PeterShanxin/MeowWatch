@@ -127,6 +127,13 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
   /// presence, peer files, throttled sync activity, the initial roster, and
   /// the playback-state notices. Called once from initState.
   void _initSyncSubscriptions() {
+    final last = _sync.lastConnectionState;
+    if (last != null && last.status == SyncConnectionStatus.error) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _abortFailedJoin(last.message);
+      });
+      return;
+    }
     _connSub = _sync.connectionState.listen((s) {
       if (s.status == SyncConnectionStatus.connected) {
         _everRoomConnected = true;

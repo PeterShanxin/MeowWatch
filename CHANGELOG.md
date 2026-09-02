@@ -18,12 +18,14 @@ in-app updater reads to show what changed.
 - MeowWatch asks the Syncplay server to encrypt the connection before it says
   who you are. Username, room name, and server password never go on the wire
   in the clear. There is no unencrypted mode (#264).
-- A server that will not encrypt — it says no, it answers with nonsense, or
-  its certificate does not check out — fails with a message that names the
-  refusal. A server that stays silent after the encryption request waits
-  twelve seconds, then fails with a message that names that silence.
+- A server that will not encrypt — it says no, it answers with nonsense, it
+  sends a huge reply with no end of line, or its certificate does not check
+  out — fails with a message that names the refusal. A server that stays
+  silent after the encryption request waits twelve seconds, then fails with
+  a message that names that silence.
 - Join stays on the start screen until the room login completes. A refused
-  join shows the named error next to Join. Load a video / Leave appear only
+  join — including a server that accepts the login and immediately errors —
+  shows the named error next to Join. Load a video / Leave appear only
   after a completed login (#265).
 - Public Syncplay servers, including the default `syncplay.pl`, support
   encryption and are unaffected.
