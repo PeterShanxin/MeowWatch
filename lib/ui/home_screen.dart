@@ -91,6 +91,7 @@ part 'home_screen_sync.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.config,
+    required this.profiles,
     required this.history,
     required this.settings,
     required this.currentTheme,
@@ -108,6 +109,7 @@ class HomeScreen extends StatefulWidget {
   /// and for Continue Watching, which restores the saved position before
   /// dialing so the room cannot be overwritten with 0:00 (#254, #265).
   final SyncplayClient? sync;
+  final ProfileStore profiles;
   final HistoryStore history;
   final SettingsStore settings;
   final double? initialWidthPx;
@@ -506,6 +508,33 @@ class _HomeScreenState extends _HomeScreenStateBase
           _sessionServer = landed.host;
           _sessionPort = landed.port;
         });
+        // Resume already wrote history under the card's old server/port.
+        // Later updatePosition uses [_historyContext], so the landed
+        // endpoint must own a row before the next save.
+        final path = _core.state.filePath;
+        if (path != null && isPlaybackOpen(_core.state)) {
+          await _recordOpen(
+            path,
+            lastPositionMs: _core.state.position.inMilliseconds,
+          );
+          await _saveResumePosition(force: true);
+        }
+        try {
+          await widget.profiles.saveUsed(
+            name: config.room,
+            server: landed.host,
+            port: landed.port,
+            room: config.room,
+            username: config.persistAsUsername,
+            password: config.password,
+            endpointPinned: false,
+          );
+        } catch (e) {
+          appLog(
+            'db: saveUsed FAILED ${roomLogLabel(config.room)}: '
+            '${redactUrls('$e')}',
+          );
+        }
         return;
       }
       // Continue Watching that never Hello'd: the walk is the join. Local-to-

@@ -41,6 +41,7 @@ class _FakeProfileStore implements ProfileStore {
     required String room,
     required String username,
     String? password,
+    bool endpointPinned = false,
   }) async {
     saveUsedCalls++;
     savedUsernames.add(username);
@@ -142,6 +143,8 @@ class _FakeHistoryStore implements HistoryStore {
     required WatchContext context,
     int? durationMs,
     String? username,
+    bool endpointPinned = false,
+    int? lastPositionMs,
   }) async {}
 
   @override
@@ -785,6 +788,7 @@ void main() {
 
     expect(connected!.room, 'cozy-fox-42');
     expect(connected!.username, 'alice');
+    expect(connected!.persistUsername, 'meowPEOW');
     expect(profiles.saveUsedCalls, 0);
   });
 

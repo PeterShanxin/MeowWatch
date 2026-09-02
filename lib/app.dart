@@ -131,6 +131,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
           builder: (_) => HomeScreen(
             config: joined ?? config,
             sync: sync,
+            profiles: widget.profiles,
             history: widget.history,
             settings: widget.settings,
             initialWidthPx: widget.initialCardWidthPx,
@@ -273,27 +274,33 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
       await client.dispose();
       return;
     }
-    await widget.profiles.saveUsed(
-      name: config.room,
-      server: config.server,
-      port: config.port,
-      room: config.room,
-      username: config.username,
-      password: config.password,
-    );
-    if (config.copyShareCode) {
+    // Push first so ChatStore and the other broadcast listeners exist
+    // before any awaited work. A slow profile write must not drop chat
+    // that arrives in that window (#265).
+    setWatchRoute(pushWatch(sync: client, joined: config));
+    await WidgetsBinding.instance.endOfFrame;
+    if (config.copyShareCode && context.mounted) {
       final share = encodeShareCode(
         room: config.room,
         server: config.server,
         port: config.port,
       );
       Clipboard.setData(ClipboardData(text: share)).ignore();
-      if (context.mounted) showCopiedRoomCodeSnack(context, share);
+      showCopiedRoomCodeSnack(context, share);
     }
-    // Don't await the route here: connectUntilJoin must keep listening
-    // only until HomeScreen's subscriptions exist, not until Leave.
-    setWatchRoute(pushWatch(sync: client, joined: config));
-    await WidgetsBinding.instance.endOfFrame;
+    try {
+      await widget.profiles.saveUsed(
+        name: config.room,
+        server: config.server,
+        port: config.port,
+        room: config.room,
+        username: config.persistAsUsername,
+        password: config.password,
+        endpointPinned: config.persistEndpointPinned,
+      );
+    } catch (e) {
+      appLog('db: saveUsed FAILED: $e');
+    }
   }
 
   Future<String?> _finishJoin({

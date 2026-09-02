@@ -16,9 +16,16 @@ enum SyncplayEndpointPolicy {
   discover,
 
   /// Walk the public candidates, trying this room's saved address first.
-  /// Used for a saved room or Continue Watching on a public endpoint.
+  /// Used for a saved room or Continue Watching whose stored provenance
+  /// is discoverable — not merely because the address is on the public list.
   discoverFromRoom,
 }
+
+/// Launch policy for a stored profile or history row. The pin is written
+/// when the room is saved, so a later join does not guess from the public list.
+SyncplayEndpointPolicy endpointPolicyFromPin(bool pinned) => pinned
+    ? SyncplayEndpointPolicy.pinned
+    : SyncplayEndpointPolicy.discoverFromRoom;
 
 /// Everything the watch screen needs to join a room and optionally resume a
 /// previously-watched file. Built by [ConnectScreen], consumed by HomeScreen.
@@ -35,6 +42,7 @@ class RoomConfig {
     this.sessionMode = SessionMode.synced,
     this.endpointPolicy = SyncplayEndpointPolicy.pinned,
     this.copyShareCode = false,
+    this.persistUsername,
   });
 
   /// A Local playback session: real room identity, no Syncplay yet.
@@ -47,6 +55,9 @@ class RoomConfig {
     String? password,
     String? resumeFilePath,
     int resumePositionMs = 0,
+    // New Local Start keeps the typed destination exact if it later
+    // becomes synced. Continue Watching must pass the stored pin.
+    bool endpointPinned = true,
   }) {
     return RoomConfig(
       sessionMode: SessionMode.local,
@@ -57,6 +68,7 @@ class RoomConfig {
       password: password,
       resumeFilePath: resumeFilePath,
       resumePositionMs: resumePositionMs,
+      endpointPolicy: endpointPolicyFromPin(endpointPinned),
     );
   }
 
@@ -91,6 +103,18 @@ class RoomConfig {
   /// host actually landed on.
   final bool copyShareCode;
 
+  /// Username written to the saved-room card after Hello. A one-session
+  /// name override (Join as alice this time) keeps the room's stored
+  /// identity so it does not mint a second card.
+  final String? persistUsername;
+
+  /// Persist this session as a pin, not as a discoverable public room.
+  bool get persistEndpointPinned =>
+      endpointPolicy == SyncplayEndpointPolicy.pinned;
+
+  /// Identity [ProfileStore.saveUsed] writes after Hello.
+  String get persistAsUsername => persistUsername ?? username;
+
   RoomConfig copyWith({
     SessionMode? sessionMode,
     String? server,
@@ -102,6 +126,7 @@ class RoomConfig {
     int? resumePositionMs,
     SyncplayEndpointPolicy? endpointPolicy,
     bool? copyShareCode,
+    String? persistUsername,
   }) {
     return RoomConfig(
       sessionMode: sessionMode ?? this.sessionMode,
@@ -114,6 +139,7 @@ class RoomConfig {
       resumePositionMs: resumePositionMs ?? this.resumePositionMs,
       endpointPolicy: endpointPolicy ?? this.endpointPolicy,
       copyShareCode: copyShareCode ?? this.copyShareCode,
+      persistUsername: persistUsername ?? this.persistUsername,
     );
   }
 
@@ -129,7 +155,8 @@ class RoomConfig {
       other.resumeFilePath == resumeFilePath &&
       other.resumePositionMs == resumePositionMs &&
       other.endpointPolicy == endpointPolicy &&
-      other.copyShareCode == copyShareCode;
+      other.copyShareCode == copyShareCode &&
+      other.persistUsername == persistUsername;
 
   @override
   int get hashCode => Object.hash(
@@ -143,5 +170,6 @@ class RoomConfig {
     resumePositionMs,
     endpointPolicy,
     copyShareCode,
+    persistUsername,
   );
 }

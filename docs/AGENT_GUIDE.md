@@ -248,9 +248,12 @@ Every release is signed with an **Ed25519** key so the app installs only genuine
 "where is this room" resolves the same on both machines, so the rules are
 deliberately narrow:
 
-- **Discovery may only replace an endpoint MeowWatch itself chose** — one in
-  `kPublicSyncplayEndpoints`. An Advanced server/port, a `room@host:port` share
-  code, and any self-hosted host are used exactly as given, forever.
+- **Discovery may only replace an endpoint MeowWatch itself chose.** The
+  pin is stored on the saved room and history row (`endpointPinned`). An
+  Advanced server/port, a `room@host:port` share code, a bare share code,
+  and any self-hosted host write a pin and stay exact on later launches.
+  Membership in `kPublicSyncplayEndpoints` is not enough to walk — a
+  public address the user named is still a pin.
 - **Candidates are walked sequentially in the curated order**, never raced.
   Racing would pick whichever answered fastest *from this machine*, which is how
   two friends end up in the same room name on different servers.

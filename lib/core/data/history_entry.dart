@@ -19,6 +19,7 @@ class HistoryEntry {
     this.username,
     this.server,
     this.port,
+    this.endpointPinned = false,
   });
 
   final int id;
@@ -44,6 +45,10 @@ class HistoryEntry {
   final String? server;
   final int? port;
 
+  /// True when this watch was saved as an exact destination. A later
+  /// Continue Watching must not walk public candidates.
+  final bool endpointPinned;
+
   bool get isLocalContext => contextKey == kLocalWatchContextKey;
 
   WatchContext get watchContext => isLocalContext
@@ -67,6 +72,7 @@ class HistoryEntry {
     String? username,
     String? server,
     int? port,
+    bool? endpointPinned,
   }) {
     return HistoryEntry(
       id: id ?? this.id,
@@ -81,6 +87,7 @@ class HistoryEntry {
       username: username ?? this.username,
       server: server ?? this.server,
       port: port ?? this.port,
+      endpointPinned: endpointPinned ?? this.endpointPinned,
     );
   }
 
@@ -98,7 +105,8 @@ class HistoryEntry {
       other.room == room &&
       other.username == username &&
       other.server == server &&
-      other.port == port;
+      other.port == port &&
+      other.endpointPinned == endpointPinned;
 
   @override
   int get hashCode => Object.hash(
@@ -114,5 +122,6 @@ class HistoryEntry {
     username,
     server,
     port,
+    endpointPinned,
   );
 }

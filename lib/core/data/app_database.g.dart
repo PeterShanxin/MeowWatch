@@ -106,6 +106,21 @@ class $ProfilesTable extends Profiles
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _endpointPinnedMeta = const VerificationMeta(
+    'endpointPinned',
+  );
+  @override
+  late final GeneratedColumn<bool> endpointPinned = GeneratedColumn<bool>(
+    'endpoint_pinned',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("endpoint_pinned" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -117,6 +132,7 @@ class $ProfilesTable extends Profiles
     password,
     isDefault,
     lastUsedAt,
+    endpointPinned,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -194,6 +210,15 @@ class $ProfilesTable extends Profiles
         ),
       );
     }
+    if (data.containsKey('endpoint_pinned')) {
+      context.handle(
+        _endpointPinnedMeta,
+        endpointPinned.isAcceptableOrUnknown(
+          data['endpoint_pinned']!,
+          _endpointPinnedMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -243,6 +268,10 @@ class $ProfilesTable extends Profiles
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_used_at'],
       ),
+      endpointPinned: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}endpoint_pinned'],
+      )!,
     );
   }
 
@@ -262,6 +291,7 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
   final String? password;
   final bool isDefault;
   final DateTime? lastUsedAt;
+  final bool endpointPinned;
   const ProfileRow({
     required this.id,
     required this.name,
@@ -272,6 +302,7 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
     this.password,
     required this.isDefault,
     this.lastUsedAt,
+    required this.endpointPinned,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -289,6 +320,7 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
     if (!nullToAbsent || lastUsedAt != null) {
       map['last_used_at'] = Variable<DateTime>(lastUsedAt);
     }
+    map['endpoint_pinned'] = Variable<bool>(endpointPinned);
     return map;
   }
 
@@ -307,6 +339,7 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
       lastUsedAt: lastUsedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastUsedAt),
+      endpointPinned: Value(endpointPinned),
     );
   }
 
@@ -325,6 +358,7 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
       password: serializer.fromJson<String?>(json['password']),
       isDefault: serializer.fromJson<bool>(json['isDefault']),
       lastUsedAt: serializer.fromJson<DateTime?>(json['lastUsedAt']),
+      endpointPinned: serializer.fromJson<bool>(json['endpointPinned']),
     );
   }
   @override
@@ -340,6 +374,7 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
       'password': serializer.toJson<String?>(password),
       'isDefault': serializer.toJson<bool>(isDefault),
       'lastUsedAt': serializer.toJson<DateTime?>(lastUsedAt),
+      'endpointPinned': serializer.toJson<bool>(endpointPinned),
     };
   }
 
@@ -353,6 +388,7 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
     Value<String?> password = const Value.absent(),
     bool? isDefault,
     Value<DateTime?> lastUsedAt = const Value.absent(),
+    bool? endpointPinned,
   }) => ProfileRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -363,6 +399,7 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
     password: password.present ? password.value : this.password,
     isDefault: isDefault ?? this.isDefault,
     lastUsedAt: lastUsedAt.present ? lastUsedAt.value : this.lastUsedAt,
+    endpointPinned: endpointPinned ?? this.endpointPinned,
   );
   ProfileRow copyWithCompanion(ProfilesCompanion data) {
     return ProfileRow(
@@ -377,6 +414,9 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
       lastUsedAt: data.lastUsedAt.present
           ? data.lastUsedAt.value
           : this.lastUsedAt,
+      endpointPinned: data.endpointPinned.present
+          ? data.endpointPinned.value
+          : this.endpointPinned,
     );
   }
 
@@ -391,7 +431,8 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
           ..write('username: $username, ')
           ..write('password: $password, ')
           ..write('isDefault: $isDefault, ')
-          ..write('lastUsedAt: $lastUsedAt')
+          ..write('lastUsedAt: $lastUsedAt, ')
+          ..write('endpointPinned: $endpointPinned')
           ..write(')'))
         .toString();
   }
@@ -407,6 +448,7 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
     password,
     isDefault,
     lastUsedAt,
+    endpointPinned,
   );
   @override
   bool operator ==(Object other) =>
@@ -420,7 +462,8 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
           other.username == this.username &&
           other.password == this.password &&
           other.isDefault == this.isDefault &&
-          other.lastUsedAt == this.lastUsedAt);
+          other.lastUsedAt == this.lastUsedAt &&
+          other.endpointPinned == this.endpointPinned);
 }
 
 class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
@@ -433,6 +476,7 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
   final Value<String?> password;
   final Value<bool> isDefault;
   final Value<DateTime?> lastUsedAt;
+  final Value<bool> endpointPinned;
   const ProfilesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -443,6 +487,7 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
     this.password = const Value.absent(),
     this.isDefault = const Value.absent(),
     this.lastUsedAt = const Value.absent(),
+    this.endpointPinned = const Value.absent(),
   });
   ProfilesCompanion.insert({
     this.id = const Value.absent(),
@@ -454,6 +499,7 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
     this.password = const Value.absent(),
     this.isDefault = const Value.absent(),
     this.lastUsedAt = const Value.absent(),
+    this.endpointPinned = const Value.absent(),
   }) : name = Value(name),
        server = Value(server),
        port = Value(port),
@@ -469,6 +515,7 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
     Expression<String>? password,
     Expression<bool>? isDefault,
     Expression<DateTime>? lastUsedAt,
+    Expression<bool>? endpointPinned,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -480,6 +527,7 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
       if (password != null) 'password': password,
       if (isDefault != null) 'is_default': isDefault,
       if (lastUsedAt != null) 'last_used_at': lastUsedAt,
+      if (endpointPinned != null) 'endpoint_pinned': endpointPinned,
     });
   }
 
@@ -493,6 +541,7 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
     Value<String?>? password,
     Value<bool>? isDefault,
     Value<DateTime?>? lastUsedAt,
+    Value<bool>? endpointPinned,
   }) {
     return ProfilesCompanion(
       id: id ?? this.id,
@@ -504,6 +553,7 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
       password: password ?? this.password,
       isDefault: isDefault ?? this.isDefault,
       lastUsedAt: lastUsedAt ?? this.lastUsedAt,
+      endpointPinned: endpointPinned ?? this.endpointPinned,
     );
   }
 
@@ -537,6 +587,9 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
     if (lastUsedAt.present) {
       map['last_used_at'] = Variable<DateTime>(lastUsedAt.value);
     }
+    if (endpointPinned.present) {
+      map['endpoint_pinned'] = Variable<bool>(endpointPinned.value);
+    }
     return map;
   }
 
@@ -551,7 +604,8 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
           ..write('username: $username, ')
           ..write('password: $password, ')
           ..write('isDefault: $isDefault, ')
-          ..write('lastUsedAt: $lastUsedAt')
+          ..write('lastUsedAt: $lastUsedAt, ')
+          ..write('endpointPinned: $endpointPinned')
           ..write(')'))
         .toString();
   }
@@ -693,6 +747,21 @@ class $HistoryEntriesTable extends HistoryEntries
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _endpointPinnedMeta = const VerificationMeta(
+    'endpointPinned',
+  );
+  @override
+  late final GeneratedColumn<bool> endpointPinned = GeneratedColumn<bool>(
+    'endpoint_pinned',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("endpoint_pinned" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -707,6 +776,7 @@ class $HistoryEntriesTable extends HistoryEntries
     username,
     server,
     port,
+    endpointPinned,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -803,6 +873,15 @@ class $HistoryEntriesTable extends HistoryEntries
         port.isAcceptableOrUnknown(data['port']!, _portMeta),
       );
     }
+    if (data.containsKey('endpoint_pinned')) {
+      context.handle(
+        _endpointPinnedMeta,
+        endpointPinned.isAcceptableOrUnknown(
+          data['endpoint_pinned']!,
+          _endpointPinnedMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -864,6 +943,10 @@ class $HistoryEntriesTable extends HistoryEntries
         DriftSqlType.int,
         data['${effectivePrefix}port'],
       ),
+      endpointPinned: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}endpoint_pinned'],
+      )!,
     );
   }
 
@@ -889,6 +972,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
   final String? username;
   final String? server;
   final int? port;
+  final bool endpointPinned;
   const HistoryRow({
     required this.id,
     required this.filePath,
@@ -902,6 +986,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     this.username,
     this.server,
     this.port,
+    required this.endpointPinned,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -928,6 +1013,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     if (!nullToAbsent || port != null) {
       map['port'] = Variable<int>(port);
     }
+    map['endpoint_pinned'] = Variable<bool>(endpointPinned);
     return map;
   }
 
@@ -951,6 +1037,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           ? const Value.absent()
           : Value(server),
       port: port == null && nullToAbsent ? const Value.absent() : Value(port),
+      endpointPinned: Value(endpointPinned),
     );
   }
 
@@ -972,6 +1059,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
       username: serializer.fromJson<String?>(json['username']),
       server: serializer.fromJson<String?>(json['server']),
       port: serializer.fromJson<int?>(json['port']),
+      endpointPinned: serializer.fromJson<bool>(json['endpointPinned']),
     );
   }
   @override
@@ -990,6 +1078,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
       'username': serializer.toJson<String?>(username),
       'server': serializer.toJson<String?>(server),
       'port': serializer.toJson<int?>(port),
+      'endpointPinned': serializer.toJson<bool>(endpointPinned),
     };
   }
 
@@ -1006,6 +1095,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     Value<String?> username = const Value.absent(),
     Value<String?> server = const Value.absent(),
     Value<int?> port = const Value.absent(),
+    bool? endpointPinned,
   }) => HistoryRow(
     id: id ?? this.id,
     filePath: filePath ?? this.filePath,
@@ -1019,6 +1109,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     username: username.present ? username.value : this.username,
     server: server.present ? server.value : this.server,
     port: port.present ? port.value : this.port,
+    endpointPinned: endpointPinned ?? this.endpointPinned,
   );
   HistoryRow copyWithCompanion(HistoryEntriesCompanion data) {
     return HistoryRow(
@@ -1042,6 +1133,9 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
       username: data.username.present ? data.username.value : this.username,
       server: data.server.present ? data.server.value : this.server,
       port: data.port.present ? data.port.value : this.port,
+      endpointPinned: data.endpointPinned.present
+          ? data.endpointPinned.value
+          : this.endpointPinned,
     );
   }
 
@@ -1059,7 +1153,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           ..write('room: $room, ')
           ..write('username: $username, ')
           ..write('server: $server, ')
-          ..write('port: $port')
+          ..write('port: $port, ')
+          ..write('endpointPinned: $endpointPinned')
           ..write(')'))
         .toString();
   }
@@ -1078,6 +1173,7 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
     username,
     server,
     port,
+    endpointPinned,
   );
   @override
   bool operator ==(Object other) =>
@@ -1094,7 +1190,8 @@ class HistoryRow extends DataClass implements Insertable<HistoryRow> {
           other.room == this.room &&
           other.username == this.username &&
           other.server == this.server &&
-          other.port == this.port);
+          other.port == this.port &&
+          other.endpointPinned == this.endpointPinned);
 }
 
 class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
@@ -1110,6 +1207,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
   final Value<String?> username;
   final Value<String?> server;
   final Value<int?> port;
+  final Value<bool> endpointPinned;
   const HistoryEntriesCompanion({
     this.id = const Value.absent(),
     this.filePath = const Value.absent(),
@@ -1123,6 +1221,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     this.username = const Value.absent(),
     this.server = const Value.absent(),
     this.port = const Value.absent(),
+    this.endpointPinned = const Value.absent(),
   });
   HistoryEntriesCompanion.insert({
     this.id = const Value.absent(),
@@ -1137,6 +1236,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     this.username = const Value.absent(),
     this.server = const Value.absent(),
     this.port = const Value.absent(),
+    this.endpointPinned = const Value.absent(),
   }) : filePath = Value(filePath),
        fileName = Value(fileName),
        playedAt = Value(playedAt),
@@ -1154,6 +1254,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     Expression<String>? username,
     Expression<String>? server,
     Expression<int>? port,
+    Expression<bool>? endpointPinned,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1168,6 +1269,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
       if (username != null) 'username': username,
       if (server != null) 'server': server,
       if (port != null) 'port': port,
+      if (endpointPinned != null) 'endpoint_pinned': endpointPinned,
     });
   }
 
@@ -1184,6 +1286,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     Value<String?>? username,
     Value<String?>? server,
     Value<int?>? port,
+    Value<bool>? endpointPinned,
   }) {
     return HistoryEntriesCompanion(
       id: id ?? this.id,
@@ -1198,6 +1301,7 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
       username: username ?? this.username,
       server: server ?? this.server,
       port: port ?? this.port,
+      endpointPinned: endpointPinned ?? this.endpointPinned,
     );
   }
 
@@ -1240,6 +1344,9 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
     if (port.present) {
       map['port'] = Variable<int>(port.value);
     }
+    if (endpointPinned.present) {
+      map['endpoint_pinned'] = Variable<bool>(endpointPinned.value);
+    }
     return map;
   }
 
@@ -1257,7 +1364,8 @@ class HistoryEntriesCompanion extends UpdateCompanion<HistoryRow> {
           ..write('room: $room, ')
           ..write('username: $username, ')
           ..write('server: $server, ')
-          ..write('port: $port')
+          ..write('port: $port, ')
+          ..write('endpointPinned: $endpointPinned')
           ..write(')'))
         .toString();
   }
@@ -1499,6 +1607,7 @@ typedef $$ProfilesTableCreateCompanionBuilder =
       Value<String?> password,
       Value<bool> isDefault,
       Value<DateTime?> lastUsedAt,
+      Value<bool> endpointPinned,
     });
 typedef $$ProfilesTableUpdateCompanionBuilder =
     ProfilesCompanion Function({
@@ -1511,6 +1620,7 @@ typedef $$ProfilesTableUpdateCompanionBuilder =
       Value<String?> password,
       Value<bool> isDefault,
       Value<DateTime?> lastUsedAt,
+      Value<bool> endpointPinned,
     });
 
 class $$ProfilesTableFilterComposer
@@ -1564,6 +1674,11 @@ class $$ProfilesTableFilterComposer
 
   ColumnFilters<DateTime> get lastUsedAt => $composableBuilder(
     column: $table.lastUsedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get endpointPinned => $composableBuilder(
+    column: $table.endpointPinned,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1621,6 +1736,11 @@ class $$ProfilesTableOrderingComposer
     column: $table.lastUsedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get endpointPinned => $composableBuilder(
+    column: $table.endpointPinned,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProfilesTableAnnotationComposer
@@ -1658,6 +1778,11 @@ class $$ProfilesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get lastUsedAt => $composableBuilder(
     column: $table.lastUsedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get endpointPinned => $composableBuilder(
+    column: $table.endpointPinned,
     builder: (column) => column,
   );
 }
@@ -1702,6 +1827,7 @@ class $$ProfilesTableTableManager
                 Value<String?> password = const Value.absent(),
                 Value<bool> isDefault = const Value.absent(),
                 Value<DateTime?> lastUsedAt = const Value.absent(),
+                Value<bool> endpointPinned = const Value.absent(),
               }) => ProfilesCompanion(
                 id: id,
                 name: name,
@@ -1712,6 +1838,7 @@ class $$ProfilesTableTableManager
                 password: password,
                 isDefault: isDefault,
                 lastUsedAt: lastUsedAt,
+                endpointPinned: endpointPinned,
               ),
           createCompanionCallback:
               ({
@@ -1724,6 +1851,7 @@ class $$ProfilesTableTableManager
                 Value<String?> password = const Value.absent(),
                 Value<bool> isDefault = const Value.absent(),
                 Value<DateTime?> lastUsedAt = const Value.absent(),
+                Value<bool> endpointPinned = const Value.absent(),
               }) => ProfilesCompanion.insert(
                 id: id,
                 name: name,
@@ -1734,6 +1862,7 @@ class $$ProfilesTableTableManager
                 password: password,
                 isDefault: isDefault,
                 lastUsedAt: lastUsedAt,
+                endpointPinned: endpointPinned,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -1771,6 +1900,7 @@ typedef $$HistoryEntriesTableCreateCompanionBuilder =
       Value<String?> username,
       Value<String?> server,
       Value<int?> port,
+      Value<bool> endpointPinned,
     });
 typedef $$HistoryEntriesTableUpdateCompanionBuilder =
     HistoryEntriesCompanion Function({
@@ -1786,6 +1916,7 @@ typedef $$HistoryEntriesTableUpdateCompanionBuilder =
       Value<String?> username,
       Value<String?> server,
       Value<int?> port,
+      Value<bool> endpointPinned,
     });
 
 class $$HistoryEntriesTableFilterComposer
@@ -1854,6 +1985,11 @@ class $$HistoryEntriesTableFilterComposer
 
   ColumnFilters<int> get port => $composableBuilder(
     column: $table.port,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get endpointPinned => $composableBuilder(
+    column: $table.endpointPinned,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1926,6 +2062,11 @@ class $$HistoryEntriesTableOrderingComposer
     column: $table.port,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get endpointPinned => $composableBuilder(
+    column: $table.endpointPinned,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$HistoryEntriesTableAnnotationComposer
@@ -1980,6 +2121,11 @@ class $$HistoryEntriesTableAnnotationComposer
 
   GeneratedColumn<int> get port =>
       $composableBuilder(column: $table.port, builder: (column) => column);
+
+  GeneratedColumn<bool> get endpointPinned => $composableBuilder(
+    column: $table.endpointPinned,
+    builder: (column) => column,
+  );
 }
 
 class $$HistoryEntriesTableTableManager
@@ -2027,6 +2173,7 @@ class $$HistoryEntriesTableTableManager
                 Value<String?> username = const Value.absent(),
                 Value<String?> server = const Value.absent(),
                 Value<int?> port = const Value.absent(),
+                Value<bool> endpointPinned = const Value.absent(),
               }) => HistoryEntriesCompanion(
                 id: id,
                 filePath: filePath,
@@ -2040,6 +2187,7 @@ class $$HistoryEntriesTableTableManager
                 username: username,
                 server: server,
                 port: port,
+                endpointPinned: endpointPinned,
               ),
           createCompanionCallback:
               ({
@@ -2055,6 +2203,7 @@ class $$HistoryEntriesTableTableManager
                 Value<String?> username = const Value.absent(),
                 Value<String?> server = const Value.absent(),
                 Value<int?> port = const Value.absent(),
+                Value<bool> endpointPinned = const Value.absent(),
               }) => HistoryEntriesCompanion.insert(
                 id: id,
                 filePath: filePath,
@@ -2068,6 +2217,7 @@ class $$HistoryEntriesTableTableManager
                 username: username,
                 server: server,
                 port: port,
+                endpointPinned: endpointPinned,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

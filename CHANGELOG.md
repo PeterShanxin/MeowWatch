@@ -10,7 +10,7 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
-## [0.49.1-alpha] - 2026-09-02
+## [0.50.0-alpha] - 2026-09-02
 
 > When the public Syncplay server is down, MeowWatch finds another one itself.
 

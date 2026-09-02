@@ -29,6 +29,9 @@ void main() {
     expect(base.sessionMode, SessionMode.synced);
     expect(base.endpointPolicy, SyncplayEndpointPolicy.pinned);
     expect(base.copyShareCode, isFalse);
+    expect(base.persistUsername, isNull);
+    expect(base.persistAsUsername, 'lin');
+    expect(base.persistEndpointPinned, isTrue);
   });
 
   test('RoomConfig.local keeps a real room identity for later sync', () {
@@ -47,6 +50,18 @@ void main() {
     expect(local.username, 'lin');
     expect(local.resumeFilePath, 'D:/v.mkv');
     expect(local.resumePositionMs, 1200);
+    expect(local.endpointPolicy, SyncplayEndpointPolicy.pinned);
+    expect(local.persistEndpointPinned, isTrue);
+    expect(
+      RoomConfig.local(
+        username: 'lin',
+        server: 'syncplay.pl',
+        port: 8995,
+        room: 'happy-otter-99',
+        endpointPinned: false,
+      ).endpointPolicy,
+      SyncplayEndpointPolicy.discoverFromRoom,
+    );
   });
 
   test('copyWith overrides only named fields', () {

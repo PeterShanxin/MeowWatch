@@ -404,6 +404,59 @@ void main() {
     expect(every.map((e) => e.fileName).toList(), ['g2', 'g1']);
   });
 
+  test('recordOpen stores endpoint pin provenance', () async {
+    await store.recordOpen(
+      filePath: r'D:\v\pin.mkv',
+      fileName: 'pin.mkv',
+      fileSizeBytes: 1,
+      context: roomA,
+      endpointPinned: true,
+    );
+    expect((await store.watchRecent().first).single.endpointPinned, isTrue);
+  });
+
+  test('updatePosition follows a new context after recordOpen', () async {
+    await open(r'D:\v\move.mkv', context: roomA);
+    expect(
+      await seek(r'D:\v\move.mkv', context: roomA, positionMs: 9000),
+      isTrue,
+    );
+
+    final roomMoved = WatchContext.synced(
+      server: 'syncplay.pl',
+      port: 8996,
+      room: roomA.room!,
+    );
+    await store.recordOpen(
+      filePath: r'D:\v\move.mkv',
+      fileName: 'move.mkv',
+      fileSizeBytes: 1,
+      context: roomMoved,
+      lastPositionMs: 9000,
+    );
+    final rows = await store.watchRecent(mode: HistoryMode.everyVideo).first;
+    final landed = rows.singleWhere((e) => e.port == 8996);
+    expect(landed.lastPositionMs, 9000);
+  });
+
+  test('recordOpen pin on a new row stays through a later unpinned open', () async {
+    await store.recordOpen(
+      filePath: r'D:\v\sticky.mkv',
+      fileName: 'sticky.mkv',
+      fileSizeBytes: 1,
+      context: roomA,
+      endpointPinned: true,
+    );
+    await store.recordOpen(
+      filePath: r'D:\v\sticky.mkv',
+      fileName: 'sticky.mkv',
+      fileSizeBytes: 1,
+      context: roomA,
+      endpointPinned: false,
+    );
+    expect((await store.watchRecent().first).single.endpointPinned, isTrue);
+  });
+
   test('kDartTrimWhitespace matches String.trim exactly across the BMP', () {
     final set = kDartTrimWhitespace.codeUnits.toSet();
     final mismatches = <String>[];

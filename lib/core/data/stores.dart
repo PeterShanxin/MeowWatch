@@ -17,6 +17,7 @@ abstract class ProfileStore {
     required String room,
     required String username,
     String? password,
+    bool endpointPinned = false,
   });
 
   Future<void> delete(int id);
@@ -34,9 +35,11 @@ abstract class HistoryStore {
   });
 
   /// Record (or refresh) that [filePath] was opened in [context]. Keeps the
-  /// existing [lastPositionMs] on that context row; updates name/size/duration
-  /// /username and bumps playedAt. Effective Local/synced mode shares a real
-  /// room context; only different rooms (or legacy roomless Local) are separate.
+  /// existing [lastPositionMs] on that context row unless this insert is a
+  /// new key and [lastPositionMs] is given (Continue Watching land). Updates
+  /// name/size/duration/username and bumps playedAt. Effective Local/synced
+  /// mode shares a real room context; only different rooms (or legacy
+  /// roomless Local) are separate.
   Future<void> recordOpen({
     required String filePath,
     required String fileName,
@@ -44,6 +47,8 @@ abstract class HistoryStore {
     required WatchContext context,
     int? durationMs,
     String? username,
+    bool endpointPinned = false,
+    int? lastPositionMs,
   });
 
   /// Update the resume position for an already-recorded file in [context]

@@ -301,7 +301,7 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
     }
   }
 
-  Future<int> _recordOpen(String path) async {
+  Future<int> _recordOpen(String path, {int? lastPositionMs}) async {
     final state = _core.state;
     // A stream URL has no byte size — don't stat it as a file (the URL isn't a
     // valid path, and on Windows the ':' would throw a different error).
@@ -323,6 +323,8 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
         durationMs: state.duration.inMilliseconds,
         context: _historyContext,
         username: widget.config.username,
+        endpointPinned: widget.config.persistEndpointPinned,
+        lastPositionMs: lastPositionMs,
       );
       appLog('db: recordOpen ok ${mediaDisplayName(path)}');
     } catch (e) {

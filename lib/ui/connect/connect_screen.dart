@@ -20,7 +20,6 @@ import '../../core/debug/app_log.dart';
 import '../../core/debug/log_archive.dart';
 import '../../core/debug/log_level.dart';
 import '../../core/sync/syncplay_constants.dart';
-import '../../core/sync/syncplay_endpoints.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
 import '../../core/theme/meow_theme.dart';
@@ -400,10 +399,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
       ? SyncplayEndpointPolicy.pinned
       : SyncplayEndpointPolicy.discover;
 
-  SyncplayEndpointPolicy _policyForSaved(SyncplayEndpoint saved) =>
-      isPublicSyncplayCandidate(saved)
-      ? SyncplayEndpointPolicy.discoverFromRoom
-      : SyncplayEndpointPolicy.pinned;
+  SyncplayEndpointPolicy _policyForSaved({required bool pinned}) =>
+      endpointPolicyFromPin(pinned);
 
   Future<void> _saveUsedProfile(RoomConfig config, {String? profileUsername}) {
     return widget.profiles.saveUsed(
@@ -411,8 +408,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
       server: config.server,
       port: config.port,
       room: config.room,
-      username: profileUsername ?? config.username,
+      username: profileUsername ?? config.persistAsUsername,
       password: config.password,
+      endpointPinned: config.persistEndpointPinned,
     );
   }
 
@@ -452,9 +450,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
       // and the name just used is already remembered via the saved room (#172).
       setState(() => _suggestedName = generateUsername());
       await _loadSettings();
-      // A Local Start that became synced in-player now has a real Syncplay
-      // room. Persist it so Continue Watching can recover the server password.
-      if (config.sessionMode.isLocal && !_localPlayerMode) {
+      // A pinned Local Start that became synced in-player now has a real
+      // Syncplay room. Persist it so Continue Watching can recover the
+      // server password. A discoverable session already wrote the landed
+      // endpoint from HomeScreen; do not stamp the pre-walk card again.
+      if (config.sessionMode.isLocal &&
+          !_localPlayerMode &&
+          config.persistEndpointPinned) {
         await _saveUsedProfile(config, profileUsername: profileUsername);
       }
     } finally {
@@ -593,8 +595,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
     )) {
       _showLocalJoinOverrideSnack();
     }
-    final saved = SyncplayEndpoint(host: p.server, port: p.port);
-    final policy = _policyForSaved(saved);
+    final policy = _policyForSaved(pinned: p.endpointPinned);
     if (policy != SyncplayEndpointPolicy.pinned) {
       setState(() => _findingServer = true);
     }
@@ -607,6 +608,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         username: username,
         password: p.password,
         endpointPolicy: policy,
+        persistUsername: p.username,
       ),
       profileUsername: p.username,
     );
@@ -673,15 +675,15 @@ class _ConnectScreenState extends State<ConnectScreen> {
           password: password,
           resumeFilePath: entry.filePath,
           resumePositionMs: entry.lastPositionMs,
+          endpointPinned: entry.endpointPinned,
         ),
         profileUsername: usernameOverride == null ? null : savedUsername,
       );
       return;
     }
-    // Password stays keyed to where the room was last seen. The real join may
-    // still walk public candidates if that address has died (#234).
-    final saved = SyncplayEndpoint(host: server, port: port);
-    final policy = _policyForSaved(saved);
+    // Password stays keyed to where the room was last seen. Walk only when
+    // this row was saved as discoverable — a stored pin stays exact (#234).
+    final policy = _policyForSaved(pinned: entry.endpointPinned);
     if (policy != SyncplayEndpointPolicy.pinned) {
       setState(() => _findingServer = true);
     }
@@ -695,6 +697,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         resumeFilePath: entry.filePath,
         resumePositionMs: entry.lastPositionMs,
         endpointPolicy: policy,
+        persistUsername: usernameOverride == null ? null : savedUsername,
       ),
       profileUsername: usernameOverride == null ? null : savedUsername,
     );

@@ -217,10 +217,24 @@ void main() {
       expect(connected!.room, 'happy-otter-99');
     });
 
+    testWidgets('a pinned public saved room stays exact', (tester) async {
+      profiles.profiles.add(profile(_default).copyWith(endpointPinned: true));
+      await pump(tester);
+
+      await tester.tap(find.text('happy-otter-99'));
+      await tester.pumpAndSettle();
+
+      expect(connected!.endpointPolicy, SyncplayEndpointPolicy.pinned);
+      expect(connected!.server, _default.host);
+      expect(connected!.port, _default.port);
+    });
+
     testWidgets('leaves a self-hosted room exactly where it is', (
       tester,
     ) async {
-      profiles.profiles.add(profile(_selfHosted));
+      profiles.profiles.add(
+        profile(_selfHosted).copyWith(endpointPinned: true),
+      );
       await pump(tester);
 
       await tester.tap(find.text('happy-otter-99'));
@@ -266,8 +280,20 @@ void main() {
       expect(connected!.resumePositionMs, 500);
     });
 
+    testWidgets('a pinned public entry stays exact', (tester) async {
+      history.recent.add(entry(_default).copyWith(endpointPinned: true));
+      await pump(tester);
+
+      await tester.ensureVisible(find.text('cats.mkv'));
+      await tester.tap(find.text('cats.mkv'));
+      await tester.pumpAndSettle();
+
+      expect(connected!.endpointPolicy, SyncplayEndpointPolicy.pinned);
+      expect(connected!.port, _default.port);
+    });
+
     testWidgets('leaves a self-hosted entry alone', (tester) async {
-      history.recent.add(entry(_selfHosted));
+      history.recent.add(entry(_selfHosted).copyWith(endpointPinned: true));
       await pump(tester);
 
       await tester.ensureVisible(find.text('cats.mkv'));
