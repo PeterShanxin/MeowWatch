@@ -11,7 +11,6 @@ import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
 import 'package:meowwatch/core/data/watch_context.dart';
 import 'package:meowwatch/core/session/session_mode.dart';
-import 'package:meowwatch/core/sync/syncplay_endpoints.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/brand/meow_logo.dart';
@@ -176,9 +175,6 @@ void main() {
     SettingsStore? settings,
     Future<String?> Function(RoomConfig config)? onConnect,
   }) async {
-    // Endpoint discovery is stubbed to the default public endpoint so these
-    // tests never dial a real server; its own behaviour lives in
-    // connect_screen_endpoint_test.dart.
     connected = null;
     await tester.pumpWidget(
       MaterialApp(
@@ -189,8 +185,6 @@ void main() {
           settings: settings ?? _FakeSettingsStore(),
           currentTheme: MeowThemeId.cozy,
           onThemeChanged: (_) {},
-          resolveEndpoint: ({SyncplayEndpoint? preferred}) async =>
-              kPublicSyncplayEndpoints.first,
           onConnect:
               onConnect ??
               (config) async {
@@ -281,7 +275,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(connected!.username, offered);
-      expect(profiles.savedUsernames.single, offered);
+      expect(profiles.saveUsedCalls, 0);
     },
   );
 
@@ -336,8 +330,9 @@ void main() {
     // rejected elsewhere).
     expect(connected!.password, isNull);
     expect(connected!.username, 'lin');
-    expect(profiles.saveUsedCalls, 1);
-    expect(profiles.savedUsernames.single, 'lin');
+    // Default Start walks public candidates. The landed endpoint is
+    // persisted after Hello, not the unresolved Advanced default.
+    expect(profiles.saveUsedCalls, 0);
   });
 
   testWidgets('Enter code joins an old room-only code unchanged (#108)', (
@@ -790,7 +785,7 @@ void main() {
 
     expect(connected!.room, 'cozy-fox-42');
     expect(connected!.username, 'alice');
-    expect(profiles.savedUsernames.single, 'meowPEOW');
+    expect(profiles.saveUsedCalls, 0);
   });
 
   testWidgets(
@@ -1217,7 +1212,7 @@ void main() {
 
     expect(connected!.username, 'alice');
     expect(connected!.room, 'cozy-fox-42');
-    expect(profiles.savedUsernames.single, 'meowPEOW');
+    expect(profiles.saveUsedCalls, 0);
   });
 
   HistoryEntry historyEntryInRoom(int id, String name, String room) =>
@@ -1421,7 +1416,8 @@ void main() {
 
     expect(connected!.sessionMode, SessionMode.synced);
     expect(connected!.room, 'happy-otter-99');
-    expect(profiles.saveUsedCalls, 1);
+    // Public saved room may walk. The landed endpoint is persisted after Hello.
+    expect(profiles.saveUsedCalls, 0);
     expect(find.text(kLocalJoinOverrideNotice), findsOneWidget);
   });
 

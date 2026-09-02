@@ -27,6 +27,8 @@ void main() {
     expect(base.resumeFilePath, isNull);
     expect(base.resumePositionMs, 0);
     expect(base.sessionMode, SessionMode.synced);
+    expect(base.endpointPolicy, SyncplayEndpointPolicy.pinned);
+    expect(base.copyShareCode, isFalse);
   });
 
   test('RoomConfig.local keeps a real room identity for later sync', () {

@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/connect/room_config.dart';
 import 'package:meowwatch/core/data/history_entry.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
-import 'package:meowwatch/core/sync/endpoint_discovery.dart';
 import 'package:meowwatch/core/sync/syncplay_endpoints.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
@@ -14,41 +13,24 @@ import 'package:meowwatch/ui/version_badge.dart';
 
 import '../../support/fakes.dart';
 
-/// #234 — which launches get a discovered endpoint and which are pinned.
+/// #234 — which launches walk public candidates and which are pinned.
 ///
-/// The rule the whole feature rests on: MeowWatch may re-resolve an endpoint it
-/// chose itself, and may never move one the user or a friend's code named. Two
-/// peers can only meet if the answer to "where is this room" is the same on both
-/// machines.
+/// The lobby does not probe. It names a policy; the real join in
+/// `MeowWatchApp` walks or pins. Two peers can only meet if "where is this
+/// room" is the same on both machines.
 const _default = SyncplayEndpoint(host: 'syncplay.pl', port: 8995);
 const _moved = SyncplayEndpoint(host: 'syncplay.pl', port: 8997);
 const _selfHosted = SyncplayEndpoint(host: 'cozy.example.net', port: 8999);
-
-/// Records what the lobby asked discovery for, and answers with [result].
-class _FakeResolver {
-  _FakeResolver(this.result);
-
-  final SyncplayEndpoint? result;
-  int calls = 0;
-  final List<SyncplayEndpoint?> preferred = <SyncplayEndpoint?>[];
-
-  Future<SyncplayEndpoint?> resolve({SyncplayEndpoint? preferred}) async {
-    calls++;
-    this.preferred.add(preferred);
-    return result;
-  }
-}
 
 void main() {
   late FakeProfileStore profiles;
   late FakeHistoryStore history;
   RoomConfig? connected;
+  Completer<String?>? joinGate;
 
-  Future<void> pump(
-    WidgetTester tester, {
-    required ResolveSyncplayEndpoint resolveEndpoint,
-  }) async {
+  Future<void> pump(WidgetTester tester) async {
     connected = null;
+    joinGate = null;
     await tester.pumpWidget(
       MaterialApp(
         theme: themeDataFor(MeowThemeId.cozy),
@@ -58,9 +40,10 @@ void main() {
           settings: FakeSettingsStore(),
           currentTheme: MeowThemeId.cozy,
           onThemeChanged: (_) {},
-          resolveEndpoint: resolveEndpoint,
           onConnect: (config) async {
             connected = config;
+            final gate = joinGate;
+            if (gate != null) return gate.future;
             return null;
           },
         ),
@@ -104,100 +87,47 @@ void main() {
   });
 
   group('starting a new room', () {
-    testWidgets('joins the endpoint discovery picked', (tester) async {
-      final resolver = _FakeResolver(_moved);
-      await pump(tester, resolveEndpoint: resolver.resolve);
+    testWidgets('default Start walks public candidates', (tester) async {
+      await pump(tester);
 
       await tapStart(tester);
 
-      expect(resolver.calls, 1);
-      expect(
-        resolver.preferred.single,
-        isNull,
-        reason: 'a brand-new room has no address of its own yet',
-      );
-      expect(connected!.server, _moved.host);
-      expect(connected!.port, _moved.port);
-    });
-
-    testWidgets('bakes the resolved endpoint into the shared code', (
-      tester,
-    ) async {
-      // The joining peer must land on the server the host actually reached, so
-      // the code has to name it rather than say "the default".
-      await pump(tester, resolveEndpoint: _FakeResolver(_moved).resolve);
-
-      await tapStart(tester);
-
-      expect(find.textContaining('@syncplay.pl:8997'), findsOneWidget);
-      expect(find.textContaining(connected!.room), findsOneWidget);
-    });
-
-    testWidgets('leaves the shared code bare on the default endpoint', (
-      tester,
-    ) async {
-      // Unchanged from before discovery existed: a bare magic sentence still
-      // means the default public endpoint, so old and new copies of the app
-      // read each other's codes the same way.
-      await pump(tester, resolveEndpoint: _FakeResolver(_default).resolve);
-
-      await tapStart(tester);
-
-      expect(find.textContaining('@'), findsNothing);
+      expect(connected!.endpointPolicy, SyncplayEndpointPolicy.discover);
+      expect(connected!.copyShareCode, isTrue);
       expect(connected!.server, _default.host);
       expect(connected!.port, _default.port);
     });
 
-    testWidgets('never resolves over an Advanced server', (tester) async {
-      final resolver = _FakeResolver(_moved);
-      await pump(tester, resolveEndpoint: resolver.resolve);
+    testWidgets('never walks over an Advanced server', (tester) async {
+      await pump(tester);
       await setAdvanced(tester, server: 'my.lan', port: '1234');
 
       await tapStart(tester);
 
-      expect(resolver.calls, 0);
+      expect(connected!.endpointPolicy, SyncplayEndpointPolicy.pinned);
+      expect(connected!.copyShareCode, isTrue);
       expect(connected!.server, 'my.lan');
       expect(connected!.port, 1234);
     });
 
-    testWidgets('never resolves over an Advanced port alone', (tester) async {
-      final resolver = _FakeResolver(_moved);
-      await pump(tester, resolveEndpoint: resolver.resolve);
+    testWidgets('never walks over an Advanced port alone', (tester) async {
+      await pump(tester);
       await setAdvanced(tester, port: '8999');
 
       await tapStart(tester);
 
-      expect(resolver.calls, 0);
+      expect(connected!.endpointPolicy, SyncplayEndpointPolicy.pinned);
       expect(connected!.server, 'syncplay.pl');
       expect(connected!.port, 8999);
     });
-
-    testWidgets('reports the outage instead of asking for a server', (
-      tester,
-    ) async {
-      await pump(tester, resolveEndpoint: _FakeResolver(null).resolve);
-
-      await tapStart(tester);
-
-      expect(connected, isNull, reason: 'nowhere to connect to');
-      expect(find.text(kNoSyncplayServerMessage), findsOneWidget);
-      expect(
-        find.textContaining('Check Advanced'),
-        findsNothing,
-        reason: 'the old copy asked for a server the user cannot name',
-      );
-    });
   });
 
-  group('while a scan is running', () {
+  group('while a discoverable join is running', () {
     testWidgets('the launch buttons are held and the wait is named', (
       tester,
     ) async {
-      final gate = Completer<SyncplayEndpoint?>();
-      await pump(
-        tester,
-        resolveEndpoint: ({SyncplayEndpoint? preferred}) => gate.future,
-      );
+      await pump(tester);
+      joinGate = Completer<String?>();
 
       await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
       await tester.tap(find.byKey(const Key('connect-start-new')));
@@ -217,16 +147,15 @@ void main() {
         isNull,
       );
 
-      gate.complete(_default);
+      joinGate!.complete(null);
       await tester.pumpAndSettle();
       expect(connected, isNotNull);
     });
   });
 
   group('joining a code', () {
-    testWidgets('a share code endpoint is used as written', (tester) async {
-      final resolver = _FakeResolver(_moved);
-      await pump(tester, resolveEndpoint: resolver.resolve);
+    testWidgets('a share code endpoint is pinned as written', (tester) async {
+      await pump(tester);
 
       await tester.enterText(
         find.byKey(const Key('connect-code')),
@@ -236,19 +165,13 @@ void main() {
       await tester.tap(find.byKey(const Key('connect-join')));
       await tester.pumpAndSettle();
 
-      expect(resolver.calls, 0);
+      expect(connected!.endpointPolicy, SyncplayEndpointPolicy.pinned);
       expect(connected!.server, 'cozy.example.net');
       expect(connected!.port, 9000);
     });
 
-    testWidgets('a bare code goes to the default endpoint, not a scan', (
-      tester,
-    ) async {
-      // A bare code is the host saying "the default public endpoint". If the
-      // joiner resolved their own instead, two friends could sit in the same
-      // room name on different servers.
-      final resolver = _FakeResolver(_moved);
-      await pump(tester, resolveEndpoint: resolver.resolve);
+    testWidgets('a bare code is a legacy pin, not a scan', (tester) async {
+      await pump(tester);
 
       await tester.enterText(
         find.byKey(const Key('connect-code')),
@@ -258,7 +181,7 @@ void main() {
       await tester.tap(find.byKey(const Key('connect-join')));
       await tester.pumpAndSettle();
 
-      expect(resolver.calls, 0);
+      expect(connected!.endpointPolicy, SyncplayEndpointPolicy.pinned);
       expect(connected!.server, _default.host);
       expect(connected!.port, _default.port);
     });
@@ -276,22 +199,21 @@ void main() {
       lastUsedAt: DateTime(2026, 5, 29),
     );
 
-    testWidgets('re-verifies a public endpoint and follows it if it moved', (
+    testWidgets('a public saved room may walk from that address', (
       tester,
     ) async {
       profiles.profiles.add(profile(_default));
-      final resolver = _FakeResolver(_moved);
-      await pump(tester, resolveEndpoint: resolver.resolve);
+      await pump(tester);
 
       await tester.tap(find.text('happy-otter-99'));
       await tester.pumpAndSettle();
 
       expect(
-        resolver.preferred.single,
-        _default,
-        reason: 'the room is tried where it was last seen, first',
+        connected!.endpointPolicy,
+        SyncplayEndpointPolicy.discoverFromRoom,
       );
-      expect(connected!.port, _moved.port);
+      expect(connected!.server, _default.host);
+      expect(connected!.port, _default.port);
       expect(connected!.room, 'happy-otter-99');
     });
 
@@ -299,26 +221,14 @@ void main() {
       tester,
     ) async {
       profiles.profiles.add(profile(_selfHosted));
-      final resolver = _FakeResolver(_moved);
-      await pump(tester, resolveEndpoint: resolver.resolve);
+      await pump(tester);
 
       await tester.tap(find.text('happy-otter-99'));
       await tester.pumpAndSettle();
 
-      expect(resolver.calls, 0);
+      expect(connected!.endpointPolicy, SyncplayEndpointPolicy.pinned);
       expect(connected!.server, _selfHosted.host);
       expect(connected!.port, _selfHosted.port);
-    });
-
-    testWidgets('does not connect when nothing answers', (tester) async {
-      profiles.profiles.add(profile(_default));
-      await pump(tester, resolveEndpoint: _FakeResolver(null).resolve);
-
-      await tester.tap(find.text('happy-otter-99'));
-      await tester.pumpAndSettle();
-
-      expect(connected, isNull);
-      expect(find.text(kNoSyncplayServerMessage), findsOneWidget);
     });
   });
 
@@ -337,34 +247,52 @@ void main() {
       port: endpoint.port,
     );
 
-    testWidgets('re-verifies a public endpoint before resuming', (
+    testWidgets('a public entry may walk from where it was last seen', (
       tester,
     ) async {
       history.recent.add(entry(_default));
-      final resolver = _FakeResolver(_moved);
-      await pump(tester, resolveEndpoint: resolver.resolve);
+      await pump(tester);
 
       await tester.ensureVisible(find.text('cats.mkv'));
       await tester.tap(find.text('cats.mkv'));
       await tester.pumpAndSettle();
 
-      expect(resolver.preferred.single, _default);
-      expect(connected!.port, _moved.port);
+      expect(
+        connected!.endpointPolicy,
+        SyncplayEndpointPolicy.discoverFromRoom,
+      );
+      expect(connected!.port, _default.port);
       expect(connected!.resumeFilePath, 'C:/movies/cats.mkv');
       expect(connected!.resumePositionMs, 500);
     });
 
     testWidgets('leaves a self-hosted entry alone', (tester) async {
       history.recent.add(entry(_selfHosted));
-      final resolver = _FakeResolver(_moved);
-      await pump(tester, resolveEndpoint: resolver.resolve);
+      await pump(tester);
 
       await tester.ensureVisible(find.text('cats.mkv'));
       await tester.tap(find.text('cats.mkv'));
       await tester.pumpAndSettle();
 
-      expect(resolver.calls, 0);
+      expect(connected!.endpointPolicy, SyncplayEndpointPolicy.pinned);
       expect(connected!.server, _selfHosted.host);
+    });
+
+    testWidgets('a moved public entry is still the preferred start', (
+      tester,
+    ) async {
+      history.recent.add(entry(_moved));
+      await pump(tester);
+
+      await tester.ensureVisible(find.text('cats.mkv'));
+      await tester.tap(find.text('cats.mkv'));
+      await tester.pumpAndSettle();
+
+      expect(
+        connected!.endpointPolicy,
+        SyncplayEndpointPolicy.discoverFromRoom,
+      );
+      expect(connected!.port, _moved.port);
     });
   });
 }

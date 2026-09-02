@@ -230,7 +230,7 @@ Every release is signed with an **Ed25519** key so the app installs only genuine
 - `core/video/` — `VideoCore` (abstract) → `MediaKitVideoCore` (libmpv via `media_kit`). Emits immutable `PlaybackState`.
 - `core/sync/` — `SyncCore` (abstract, owns the broadcast controllers + `@protected emit*` + `@mustCallSuper dispose`) → `SyncplayClient` (custom Dart Syncplay client: TCP + **mandatory** STARTTLS, Hello handshake, State heartbeat, `ignoringOnTheFly`/`setBy` convergence). Data types in `peer_state.dart`; wire framing/encoders in `sync_messages.dart` / `syncplay_constants.dart`.
   - **STARTTLS fails closed and there is no plaintext mode (#264).** The Hello carries the room password, and `Set`/`Chat`/`State` after it carry the file name, chat and watch position, so every outcome other than a completed handshake ends the connection — a `startTLS: "false"` decline, an `Error` frame, a skipped, malformed, or oversized (no newline past 64 KiB) answer, a failed handshake. Don't add a fallback "for servers without TLS": upstream `syncplay-server` answers `startTLS: "false"` when it has no cert, MeowWatch has never joined those, and a fallback would hand an on-path attacker a one-frame downgrade. `_channelSecure` gates `_send` as the backstop; keep it that way if you restructure the negotiation, and keep `test/core/sync/syncplay_client_starttls_test.dart` green — it asserts on the bytes that actually crossed the plaintext socket. The start screen stays up until login completes. `connectUntilJoin` keeps listening through the HomeScreen handoff so a Hello-then-Error is not dropped. A refused join stays on the start screen with the named error; the watch UI is only for a completed login (#265).
-- `core/sync/endpoint_discovery.dart` — picks which public Syncplay endpoint a default session uses, and remembers the winner in `SettingsStore`. Curated candidates live in `syncplay_endpoints.dart`.
+- `core/sync/endpoint_discovery.dart` — walks public candidates with `connectUntilJoin` (#265). The first secure Hello is the session client handed to HomeScreen. Remembers the winner in `SettingsStore`. Curated candidates live in `syncplay_endpoints.dart`.
 - `core/chat/` — `ChatStore` subscribes to `SyncCore.chat`, stamps each message's local arrival time, and republishes an immutable list.
 - `core/update/` — `UpdateService` checks a Cloudflare R2 bucket (`{updateBaseUrl}/releases/latest.json`) for new versions, downloads a zip, extracts it, then launches a PowerShell updater script that swaps the files and restarts. Version constant in `app_version.dart`.
 - `core/app_version.dart` — single source of truth for `appVersion` (keep in sync with `pubspec.yaml`) and `updateBaseUrl`.
@@ -254,16 +254,23 @@ deliberately narrow:
 - **Candidates are walked sequentially in the curated order**, never raced.
   Racing would pick whichever answered fastest *from this machine*, which is how
   two friends end up in the same room name on different servers.
-- **A bare share code means the first candidate** (`defaultServer` /
-  `publicServerPort`). Joining never runs discovery — the code is the
-  destination. `syncplay_endpoints_test.dart` pins the first candidate to those
-  constants; keep them together.
+- **A bare share code is a legacy compatibility pin**, not a scan. It always
+  means the first candidate (`defaultServer` / `publicServerPort`). Two peers
+  who only have a room name cannot independently walk the list and still
+  guarantee the same server. `syncplay_endpoints_test.dart` pins the first
+  candidate to those constants; keep them together.
 - **A live session never fails over.** Reconnect re-dials the endpoint the
   session started on; moving a running room would strand the peer.
-- **Probing reuses `SyncplayClient`** and counts an endpoint as working only at
-  `SyncConnectionStatus.connected` (the server's Hello, which can only arrive
-  over the TLS socket). Do not hand-roll a lighter handshake here — that would
-  be a second copy of the STARTTLS state machine to keep hardened.
+- **Discovery is the real join.** Each candidate is attempted with
+  `connectUntilJoin` (#265). The first secure Hello that logs into the user's
+  room is the session — that client is handed to HomeScreen. There is no
+  throwaway probe and no second handshake. A candidate that never completes
+  Hello is disposed and the next is tried. A Hello that then refuses the room
+  stops the walk (hopping would put the same room name on a different server).
+  Do not hand-roll a lighter handshake — that would be a second copy of the
+  STARTTLS state machine to keep hardened. Continue Watching walks on the
+  session client already shown: a dead candidate is not a failed join, so the
+  watch route must not pop until the walk finishes without a Hello.
 
 **Immutability:** state objects (`PlaybackState`, `ChatMessage`, `ChatOverlayLayout`, etc.) are `@immutable` with `copyWith`; never mutate in place.
 

@@ -32,7 +32,9 @@ import '../core/sync/peer_files.dart';
 import '../core/sync/peer_state.dart';
 import '../core/sync/playback_sync_bridge.dart';
 import '../core/sync/sync_activity_throttle.dart';
+import '../core/sync/endpoint_discovery.dart';
 import '../core/sync/syncplay_client.dart';
+import '../core/sync/syncplay_endpoints.dart';
 import '../core/theme/meow_context.dart';
 import '../core/theme/meow_theme.dart';
 import '../core/theme/tokens/icon_sizes.dart';
@@ -134,10 +136,13 @@ abstract class _HomeScreenStateBase extends State<HomeScreen> {
   bool get _isSynced => _session.isSynced;
   bool get _isLocal => _session.isLocal;
 
+  late String _sessionServer = widget.config.server;
+  late int _sessionPort = widget.config.port;
+
   WatchContext get _historyContext => watchContextForSession(
     local: _session.isLocal,
-    server: widget.config.server,
-    port: widget.config.port,
+    server: _sessionServer,
+    port: _sessionPort,
     room: widget.config.room,
   );
 
@@ -455,13 +460,62 @@ class _HomeScreenState extends _HomeScreenStateBase
     final sync = _sync;
     if (sync == null) return;
     _installCloseHook();
-    await sync.connect(
-      server: widget.config.server,
-      port: widget.config.port,
-      username: widget.config.username,
-      room: widget.config.room,
-      password: widget.config.password,
-    );
+    final config = widget.config;
+    final session = SyncplayEndpoint(host: _sessionServer, port: _sessionPort);
+    if (config.endpointPolicy != SyncplayEndpointPolicy.discoverFromRoom ||
+        !isPublicSyncplayCandidate(session)) {
+      await sync.connect(
+        server: session.host,
+        port: session.port,
+        username: config.username,
+        room: config.room,
+        password: config.password,
+      );
+      return;
+    }
+    // Resume already landed. This is the real join — same client, next
+    // public candidate only when the current one never completed Hello.
+    // Latch before the first dial so a dead port cannot abort the walk.
+    final alreadyInRoom = _everRoomConnected;
+    _lookingForServer = true;
+    String? walkError;
+    try {
+      final discovery = SyncplayEndpointDiscovery(
+        settings: widget.settings,
+        onLog: appLog,
+      );
+      final landed = await discovery.walk(
+        preferred: session,
+        attempt: (endpoint) async {
+          if (!mounted || _leavingRoom) return EndpointWalkDecision.stop;
+          final error = await sync.connectUntilJoin(
+            server: endpoint.host,
+            port: endpoint.port,
+            username: config.username,
+            room: config.room,
+            password: config.password,
+          );
+          if (error == null) return EndpointWalkDecision.success;
+          walkError = error;
+          if (sync.hasCompletedHello) return EndpointWalkDecision.stop;
+          return EndpointWalkDecision.next;
+        },
+      );
+      if (landed != null && mounted) {
+        setState(() {
+          _sessionServer = landed.host;
+          _sessionPort = landed.port;
+        });
+        return;
+      }
+      // Continue Watching that never Hello'd: the walk is the join. Local-to-
+      // Synced already latched [_everRoomConnected] and keeps the player.
+      if (!alreadyInRoom && mounted && !_leavingRoom) {
+        _abortFailedJoin(walkError ?? kNoSyncplayServerMessage);
+      }
+    } finally {
+      _lookingForServer = false;
+    }
   }
 
   /// Continue Watching launch coordinator. A synced session joins only after

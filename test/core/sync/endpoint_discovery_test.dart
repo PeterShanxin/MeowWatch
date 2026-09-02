@@ -10,33 +10,35 @@ const _b = SyncplayEndpoint(host: 'syncplay.pl', port: 8996);
 const _c = SyncplayEndpoint(host: 'syncplay.pl', port: 8997);
 const _candidates = <SyncplayEndpoint>[_a, _b, _c];
 
-/// Records every endpoint the discovery actually dialled, in order, and answers
+/// Records every endpoint the walk actually attempted, in order, and answers
 /// from a fixed set of working endpoints.
-class _RecordingProbe {
-  _RecordingProbe(this.working);
+class _RecordingAttempt {
+  _RecordingAttempt(this.working);
 
   final Set<SyncplayEndpoint> working;
   final List<SyncplayEndpoint> tried = <SyncplayEndpoint>[];
 
-  Future<bool> call(
-    SyncplayEndpoint endpoint, {
-    required Duration timeout,
-  }) async {
+  Future<EndpointWalkDecision> call(SyncplayEndpoint endpoint) async {
     tried.add(endpoint);
-    return working.contains(endpoint);
+    return working.contains(endpoint)
+        ? EndpointWalkDecision.success
+        : EndpointWalkDecision.next;
   }
 }
 
 SyncplayEndpointDiscovery _discovery(
-  _RecordingProbe probe,
   FakeSettingsStore settings, {
   List<SyncplayEndpoint> candidates = _candidates,
 }) {
-  return SyncplayEndpointDiscovery(
-    settings: settings,
-    probe: probe.call,
-    candidates: candidates,
-  );
+  return SyncplayEndpointDiscovery(settings: settings, candidates: candidates);
+}
+
+Future<SyncplayEndpoint?> _walk(
+  SyncplayEndpointDiscovery discovery,
+  _RecordingAttempt attempt, {
+  SyncplayEndpoint? preferred,
+}) {
+  return discovery.walk(preferred: preferred, attempt: attempt.call);
 }
 
 void main() {
@@ -44,12 +46,12 @@ void main() {
     test('is tried first and short-circuits the scan', () async {
       final settings = FakeSettingsStore();
       await settings.set(kSyncplayEndpointSettingKey, _c.toString());
-      final probe = _RecordingProbe({_a, _c});
+      final attempt = _RecordingAttempt({_a, _c});
 
-      final resolved = await _discovery(probe, settings).resolve();
+      final resolved = await _walk(_discovery(settings), attempt);
 
       expect(resolved, _c);
-      expect(probe.tried, [
+      expect(attempt.tried, [
         _c,
       ], reason: 'a working remembered endpoint must not cost a scan');
     });
@@ -57,64 +59,62 @@ void main() {
     test('is replaced when it no longer answers', () async {
       final settings = FakeSettingsStore();
       await settings.set(kSyncplayEndpointSettingKey, _c.toString());
-      final probe = _RecordingProbe({_b});
+      final attempt = _RecordingAttempt({_b});
 
-      final resolved = await _discovery(probe, settings).resolve();
+      final resolved = await _walk(_discovery(settings), attempt);
 
       expect(resolved, _b);
-      expect(probe.tried, [_c, _a, _b]);
+      expect(attempt.tried, [_c, _a, _b]);
       expect(await settings.get(kSyncplayEndpointSettingKey), _b.toString());
     });
 
     test('is ignored when it is no longer a curated candidate', () async {
       final settings = FakeSettingsStore();
       await settings.set(kSyncplayEndpointSettingKey, 'retired.example:8995');
-      final probe = _RecordingProbe({_a});
+      final attempt = _RecordingAttempt({_a});
 
-      final resolved = await _discovery(probe, settings).resolve();
+      final resolved = await _walk(_discovery(settings), attempt);
 
       expect(resolved, _a);
-      expect(
-        probe.tried,
-        [_a],
-        reason: 'the curated list is the authority on what may be dialled',
-      );
+      expect(attempt.tried, [
+        _a,
+      ], reason: 'the curated list is the authority on what may be dialled');
     });
 
     test('is ignored when the stored value is malformed', () async {
       final settings = FakeSettingsStore();
       await settings.set(kSyncplayEndpointSettingKey, 'not-an-endpoint');
-      final probe = _RecordingProbe({_a});
+      final attempt = _RecordingAttempt({_a});
 
-      expect(await _discovery(probe, settings).resolve(), _a);
-      expect(probe.tried, [_a]);
+      expect(await _walk(_discovery(settings), attempt), _a);
+      expect(attempt.tried, [_a]);
     });
   });
 
   group('scanning', () {
     test('falls through to the first candidate that answers', () async {
       final settings = FakeSettingsStore();
-      final probe = _RecordingProbe({_c});
+      final attempt = _RecordingAttempt({_c});
 
-      final resolved = await _discovery(probe, settings).resolve();
+      final resolved = await _walk(_discovery(settings), attempt);
 
       expect(resolved, _c);
-      expect(probe.tried, [_a, _b, _c]);
+      expect(attempt.tried, [_a, _b, _c]);
     });
 
-    test('stops probing once a winner is found', () async {
+    test('stops walking once a winner is found', () async {
       final settings = FakeSettingsStore();
-      final probe = _RecordingProbe({_b, _c});
+      final attempt = _RecordingAttempt({_b, _c});
 
-      expect(await _discovery(probe, settings).resolve(), _b);
-      expect(probe.tried, [_a, _b]);
+      expect(await _walk(_discovery(settings), attempt), _b);
+      expect(attempt.tried, [_a, _b]);
     });
 
     test('persists the winner', () async {
       final settings = FakeSettingsStore();
-      final probe = _RecordingProbe({_b});
+      final attempt = _RecordingAttempt({_b});
 
-      await _discovery(probe, settings).resolve();
+      await _walk(_discovery(settings), attempt);
 
       expect(await settings.get(kSyncplayEndpointSettingKey), _b.toString());
     });
@@ -123,10 +123,10 @@ void main() {
       'returns null and remembers nothing when every candidate fails',
       () async {
         final settings = FakeSettingsStore();
-        final probe = _RecordingProbe(const {});
+        final attempt = _RecordingAttempt(const {});
 
-        expect(await _discovery(probe, settings).resolve(), isNull);
-        expect(probe.tried, [_a, _b, _c]);
+        expect(await _walk(_discovery(settings), attempt), isNull);
+        expect(attempt.tried, [_a, _b, _c]);
         expect(await settings.get(kSyncplayEndpointSettingKey), isNull);
       },
     );
@@ -136,24 +136,43 @@ void main() {
       () async {
         final settings = FakeSettingsStore();
         await settings.set(kSyncplayEndpointSettingKey, _c.toString());
-        final probe = _RecordingProbe(const {});
+        final attempt = _RecordingAttempt(const {});
 
-        expect(await _discovery(probe, settings).resolve(), isNull);
+        expect(await _walk(_discovery(settings), attempt), isNull);
         expect(await settings.get(kSyncplayEndpointSettingKey), _c.toString());
       },
     );
+
+    test('a Hello that refuses the room does not hop', () async {
+      final settings = FakeSettingsStore();
+      final tried = <SyncplayEndpoint>[];
+
+      final resolved = await _discovery(settings).walk(
+        attempt: (endpoint) async {
+          tried.add(endpoint);
+          return EndpointWalkDecision.stop;
+        },
+      );
+
+      expect(resolved, isNull);
+      expect(tried, [_a], reason: 'hopping would split two peers');
+    });
   });
 
   group('preferred endpoint (a room that already lives somewhere)', () {
     test('is tried before anything else', () async {
       final settings = FakeSettingsStore();
       await settings.set(kSyncplayEndpointSettingKey, _a.toString());
-      final probe = _RecordingProbe({_a, _c});
+      final attempt = _RecordingAttempt({_a, _c});
 
-      final resolved = await _discovery(probe, settings).resolve(preferred: _c);
+      final resolved = await _walk(
+        _discovery(settings),
+        attempt,
+        preferred: _c,
+      );
 
       expect(resolved, _c);
-      expect(probe.tried, [_c]);
+      expect(attempt.tried, [_c]);
     });
 
     test(
@@ -164,15 +183,16 @@ void main() {
         // when a room already has an address.
         final settings = FakeSettingsStore();
         await settings.set(kSyncplayEndpointSettingKey, _c.toString());
-        final probe = _RecordingProbe({_a, _c});
+        final attempt = _RecordingAttempt({_a, _c});
 
-        final resolved = await _discovery(
-          probe,
-          settings,
-        ).resolve(preferred: _b);
+        final resolved = await _walk(
+          _discovery(settings),
+          attempt,
+          preferred: _b,
+        );
 
         expect(resolved, _a);
-        expect(probe.tried, [_b, _a]);
+        expect(attempt.tried, [_b, _a]);
       },
     );
 
@@ -180,24 +200,23 @@ void main() {
       // A self-hosted server must never be reached through discovery; the
       // caller pins those instead of asking for a scan.
       final settings = FakeSettingsStore();
-      final probe = _RecordingProbe({_a});
+      final attempt = _RecordingAttempt({_a});
       const selfHosted = SyncplayEndpoint(host: 'cozy.example.net', port: 8999);
 
-      await _discovery(probe, settings).resolve(preferred: selfHosted);
+      await _walk(_discovery(settings), attempt, preferred: selfHosted);
 
-      expect(probe.tried, isNot(contains(selfHosted)));
+      expect(attempt.tried, isNot(contains(selfHosted)));
     });
   });
 
   test('a settings write failure does not fail the connect', () async {
-    final probe = _RecordingProbe({_a});
+    final attempt = _RecordingAttempt({_a});
     final discovery = SyncplayEndpointDiscovery(
       settings: _ThrowingSettingsStore(),
-      probe: probe.call,
       candidates: _candidates,
     );
 
-    expect(await discovery.resolve(), _a);
+    expect(await _walk(discovery, attempt), _a);
   });
 }
 

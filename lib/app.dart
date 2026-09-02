@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'core/connect/room_config.dart';
+import 'core/connect/room_share.dart';
 import 'core/data/settings_store.dart';
 import 'core/data/stores.dart';
 import 'core/debug/app_log.dart';
 import 'core/debug/log_level.dart';
+import 'core/sync/endpoint_discovery.dart';
 import 'core/sync/peer_state.dart';
 import 'core/sync/syncplay_client.dart';
+import 'core/sync/syncplay_endpoints.dart';
 import 'core/theme/meow_context.dart';
 import 'core/theme/meow_theme.dart';
 import 'core/theme/reduce_motion.dart';
@@ -113,7 +117,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
       return (context != null && context.mounted) ? context : null;
     }
 
-    Future<String?> pushWatch({SyncplayClient? sync}) {
+    Future<String?> pushWatch({SyncplayClient? sync, RoomConfig? joined}) {
       final context = navContext();
       if (context == null) {
         return Future<String?>.value(null);
@@ -125,7 +129,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
           // with the latest [_theme] when the in-room gear switches theme
           // (the swatch highlight tracks it) — see [fadeUpRoute].
           builder: (_) => HomeScreen(
-            config: config,
+            config: joined ?? config,
             sync: sync,
             history: widget.history,
             settings: widget.settings,
@@ -143,7 +147,27 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
       return pushWatch();
     }
 
-    final client = SyncplayClient(
+    final pinned =
+        config.endpointPolicy == SyncplayEndpointPolicy.pinned ||
+        !isPublicSyncplayCandidate(
+          SyncplayEndpoint(host: config.server, port: config.port),
+        );
+    if (pinned) {
+      return _joinPinned(
+        config: config,
+        pushWatch: pushWatch,
+        navContext: navContext,
+      );
+    }
+    return _joinDiscovering(
+      config: config,
+      pushWatch: pushWatch,
+      navContext: navContext,
+    );
+  }
+
+  SyncplayClient _newSyncplayClient() {
+    return SyncplayClient(
       onLog: appLog,
       shouldLog: ({required bool verboseOnly}) {
         final level = appLogInstance?.level;
@@ -151,6 +175,18 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             (!verboseOnly && level == LogLevel.neat);
       },
     );
+  }
+
+  Future<String?> _joinPinned({
+    required RoomConfig config,
+    required Future<String?> Function({
+      SyncplayClient? sync,
+      RoomConfig? joined,
+    })
+    pushWatch,
+    required BuildContext? Function() navContext,
+  }) async {
+    final client = _newSyncplayClient();
     Future<String?>? watchRoute;
     final error = await client.connectUntilJoin(
       server: config.server,
@@ -158,22 +194,115 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
       username: config.username,
       room: config.room,
       password: config.password,
-      onHandoff: () async {
-        // Use the navigator key, not a Builder context captured at lobby
-        // build: a theme change (or any MeowWatchApp setState) replaces
-        // that Builder while the join is still in flight.
-        final context = navContext();
-        if (context == null) {
-          await client.dispose();
-          return;
-        }
-        // Don't await the route here: connectUntilJoin must keep listening
-        // only until HomeScreen's subscriptions exist, not until Leave.
-        watchRoute = pushWatch(sync: client);
-        await WidgetsBinding.instance.endOfFrame;
+      onHandoff: () => _handoffJoined(
+        client: client,
+        config: config,
+        pushWatch: pushWatch,
+        navContext: navContext,
+        setWatchRoute: (route) => watchRoute = route,
+      ),
+    );
+    return _finishJoin(client: client, error: error, watchRoute: watchRoute);
+  }
+
+  Future<String?> _joinDiscovering({
+    required RoomConfig config,
+    required Future<String?> Function({
+      SyncplayClient? sync,
+      RoomConfig? joined,
+    })
+    pushWatch,
+    required BuildContext? Function() navContext,
+  }) async {
+    Future<String?>? watchRoute;
+    final outcome = await joinFirstWorkingEndpoint(
+      config: config,
+      settings: widget.settings,
+      createClient: _newSyncplayClient,
+      onLog: appLog,
+      connectUntilJoin: (client, endpoint) {
+        return client.connectUntilJoin(
+          server: endpoint.host,
+          port: endpoint.port,
+          username: config.username,
+          room: config.room,
+          password: config.password,
+          onHandoff: () => _handoffJoined(
+            client: client,
+            config: config.copyWith(server: endpoint.host, port: endpoint.port),
+            pushWatch: pushWatch,
+            navContext: navContext,
+            setWatchRoute: (route) => watchRoute = route,
+          ),
+        );
       },
     );
-    final terminal = error ??
+    if (outcome.join != null) {
+      return _finishJoin(
+        client: outcome.join!.client,
+        error: null,
+        watchRoute: watchRoute,
+      );
+    }
+    if (outcome.retainedClient != null) {
+      return _finishJoin(
+        client: outcome.retainedClient!,
+        error: outcome.error,
+        watchRoute: watchRoute,
+      );
+    }
+    return outcome.error;
+  }
+
+  Future<void> _handoffJoined({
+    required SyncplayClient client,
+    required RoomConfig config,
+    required Future<String?> Function({
+      SyncplayClient? sync,
+      RoomConfig? joined,
+    })
+    pushWatch,
+    required BuildContext? Function() navContext,
+    required void Function(Future<String?> route) setWatchRoute,
+  }) async {
+    // Use the navigator key, not a Builder context captured at lobby
+    // build: a theme change (or any MeowWatchApp setState) replaces
+    // that Builder while the join is still in flight.
+    final context = navContext();
+    if (context == null) {
+      await client.dispose();
+      return;
+    }
+    await widget.profiles.saveUsed(
+      name: config.room,
+      server: config.server,
+      port: config.port,
+      room: config.room,
+      username: config.username,
+      password: config.password,
+    );
+    if (config.copyShareCode) {
+      final share = encodeShareCode(
+        room: config.room,
+        server: config.server,
+        port: config.port,
+      );
+      Clipboard.setData(ClipboardData(text: share)).ignore();
+      if (context.mounted) showCopiedRoomCodeSnack(context, share);
+    }
+    // Don't await the route here: connectUntilJoin must keep listening
+    // only until HomeScreen's subscriptions exist, not until Leave.
+    setWatchRoute(pushWatch(sync: client, joined: config));
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
+  Future<String?> _finishJoin({
+    required SyncplayClient client,
+    required String? error,
+    required Future<String?>? watchRoute,
+  }) async {
+    final terminal =
+        error ??
         (client.lastConnectionState?.status == SyncConnectionStatus.error
             ? client.lastConnectionState?.message
             : null);

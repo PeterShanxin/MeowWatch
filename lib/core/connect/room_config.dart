@@ -2,6 +2,24 @@ import 'package:flutter/foundation.dart';
 
 import '../session/session_mode.dart';
 
+/// How a synced session picks its Syncplay address (#234).
+enum SyncplayEndpointPolicy {
+  /// Use [RoomConfig.server] / [RoomConfig.port] exactly. Advanced, a
+  /// `room@host:port` share code, a bare share code, and any self-hosted
+  /// host. A bare code is a legacy compatibility pin — both copies of the
+  /// app must agree without talking, so it always means the first public
+  /// candidate, not a scan.
+  pinned,
+
+  /// Walk the public candidates. The remembered winner is tried first.
+  /// Used for a default Start (no Advanced override).
+  discover,
+
+  /// Walk the public candidates, trying this room's saved address first.
+  /// Used for a saved room or Continue Watching on a public endpoint.
+  discoverFromRoom,
+}
+
 /// Everything the watch screen needs to join a room and optionally resume a
 /// previously-watched file. Built by [ConnectScreen], consumed by HomeScreen.
 @immutable
@@ -15,6 +33,8 @@ class RoomConfig {
     this.resumeFilePath,
     this.resumePositionMs = 0,
     this.sessionMode = SessionMode.synced,
+    this.endpointPolicy = SyncplayEndpointPolicy.pinned,
+    this.copyShareCode = false,
   });
 
   /// A Local playback session: real room identity, no Syncplay yet.
@@ -63,6 +83,14 @@ class RoomConfig {
   final String? resumeFilePath;
   final int resumePositionMs;
 
+  /// Whether this session may walk public candidates, or must use [server] /
+  /// [port] exactly.
+  final SyncplayEndpointPolicy endpointPolicy;
+
+  /// After a successful Hello, copy a share code that names the endpoint the
+  /// host actually landed on.
+  final bool copyShareCode;
+
   RoomConfig copyWith({
     SessionMode? sessionMode,
     String? server,
@@ -72,6 +100,8 @@ class RoomConfig {
     String? password,
     String? resumeFilePath,
     int? resumePositionMs,
+    SyncplayEndpointPolicy? endpointPolicy,
+    bool? copyShareCode,
   }) {
     return RoomConfig(
       sessionMode: sessionMode ?? this.sessionMode,
@@ -82,6 +112,8 @@ class RoomConfig {
       password: password ?? this.password,
       resumeFilePath: resumeFilePath ?? this.resumeFilePath,
       resumePositionMs: resumePositionMs ?? this.resumePositionMs,
+      endpointPolicy: endpointPolicy ?? this.endpointPolicy,
+      copyShareCode: copyShareCode ?? this.copyShareCode,
     );
   }
 
@@ -95,7 +127,9 @@ class RoomConfig {
       other.username == username &&
       other.password == password &&
       other.resumeFilePath == resumeFilePath &&
-      other.resumePositionMs == resumePositionMs;
+      other.resumePositionMs == resumePositionMs &&
+      other.endpointPolicy == endpointPolicy &&
+      other.copyShareCode == copyShareCode;
 
   @override
   int get hashCode => Object.hash(
@@ -107,5 +141,7 @@ class RoomConfig {
     password,
     resumeFilePath,
     resumePositionMs,
+    endpointPolicy,
+    copyShareCode,
   );
 }

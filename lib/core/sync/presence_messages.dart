@@ -7,18 +7,12 @@ const String connectionLostMessage = 'Connection lost — reconnecting…';
 const String reconnectedToRoomMessage = 'Reconnected to room.';
 
 /// Build the chat system line shown when a peer deliberately leaves vs drops.
-String peerDepartureMessage({
-  required String username,
-  required bool clean,
-}) =>
+String peerDepartureMessage({required String username, required bool clean}) =>
     clean ? '$username left the room.' : '$username lost connection.';
 
 /// Build the chat system line shown when a peer joins for the first time or
 /// rejoins after a detected drop.
-String peerJoinMessage({
-  required String username,
-  required bool reconnected,
-}) =>
+String peerJoinMessage({required String username, required bool reconnected}) =>
     reconnected ? '$username reconnected.' : '$username joined the room.';
 
 /// True when the link just dropped from a live connection — the moment to
@@ -41,17 +35,20 @@ bool isConnectionDrop({
 bool isReconnectSuccess({
   required bool wasReconnecting,
   required SyncConnectionStatus next,
-}) =>
-    wasReconnecting && next == SyncConnectionStatus.connected;
+}) => wasReconnecting && next == SyncConnectionStatus.connected;
 
 /// True when this room session never completed a login and the client has
 /// stopped trying. The start screen should show the named error; the watch
 /// UI is only for a completed join (#264, #265).
+///
+/// A public-candidate walk that is still looking is not a failed join —
+/// a dead first port is "try the next one", not "return to the lobby".
 bool isFailedInitialJoin({
   required SyncConnectionStatus status,
   required bool everConnected,
+  bool lookingForServer = false,
 }) =>
-    !everConnected && status == SyncConnectionStatus.error;
+    !everConnected && !lookingForServer && status == SyncConnectionStatus.error;
 
 /// The name of our own lingering ghost session to silence on its imminent
 /// departure, or null if there is none.
@@ -83,11 +80,11 @@ String? ownGhostNameOnReconnect({
   required String? assignedName,
 }) =>
     (reconnected &&
-            assignedName != null &&
-            previousAssignedName != null &&
-            assignedName != previousAssignedName)
-        ? previousAssignedName
-        : null;
+        assignedName != null &&
+        previousAssignedName != null &&
+        assignedName != previousAssignedName)
+    ? previousAssignedName
+    : null;
 
 /// True when [departedAt] is non-null and falls within [window] of [now],
 /// meaning a peer's departure is recent enough to be treated as a reconnect
@@ -96,5 +93,4 @@ bool isPeerReconnect({
   DateTime? departedAt,
   required DateTime now,
   Duration window = const Duration(seconds: 60),
-}) =>
-    departedAt != null && now.difference(departedAt) <= window;
+}) => departedAt != null && now.difference(departedAt) <= window;
