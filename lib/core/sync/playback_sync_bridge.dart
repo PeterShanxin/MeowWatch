@@ -68,16 +68,13 @@ class PlaybackSyncBridge {
   StreamSubscription<PlaybackState>? _videoSub;
   StreamSubscription<PeerPlayState>? _peerSub;
   StreamSubscription<PlaybackState>? _resumeSeekSub;
-  /// Last room state the bridge was told to apply. The product join order
-  /// (connect, then load) delivers the server's first State while the
-  /// player is still empty; `_load` then resets to 0:00 and later heartbeats
-  /// have `doSeek=false`, so [decideFollow] returns apply=false. Remembering
-  /// the room here — and [SyncCore.lastObservedRoomState] even when FOLLOW
-  /// never applied — lets [markSourceOpen] land it once the file is actually
-  /// open.
+  /// Last room state the bridge was told to apply. Used to know whether that
+  /// open-seek has landed. [markSourceOpen] itself reads
+  /// [SyncCore.lastObservedRoomState]: a slow load leaves [_lastPeer] on the
+  /// first catch-up while heartbeats keep advancing the room.
   PeerPlayState? _lastPeer;
-  /// True while [markSourceOpen] has asked the player to land on [_lastPeer]
-  /// (or [SyncCore.lastObservedRoomState]) and that seek has not yet stuck.
+  /// True while [markSourceOpen] has asked the player to land on the room
+  /// snapshot from open time and that seek has not yet stuck.
   /// Outbound publishes stay suppressed so a joiner at 0:00 cannot overwrite
   /// the room.
   bool _awaitingOpenSeek = false;
@@ -286,7 +283,9 @@ class PlaybackSyncBridge {
   }
 
   PeerPlayState? _roomToApply() {
-    final pending = _lastPeer ?? sync.lastObservedRoomState;
+    final observed = sync.lastObservedRoomState;
+    if (observed != null && observed.setBy != null) return observed;
+    final pending = _lastPeer;
     if (pending == null || pending.setBy == null) return null;
     return pending;
   }
@@ -344,8 +343,8 @@ class PlaybackSyncBridge {
     final lateRemoteFallout = _isLateRemoteFallout(s, now);
 
     if (_awaitingOpenSeek && confirmed) {
-      final room = _roomToApply();
-      if (room == null || !_roomDiffersFromLocal(room, s)) {
+      final applied = _lastPeer;
+      if (applied == null || !_roomDiffersFromLocal(applied, s)) {
         _awaitingOpenSeek = false;
         _openSeekNeedsDuration = false;
         // Landed: feed the heartbeat the room position, but do not advertise a
@@ -360,7 +359,8 @@ class PlaybackSyncBridge {
       }
       if (_openSeekNeedsDuration && s.duration > Duration.zero) {
         _openSeekNeedsDuration = false;
-        _applyRoomOnOpen(room);
+        final room = _roomToApply();
+        if (room != null) _applyRoomOnOpen(room);
       } else if (s.duration <= Duration.zero &&
           s.opened &&
           !_openSeekNeedsDuration) {

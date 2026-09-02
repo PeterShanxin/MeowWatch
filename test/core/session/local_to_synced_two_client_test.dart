@@ -230,6 +230,60 @@ void main() {
     },
   );
 
+  test(
+    '2c. a joiner that loads after the playing room advances lands now, not join time',
+    () async {
+      final hostVideo = newCore();
+      await switchLocalToSynced('host', video: hostVideo, at: hostStart);
+      await _until(() => server.roomSetBy == 'host');
+      hostVideo.userPlay();
+      await _until(() => !server.roomPaused);
+
+      final peerVideo = newCore();
+      final session = track(
+        SessionServices.synced(
+          video: peerVideo,
+          onLog: (l) => logs.add('[peer] $l'),
+        ),
+      );
+      await server.dial(session.sync!, name: 'peer');
+      await pumpEventQueue();
+
+      // Heartbeats keep lastObservedRoomState moving while the file is still
+      // closed. Wider than rewindThreshold so a stale _lastPeer would miss.
+      await Future<void>.delayed(const Duration(milliseconds: 2500));
+      final roomAtOpen = server.roomPosition;
+      expect(
+        roomAtOpen,
+        greaterThan(hostStart + const Duration(milliseconds: 1500)),
+        reason: 'the room must have moved past the join-time catch-up',
+      );
+
+      peerVideo.openAt(movie);
+      await pumpEventQueue();
+      session.bridge!.markSourceOpen(movie);
+      await _until(() => _near(peerVideo.state.position, server.roomPosition));
+
+      expect(
+        peerVideo.state.position,
+        _closeTo(roomAtOpen),
+        reason:
+            'open must land current room progress, not the first catch-up '
+            'that landed while the player was empty',
+      );
+      expect(
+        server.acceptedChanges.where((c) => c.by == 'peer'),
+        isEmpty,
+        reason: 'the joiner must not publish 0s and overwrite the playing host',
+      );
+      expect(
+        hostVideo.state.position,
+        greaterThan(hostStart),
+        reason: 'the host must keep playing; a 0s publish would rewind them',
+      );
+    },
+  );
+
   test('4. after Local -> Synced the host drives the peer', () async {
     final hostVideo = newCore();
     final peerVideo = newCore();

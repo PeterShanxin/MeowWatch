@@ -22,6 +22,7 @@ class _FakeProfileStore implements ProfileStore {
   final List<SavedProfile> profiles = [];
   final List<int> deleted = [];
   final List<String> savedUsernames = [];
+  String? lastSavedPassword;
   int saveUsedCalls = 0;
 
   void emit() => _ctrl.add(List.unmodifiable(profiles));
@@ -43,6 +44,7 @@ class _FakeProfileStore implements ProfileStore {
   }) async {
     saveUsedCalls++;
     savedUsernames.add(username);
+    lastSavedPassword = password;
   }
 
   @override
@@ -1431,6 +1433,75 @@ void main() {
       expect(connected!.room, isNotEmpty);
       expect(profiles.saveUsedCalls, 0);
       expect(settings.map[kLocalPlayerModeSettingKey], 'true');
+    },
+  );
+
+  testWidgets(
+    'a Local Start that becomes synced on return saves the room and password',
+    (tester) async {
+      final settings = _FakeSettingsStore();
+      final left = Completer<void>();
+      await pump(
+        tester,
+        settings: settings,
+        onConnect: (config) async {
+          connected = config;
+          await settings.set(kLocalPlayerModeSettingKey, 'false');
+          await left.future;
+        },
+      );
+      await turnOnLocalMode(tester);
+      await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+      await tester.tap(find.byKey(const Key('connect-advanced')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('connect-advanced-password')),
+        'secret',
+      );
+      await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+      await tester.tap(find.byKey(const Key('connect-start-new')));
+      await tester.pump();
+
+      expect(connected, isNotNull);
+      expect(connected!.sessionMode, SessionMode.local);
+      expect(connected!.password, 'secret');
+      expect(profiles.saveUsedCalls, 0);
+
+      left.complete();
+      await tester.pumpAndSettle();
+
+      expect(profiles.saveUsedCalls, 1);
+      expect(profiles.lastSavedPassword, 'secret');
+      expect(profiles.savedUsernames, ['lin']);
+    },
+  );
+
+  testWidgets(
+    'a Local Start that stays local does not save a room on return',
+    (tester) async {
+      final settings = _FakeSettingsStore();
+      final left = Completer<void>();
+      await pump(
+        tester,
+        settings: settings,
+        onConnect: (config) async {
+          connected = config;
+          await left.future;
+        },
+      );
+      await turnOnLocalMode(tester);
+      await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+      await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+      await tester.tap(find.byKey(const Key('connect-start-new')));
+      await tester.pump();
+
+      expect(connected!.sessionMode, SessionMode.local);
+      expect(profiles.saveUsedCalls, 0);
+
+      left.complete();
+      await tester.pumpAndSettle();
+
+      expect(profiles.saveUsedCalls, 0);
     },
   );
 }

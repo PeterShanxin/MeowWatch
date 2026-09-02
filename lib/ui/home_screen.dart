@@ -144,6 +144,10 @@ abstract class _HomeScreenStateBase extends State<HomeScreen> {
   /// Implemented on [_HomeScreenState]: live Local ↔ synced switch.
   Future<void> _setEffectiveLocalMode(bool local);
 
+  /// In-flight [_setEffectiveLocalMode]. Leave awaits this so a toggle's
+  /// persist is visible to the lobby before `_loadSettings` runs.
+  Future<void>? _modeSwitch;
+
   SyncplayClient? get _sync => _session.sync;
   PlaybackSyncBridge? get _bridge => _session.bridge;
   ChatStore? get _chat => _session.chat;
@@ -311,6 +315,9 @@ class _HomeScreenState extends _HomeScreenStateBase
     );
     _chrome = SessionChrome.forMode(_session.mode);
     _audioPlayer = VideoEnginePool.instance.audioPlayer;
+    // Playback-stop wake is local and synced: EOF after the controls fade
+    // must show them again. Collaboration streams stay behind [_isSynced].
+    _initPlaybackWakeSubscription();
     if (_isSynced) {
       // Hashed label, never the raw room: a private room's name is its access
       // code, so logging it verbatim would leak the room credential (#146 review).
@@ -458,8 +465,23 @@ class _HomeScreenState extends _HomeScreenStateBase
   /// this session's effective mode live. Join override never calls this.
   @override
   Future<void> _setEffectiveLocalMode(bool local) async {
+    while (_modeSwitch != null) {
+      await _modeSwitch;
+      if (!mounted) return;
+    }
+    final done = Completer<void>();
+    _modeSwitch = done.future;
+    try {
+      await _runEffectiveLocalMode(local);
+    } finally {
+      _modeSwitch = null;
+      done.complete();
+    }
+  }
+
+  Future<void> _runEffectiveLocalMode(bool local) async {
     if (local == _session.isLocal) {
-      unawaited(_persistLocalPlayerMode(local));
+      await _persistLocalPlayerMode(local);
       return;
     }
     await _saveResumePosition(force: true);
@@ -468,7 +490,7 @@ class _HomeScreenState extends _HomeScreenStateBase
     } else {
       await _startCollaboration();
     }
-    unawaited(_persistLocalPlayerMode(local));
+    await _persistLocalPlayerMode(local);
     final path = _core.state.filePath;
     if (path != null && isPlaybackOpen(_core.state)) {
       await _recordOpen(path);
@@ -593,6 +615,7 @@ class _HomeScreenState extends _HomeScreenStateBase
     unawaited(_connSub?.cancel());
     unawaited(_presenceSub?.cancel());
     unawaited(_noticeSub?.cancel());
+    unawaited(_playbackWakeSub?.cancel());
     unawaited(_peerFileSub?.cancel());
     unawaited(_activitySub?.cancel());
     unawaited(_rosterSub?.cancel());

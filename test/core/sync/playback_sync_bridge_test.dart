@@ -3007,4 +3007,63 @@ void main() {
       expect(sync.changes, isEmpty);
     },
   );
+
+  test(
+    'markSourceOpen applies lastObservedRoomState after a stale catch-up',
+    () async {
+      // Initial catch-up emits peerState and sets _lastPeer. Heartbeats then
+      // advance lastObservedRoomState during a slow load; open must land the
+      // later room, not the join-time command, and must not publish 0:00.
+      sync.pushPeer(
+        const PeerPlayState(
+          position: Duration(minutes: 5),
+          paused: false,
+          doSeek: true,
+          setBy: 'host',
+        ),
+      );
+      await pumpEventQueue();
+      video.commands.clear();
+      sync.changes.clear();
+      sync.localUpdates.clear();
+
+      sync.lastObservedRoomState = const PeerPlayState(
+        position: Duration(minutes: 5, seconds: 8),
+        paused: false,
+        doSeek: false,
+        setBy: 'host',
+      );
+
+      video.push(
+        const PlaybackState(
+          status: PlaybackStatus.paused,
+          position: Duration.zero,
+          duration: Duration(hours: 2),
+          fileName: 'a.mkv',
+          filePath: '/videos/a.mkv',
+          opened: true,
+        ),
+      );
+      await pumpEventQueue();
+      video.commands.clear();
+
+      bridge.markSourceOpen('/videos/a.mkv');
+      await pumpEventQueue();
+
+      expect(
+        video.commands,
+        contains('seek:308000ms'),
+        reason: 'a slow load must land the room as it is now, not the first catch-up',
+      );
+      expect(
+        video.state.position,
+        const Duration(minutes: 5, seconds: 8),
+      );
+      expect(
+        sync.changes,
+        isEmpty,
+        reason: 'the joiner must not publish 0:00 and overwrite the room',
+      );
+    },
+  );
 }

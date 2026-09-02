@@ -345,16 +345,23 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   String? get _passwordValue => _password.text.isEmpty ? null : _password.text;
 
+  Future<void> _saveUsedProfile(
+    RoomConfig config, {
+    String? profileUsername,
+  }) {
+    return widget.profiles.saveUsed(
+      name: config.room,
+      server: config.server,
+      port: config.port,
+      room: config.room,
+      username: profileUsername ?? config.username,
+      password: config.password,
+    );
+  }
+
   Future<void> _connect(RoomConfig config, {String? profileUsername}) async {
     if (config.sessionMode.isSynced) {
-      await widget.profiles.saveUsed(
-        name: config.room,
-        server: config.server,
-        port: config.port,
-        room: config.room,
-        username: profileUsername ?? config.username,
-        password: config.password,
-      );
+      await _saveUsedProfile(config, profileUsername: profileUsername);
     }
     if (!mounted) return;
     // Flush any pending lobby-settings writes first, so the room reads the
@@ -372,6 +379,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
     // and the name just used is already remembered via the saved room (#172).
     setState(() => _suggestedName = generateUsername());
     await _loadSettings();
+    // A Local Start that became synced in-player now has a real Syncplay
+    // room. Persist it so Continue Watching can recover the server password.
+    if (config.sessionMode.isLocal && !_localPlayerMode) {
+      await _saveUsedProfile(config, profileUsername: profileUsername);
+    }
   }
 
   Future<void> _startPlayback() async {

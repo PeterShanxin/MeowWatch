@@ -6,6 +6,7 @@ part of 'home_screen.dart';
 mixin _HomeIdleState on _HomeScreenStateBase {
   bool _isUiIdle = false;
   Timer? _uiIdleTimer;
+  StreamSubscription<PlaybackState>? _playbackWakeSub;
 
   /// Monotonic clock + throttle so a burst of pointer hover/move events doesn't
   /// cancel-and-reallocate the idle timers on every raw event (#182). Waking
@@ -19,6 +20,21 @@ mixin _HomeIdleState on _HomeScreenStateBase {
   Timer? _uiDeepIdleTimer;
   static const _uiIdleDelay = Duration(seconds: 3);
   static const _uiDeepIdleDelay = Duration(seconds: 3);
+
+  /// Clears idle when playback stops (EOF, pause). Lives outside the
+  /// collaboration subscription lifecycle so a local session keeps it.
+  void _initPlaybackWakeSubscription() {
+    _playbackWakeSub = _core.stateStream.listen((s) {
+      if (!mounted) return;
+      if ((_isUiIdle || _isUiDeepIdle) && s.status != PlaybackStatus.playing) {
+        _uiDeepIdleTimer?.cancel();
+        setState(() {
+          _isUiIdle = false;
+          _isUiDeepIdle = false;
+        });
+      }
+    });
+  }
 
   void _onUserInteraction() {
     if (_isUiIdle || _isUiDeepIdle) {

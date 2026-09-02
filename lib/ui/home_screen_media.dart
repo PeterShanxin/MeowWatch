@@ -396,6 +396,14 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
     }
     appLog('life: leave room (button)');
     _historyTimer?.cancel();
+    final inFlight = _modeSwitch;
+    if (inFlight != null) {
+      try {
+        await inFlight;
+      } on Object catch (e) {
+        appLog('life: leave mode-switch skipped: ${redactUrls('$e')}');
+      }
+    }
     if (isPlaybackOpen(_core.state)) {
       try {
         await _saveResumePosition(

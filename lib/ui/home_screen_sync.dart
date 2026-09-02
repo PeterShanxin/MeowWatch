@@ -116,10 +116,9 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
   final SyncActivityThrottle _activityThrottle = SyncActivityThrottle();
   StreamSubscription<SyncActivity>? _activityThrottleSub;
 
-  /// Wires every sync-side stream: connection state, deliberate-leave signals,
-  /// presence, peer files, throttled sync activity, the initial roster, and
-  /// the playback-state notices. Called once from initState; the handler
-  /// bodies are unchanged from the pre-split screen (#182).
+  /// Wires collaboration streams: connection, leave, presence, peer files,
+  /// throttled activity, and the initial roster. Playback-stop idle wake
+  /// lives in [_initPlaybackWakeSubscription] so local sessions keep it.
   void _initSyncSubscriptions() {
     final sync = _sync;
     final chat = _chat;
@@ -370,13 +369,6 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
       if (!mounted) return;
       if (_autoPausedNotice && s.status == PlaybackStatus.playing) {
         setState(() => _autoPausedNotice = false);
-      }
-      if ((_isUiIdle || _isUiDeepIdle) && s.status != PlaybackStatus.playing) {
-        _uiDeepIdleTimer?.cancel();
-        setState(() {
-          _isUiIdle = false;
-          _isUiDeepIdle = false;
-        });
       }
     });
   }

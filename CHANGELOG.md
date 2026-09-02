@@ -25,7 +25,10 @@ in-app updater reads to show what changed.
 - Flipping Local Player Mode in the lobby gear right after launch no longer gets overwritten by the still-loading saved value (#252).
 - Watching in different rooms no longer overwrites their progress, and switching Local Player Mode inside one room no longer creates a duplicate history card (#254).
 - Continue Watching now reliably opens at the saved position instead of starting again from the beginning (#254).
-- After you turn Local Player Mode off, a friend who then joins that room and loads the same file lands where you are, instead of staying at the start — including when they join first and load afterwards, which must not overwrite the room back to 0:00 (#254).
+- After you turn Local Player Mode off, a friend who then joins that room and loads the same file lands on the room's current progress — even if they connect first and the file takes a while to open — and that join does not write 0:00 back over the room (#254).
+- Flipping Local Player Mode in the player is remembered when you return to the lobby, including if you leave right after the flip (#254).
+- A Local Start that you later turn into a synced room is saved, so Continue Watching can reopen that room and its server password (#254).
+- When a local video ends, the controls come back on their own (#254).
 
 ## [0.48.0-alpha] - 2026-09-01
 
