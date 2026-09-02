@@ -32,6 +32,7 @@ void main() {
     final text = jobText('build-windows-x64');
     expect(text, contains('windows-2022'));
     expect(text, contains('environment: release'));
+    expect(text, contains('github.event.repository.fork == false'));
     expect(text, contains('secrets.MEOWWATCH_RELEASE_KEY'));
     expect(text, contains('subosito/flutter-action@v2'));
     expect(text, isNot(contains('self-hosted')));
