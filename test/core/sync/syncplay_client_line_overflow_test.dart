@@ -32,8 +32,8 @@ void main() {
 
   test('a pre-TLS flood without a newline fails the initial connect', () async {
     // The negotiation listener is a separate addChunk call site; a flood there
-    // (before any login) must surface the normal "could not reach" error
-    // instead of buffering forever or looping reconnects.
+    // (before any login) is a malformed STARTTLS answer, not an unreachable
+    // host, and must not buffer forever or loop reconnects.
     final server = await ServerSocket.bind('127.0.0.1', 0);
     final accepted = <Socket>[];
     server.listen((s) {
@@ -62,7 +62,8 @@ void main() {
     await _until(() => states.any((s) => s.status == SyncConnectionStatus.error));
 
     expect(states.last.status, SyncConnectionStatus.error);
-    expect(states.last.message, contains('Could not reach Syncplay server'));
+    expect(states.last.message, contains('malformed STARTTLS answer'));
+    expect(states.last.message, contains('secure connection'));
     expect(client.debugReconnectScheduled, isFalse);
   });
 }

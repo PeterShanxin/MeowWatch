@@ -69,6 +69,7 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     await sub.cancel();
     expect(states.last.status, SyncConnectionStatus.connected);
+    expect(core.lastConnectionState?.status, SyncConnectionStatus.connected);
   });
 
   test('peer state stream emits pushed states', () async {

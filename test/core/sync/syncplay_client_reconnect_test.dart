@@ -171,7 +171,7 @@ void main() {
       );
 
       expect(states.last.status, SyncConnectionStatus.error);
-      expect(states.last.message, contains('Could not reach Syncplay server'));
+      expect(states.last.message, contains('stayed silent'));
       expect(states.last.message, contains('127.0.0.1:${server.port}'));
       expect(silent.debugReconnectScheduled, isFalse);
     },

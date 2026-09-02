@@ -83,7 +83,8 @@ mixin _HomeBody
                           ? BoxDecoration(gradient: m.backgroundGradient)
                           : BoxDecoration(color: m.background),
                     ),
-                    if (state.fileName == null)
+                    if (state.fileName == null &&
+                        !(_leavingRoom && !_everRoomConnected))
                       EmptyState(
                         key: const ValueKey<String>('empty-state'),
                         onBrowse: _browse,

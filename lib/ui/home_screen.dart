@@ -86,6 +86,7 @@ part 'home_screen_sync.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.config,
+    required this.sync,
     required this.history,
     required this.settings,
     required this.currentTheme,
@@ -97,6 +98,10 @@ class HomeScreen extends StatefulWidget {
   });
 
   final RoomConfig config;
+
+  /// Already-logged-in room client. The lobby completes the join before this
+  /// route is pushed, so the watch UI is only for a completed login (#265).
+  final SyncplayClient sync;
   final HistoryStore history;
   final SettingsStore settings;
   final double? initialWidthPx;
@@ -282,16 +287,11 @@ class _HomeScreenState extends _HomeScreenStateBase
     // Hashed label, never the raw room: a private room's name is its access
     // code, so logging it verbatim would leak the room credential (#146 review).
     appLog('life: enter ${roomLogLabel(widget.config.room)}');
-    _sync = SyncplayClient(
-      onLog: appLog,
-      shouldLog: ({required bool verboseOnly}) {
-        final level = appLogInstance?.level;
-        return level == LogLevel.verbose ||
-            (!verboseOnly && level == LogLevel.neat);
-      },
-    );
+    _sync = widget.sync;
     _bridge = PlaybackSyncBridge(video: _core, sync: _sync)..start();
-    _chat = ChatStore(sync: _sync);
+    _username = _sync.username;
+    _lastConnectedUsername = _username;
+    _chat = ChatStore(sync: _sync, initialUsername: _username);
     _audioPlayer = VideoEnginePool.instance.audioPlayer;
     // The stream wiring lives with its seam: chat/reaction/typing hookups in
     // [_HomeChatState], connection/presence/file/activity/roster hookups in
@@ -299,20 +299,10 @@ class _HomeScreenState extends _HomeScreenStateBase
     // screen (#182).
     _initChatSubscriptions();
     _initSyncSubscriptions();
-
-    _username = widget.config.username;
+    _sync.requestList();
     _historyTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       unawaited(_saveResumePosition());
     });
-    unawaited(
-      _sync.connect(
-        server: widget.config.server,
-        port: widget.config.port,
-        username: widget.config.username,
-        room: widget.config.room,
-        password: widget.config.password,
-      ),
-    );
     // Announce a deliberate leave if the window is closed (X button) while we're
     // in the room — disconnect() sends the leaving signal with a bounded flush
     // (#92). The Leave button already does this directly via _leave().

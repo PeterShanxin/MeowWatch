@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'core/connect/room_config.dart';
 import 'core/data/settings_store.dart';
 import 'core/data/stores.dart';
+import 'core/debug/app_log.dart';
+import 'core/debug/log_level.dart';
+import 'core/sync/peer_state.dart';
+import 'core/sync/syncplay_client.dart';
 import 'core/theme/meow_context.dart';
 import 'core/theme/meow_theme.dart';
 import 'core/theme/reduce_motion.dart';
@@ -96,13 +100,95 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
     widget.settings.set(kThemeSettingKey, id.name);
   }
 
+  /// Stay on the lobby until login completes. A refused join returns the named
+  /// error; the watch route is only pushed after a completed Hello (#265).
+  /// [connectUntilJoin] keeps listening through this handoff so a Hello-then-
+  /// Error is not dropped by the broadcast stream before [HomeScreen] attaches.
+  Future<String?> _joinAndOpenRoom(RoomConfig config) async {
+    final client = SyncplayClient(
+      onLog: appLog,
+      shouldLog: ({required bool verboseOnly}) {
+        final level = appLogInstance?.level;
+        return level == LogLevel.verbose ||
+            (!verboseOnly && level == LogLevel.neat);
+      },
+    );
+    BuildContext? navContext() {
+      final context = _navKey.currentContext;
+      return (context != null && context.mounted) ? context : null;
+    }
+
+    Future<String?>? watchRoute;
+    final error = await client.connectUntilJoin(
+      server: config.server,
+      port: config.port,
+      username: config.username,
+      room: config.room,
+      password: config.password,
+      onHandoff: () async {
+        // Use the navigator key, not a Builder context captured at lobby
+        // build: a theme change (or any MeowWatchApp setState) replaces
+        // that Builder while the join is still in flight.
+        final context = navContext();
+        if (context == null) {
+          await client.dispose();
+          return;
+        }
+        // Don't await the route here: connectUntilJoin must keep listening
+        // only until HomeScreen's subscriptions exist, not until Leave.
+        watchRoute = Navigator.of(context).push<String>(
+          fadeUpRoute<String>(
+            reduceMotion: context.reduceMotion,
+            // A builder, not a captured widget, so the room page rebuilds
+            // with the latest [_theme] when the in-room gear switches theme
+            // (the swatch highlight tracks it) — see [fadeUpRoute].
+            builder: (_) => HomeScreen(
+              config: config,
+              sync: client,
+              history: widget.history,
+              settings: widget.settings,
+              initialWidthPx: widget.initialCardWidthPx,
+              initialHeightPx: widget.initialCardHeightPx,
+              initialCorner: widget.initialChatCorner,
+              currentTheme: _theme,
+              onThemeChanged: _setTheme,
+            ),
+          ),
+        );
+        await WidgetsBinding.instance.endOfFrame;
+      },
+    );
+    final terminal = error ??
+        (client.lastConnectionState?.status == SyncConnectionStatus.error
+            ? client.lastConnectionState?.message
+            : null);
+    if (terminal != null) {
+      final context = _navKey.currentContext;
+      if (watchRoute != null &&
+          context != null &&
+          context.mounted &&
+          Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(terminal);
+      } else {
+        await client.dispose();
+      }
+      return terminal;
+    }
+    if (watchRoute == null) {
+      await client.dispose();
+      return null;
+    }
+    return watchRoute;
+  }
+
   @override
   Widget build(BuildContext context) {
     // OS "reduce animations" makes the app-level theme melt instant, matching
     // every other motion primitive (and the gallery's AnimatedTheme). Read it
     // non-throwing: this context sits above MaterialApp, so a MediaQuery may be
     // absent (`context.reduceMotion` would assert). Mirrors that getter's logic.
-    final reduceMotion = ReduceMotionScope.of(context) ||
+    final reduceMotion =
+        ReduceMotionScope.of(context) ||
         (MediaQuery.maybeOf(context)?.disableAnimations ?? false);
     return MaterialApp(
       title: 'MeowWatch',
@@ -123,24 +209,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             onThemeChanged: _setTheme,
             playLobbyEntrance: widget.showLaunchReveal && _revealSettled,
             holdLobbyHidden: widget.showLaunchReveal && !_revealSettled,
-            onConnect: (RoomConfig config) => Navigator.of(context).push(
-              fadeUpRoute<void>(
-                reduceMotion: context.reduceMotion,
-                // A builder, not a captured widget, so the room page rebuilds
-                // with the latest [_theme] when the in-room gear switches theme
-                // (the swatch highlight tracks it) — see [fadeUpRoute].
-                builder: (_) => HomeScreen(
-                  config: config,
-                  history: widget.history,
-                  settings: widget.settings,
-                  initialWidthPx: widget.initialCardWidthPx,
-                  initialHeightPx: widget.initialCardHeightPx,
-                  initialCorner: widget.initialChatCorner,
-                  currentTheme: _theme,
-                  onThemeChanged: _setTheme,
-                ),
-              ),
-            ),
+            onConnect: (RoomConfig config) => _joinAndOpenRoom(config),
           ),
         ),
       ),

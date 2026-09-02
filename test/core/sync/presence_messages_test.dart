@@ -256,4 +256,43 @@ void main() {
       );
     });
   });
+
+  group('isFailedInitialJoin', () {
+    test('error before a completed login is a failed join', () {
+      expect(
+        isFailedInitialJoin(
+          status: SyncConnectionStatus.error,
+          everConnected: false,
+        ),
+        isTrue,
+      );
+    });
+
+    test('error after a completed login stays in the session', () {
+      expect(
+        isFailedInitialJoin(
+          status: SyncConnectionStatus.error,
+          everConnected: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('connecting and handshaking are not a failed join', () {
+      expect(
+        isFailedInitialJoin(
+          status: SyncConnectionStatus.connecting,
+          everConnected: false,
+        ),
+        isFalse,
+      );
+      expect(
+        isFailedInitialJoin(
+          status: SyncConnectionStatus.handshaking,
+          everConnected: false,
+        ),
+        isFalse,
+      );
+    });
+  });
 }
