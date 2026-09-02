@@ -20,8 +20,10 @@
 //       key but must be signed with the OLD private key so existing installs
 //       (which still carry the old key) can verify it.
 //
-// The private seed lives ONLY on the release PC (never in the repo, GitHub
-// secrets, or R2). See docs/AGENT_GUIDE.md → Release signing.
+// The private seed is the GitHub `release` environment secret
+// `MEOWWATCH_RELEASE_KEY` for tag CI, and a local seed file for manual
+// signing. Never commit it. Never put it in R2. See
+// docs/AGENT_GUIDE.md → Release signing.
 
 import 'dart:convert';
 import 'dart:io';

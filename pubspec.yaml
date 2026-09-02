@@ -53,7 +53,7 @@ dependencies:
   # Pure-Dart Ed25519 (RFC 8032) — verifies the release signature on the
   # auto-update path so a poisoned R2 bucket can't forge an update. No native
   # code, so it doesn't jeopardise the Windows build. The matching private key
-  # lives only on the release PC; see tool/release_signer.dart.
+  # lives in the release environment secret; see tool/release_signer.dart.
   ed25519_edwards: ^0.3.1
 
 # path_provider_android 2.3.x pulls jni/jni_flutter, whose Windows native build
