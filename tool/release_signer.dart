@@ -20,8 +20,11 @@
 //       key but must be signed with the OLD private key so existing installs
 //       (which still carry the old key) can verify it.
 //
-// The private seed lives ONLY on the release PC (never in the repo, GitHub
-// secrets, or R2). See docs/AGENT_GUIDE.md → Release signing.
+// Tag CI signs with the MEOWWATCH_RELEASE_KEY GitHub Actions secret (seed
+// file contents on the `release` environment). This CLI takes a key file
+// path; the tag job writes the secret to $RUNNER_TEMP and deletes it after.
+// Never commit the seed; never put it on R2. See docs/AGENT_GUIDE.md →
+// Release signing.
 
 import 'dart:convert';
 import 'dart:io';
@@ -38,7 +41,7 @@ class ReleaseKeypair {
     required this.publicKeyBase64,
   });
 
-  /// 32-byte RFC 8032 seed — the private key. Keep off the repo/GitHub/R2.
+  /// 32-byte RFC 8032 seed — the private key. Keep off the repo and R2.
   final String privateSeedBase64;
 
   /// 32-byte public key — safe to commit into the app.
@@ -118,7 +121,8 @@ void _genkey(List<String> args) {
   outFile.writeAsStringSync(kp.privateSeedBase64);
   stdout
     ..writeln('Private seed written to ${outFile.path}')
-    ..writeln('KEEP THIS FILE OFF the repo, GitHub, and R2. Back it up safely.')
+    ..writeln('KEEP THIS FILE OFF the repo and R2. Tag CI uses the seed '
+        'contents as the MEOWWATCH_RELEASE_KEY secret. Back it up safely.')
     ..writeln('')
     ..writeln('Paste this into releasePublicKeyBase64 '
         '(lib/core/update/release_signature.dart):')

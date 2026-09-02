@@ -155,6 +155,26 @@ jobs:
         ['actions/checkout@v7'],
       );
     });
+
+    test('PR and analyze jobs do not interpolate release secrets', () {
+      final jobs = splitWorkflowJobs(
+        File('.github/workflows/build.yml').readAsStringSync(),
+      );
+      for (final name in ['check-hosted', 'gate', 'check-self-hosted']) {
+        final body = jobs[name]!.join('\n');
+        expect(body, isNot(contains('secrets.MEOWWATCH_RELEASE_KEY')));
+        expect(body, isNot(contains('secrets.R2_')));
+        expect(body, isNot(contains('secrets.TAURI_SIGNING_PRIVATE_KEY')));
+      }
+      final tagBuild = jobs['build-windows-x64']!.join('\n');
+      expect(tagBuild, contains('runs-on: windows-2022'));
+      expect(tagBuild, contains('environment: release'));
+      expect(tagBuild, contains('secrets.MEOWWATCH_RELEASE_KEY'));
+      expect(tagBuild, isNot(contains('secrets.R2_')));
+      final r2 = jobs['release']!.join('\n');
+      expect(r2, contains('secrets.R2_'));
+      expect(r2, isNot(contains('secrets.MEOWWATCH_RELEASE_KEY')));
+    });
   });
 
   group('ActionCacheEntry', () {

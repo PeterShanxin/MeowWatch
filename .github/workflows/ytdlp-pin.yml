@@ -14,8 +14,8 @@ name: yt-dlp pin
 # Deliberate choices:
 #   * Hosted `ubuntu-latest` — the work is two API calls and one ~18 MB
 #     download. The self-hosted Windows runner shares the maintainer's PC and is
-#     reserved for the expensive Flutter builds; a weekly cron has no business
-#     occupying it.
+#     reserved for trusted-admin push-to-main analyze; a weekly cron has no
+#     business occupying it.
 #   * No third-party actions for the PR — this repo ships signed updates and
 #     baked binary hashes, so the branch is pushed and the PR opened with `gh`
 #     and the built-in GITHUB_TOKEN rather than by granting a marketplace action
