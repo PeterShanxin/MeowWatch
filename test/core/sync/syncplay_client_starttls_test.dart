@@ -55,14 +55,17 @@ void main() {
       expect(probe.channelSecure, isFalse);
     });
 
-    test('a stripped negotiation (no answer at all) fails the connect',
-        () async {
-      final probe = await _connectAgainst(answer: null);
+    test(
+      'a stripped negotiation (no answer at all) fails the connect',
+      () async {
+        final probe = await _connectAgainst(answer: null);
 
-      probe.expectOnlyTheTlsRequest();
-      expect(probe.terminalStatus, SyncConnectionStatus.error);
-      expect(probe.channelSecure, isFalse);
-    });
+        probe.expectOnlyTheTlsRequest();
+        expect(probe.terminalStatus, SyncConnectionStatus.error);
+        expect(probe.terminalMessage, contains('stayed silent'));
+        expect(probe.channelSecure, isFalse);
+      },
+    );
 
     test('a malformed answer is refused rather than parsed past', () async {
       final probe = await _connectAgainst(rawAnswer: 'not json at all\r\n');
@@ -79,6 +82,17 @@ void main() {
       probe.expectNothingSensitiveOnTheWire();
       expect(probe.terminalStatus, SyncConnectionStatus.error);
       expect(probe.terminalMessage, contains('malformed STARTTLS answer'));
+    });
+
+    test('invalid UTF-8 in the STARTTLS answer is refused', () async {
+      final probe = await _connectAgainst(
+        rawBytes: Uint8List.fromList(const [0xC3, 0x28, 0x0D, 0x0A]),
+      );
+
+      probe.expectNothingSensitiveOnTheWire();
+      expect(probe.terminalStatus, SyncConnectionStatus.error);
+      expect(probe.terminalMessage, contains('malformed STARTTLS answer'));
+      expect(probe.channelSecure, isFalse);
     });
 
     test('a server that skips the answer and starts talking protocol '
@@ -101,12 +115,50 @@ void main() {
       );
     });
 
-    test('a failed TLS handshake after an accepted STARTTLS is refused',
-        () async {
+    test('connectUntilJoin returns the named refusal', () async {
+      final server = await ServerSocket.bind('127.0.0.1', 0);
+      final accepted = <Socket>[];
+      server.listen((s) {
+        accepted.add(s);
+        s.listen((bytes) {
+          if (utf8.decode(bytes, allowMalformed: true).contains('startTLS')) {
+            s.add(
+              utf8.encode(
+                '${json.encode({
+                  'Error': {'message': 'unknown command startTLS'},
+                })}\r\n',
+              ),
+            );
+          }
+        }, onError: (_) {});
+      });
+      addTearDown(() async {
+        for (final s in accepted) {
+          s.destroy();
+        }
+        await server.close();
+      });
+
+      final client = SyncplayClient();
+      addTearDown(client.dispose);
+      final error = await client.connectUntilJoin(
+        server: '127.0.0.1',
+        port: server.port,
+        username: 'me',
+        room: 'secret-room',
+        password: 'hunter2',
+      );
+
+      expect(error, contains('rejected STARTTLS'));
+      expect(client.debugChannelSecure, isFalse);
+    });
+
+    test('a failed TLS handshake after an accepted STARTTLS is refused', () async {
       // The server says it will encrypt, then cannot prove who it is. This runs
       // through the real SecureSocket.secure — the bytes are not a ServerHello,
       // so dart:io raises a HandshakeException exactly as a rejected
-      // certificate would.
+      // certificate would. Garbage is sent only after the client's TLS
+      // ClientHello, so LineFramer cannot swallow it in the plaintext chunk.
       final probe = await _connectAgainst(
         answer: json.encode({
           'TLS': {'startTLS': 'true'},
@@ -122,8 +174,7 @@ void main() {
   });
 
   group('successful STARTTLS', () {
-    test('binds the upgraded socket and sends the Hello only over it',
-        () async {
+    test('binds the upgraded socket and sends the Hello only over it', () async {
       final plainFromClient = <int>[];
       final upgradedWrites = <String>[];
       late _RecordingSocket upgraded;
@@ -137,7 +188,9 @@ void main() {
           if (utf8.decode(bytes, allowMalformed: true).contains('startTLS')) {
             s.add(
               utf8.encode(
-                '${json.encode({'TLS': {'startTLS': 'true'}})}\r\n',
+                '${json.encode({
+                  'TLS': {'startTLS': 'true'},
+                })}\r\n',
               ),
             );
           }
@@ -212,31 +265,33 @@ void main() {
   });
 
   group('the send gate', () {
-    test('refuses to write anything while the channel is not confirmed secure',
-        () async {
-      // The structural backstop: even with a live socket and a logged-in
-      // session, an unconfirmed channel writes nothing.
-      final client = SyncplayClient();
-      addTearDown(client.dispose);
-      final sink = _NullSocket();
-      client.debugMarkLoggedIn('me');
-      client.debugAttachUnsecuredSocket(sink);
-      expect(client.debugChannelSecure, isFalse);
+    test(
+      'refuses to write anything while the channel is not confirmed secure',
+      () async {
+        // The structural backstop: even with a live socket and a logged-in
+        // session, an unconfirmed channel writes nothing.
+        final client = SyncplayClient();
+        addTearDown(client.dispose);
+        final sink = _NullSocket();
+        client.debugMarkLoggedIn('me');
+        client.debugAttachUnsecuredSocket(sink);
+        expect(client.debugChannelSecure, isFalse);
 
-      client.sendChat('hello there');
-      client.announceFile(
-        name: 'movie.mkv',
-        size: 1,
-        duration: const Duration(seconds: 1),
-      );
-      client.debugSendHello();
+        client.sendChat('hello there');
+        client.announceFile(
+          name: 'movie.mkv',
+          size: 1,
+          duration: const Duration(seconds: 1),
+        );
+        client.debugSendHello();
 
-      expect(
-        sink.written,
-        isEmpty,
-        reason: 'no frame may reach an unencrypted socket',
-      );
-    });
+        expect(
+          sink.written,
+          isEmpty,
+          reason: 'no frame may reach an unencrypted socket',
+        );
+      },
+    );
   });
 }
 
@@ -246,6 +301,7 @@ void main() {
 Future<_Probe> _connectAgainst({
   String? answer,
   String? rawAnswer,
+  List<int>? rawBytes,
   bool thenSendGarbage = false,
 }) async {
   final wire = <int>[];
@@ -253,15 +309,23 @@ Future<_Probe> _connectAgainst({
   final accepted = <Socket>[];
   server.listen((s) {
     accepted.add(s);
+    var sentTlsAccept = false;
+    var sentGarbage = false;
     s.listen((bytes) {
       wire.addAll(bytes);
-      if (!utf8.decode(bytes, allowMalformed: true).contains('startTLS')) {
+      final text = utf8.decode(bytes, allowMalformed: true);
+      if (!sentTlsAccept && text.contains('startTLS')) {
+        if (rawBytes != null) s.add(rawBytes);
+        if (rawAnswer != null) s.add(utf8.encode(rawAnswer));
+        if (answer != null) s.add(utf8.encode('$answer\r\n'));
+        sentTlsAccept = true;
         return;
       }
-      if (rawAnswer != null) s.add(utf8.encode(rawAnswer));
-      if (answer != null) s.add(utf8.encode('$answer\r\n'));
-      if (thenSendGarbage) {
-        // Not a TLS ServerHello — the handshake cannot complete.
+      // Handshake garbage must wait until the client starts TLS. Sending it
+      // in the same plaintext chunk as the STARTTLS accept lets LineFramer
+      // swallow it before SecureSocket.secure runs.
+      if (thenSendGarbage && sentTlsAccept && !sentGarbage) {
+        sentGarbage = true;
         s.add(List<int>.filled(64, 0x41));
       }
     }, onError: (_) {});
@@ -319,7 +383,8 @@ class _Probe {
 
   SyncConnectionStatus? get terminalStatus =>
       states.isEmpty ? null : states.last.status;
-  String get terminalMessage => states.isEmpty ? '' : (states.last.message ?? '');
+  String get terminalMessage =>
+      states.isEmpty ? '' : (states.last.message ?? '');
 
   /// The core invariant: no session or auth state may cross the plaintext
   /// socket, whatever the server answered.
@@ -369,7 +434,7 @@ class _RecordingSocket extends StreamView<Uint8List> implements Socket {
   }
 
   _RecordingSocket._(this._inner, this._writes, this._reads)
-      : super(_reads.stream);
+    : super(_reads.stream);
 
   final Socket _inner;
   final List<String> _writes;

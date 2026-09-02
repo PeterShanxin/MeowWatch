@@ -359,6 +359,51 @@ void main() {
     },
   );
 
+  testWidgets(
+    'the start screen stays visible while a join is pending (#265)',
+    (tester) async {
+      final gate = Completer<String?>();
+      await pump(
+        tester,
+        onConnect: (config) {
+          connected = config;
+          return gate.future;
+        },
+      );
+      await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+      await tester.enterText(
+        find.byKey(const Key('connect-code')),
+        'sleepy-owl-13',
+      );
+      await tester.ensureVisible(find.byKey(const Key('connect-join')));
+      await tester.tap(find.byKey(const Key('connect-join')));
+      await tester.pump();
+
+      expect(find.byKey(const Key('connect-join')), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('connect-join')))
+            .onPressed,
+        isNull,
+      );
+      expect(find.text('Load a video'), findsNothing);
+      expect(find.text('Leave room'), findsNothing);
+      expect(find.byKey(const Key('connect-join-error')), findsNothing);
+
+      gate.complete(
+        'Could not open a secure connection to 127.0.0.1:1 '
+        '(server declined STARTTLS). '
+        'MeowWatch only joins rooms over TLS.',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('connect-join')), findsOneWidget);
+      expect(find.byKey(const Key('connect-join-error')), findsOneWidget);
+      expect(find.textContaining('declined STARTTLS'), findsOneWidget);
+      expect(find.text('Load a video'), findsNothing);
+    },
+  );
+
   testWidgets('Enter code joins a folded private code verbatim', (
     tester,
   ) async {

@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'core/connect/room_config.dart';
 import 'core/data/settings_store.dart';
 import 'core/data/stores.dart';
+import 'core/debug/app_log.dart';
+import 'core/debug/log_level.dart';
+import 'core/sync/syncplay_client.dart';
 import 'core/theme/meow_context.dart';
 import 'core/theme/meow_theme.dart';
 import 'core/theme/reduce_motion.dart';
@@ -96,13 +99,64 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
     widget.settings.set(kThemeSettingKey, id.name);
   }
 
+  /// Stay on the lobby until login completes. A refused join returns the named
+  /// error; the watch route is only pushed after a completed Hello (#265).
+  Future<String?> _joinAndOpenRoom(
+    BuildContext context,
+    RoomConfig config,
+  ) async {
+    final client = SyncplayClient(
+      onLog: appLog,
+      shouldLog: ({required bool verboseOnly}) {
+        final level = appLogInstance?.level;
+        return level == LogLevel.verbose ||
+            (!verboseOnly && level == LogLevel.neat);
+      },
+    );
+    final error = await client.connectUntilJoin(
+      server: config.server,
+      port: config.port,
+      username: config.username,
+      room: config.room,
+      password: config.password,
+    );
+    if (error != null) {
+      await client.dispose();
+      return error;
+    }
+    if (!context.mounted) {
+      await client.dispose();
+      return null;
+    }
+    return Navigator.of(context).push<String>(
+      fadeUpRoute<String>(
+        reduceMotion: context.reduceMotion,
+        // A builder, not a captured widget, so the room page rebuilds
+        // with the latest [_theme] when the in-room gear switches theme
+        // (the swatch highlight tracks it) — see [fadeUpRoute].
+        builder: (_) => HomeScreen(
+          config: config,
+          sync: client,
+          history: widget.history,
+          settings: widget.settings,
+          initialWidthPx: widget.initialCardWidthPx,
+          initialHeightPx: widget.initialCardHeightPx,
+          initialCorner: widget.initialChatCorner,
+          currentTheme: _theme,
+          onThemeChanged: _setTheme,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // OS "reduce animations" makes the app-level theme melt instant, matching
     // every other motion primitive (and the gallery's AnimatedTheme). Read it
     // non-throwing: this context sits above MaterialApp, so a MediaQuery may be
     // absent (`context.reduceMotion` would assert). Mirrors that getter's logic.
-    final reduceMotion = ReduceMotionScope.of(context) ||
+    final reduceMotion =
+        ReduceMotionScope.of(context) ||
         (MediaQuery.maybeOf(context)?.disableAnimations ?? false);
     return MaterialApp(
       title: 'MeowWatch',
@@ -123,24 +177,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             onThemeChanged: _setTheme,
             playLobbyEntrance: widget.showLaunchReveal && _revealSettled,
             holdLobbyHidden: widget.showLaunchReveal && !_revealSettled,
-            onConnect: (RoomConfig config) => Navigator.of(context).push<String>(
-              fadeUpRoute<String>(
-                reduceMotion: context.reduceMotion,
-                // A builder, not a captured widget, so the room page rebuilds
-                // with the latest [_theme] when the in-room gear switches theme
-                // (the swatch highlight tracks it) — see [fadeUpRoute].
-                builder: (_) => HomeScreen(
-                  config: config,
-                  history: widget.history,
-                  settings: widget.settings,
-                  initialWidthPx: widget.initialCardWidthPx,
-                  initialHeightPx: widget.initialCardHeightPx,
-                  initialCorner: widget.initialChatCorner,
-                  currentTheme: _theme,
-                  onThemeChanged: _setTheme,
-                ),
-              ),
-            ),
+            onConnect: (RoomConfig config) => _joinAndOpenRoom(context, config),
           ),
         ),
       ),

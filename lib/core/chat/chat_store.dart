@@ -68,9 +68,13 @@ class ChatStore {
   /// (and every downstream rebuild) steadily more expensive. Oldest lines are
   /// dropped first once the cap is reached.
   static const int maxRetained = 500;
-  ChatStore({required SyncCore sync, DateTime Function() now = DateTime.now})
-    : _sync = sync,
-      _now = now {
+  ChatStore({
+    required SyncCore sync,
+    String? initialUsername,
+    DateTime Function() now = DateTime.now,
+  }) : _sync = sync,
+       _now = now,
+       _myUsername = initialUsername {
     _connSub = _sync.connectionState.listen((state) {
       if (state.username != null && state.username!.isNotEmpty) {
         _myUsername = state.username;

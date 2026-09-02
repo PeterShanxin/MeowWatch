@@ -187,6 +187,21 @@ void main() {
     await sync.dispose();
   });
 
+  test('initialUsername stamps isMine without a later connection emit', () async {
+    final sync = FakeSync();
+    final store = ChatStore(sync: sync, initialUsername: 'meow');
+
+    sync.incoming(const ChatMessage(username: 'meow', text: 'mine'));
+    sync.incoming(const ChatMessage(username: 'lin', text: 'theirs'));
+    await Future<void>.delayed(Duration.zero);
+
+    final byText = {for (final m in store.messages) m.text: m.isMine};
+    expect(byText['mine'], isTrue);
+    expect(byText['theirs'], isFalse);
+    await store.dispose();
+    await sync.dispose();
+  });
+
   test('a message arriving before any connection state is not mine', () async {
     final sync = FakeSync();
     final store = ChatStore(sync: sync);

@@ -70,13 +70,16 @@ class SyncplayClient extends SyncCore {
   /// to the ~1s State heartbeat. Injectable for tests.
   final Duration livenessTimeout;
 
+  /// Requested name before login; server-assigned identity after it.
+  String get username => _username;
+
   Socket? _socket;
   LineFramer _framer = LineFramer();
   final PingService _ping = PingService();
 
   late final ConnectionWatchdog _watchdog = ConnectionWatchdog(
     timeout: livenessTimeout,
-    onTimeout: _onConnectionLost,
+    onTimeout: _onWatchdogTimeout,
   );
 
   // Reconnect bookkeeping. Server/port are remembered from the first connect so
@@ -181,6 +184,43 @@ class SyncplayClient extends SyncCore {
     await _openConnection();
   }
 
+  /// Connect and complete when login succeeds or the attempt ends in a named
+  /// error. The lobby uses this so the watch route is only pushed after a
+  /// completed join (#265).
+  Future<String?> connectUntilJoin({
+    required String server,
+    required int port,
+    required String username,
+    required String room,
+    String? password,
+  }) async {
+    final done = Completer<String?>();
+    final sub = connectionState.listen((s) {
+      if (done.isCompleted) return;
+      if (s.status == SyncConnectionStatus.connected) {
+        done.complete(null);
+      } else if (s.status == SyncConnectionStatus.error) {
+        done.complete(
+          (s.message != null && s.message!.isNotEmpty)
+              ? s.message
+              : 'Couldn\'t connect to room $room',
+        );
+      }
+    });
+    try {
+      await connect(
+        server: server,
+        port: port,
+        username: username,
+        room: room,
+        password: password,
+      );
+      return await done.future;
+    } finally {
+      await sub.cancel();
+    }
+  }
+
   /// Open (or re-open) the socket and start the TLS handshake. Shared by the
   /// initial [connect] and the auto-reconnect path; callers set the surrounding
   /// status (`connecting` vs. `reconnecting`) before invoking.
@@ -228,6 +268,15 @@ class SyncplayClient extends SyncCore {
     }
   }
 
+  void _onWatchdogTimeout() {
+    if (_manualDisconnect) return;
+    if (!_everLoggedIn) {
+      _failInitialSilence();
+      return;
+    }
+    _onConnectionLost();
+  }
+
   /// Presume the current link dead (silent timeout, socket error, or clean
   /// close) and arm a backed-off reconnect — unless the user asked to leave.
   void _onConnectionLost() {
@@ -243,9 +292,21 @@ class SyncplayClient extends SyncCore {
     _scheduleReconnect();
   }
 
-  void _failInitialConnection() {
+  void _failInitialSilence() {
     if (_manualDisconnect) return;
-    final message =
+    final wait = livenessTimeout.inMilliseconds >= 1000
+        ? '${livenessTimeout.inSeconds} seconds'
+        : '${livenessTimeout.inMilliseconds} milliseconds';
+    _failInitialConnection(
+      'The Syncplay server at $_server:$_port stayed silent while opening '
+      'a secure connection (waited $wait). Check Advanced server/port or '
+      'paste your friend\'s full code.',
+    );
+  }
+
+  void _failInitialConnection([String? message]) {
+    if (_manualDisconnect) return;
+    message ??=
         'Could not reach Syncplay server $_server:$_port. Check Advanced '
         'server/port or paste your friend\'s full code.';
     onLog?.call('connect failed before login: $message');
@@ -342,6 +403,13 @@ class SyncplayClient extends SyncCore {
           if (stale()) return;
           onLog?.call('tls negotiation protocol error: $e');
           _onConnectionLost();
+          return;
+        } on FormatException catch (e) {
+          // utf8.decode throws here. An uncaught throw from this async
+          // onData never reaches onError, so fail closed by name.
+          settled = true;
+          if (stale()) return;
+          _failTlsNegotiation('malformed STARTTLS answer: $e');
           return;
         }
         for (final line in lines) {
@@ -731,7 +799,9 @@ class SyncplayClient extends SyncCore {
       // recording is a slow, steady leak (#199). Keep only the newest entries.
       if (_debugSentMessages.length > debugSentMessagesCap) {
         _debugSentMessages.removeRange(
-            0, _debugSentMessages.length - debugSentMessagesCap);
+          0,
+          _debugSentMessages.length - debugSentMessagesCap,
+        );
       }
     }
     final socket = _socket;
@@ -777,6 +847,13 @@ class SyncplayClient extends SyncCore {
   }) {
     if (!_loggedIn) return;
     _send(encodeFile(name: name, sizeBytes: size, duration: duration));
+    _send(encodeList());
+  }
+
+  /// Ask the server for the current roster. The watch UI calls this after it
+  /// starts listening so the one-shot roster greeting is received.
+  void requestList() {
+    if (!_loggedIn || !_channelSecure) return;
     _send(encodeList());
   }
 

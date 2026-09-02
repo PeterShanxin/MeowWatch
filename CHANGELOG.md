@@ -12,24 +12,21 @@ in-app updater reads to show what changed.
 
 ## [0.48.1-alpha] - 2026-09-01
 
-> Joining a room now insists on an encrypted connection.
+> Joining a room insists on an encrypted connection.
 
 ### Fixed: Encrypted or not at all
-- MeowWatch always asks the Syncplay server to switch the connection to
-  encryption before it says who you are. If that switch did not happen, the app
-  used to sit there for twelve seconds and then blame the address — and one
-  branch of the old code was written to carry on unencrypted instead, which
-  would have put your username, room name and server password on the wire in
-  the clear. That branch never actually ran, but it is gone now (#264).
-- Any server that will not encrypt — it says no, it answers with nonsense, it
-  goes quiet, or its certificate does not check out — now fails straight away
-  with a message that says what happened, instead of a long pause and a
-  misleading "could not reach server".
-- If encryption is refused, you stay on the start screen with that named
-  error next to Join, so you can change the host or try again. Load a video
-  / Leave appear only after a room join has actually completed (#264).
-- MeowWatch has no unencrypted mode, by design. Public Syncplay servers, the
-  default `syncplay.pl` included, all support encryption and are unaffected.
+- MeowWatch asks the Syncplay server to encrypt the connection before it says
+  who you are. Username, room name, and server password never go on the wire
+  in the clear. There is no unencrypted mode (#264).
+- A server that will not encrypt — it says no, it answers with nonsense, or
+  its certificate does not check out — fails with a message that names the
+  refusal. A server that stays silent after the encryption request waits
+  twelve seconds, then fails with a message that names that silence.
+- Join stays on the start screen until the room login completes. A refused
+  join shows the named error next to Join. Load a video / Leave appear only
+  after a completed login (#265).
+- Public Syncplay servers, including the default `syncplay.pl`, support
+  encryption and are unaffected.
 
 ## [0.48.0-alpha] - 2026-09-01
 

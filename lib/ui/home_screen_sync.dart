@@ -13,14 +13,13 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
   // Narrower than the media seam's implementation (which also takes a named
   // `sizeBytes`) — the sync-side callers only ever pass the path.
   void _announceLoadedFile(String? path);
+
   /// Implemented by [_HomeMediaState]: a join that never logged in returns
   /// to the start screen with [message] so the named error is on the lobby.
   void _abortFailedJoin(String? message);
 
-  // Start as "connecting", not "disconnected": entering a room immediately
-  // begins a connection, so the first frame should read "Connecting to room …"
-  // rather than flashing "Disconnected from room …" before the socket dials.
-  SyncConnectionStatus _syncStatus = SyncConnectionStatus.connecting;
+  // The lobby only pushes this route after login (#265).
+  SyncConnectionStatus _syncStatus = SyncConnectionStatus.connected;
   String? _syncError;
   final Set<String> _peers = <String>{};
   StreamSubscription<SyncConnectionState>? _connSub;
@@ -32,12 +31,12 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
   StreamSubscription<String>? _leavingSub;
 
   /// Previous connection status — used to detect the drop edge.
-  SyncConnectionStatus _prevSyncStatus = SyncConnectionStatus.disconnected;
+  SyncConnectionStatus _prevSyncStatus = SyncConnectionStatus.connected;
 
   /// Latched the first time this room session reaches `connected`. A later
   /// kick or drop stays on the watch UI; only a join that never logged in
   /// returns to the start screen with the named error.
-  bool _everRoomConnected = false;
+  bool _everRoomConnected = true;
 
   /// Latched true on a local drop (connected → reconnecting) and cleared when we
   /// reconnect or stop trying. Needed because the reconnect path passes through
