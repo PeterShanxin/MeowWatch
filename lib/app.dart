@@ -5,6 +5,7 @@ import 'core/data/settings_store.dart';
 import 'core/data/stores.dart';
 import 'core/debug/app_log.dart';
 import 'core/debug/log_level.dart';
+import 'core/sync/peer_state.dart';
 import 'core/sync/syncplay_client.dart';
 import 'core/theme/meow_context.dart';
 import 'core/theme/meow_theme.dart';
@@ -103,10 +104,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
   /// error; the watch route is only pushed after a completed Hello (#265).
   /// [connectUntilJoin] keeps listening through this handoff so a Hello-then-
   /// Error is not dropped by the broadcast stream before [HomeScreen] attaches.
-  Future<String?> _joinAndOpenRoom(
-    BuildContext context,
-    RoomConfig config,
-  ) async {
+  Future<String?> _joinAndOpenRoom(RoomConfig config) async {
     final client = SyncplayClient(
       onLog: appLog,
       shouldLog: ({required bool verboseOnly}) {
@@ -115,6 +113,11 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             (!verboseOnly && level == LogLevel.neat);
       },
     );
+    BuildContext? navContext() {
+      final context = _navKey.currentContext;
+      return (context != null && context.mounted) ? context : null;
+    }
+
     Future<String?>? watchRoute;
     final error = await client.connectUntilJoin(
       server: config.server,
@@ -123,7 +126,11 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
       room: config.room,
       password: config.password,
       onHandoff: () async {
-        if (!context.mounted) {
+        // Use the navigator key, not a Builder context captured at lobby
+        // build: a theme change (or any MeowWatchApp setState) replaces
+        // that Builder while the join is still in flight.
+        final context = navContext();
+        if (context == null) {
           await client.dispose();
           return;
         }
@@ -151,15 +158,21 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
         await WidgetsBinding.instance.endOfFrame;
       },
     );
-    if (error != null) {
+    final terminal = error ??
+        (client.lastConnectionState?.status == SyncConnectionStatus.error
+            ? client.lastConnectionState?.message
+            : null);
+    if (terminal != null) {
+      final context = _navKey.currentContext;
       if (watchRoute != null &&
+          context != null &&
           context.mounted &&
           Navigator.of(context).canPop()) {
-        Navigator.of(context).pop(error);
+        Navigator.of(context).pop(terminal);
       } else {
         await client.dispose();
       }
-      return error;
+      return terminal;
     }
     if (watchRoute == null) {
       await client.dispose();
@@ -196,7 +209,7 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
             onThemeChanged: _setTheme,
             playLobbyEntrance: widget.showLaunchReveal && _revealSettled,
             holdLobbyHidden: widget.showLaunchReveal && !_revealSettled,
-            onConnect: (RoomConfig config) => _joinAndOpenRoom(context, config),
+            onConnect: (RoomConfig config) => _joinAndOpenRoom(config),
           ),
         ),
       ),
