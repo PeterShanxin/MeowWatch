@@ -11,6 +11,7 @@ import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
 import 'package:meowwatch/core/data/watch_context.dart';
 import 'package:meowwatch/core/session/session_mode.dart';
+import 'package:meowwatch/core/sync/syncplay_constants.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/brand/meow_logo.dart';
@@ -516,10 +517,9 @@ void main() {
     expect(connected!.port, 8999);
   });
 
-  testWidgets('a bare room code still honors the Advanced server/port (#110)', (
+  testWidgets('a bare room code pins the first public candidate (#234)', (
     tester,
   ) async {
-    // No server in the code → fall back to whatever the joiner typed in Advanced.
     await pump(tester);
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -542,8 +542,9 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
     expect(connected!.room, 'happy-cat-11');
-    expect(connected!.server, 'my.lan');
-    expect(connected!.port, 1234);
+    expect(connected!.server, SyncplayConstants.defaultServer);
+    expect(connected!.port, SyncplayConstants.publicServerPort);
+    expect(connected!.endpointPolicy, SyncplayEndpointPolicy.pinned);
   });
 
   testWidgets('Advanced password is sent without mutating the typed room', (

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meowwatch/core/connect/room_config.dart';
 import 'package:meowwatch/core/data/history_entry.dart';
 import 'package:meowwatch/core/data/saved_profile.dart';
+import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/sync/syncplay_endpoints.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
@@ -28,7 +29,7 @@ void main() {
   RoomConfig? connected;
   Completer<String?>? joinGate;
 
-  Future<void> pump(WidgetTester tester) async {
+  Future<void> pump(WidgetTester tester, {SettingsStore? settings}) async {
     connected = null;
     joinGate = null;
     await tester.pumpWidget(
@@ -37,7 +38,7 @@ void main() {
         home: ConnectScreen(
           profiles: profiles,
           history: history,
-          settings: FakeSettingsStore(),
+          settings: settings ?? FakeSettingsStore(),
           currentTheme: MeowThemeId.cozy,
           onThemeChanged: (_) {},
           onConnect: (config) async {
@@ -185,6 +186,26 @@ void main() {
       expect(connected!.server, _default.host);
       expect(connected!.port, _default.port);
     });
+
+    testWidgets(
+      'a bare code ignores a remembered winner and Advanced leftover',
+      (tester) async {
+        final settings = FakeSettingsStore();
+        await settings.set(kSyncplayEndpointSettingKey, 'syncplay.pl:8999');
+        await pump(tester, settings: settings);
+        await setAdvanced(tester, server: 'syncplay.pl', port: '8999');
+
+        await tester.enterText(find.byKey(const Key('connect-code')), 'mw272bare');
+        await tester.ensureVisible(find.byKey(const Key('connect-join')));
+        await tester.tap(find.byKey(const Key('connect-join')));
+        await tester.pumpAndSettle();
+
+        expect(connected!.room, 'mw272bare');
+        expect(connected!.endpointPolicy, SyncplayEndpointPolicy.pinned);
+        expect(connected!.server, _default.host);
+        expect(connected!.port, _default.port);
+      },
+    );
   });
 
   group('rejoining a saved room', () {

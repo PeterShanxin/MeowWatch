@@ -20,6 +20,7 @@ import '../../core/debug/app_log.dart';
 import '../../core/debug/log_archive.dart';
 import '../../core/debug/log_level.dart';
 import '../../core/sync/syncplay_constants.dart';
+import '../../core/sync/syncplay_endpoints.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
 import '../../core/theme/meow_theme.dart';
@@ -561,23 +562,24 @@ class _ConnectScreenState extends State<ConnectScreen> {
     }
     // A code that names a server describes a complete destination: it carries a
     // port only when non-default, so an omitted port means the Syncplay default
-    // (8999) — NOT whatever sits in the joiner's Advanced Port. Only a bare room
-    // code (no server in the code) falls back to the Advanced fields.
+    // (8999) — NOT whatever sits in the joiner's Advanced Port.
     //
     // A join never walks public candidates. The code says where the room is.
-    // A bare code is a legacy pin: both copies must agree without talking, so
-    // it always means the first public candidate (Advanced defaults), not a
-    // scan. Independent scans cannot guarantee the same server (#234).
+    // A bare code is a legacy pin to the first public candidate. Advanced
+    // leftovers and a remembered Start winner do not apply — two peers with
+    // only a room name have to meet on the same server (#234).
     final fromCode = parsed.server != null;
+    final firstPublic = kPublicSyncplayEndpoints.first;
     await _connect(
       RoomConfig(
-        server: fromCode ? parsed.server! : _serverValue,
+        server: fromCode ? parsed.server! : firstPublic.host,
         port: fromCode
             ? (parsed.port ?? SyncplayConstants.defaultPort)
-            : _portValue,
+            : firstPublic.port,
         room: parsed.room,
         username: _username,
         password: _passwordValue,
+        endpointPolicy: SyncplayEndpointPolicy.pinned,
       ),
     );
   }
