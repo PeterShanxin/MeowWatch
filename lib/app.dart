@@ -187,23 +187,36 @@ class _MeowWatchAppState extends State<MeowWatchApp> {
     pushWatch,
     required BuildContext? Function() navContext,
   }) async {
-    final client = _newSyncplayClient();
     Future<String?>? watchRoute;
-    final error = await client.connectUntilJoin(
-      server: config.server,
-      port: config.port,
-      username: config.username,
-      room: config.room,
-      password: config.password,
-      onHandoff: () => _handoffJoined(
-        client: client,
-        config: config,
-        pushWatch: pushWatch,
-        navContext: navContext,
-        setWatchRoute: (route) => watchRoute = route,
-      ),
+    final outcome = await joinPinnedEndpoint(
+      config: config,
+      settings: widget.settings,
+      createClient: _newSyncplayClient,
+      onLog: appLog,
+      connectUntilJoin: (client, endpoint) {
+        return client.connectUntilJoin(
+          server: endpoint.host,
+          port: endpoint.port,
+          username: config.username,
+          room: config.room,
+          password: config.password,
+          onHandoff: () => _handoffJoined(
+            client: client,
+            config: config,
+            pushWatch: pushWatch,
+            navContext: navContext,
+            setWatchRoute: (route) => watchRoute = route,
+          ),
+        );
+      },
     );
-    return _finishJoin(client: client, error: error, watchRoute: watchRoute);
+    final client = outcome.join?.client ?? outcome.retainedClient;
+    if (client == null) return outcome.error;
+    return _finishJoin(
+      client: client,
+      error: outcome.error,
+      watchRoute: watchRoute,
+    );
   }
 
   Future<String?> _joinDiscovering({

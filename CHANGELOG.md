@@ -21,7 +21,8 @@ in-app updater reads to show what changed.
   (#234). The button reads *Finding a server…* while it looks.
 - The server that worked is remembered, so the next Start goes there first.
   If it later stops answering, MeowWatch looks again and remembers the new
-  one.
+  one. A successful Join — including a bare room code — writes that same
+  remembered server, matching the room you entered.
 - The code you share names the server you landed on, so a friend pastes one
   destination.
 - Saved rooms and **Continue watching** check their public server the same

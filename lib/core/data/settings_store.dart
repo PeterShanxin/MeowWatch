@@ -47,8 +47,9 @@ const String kHistoryModeSettingKey = 'history_mode';
 const String kLocalPlayerModeSettingKey = 'local_player_mode';
 
 /// Key for the last public Syncplay endpoint that completed a handshake
-/// (value = `"host:port"`). Written only by endpoint discovery, so it is an
-/// app-managed cache rather than a user setting — [SettingsStore.hasAnySettings]
+/// (value = `"host:port"`). Written after a successful lobby Hello on a
+/// public candidate, including a pinned bare-code join, so the remembered
+/// Start winner matches the live session. [SettingsStore.hasAnySettings]
 /// ignores it for the same reason it ignores [kLastSeenVersionKey].
 const String kSyncplayEndpointSettingKey = 'syncplay_endpoint';
 

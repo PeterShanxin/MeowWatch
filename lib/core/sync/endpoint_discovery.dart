@@ -28,7 +28,7 @@ enum EndpointWalkDecision {
 typedef EndpointWalkAttempt =
     Future<EndpointWalkDecision> Function(SyncplayEndpoint endpoint);
 
-/// A lobby or Continue Watching join that landed on a public candidate.
+/// A lobby or Continue Watching join that completed Hello.
 class PublicEndpointJoin {
   const PublicEndpointJoin({
     required this.client,
@@ -41,7 +41,7 @@ class PublicEndpointJoin {
   final RoomConfig config;
 }
 
-/// Result of [joinFirstWorkingEndpoint].
+/// Result of [joinFirstWorkingEndpoint] or [joinPinnedEndpoint].
 class SyncedJoinOutcome {
   const SyncedJoinOutcome.ok(this.join) : error = null, retainedClient = null;
   const SyncedJoinOutcome.fail(this.error, {this.retainedClient}) : join = null;
@@ -49,10 +49,8 @@ class SyncedJoinOutcome {
   final PublicEndpointJoin? join;
   final String? error;
 
-  /// Set when a public server completed Hello but refused the room. The
-  /// client is kept so a #265 handoff already given to HomeScreen is not
-  /// disposed out from under it. The caller must finish that join: pop
-  /// the watch route if it was pushed, or dispose the client if it was not.
+  /// Client from an unsuccessful join. The caller must finish: pop the watch
+  /// route if Hello already handed it to HomeScreen, or dispose it if not.
   final SyncplayClient? retainedClient;
 }
 
@@ -93,7 +91,11 @@ class SyncplayEndpointDiscovery {
     for (final endpoint in await _searchOrder(preferred)) {
       switch (await attempt(endpoint)) {
         case EndpointWalkDecision.success:
-          await _remember(endpoint);
+          await rememberPublicSyncplayEndpoint(
+            settings,
+            endpoint,
+            onLog: onLog,
+          );
           return endpoint;
         case EndpointWalkDecision.stop:
           onLog?.call(
@@ -134,16 +136,50 @@ class SyncplayEndpointDiscovery {
     if (stored == null || stored.isEmpty) return null;
     return SyncplayEndpoint.tryParse(stored);
   }
+}
 
-  Future<void> _remember(SyncplayEndpoint endpoint) async {
-    try {
-      await settings.set(kSyncplayEndpointSettingKey, endpoint.toString());
-    } on Object catch (error) {
-      // The stored endpoint is a cache — losing it costs one extra join next
-      // launch. Failing the user's connect over it would cost the session.
-      onLog?.call('endpoint discovery: could not remember $endpoint — $error');
-    }
+/// Persist [endpoint] as the remembered Start winner when it is a public
+/// candidate. Called after a successful lobby Hello so this key matches
+/// the live session, including a pinned bare-code join. A self-hosted pin
+/// is left alone.
+Future<void> rememberPublicSyncplayEndpoint(
+  SettingsStore settings,
+  SyncplayEndpoint endpoint, {
+  void Function(String line)? onLog,
+}) async {
+  if (!isPublicSyncplayCandidate(endpoint)) return;
+  try {
+    await settings.set(kSyncplayEndpointSettingKey, endpoint.toString());
+  } on Object catch (error) {
+    // The stored endpoint is a cache — losing it costs one extra join next
+    // launch. Failing the user's connect over it would cost the session.
+    onLog?.call('endpoint discovery: could not remember $endpoint — $error');
   }
+}
+
+/// One pinned lobby join. Success writes [kSyncplayEndpointSettingKey] when
+/// the endpoint is a public candidate. A refused or failed Hello does not.
+Future<SyncedJoinOutcome> joinPinnedEndpoint({
+  required RoomConfig config,
+  required SettingsStore settings,
+  required SyncplayClient Function() createClient,
+  required Future<String?> Function(
+    SyncplayClient client,
+    SyncplayEndpoint endpoint,
+  )
+  connectUntilJoin,
+  void Function(String line)? onLog,
+}) async {
+  final client = createClient();
+  final endpoint = SyncplayEndpoint(host: config.server, port: config.port);
+  final error = await connectUntilJoin(client, endpoint);
+  if (error == null) {
+    await rememberPublicSyncplayEndpoint(settings, endpoint, onLog: onLog);
+    return SyncedJoinOutcome.ok(
+      PublicEndpointJoin(client: client, endpoint: endpoint, config: config),
+    );
+  }
+  return SyncedJoinOutcome.fail(error, retainedClient: client);
 }
 
 /// Real-join walk used by the lobby and by Continue Watching.

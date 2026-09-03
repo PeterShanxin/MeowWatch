@@ -273,7 +273,10 @@ deliberately narrow:
   Do not hand-roll a lighter handshake — that would be a second copy of the
   STARTTLS state machine to keep hardened. Continue Watching walks on the
   session client already shown: a dead candidate is not a failed join, so the
-  watch route must not pop until the walk finishes without a Hello.
+  watch route must not pop until the walk finishes without a Hello. A
+  successful lobby Hello on a public candidate writes `syncplay_endpoint`
+  so the remembered Start winner matches the live session, including a
+  pinned bare-code join.
 
 **Immutability:** state objects (`PlaybackState`, `ChatMessage`, `ChatOverlayLayout`, etc.) are `@immutable` with `copyWith`; never mutate in place.
 

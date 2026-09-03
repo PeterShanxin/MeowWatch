@@ -211,6 +211,113 @@ void main() {
       );
     });
   });
+
+  group('a pinned lobby join', () {
+    test('a public Hello overwrites a stale remembered winner', () async {
+      final settings = FakeSettingsStore();
+      await settings.set(kSyncplayEndpointSettingKey, 'syncplay.pl:8999');
+      final created = <SyncplayClient>[];
+      const pin = SyncplayEndpoint(host: 'syncplay.pl', port: 8995);
+
+      final outcome = await joinPinnedEndpoint(
+        config: RoomConfig(
+          server: pin.host,
+          port: pin.port,
+          room: 'mw272bare',
+          username: 'lin',
+          endpointPolicy: SyncplayEndpointPolicy.pinned,
+        ),
+        settings: settings,
+        createClient: () {
+          final client = SyncplayClient(livenessTimeout: timeout);
+          created.add(client);
+          return client;
+        },
+        connectUntilJoin: (client, endpoint) async {
+          expect(endpoint, pin);
+          client.debugMarkLoggedIn('lin');
+          return null;
+        },
+      );
+
+      expect(outcome.join, isNotNull);
+      expect(outcome.join!.endpoint, pin);
+      expect(outcome.join!.config.port, 8995);
+      expect(
+        await settings.get(kSyncplayEndpointSettingKey),
+        'syncplay.pl:8995',
+      );
+      await created.single.dispose();
+    });
+
+    test('a self-hosted pin leaves the remembered winner alone', () async {
+      final settings = FakeSettingsStore();
+      await settings.set(kSyncplayEndpointSettingKey, 'syncplay.pl:8999');
+      final created = <SyncplayClient>[];
+
+      final outcome = await joinPinnedEndpoint(
+        config: const RoomConfig(
+          server: 'cozy.example.net',
+          port: 8999,
+          room: 'lan-room',
+          username: 'lin',
+          endpointPolicy: SyncplayEndpointPolicy.pinned,
+        ),
+        settings: settings,
+        createClient: () {
+          final client = SyncplayClient(livenessTimeout: timeout);
+          created.add(client);
+          return client;
+        },
+        connectUntilJoin: (client, endpoint) async {
+          client.debugMarkLoggedIn('lin');
+          return null;
+        },
+      );
+
+      expect(outcome.join, isNotNull);
+      expect(outcome.join!.config.server, 'cozy.example.net');
+      expect(
+        await settings.get(kSyncplayEndpointSettingKey),
+        'syncplay.pl:8999',
+      );
+      await created.single.dispose();
+    });
+
+    test('a refused Hello does not rewrite the remembered winner', () async {
+      final settings = FakeSettingsStore();
+      await settings.set(kSyncplayEndpointSettingKey, 'syncplay.pl:8999');
+      final created = <SyncplayClient>[];
+
+      final outcome = await joinPinnedEndpoint(
+        config: const RoomConfig(
+          server: 'syncplay.pl',
+          port: 8995,
+          room: 'mw272bare',
+          username: 'lin',
+          endpointPolicy: SyncplayEndpointPolicy.pinned,
+        ),
+        settings: settings,
+        createClient: () {
+          final client = SyncplayClient(livenessTimeout: timeout);
+          created.add(client);
+          return client;
+        },
+        connectUntilJoin: (client, endpoint) async {
+          client.debugMarkLoggedIn('lin');
+          return 'room is full';
+        },
+      );
+
+      expect(outcome.join, isNull);
+      expect(outcome.error, 'room is full');
+      expect(
+        await settings.get(kSyncplayEndpointSettingKey),
+        'syncplay.pl:8999',
+      );
+      await created.single.dispose();
+    });
+  });
 }
 
 Future<SyncedJoinOutcome> _joinAgainst(
