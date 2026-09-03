@@ -48,13 +48,13 @@ dependencies:
   sqlite3_flutter_libs: ^0.6.0+eol
   path_provider: ^2.1.6
   http: ^1.3.0
-  archive: ^4.0.4
+  archive: ^4.2.0
   crypto: ^3.0.6
   # Pure-Dart Ed25519 (RFC 8032) — verifies the release signature on the
   # auto-update path so a poisoned R2 bucket can't forge an update. No native
   # code, so it doesn't jeopardise the Windows build. The matching private key
   # lives in the release environment secret; see tool/release_signer.dart.
-  ed25519_edwards: ^0.3.1
+  ed25519_edwards: ^0.3.2
 
 # path_provider_android 2.3.x pulls jni/jni_flutter, whose Windows native build
 # links the system JDK (ARM64 here) and breaks the x64 Windows build. We only
@@ -67,7 +67,7 @@ dev_dependencies:
     sdk: flutter
 
   mocktail: ^1.0.4
-  sqlite3: ^3.4.0
+  sqlite3: ^3.5.2
 
   # Deterministic timer control for debounce/throttle tests (no wall-clock flake).
   fake_async: ^1.3.1
