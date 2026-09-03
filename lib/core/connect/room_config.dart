@@ -2,6 +2,31 @@ import 'package:flutter/foundation.dart';
 
 import '../session/session_mode.dart';
 
+/// How a synced session picks its Syncplay address (#234).
+enum SyncplayEndpointPolicy {
+  /// Use [RoomConfig.server] / [RoomConfig.port] exactly. Advanced, a
+  /// `room@host:port` share code, a bare share code, and any self-hosted
+  /// host. A bare code is a legacy compatibility pin — both copies of the
+  /// app must agree without talking, so it always means the first public
+  /// candidate, not a scan.
+  pinned,
+
+  /// Walk the public candidates. The remembered winner is tried first.
+  /// Used for a default Start (no Advanced override).
+  discover,
+
+  /// Walk the public candidates, trying this room's saved address first.
+  /// Used for a saved room or Continue Watching whose stored provenance
+  /// is discoverable — not merely because the address is on the public list.
+  discoverFromRoom,
+}
+
+/// Launch policy for a stored profile or history row. The pin is written
+/// when the room is saved, so a later join does not guess from the public list.
+SyncplayEndpointPolicy endpointPolicyFromPin(bool pinned) => pinned
+    ? SyncplayEndpointPolicy.pinned
+    : SyncplayEndpointPolicy.discoverFromRoom;
+
 /// Everything the watch screen needs to join a room and optionally resume a
 /// previously-watched file. Built by [ConnectScreen], consumed by HomeScreen.
 @immutable
@@ -15,6 +40,9 @@ class RoomConfig {
     this.resumeFilePath,
     this.resumePositionMs = 0,
     this.sessionMode = SessionMode.synced,
+    this.endpointPolicy = SyncplayEndpointPolicy.pinned,
+    this.copyShareCode = false,
+    this.persistUsername,
   });
 
   /// A Local playback session: real room identity, no Syncplay yet.
@@ -27,6 +55,9 @@ class RoomConfig {
     String? password,
     String? resumeFilePath,
     int resumePositionMs = 0,
+    // New Local Start keeps the typed destination exact if it later
+    // becomes synced. Continue Watching must pass the stored pin.
+    bool endpointPinned = true,
   }) {
     return RoomConfig(
       sessionMode: SessionMode.local,
@@ -37,6 +68,7 @@ class RoomConfig {
       password: password,
       resumeFilePath: resumeFilePath,
       resumePositionMs: resumePositionMs,
+      endpointPolicy: endpointPolicyFromPin(endpointPinned),
     );
   }
 
@@ -63,6 +95,26 @@ class RoomConfig {
   final String? resumeFilePath;
   final int resumePositionMs;
 
+  /// Whether this session may walk public candidates, or must use [server] /
+  /// [port] exactly.
+  final SyncplayEndpointPolicy endpointPolicy;
+
+  /// After a successful Hello, copy a share code that names the endpoint the
+  /// host actually landed on.
+  final bool copyShareCode;
+
+  /// Username written to the saved-room card after Hello. A one-session
+  /// name override (Join as alice this time) keeps the room's stored
+  /// identity so it does not mint a second card.
+  final String? persistUsername;
+
+  /// Persist this session as a pin, not as a discoverable public room.
+  bool get persistEndpointPinned =>
+      endpointPolicy == SyncplayEndpointPolicy.pinned;
+
+  /// Identity [ProfileStore.saveUsed] writes after Hello.
+  String get persistAsUsername => persistUsername ?? username;
+
   RoomConfig copyWith({
     SessionMode? sessionMode,
     String? server,
@@ -72,6 +124,9 @@ class RoomConfig {
     String? password,
     String? resumeFilePath,
     int? resumePositionMs,
+    SyncplayEndpointPolicy? endpointPolicy,
+    bool? copyShareCode,
+    String? persistUsername,
   }) {
     return RoomConfig(
       sessionMode: sessionMode ?? this.sessionMode,
@@ -82,6 +137,9 @@ class RoomConfig {
       password: password ?? this.password,
       resumeFilePath: resumeFilePath ?? this.resumeFilePath,
       resumePositionMs: resumePositionMs ?? this.resumePositionMs,
+      endpointPolicy: endpointPolicy ?? this.endpointPolicy,
+      copyShareCode: copyShareCode ?? this.copyShareCode,
+      persistUsername: persistUsername ?? this.persistUsername,
     );
   }
 
@@ -95,7 +153,10 @@ class RoomConfig {
       other.username == username &&
       other.password == password &&
       other.resumeFilePath == resumeFilePath &&
-      other.resumePositionMs == resumePositionMs;
+      other.resumePositionMs == resumePositionMs &&
+      other.endpointPolicy == endpointPolicy &&
+      other.copyShareCode == copyShareCode &&
+      other.persistUsername == persistUsername;
 
   @override
   int get hashCode => Object.hash(
@@ -107,5 +168,8 @@ class RoomConfig {
     password,
     resumeFilePath,
     resumePositionMs,
+    endpointPolicy,
+    copyShareCode,
+    persistUsername,
   );
 }

@@ -17,6 +17,7 @@ const List<String> kLaunchTips = <String>[
   'Friend watching a link? One click loads it for you too.',
   'Paste a YouTube or Bilibili link — MeowWatch digs out the video.',
   'Want to watch alone? Turn on Local Player Mode in the lobby gear.',
+  'If one public server is down, Start new room tries the others.',
 ];
 
 /// The tip for [index], wrapping around the list so any seed is valid.

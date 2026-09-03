@@ -248,8 +248,8 @@ mixin _HomeBody
                             // hands a friend everything they need (#110).
                             roomCode: encodeShareCode(
                               room: widget.config.room,
-                              server: widget.config.server,
-                              port: widget.config.port,
+                              server: _sessionServer,
+                              port: _sessionPort,
                             ),
                             // Short/redacted label for a URL so a signed token
                             // isn't shown (and a long link doesn't bloat the menu).

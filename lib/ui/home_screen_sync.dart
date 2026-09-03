@@ -41,6 +41,11 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
   /// already completed Hello set this true in initState.
   bool _everRoomConnected = false;
 
+  /// True while Continue Watching (or a later Local-to-Synced join) is
+  /// walking public candidates on this session client. A dead candidate
+  /// must not trip [_abortFailedJoin] — the walk is still looking.
+  bool _lookingForServer = false;
+
   /// Latched true on a local drop (connected → reconnecting) and cleared when we
   /// reconnect or stop trying. Needed because the reconnect path passes through
   /// an intermediate `handshaking` state, so the "Reconnected to room." line
@@ -147,6 +152,7 @@ mixin _HomeSyncState on _HomeScreenStateBase, _HomeIdleState {
       if (isFailedInitialJoin(
         status: s.status,
         everConnected: _everRoomConnected,
+        lookingForServer: _lookingForServer,
       )) {
         _abortFailedJoin(s.message);
         return;

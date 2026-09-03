@@ -35,6 +35,7 @@ class DriftProfileStore implements ProfileStore {
     required String room,
     required String username,
     String? password,
+    bool endpointPinned = false,
   }) {
     // Single-statement upsert on the (server, port, room, username) unique
     // key — one round trip instead of select-then-insert/update (#199). The
@@ -52,12 +53,17 @@ class DriftProfileStore implements ProfileStore {
             username: username,
             password: Value(password),
             lastUsedAt: Value(now),
+            endpointPinned: Value(endpointPinned),
           ),
           onConflict: DoUpdate(
-            (old) => ProfilesCompanion(
-              name: Value(name),
-              password: Value(password),
-              lastUsedAt: Value(now),
+            (old) => ProfilesCompanion.custom(
+              name: Variable(name),
+              password: Variable(password),
+              lastUsedAt: Variable(now),
+              // A discoverable land must not clear an existing pin.
+              endpointPinned: endpointPinned
+                  ? const Constant(true)
+                  : old.endpointPinned,
             ),
             target: [
               _db.profiles.server,
@@ -82,6 +88,7 @@ class DriftProfileStore implements ProfileStore {
     username: r.username,
     password: r.password,
     lastUsedAt: r.lastUsedAt,
+    endpointPinned: r.endpointPinned,
   );
 }
 
@@ -141,10 +148,13 @@ class DriftHistoryStore implements HistoryStore {
     required WatchContext context,
     int? durationMs,
     String? username,
+    bool endpointPinned = false,
+    int? lastPositionMs,
   }) {
     // Upsert on (filePath, contextKey). A real room has one key across Local and
     // synced modes; only legacy roomless Local is independent. lastPositionMs
-    // is never listed so a re-open can't touch a saved resume point.
+    // is only written on a new row so a re-open can't touch a saved resume
+    // point. A land onto a new context may seed the current position.
     final now = DateTime.now();
     return _db
         .into(_db.historyEntries)
@@ -154,12 +164,16 @@ class DriftHistoryStore implements HistoryStore {
             fileName: fileName,
             fileSizeBytes: Value(fileSizeBytes),
             durationMs: Value(durationMs),
+            lastPositionMs: lastPositionMs != null
+                ? Value(lastPositionMs)
+                : const Value.absent(),
             playedAt: now,
             contextKey: context.key,
             room: Value(context.storedRoom),
             username: Value(username),
             server: Value(context.storedServer),
             port: Value(context.storedPort),
+            endpointPinned: Value(endpointPinned),
           ),
           onConflict: DoUpdate(
             (old) => HistoryEntriesCompanion.custom(
@@ -173,6 +187,9 @@ class DriftHistoryStore implements HistoryStore {
               username: username != null ? Variable(username) : old.username,
               server: Variable(context.storedServer),
               port: Variable(context.storedPort),
+              endpointPinned: endpointPinned
+                  ? const Constant(true)
+                  : old.endpointPinned,
             ),
             target: [
               _db.historyEntries.filePath,
@@ -226,6 +243,7 @@ class DriftHistoryStore implements HistoryStore {
     username: r.username,
     server: r.server,
     port: r.port,
+    endpointPinned: r.endpointPinned,
   );
 }
 
@@ -255,7 +273,11 @@ class DriftSettingsStore implements SettingsStore {
   Future<bool> hasAnySettings() async {
     final row =
         await (_db.select(_db.settings)
-              ..where((t) => t.key.equals(kLastSeenVersionKey).not())
+              ..where(
+                (t) =>
+                    t.key.equals(kLastSeenVersionKey).not() &
+                    t.key.equals(kSyncplayEndpointSettingKey).not(),
+              )
               ..limit(1))
             .getSingleOrNull();
     return row != null;

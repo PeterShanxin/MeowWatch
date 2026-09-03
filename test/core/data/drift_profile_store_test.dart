@@ -31,68 +31,111 @@ void main() {
     expect(list.single.lastUsedAt, isNotNull);
   });
 
-  test('saveUsed on the same room/user updates instead of duplicating',
-      () async {
-    await store.saveUsed(
-      name: 'r',
-      server: 's',
-      port: 1,
-      room: 'r',
-      username: 'u',
-    );
-    await store.saveUsed(
-      name: 'r',
-      server: 's',
-      port: 1,
-      room: 'r',
-      username: 'u',
-      password: 'secret',
-    );
-    final list = await store.watchProfiles().first;
-    expect(list, hasLength(1));
-    expect(list.single.password, 'secret');
-  });
+  test(
+    'saveUsed on the same room/user updates instead of duplicating',
+    () async {
+      await store.saveUsed(
+        name: 'r',
+        server: 's',
+        port: 1,
+        room: 'r',
+        username: 'u',
+      );
+      await store.saveUsed(
+        name: 'r',
+        server: 's',
+        port: 1,
+        room: 'r',
+        username: 'u',
+        password: 'secret',
+      );
+      final list = await store.watchProfiles().first;
+      expect(list, hasLength(1));
+      expect(list.single.password, 'secret');
+    },
+  );
 
-  test('saveUsed always writes the password slot — null clears a stored one',
-      () async {
-    // Pins the pre-upsert write set (#199): every saveUsed writes name,
-    // password, and lastUsedAt on the matched row; password is NOT
-    // keep-if-null like recordOpen's room metadata. The upsert must not
-    // silently change which columns a re-save touches.
-    await store.saveUsed(
-      name: 'r',
-      server: 's',
-      port: 1,
-      room: 'r',
-      username: 'u',
-      password: 'secret',
-    );
-    await store.saveUsed(
-      name: 'renamed',
-      server: 's',
-      port: 1,
-      room: 'r',
-      username: 'u',
-    );
-    final list = await store.watchProfiles().first;
-    expect(list, hasLength(1));
-    expect(list.single.name, 'renamed');
-    expect(list.single.password, isNull);
-  });
+  test(
+    'saveUsed always writes the password slot — null clears a stored one',
+    () async {
+      // Pins the pre-upsert write set (#199): every saveUsed writes name,
+      // password, and lastUsedAt on the matched row; password is NOT
+      // keep-if-null like recordOpen's room metadata. The upsert must not
+      // silently change which columns a re-save touches.
+      await store.saveUsed(
+        name: 'r',
+        server: 's',
+        port: 1,
+        room: 'r',
+        username: 'u',
+        password: 'secret',
+      );
+      await store.saveUsed(
+        name: 'renamed',
+        server: 's',
+        port: 1,
+        room: 'r',
+        username: 'u',
+      );
+      final list = await store.watchProfiles().first;
+      expect(list, hasLength(1));
+      expect(list.single.name, 'renamed');
+      expect(list.single.password, isNull);
+    },
+  );
 
   test('watchProfiles orders most-recently-used first', () async {
     await store.saveUsed(
-        name: 'a', server: 's', port: 1, room: 'a', username: 'u');
+      name: 'a',
+      server: 's',
+      port: 1,
+      room: 'a',
+      username: 'u',
+    );
     await Future<void>.delayed(const Duration(milliseconds: 5));
     await store.saveUsed(
-        name: 'b', server: 's', port: 1, room: 'b', username: 'u');
+      name: 'b',
+      server: 's',
+      port: 1,
+      room: 'b',
+      username: 'u',
+    );
     final list = await store.watchProfiles().first;
     expect(list.map((p) => p.room).toList(), ['b', 'a']);
   });
 
+  test('saveUsed persists endpoint pin provenance', () async {
+    await store.saveUsed(
+      name: 'r',
+      server: 'syncplay.pl',
+      port: 8995,
+      room: 'r',
+      username: 'u',
+      endpointPinned: true,
+    );
+    final pinned = (await store.watchProfiles().first).single;
+    expect(pinned.endpointPinned, isTrue);
+
+    await store.saveUsed(
+      name: 'r',
+      server: 'syncplay.pl',
+      port: 8995,
+      room: 'r',
+      username: 'u',
+      endpointPinned: false,
+    );
+    final stillPinned = (await store.watchProfiles().first).single;
+    expect(stillPinned.endpointPinned, isTrue);
+  });
+
   test('delete removes a profile', () async {
     await store.saveUsed(
-        name: 'a', server: 's', port: 1, room: 'a', username: 'u');
+      name: 'a',
+      server: 's',
+      port: 1,
+      room: 'a',
+      username: 'u',
+    );
     final saved = (await store.watchProfiles().first).single;
     await store.delete(saved.id);
     expect(await store.watchProfiles().first, isEmpty);

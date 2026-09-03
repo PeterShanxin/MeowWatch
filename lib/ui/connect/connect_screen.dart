@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../../core/audio/notify_sounds.dart';
@@ -21,6 +20,7 @@ import '../../core/debug/app_log.dart';
 import '../../core/debug/log_archive.dart';
 import '../../core/debug/log_level.dart';
 import '../../core/sync/syncplay_constants.dart';
+import '../../core/sync/syncplay_endpoints.dart';
 import '../../core/theme/meow_context.dart';
 import '../../core/theme/meow_text.dart';
 import '../../core/theme/meow_theme.dart';
@@ -35,6 +35,34 @@ import '../settings/lobby_settings_button.dart';
 import '../staggered_reflow_list.dart';
 import '../version_badge.dart';
 import 'history_format.dart';
+
+/// Confirm a new join code was copied. Shown on the app-level messenger so
+/// it stays visible after we navigate into the watch screen.
+void showCopiedRoomCodeSnack(BuildContext context, String code) {
+  final m = context.meow;
+  ScaffoldMessenger.of(context)
+    ..clearSnackBars()
+    ..showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: m.surface,
+        duration: const Duration(seconds: 3),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
+            const SizedBox(width: Spacing.md),
+            Expanded(
+              child: Text(
+                'Room code $code copied — share it with your friend',
+                style: TextStyle(color: m.textPrimary),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+}
 
 class ConnectScreen extends StatefulWidget {
   const ConnectScreen({
@@ -117,6 +145,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
   /// explicit choice is newer than the persisted snapshot it is about to
   /// apply.
   int _localPlayerModeRevision = 0;
+
+  /// True while a discoverable Start / saved-room join is in flight. The
+  /// lobby stays up until Hello; the Start button names that wait.
+  bool _findingServer = false;
 
   // Created lazily on the first sound preview so headless tests (and the common
   // case of never previewing) don't spin up a media player needlessly.
@@ -356,17 +388,30 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   String? get _passwordValue => _password.text.isEmpty ? null : _password.text;
 
-  Future<void> _saveUsedProfile(
-    RoomConfig config, {
-    String? profileUsername,
-  }) {
+  /// Whether the user has pointed Advanced at a server of their own. An
+  /// endpoint the user (or a friend's code) named is never walked —
+  /// discovery only ever replaces one MeowWatch picked for them.
+  bool get _advancedEndpointOverridden =>
+      _serverValue != SyncplayConstants.defaultServer ||
+      _portValue != SyncplayConstants.publicServerPort;
+
+  SyncplayEndpointPolicy get _newRoomEndpointPolicy =>
+      _advancedEndpointOverridden
+      ? SyncplayEndpointPolicy.pinned
+      : SyncplayEndpointPolicy.discover;
+
+  SyncplayEndpointPolicy _policyForSaved({required bool pinned}) =>
+      endpointPolicyFromPin(pinned);
+
+  Future<void> _saveUsedProfile(RoomConfig config, {String? profileUsername}) {
     return widget.profiles.saveUsed(
       name: config.room,
       server: config.server,
       port: config.port,
       room: config.room,
-      username: profileUsername ?? config.username,
+      username: profileUsername ?? config.persistAsUsername,
       password: config.password,
+      endpointPinned: config.persistEndpointPinned,
     );
   }
 
@@ -379,7 +424,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
       });
     }
     try {
-      if (config.sessionMode.isSynced) {
+      // Persist a destination we already know. A discoverable join writes
+      // the endpoint that actually answered, after Hello (#234).
+      if (config.sessionMode.isSynced &&
+          config.endpointPolicy == SyncplayEndpointPolicy.pinned) {
         await _saveUsedProfile(config, profileUsername: profileUsername);
       }
       if (!mounted) return;
@@ -403,13 +451,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
       // and the name just used is already remembered via the saved room (#172).
       setState(() => _suggestedName = generateUsername());
       await _loadSettings();
-      // A Local Start that became synced in-player now has a real Syncplay
-      // room. Persist it so Continue Watching can recover the server password.
-      if (config.sessionMode.isLocal && !_localPlayerMode) {
+      // A pinned Local Start that became synced in-player now has a real
+      // Syncplay room. Persist it so Continue Watching can recover the
+      // server password. A discoverable session already wrote the landed
+      // endpoint from HomeScreen; do not stamp the pre-walk card again.
+      if (config.sessionMode.isLocal &&
+          !_localPlayerMode &&
+          config.persistEndpointPinned) {
         await _saveUsedProfile(config, profileUsername: profileUsername);
       }
     } finally {
       _joining = false;
+      _findingServer = false;
       if (mounted) setState(() {});
     }
   }
@@ -440,23 +493,19 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _startNewRoom() async {
+    if (_findingServer || _joining) return;
     // The generated "magic sentence" IS the private room name — its entropy
     // lives in the words themselves, so there is no separate secret to fold in.
     // It is NOT sent as a server password. The Advanced password (if any) is a
     // genuine Syncplay server password and rides along independently.
     final code = generateRoomCode();
-    // The *shared* code is self-contained: on the default public server it's the
-    // bare sentence, but a non-default server/port is appended so a friend joins
-    // from one paste (#110). The room we actually join is still the bare [code].
-    final share = encodeShareCode(
-      room: code,
-      server: _serverValue,
-      port: _portValue,
-    );
-    // Copy without blocking the join — clipboard is a convenience, and on a
-    // headless test binding the platform channel never replies.
-    Clipboard.setData(ClipboardData(text: share)).ignore();
-    _showCopiedSnack(share);
+    final policy = _newRoomEndpointPolicy;
+    // Share code is copied after the real Hello, with the endpoint that
+    // actually answered (#234). Copying first would name a server the host
+    // might never land on.
+    if (policy != SyncplayEndpointPolicy.pinned) {
+      setState(() => _findingServer = true);
+    }
     await _connect(
       RoomConfig(
         server: _serverValue,
@@ -464,36 +513,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
         room: code,
         username: _username,
         password: _passwordValue,
+        endpointPolicy: policy,
+        copyShareCode: true,
       ),
     );
-  }
-
-  /// Confirm the new join code was copied. Shown on the app-level messenger so
-  /// it stays visible after we navigate into the watch screen.
-  void _showCopiedSnack(String code) {
-    final m = context.meow;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: m.surface,
-          duration: const Duration(seconds: 3),
-          content: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.check_circle, size: IconSizes.md, color: m.online),
-              const SizedBox(width: Spacing.md),
-              Expanded(
-                child: Text(
-                  'Room code $code copied — share it with your friend',
-                  style: TextStyle(color: m.textPrimary),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
   }
 
   /// Shown on the app-level messenger so it survives the push into the player.
@@ -515,6 +538,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Future<void> _joinTypedCode() async {
+    if (_findingServer || _joining) return;
     await _awaitInitialSettings();
     if (!mounted) return;
     final raw = _code.text.trim();
@@ -538,18 +562,24 @@ class _ConnectScreenState extends State<ConnectScreen> {
     }
     // A code that names a server describes a complete destination: it carries a
     // port only when non-default, so an omitted port means the Syncplay default
-    // (8999) — NOT whatever sits in the joiner's Advanced Port. Only a bare room
-    // code (no server in the code) falls back to the Advanced fields.
+    // (8999) — NOT whatever sits in the joiner's Advanced Port.
+    //
+    // A join never walks public candidates. The code says where the room is.
+    // A bare code is a legacy pin to the first public candidate. Advanced
+    // leftovers and a remembered Start winner do not apply — two peers with
+    // only a room name have to meet on the same server (#234).
     final fromCode = parsed.server != null;
+    final firstPublic = kPublicSyncplayEndpoints.first;
     await _connect(
       RoomConfig(
-        server: fromCode ? parsed.server! : _serverValue,
+        server: fromCode ? parsed.server! : firstPublic.host,
         port: fromCode
             ? (parsed.port ?? SyncplayConstants.defaultPort)
-            : _portValue,
+            : firstPublic.port,
         room: parsed.room,
         username: _username,
         password: _passwordValue,
+        endpointPolicy: SyncplayEndpointPolicy.pinned,
       ),
     );
   }
@@ -558,6 +588,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
     SavedProfile p, {
     String? usernameOverride,
   }) async {
+    if (_findingServer || _joining) return;
     await _awaitInitialSettings();
     if (!mounted) return;
     if (shouldShowLocalJoinOverride(
@@ -565,6 +596,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
       launch: SessionLaunch.savedRoom,
     )) {
       _showLocalJoinOverrideSnack();
+    }
+    final policy = _policyForSaved(pinned: p.endpointPinned);
+    if (policy != SyncplayEndpointPolicy.pinned) {
+      setState(() => _findingServer = true);
     }
     final username = usernameOverride ?? p.username;
     await _connect(
@@ -574,6 +609,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
         room: p.room,
         username: username,
         password: p.password,
+        endpointPolicy: policy,
+        persistUsername: p.username,
       ),
       profileUsername: p.username,
     );
@@ -584,6 +621,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
     List<SavedProfile> profiles, {
     String? usernameOverride,
   }) async {
+    if (_findingServer || _joining) return;
     await _awaitInitialSettings();
     if (!mounted) return;
     // Identity priority: tapping a history card means "resume as watched
@@ -639,10 +677,17 @@ class _ConnectScreenState extends State<ConnectScreen> {
           password: password,
           resumeFilePath: entry.filePath,
           resumePositionMs: entry.lastPositionMs,
+          endpointPinned: entry.endpointPinned,
         ),
         profileUsername: usernameOverride == null ? null : savedUsername,
       );
       return;
+    }
+    // Password stays keyed to where the room was last seen. Walk only when
+    // this row was saved as discoverable — a stored pin stays exact (#234).
+    final policy = _policyForSaved(pinned: entry.endpointPinned);
+    if (policy != SyncplayEndpointPolicy.pinned) {
+      setState(() => _findingServer = true);
     }
     await _connect(
       RoomConfig(
@@ -653,6 +698,8 @@ class _ConnectScreenState extends State<ConnectScreen> {
         password: password,
         resumeFilePath: entry.filePath,
         resumePositionMs: entry.lastPositionMs,
+        endpointPolicy: policy,
+        persistUsername: usernameOverride == null ? null : savedUsername,
       ),
       profileUsername: usernameOverride == null ? null : savedUsername,
     );
@@ -872,9 +919,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
           foregroundColor: m.background,
           padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
         ),
-        onPressed: _joining ? null : _startPlayback,
+        onPressed: (_joining || _findingServer) ? null : _startPlayback,
         child: Text(
-          _localPlayerMode ? 'Start watching' : 'Start new room',
+          _findingServer
+              ? 'Finding a server…'
+              : (_localPlayerMode ? 'Start watching' : 'Start new room'),
           style: const TextStyle(fontWeight: TypeScale.bold),
         ),
       ),
@@ -903,7 +952,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
               backgroundColor: m.surface,
               foregroundColor: m.textPrimary,
             ),
-            onPressed: _joining ? null : _joinTypedCode,
+            onPressed: (_joining || _findingServer) ? null : _joinTypedCode,
             child: const Text('Join'),
           ),
         ],

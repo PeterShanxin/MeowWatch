@@ -26,6 +26,7 @@ class FakeProfileStore implements ProfileStore {
     required String room,
     required String username,
     String? password,
+    bool endpointPinned = false,
   }) async {}
 
   @override
@@ -60,6 +61,8 @@ class FakeHistoryStore implements HistoryStore {
     required WatchContext context,
     int? durationMs,
     String? username,
+    bool endpointPinned = false,
+    int? lastPositionMs,
   }) async {}
 
   @override
@@ -93,6 +96,7 @@ class FakeSettingsStore implements SettingsStore {
   Future<void> set(String key, String value) async => _map[key] = value;
 
   @override
-  Future<bool> hasAnySettings() async =>
-      _map.keys.any((k) => k != kLastSeenVersionKey);
+  Future<bool> hasAnySettings() async => _map.keys.any(
+    (k) => k != kLastSeenVersionKey && k != kSyncplayEndpointSettingKey,
+  );
 }

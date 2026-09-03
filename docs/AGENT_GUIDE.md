@@ -230,6 +230,7 @@ Every release is signed with an **Ed25519** key so the app installs only genuine
 - `core/video/` — `VideoCore` (abstract) → `MediaKitVideoCore` (libmpv via `media_kit`). Emits immutable `PlaybackState`.
 - `core/sync/` — `SyncCore` (abstract, owns the broadcast controllers + `@protected emit*` + `@mustCallSuper dispose`) → `SyncplayClient` (custom Dart Syncplay client: TCP + **mandatory** STARTTLS, Hello handshake, State heartbeat, `ignoringOnTheFly`/`setBy` convergence). Data types in `peer_state.dart`; wire framing/encoders in `sync_messages.dart` / `syncplay_constants.dart`.
   - **STARTTLS fails closed and there is no plaintext mode (#264).** The Hello carries the room password, and `Set`/`Chat`/`State` after it carry the file name, chat and watch position, so every outcome other than a completed handshake ends the connection — a `startTLS: "false"` decline, an `Error` frame, a skipped, malformed, or oversized (no newline past 64 KiB) answer, a failed handshake. Don't add a fallback "for servers without TLS": upstream `syncplay-server` answers `startTLS: "false"` when it has no cert, MeowWatch has never joined those, and a fallback would hand an on-path attacker a one-frame downgrade. `_channelSecure` gates `_send` as the backstop; keep it that way if you restructure the negotiation, and keep `test/core/sync/syncplay_client_starttls_test.dart` green — it asserts on the bytes that actually crossed the plaintext socket. The start screen stays up until login completes. `connectUntilJoin` keeps listening through the HomeScreen handoff so a Hello-then-Error is not dropped. A refused join stays on the start screen with the named error; the watch UI is only for a completed login (#265).
+- `core/sync/endpoint_discovery.dart` — walks public candidates with `connectUntilJoin` (#265). The first secure Hello is the session client handed to HomeScreen. Remembers the winner in `SettingsStore`. Curated candidates live in `syncplay_endpoints.dart`.
 - `core/chat/` — `ChatStore` subscribes to `SyncCore.chat`, stamps each message's local arrival time, and republishes an immutable list.
 - `core/update/` — `UpdateService` checks a Cloudflare R2 bucket (`{updateBaseUrl}/releases/latest.json`) for new versions, downloads a zip, extracts it, then launches a PowerShell updater script that swaps the files and restarts. Version constant in `app_version.dart`.
 - `core/app_version.dart` — single source of truth for `appVersion` (keep in sync with `pubspec.yaml`) and `updateBaseUrl`.
@@ -242,6 +243,40 @@ Every release is signed with an **Ed25519** key so the app installs only genuine
 **Glue:** `PlaybackSyncBridge` wires `VideoCore` ⇄ `SyncCore` (local playback → outgoing State; incoming peer state → local seek/pause via `decideFollow`). Room identity and Syncplay participation are separate: every player session has a real room/server/port, and `SessionMode` (`local` / `synced`) says whether that session is currently in Syncplay. `HomeScreen` owns a `SessionServices` host that can `startSynced` / `stopToLocal` on the same player — Local Start skips the trio; the in-player Local toggle starts or tears it down without recreating MediaKit. A synced Start/Join completes login on the start screen (`connectUntilJoin`) before that host is shown. `SessionChrome.forMode` is the one UI gate; `selectSessionBanner` keeps media/load transients in local while dropping derived sync banners. `kLocalPlayerModeSettingKey` is the remembered default for Start / Continue Watching. Explicit toggles in either the lobby or player persist that default, so leaving after an in-player flip keeps the new value. Join-code and saved-room launches are the exception: they stay synced for that session and never persist Local=false. History progress is per room context (`synced|server|port|room`), not per effective mode: Local and synced playback in the same real room update one row, while different rooms remain independent. The `local` key is retained only for legacy rows with no room identity. Continue Watching restores its saved position before a synced session connects, and MediaKit corrects its physical cursor after the paused-load probe so the first Play cannot jump back to 0:00. Those Start/Continue actions await the first settings load so a persisted ON cannot race the default-off seed. An explicit lobby toggle bumps a revision so a stale in-flight read cannot overwrite the newer choice.
 
 **Chat data flow:** sending delegates to `SyncCore.sendChat`; the server echoes the sender's own message back to the whole room, so messages land via the normal receive path. There is **no optimistic local insert** — the stream is the single source of truth.
+
+**Where a session's server comes from (#234).** Two peers can only meet if
+"where is this room" resolves the same on both machines, so the rules are
+deliberately narrow:
+
+- **Discovery may only replace an endpoint MeowWatch itself chose.** The
+  pin is stored on the saved room and history row (`endpointPinned`). An
+  Advanced server/port, a `room@host:port` share code, a bare share code,
+  and any self-hosted host write a pin and stay exact on later launches.
+  Membership in `kPublicSyncplayEndpoints` is not enough to walk — a
+  public address the user named is still a pin.
+- **Candidates are walked sequentially in the curated order**, never raced.
+  Racing would pick whichever answered fastest *from this machine*, which is how
+  two friends end up in the same room name on different servers.
+- **A bare share code is a legacy compatibility pin**, not a scan. It always
+  means the first candidate (`defaultServer` / `publicServerPort`). Two peers
+  who only have a room name cannot independently walk the list and still
+  guarantee the same server. `syncplay_endpoints_test.dart` pins the first
+  candidate to those constants; keep them together.
+- **A live session never fails over.** Reconnect re-dials the endpoint the
+  session started on; moving a running room would strand the peer.
+- **Discovery is the real join.** Each candidate is attempted with
+  `connectUntilJoin` (#265). The first secure Hello that logs into the user's
+  room is the session — that client is handed to HomeScreen. There is no
+  throwaway probe and no second handshake. A candidate that never completes
+  Hello is disposed and the next is tried. A Hello that then refuses the room
+  stops the walk (hopping would put the same room name on a different server).
+  Do not hand-roll a lighter handshake — that would be a second copy of the
+  STARTTLS state machine to keep hardened. Continue Watching walks on the
+  session client already shown: a dead candidate is not a failed join, so the
+  watch route must not pop until the walk finishes without a Hello. A
+  successful lobby Hello on a public candidate writes `syncplay_endpoint`
+  so the remembered Start winner matches the live session, including a
+  pinned bare-code join.
 
 **Immutability:** state objects (`PlaybackState`, `ChatMessage`, `ChatOverlayLayout`, etc.) are `@immutable` with `copyWith`; never mutate in place.
 

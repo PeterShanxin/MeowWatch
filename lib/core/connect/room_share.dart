@@ -35,9 +35,9 @@ import '../sync/syncplay_constants.dart';
 /// server endpoint (e.g. a manual room literally named `movie@home` or
 /// `movie@example.com`) — is treated as a plain room name. Old room-only codes
 /// (`happy-cat-11`), folded `happy-cat-11-k3pn` codes, and every magic sentence
-/// fall here and join verbatim against the default (or Advanced-overridden)
-/// server — exactly as before this feature existed. The split only fires when
-/// the tail carries a `:` (the host:port separator the encoder always emits) or
+/// fall here and join verbatim against the first public candidate. The split
+/// only fires when the tail carries a `:` (the host:port separator the
+/// encoder always emits) or
 /// is a bracketed IPv6 literal — neither of which a magic sentence contains.
 ///
 /// ## Known limitation (accepted)
@@ -59,9 +59,9 @@ const String malformedShareCodeMessage =
 
 /// The result of [parseShareCode]: the bare [room] to join plus any [server] /
 /// [port] the code carried. [server]/[port] are null when the code didn't
-/// specify them (the caller then falls back to its own Advanced fields). When
-/// [error] is non-null the code was structured but malformed and must NOT be
-/// used to join.
+/// specify them (the caller pins a bare code to the first public candidate).
+/// When [error] is non-null the code was structured but malformed and must
+/// NOT be used to join.
 @immutable
 class ParsedShareCode {
   const ParsedShareCode({

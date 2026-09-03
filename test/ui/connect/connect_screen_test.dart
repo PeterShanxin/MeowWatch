@@ -11,6 +11,7 @@ import 'package:meowwatch/core/data/settings_store.dart';
 import 'package:meowwatch/core/data/stores.dart';
 import 'package:meowwatch/core/data/watch_context.dart';
 import 'package:meowwatch/core/session/session_mode.dart';
+import 'package:meowwatch/core/sync/syncplay_constants.dart';
 import 'package:meowwatch/core/theme/meow_context.dart';
 import 'package:meowwatch/core/theme/meow_theme.dart';
 import 'package:meowwatch/ui/brand/meow_logo.dart';
@@ -41,6 +42,7 @@ class _FakeProfileStore implements ProfileStore {
     required String room,
     required String username,
     String? password,
+    bool endpointPinned = false,
   }) async {
     saveUsedCalls++;
     savedUsernames.add(username);
@@ -142,6 +144,8 @@ class _FakeHistoryStore implements HistoryStore {
     required WatchContext context,
     int? durationMs,
     String? username,
+    bool endpointPinned = false,
+    int? lastPositionMs,
   }) async {}
 
   @override
@@ -275,7 +279,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(connected!.username, offered);
-      expect(profiles.savedUsernames.single, offered);
+      expect(profiles.saveUsedCalls, 0);
     },
   );
 
@@ -330,8 +334,9 @@ void main() {
     // rejected elsewhere).
     expect(connected!.password, isNull);
     expect(connected!.username, 'lin');
-    expect(profiles.saveUsedCalls, 1);
-    expect(profiles.savedUsernames.single, 'lin');
+    // Default Start walks public candidates. The landed endpoint is
+    // persisted after Hello, not the unresolved Advanced default.
+    expect(profiles.saveUsedCalls, 0);
   });
 
   testWidgets('Enter code joins an old room-only code unchanged (#108)', (
@@ -388,50 +393,49 @@ void main() {
     },
   );
 
-  testWidgets(
-    'the start screen stays visible while a join is pending (#265)',
-    (tester) async {
-      final gate = Completer<String?>();
-      await pump(
-        tester,
-        onConnect: (config) {
-          connected = config;
-          return gate.future;
-        },
-      );
-      await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
-      await tester.enterText(
-        find.byKey(const Key('connect-code')),
-        'sleepy-owl-13',
-      );
-      await tester.ensureVisible(find.byKey(const Key('connect-join')));
-      await tester.tap(find.byKey(const Key('connect-join')));
-      await tester.pump();
+  testWidgets('the start screen stays visible while a join is pending (#265)', (
+    tester,
+  ) async {
+    final gate = Completer<String?>();
+    await pump(
+      tester,
+      onConnect: (config) {
+        connected = config;
+        return gate.future;
+      },
+    );
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.enterText(
+      find.byKey(const Key('connect-code')),
+      'sleepy-owl-13',
+    );
+    await tester.ensureVisible(find.byKey(const Key('connect-join')));
+    await tester.tap(find.byKey(const Key('connect-join')));
+    await tester.pump();
 
-      expect(find.byKey(const Key('connect-join')), findsOneWidget);
-      expect(
-        tester
-            .widget<FilledButton>(find.byKey(const Key('connect-join')))
-            .onPressed,
-        isNull,
-      );
-      expect(find.text('Load a video'), findsNothing);
-      expect(find.text('Leave room'), findsNothing);
-      expect(find.byKey(const Key('connect-join-error')), findsNothing);
+    expect(find.byKey(const Key('connect-join')), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('connect-join')))
+          .onPressed,
+      isNull,
+    );
+    expect(find.text('Load a video'), findsNothing);
+    expect(find.text('Leave room'), findsNothing);
+    expect(find.byKey(const Key('connect-join-error')), findsNothing);
 
-      gate.complete(
-        'Could not open a secure connection to 127.0.0.1:1 '
-        '(server declined STARTTLS). '
-        'MeowWatch only joins rooms over TLS.',
-      );
-      await tester.pumpAndSettle();
+    gate.complete(
+      'Could not open a secure connection to 127.0.0.1:1 '
+      '(server declined STARTTLS). '
+      'MeowWatch only joins rooms over TLS.',
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('connect-join')), findsOneWidget);
-      expect(find.byKey(const Key('connect-join-error')), findsOneWidget);
-      expect(find.textContaining('declined STARTTLS'), findsOneWidget);
-      expect(find.text('Load a video'), findsNothing);
-    },
-  );
+    expect(find.byKey(const Key('connect-join')), findsOneWidget);
+    expect(find.byKey(const Key('connect-join-error')), findsOneWidget);
+    expect(find.textContaining('declined STARTTLS'), findsOneWidget);
+    expect(find.text('Load a video'), findsNothing);
+  });
 
   testWidgets('Enter code joins a folded private code verbatim', (
     tester,
@@ -513,10 +517,9 @@ void main() {
     expect(connected!.port, 8999);
   });
 
-  testWidgets('a bare room code still honors the Advanced server/port (#110)', (
+  testWidgets('a bare room code pins the first public candidate (#234)', (
     tester,
   ) async {
-    // No server in the code → fall back to whatever the joiner typed in Advanced.
     await pump(tester);
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -539,8 +542,9 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-join')));
     await tester.pump();
     expect(connected!.room, 'happy-cat-11');
-    expect(connected!.server, 'my.lan');
-    expect(connected!.port, 1234);
+    expect(connected!.server, SyncplayConstants.defaultServer);
+    expect(connected!.port, SyncplayConstants.publicServerPort);
+    expect(connected!.endpointPolicy, SyncplayEndpointPolicy.pinned);
   });
 
   testWidgets('Advanced password is sent without mutating the typed room', (
@@ -785,7 +789,8 @@ void main() {
 
     expect(connected!.room, 'cozy-fox-42');
     expect(connected!.username, 'alice');
-    expect(profiles.savedUsernames.single, 'meowPEOW');
+    expect(connected!.persistUsername, 'meowPEOW');
+    expect(profiles.saveUsedCalls, 0);
   });
 
   testWidgets(
@@ -1212,7 +1217,7 @@ void main() {
 
     expect(connected!.username, 'alice');
     expect(connected!.room, 'cozy-fox-42');
-    expect(profiles.savedUsernames.single, 'meowPEOW');
+    expect(profiles.saveUsedCalls, 0);
   });
 
   HistoryEntry historyEntryInRoom(int id, String name, String room) =>
@@ -1416,7 +1421,8 @@ void main() {
 
     expect(connected!.sessionMode, SessionMode.synced);
     expect(connected!.room, 'happy-otter-99');
-    expect(profiles.saveUsedCalls, 1);
+    // Public saved room may walk. The landed endpoint is persisted after Hello.
+    expect(profiles.saveUsedCalls, 0);
     expect(find.text(kLocalJoinOverrideNotice), findsOneWidget);
   });
 
@@ -1561,33 +1567,32 @@ void main() {
     },
   );
 
-  testWidgets(
-    'a Local Start that stays local does not save a room on return',
-    (tester) async {
-      final settings = _FakeSettingsStore();
-      final left = Completer<void>();
-      await pump(
-        tester,
-        settings: settings,
-        onConnect: (config) async {
-          connected = config;
-          await left.future;
-          return null;
-        },
-      );
-      await turnOnLocalMode(tester);
-      await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
-      await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
-      await tester.tap(find.byKey(const Key('connect-start-new')));
-      await tester.pump();
+  testWidgets('a Local Start that stays local does not save a room on return', (
+    tester,
+  ) async {
+    final settings = _FakeSettingsStore();
+    final left = Completer<void>();
+    await pump(
+      tester,
+      settings: settings,
+      onConnect: (config) async {
+        connected = config;
+        await left.future;
+        return null;
+      },
+    );
+    await turnOnLocalMode(tester);
+    await tester.enterText(find.byKey(const Key('connect-name')), 'lin');
+    await tester.ensureVisible(find.byKey(const Key('connect-start-new')));
+    await tester.tap(find.byKey(const Key('connect-start-new')));
+    await tester.pump();
 
-      expect(connected!.sessionMode, SessionMode.local);
-      expect(profiles.saveUsedCalls, 0);
+    expect(connected!.sessionMode, SessionMode.local);
+    expect(profiles.saveUsedCalls, 0);
 
-      left.complete();
-      await tester.pumpAndSettle();
+    left.complete();
+    await tester.pumpAndSettle();
 
-      expect(profiles.saveUsedCalls, 0);
-    },
-  );
+    expect(profiles.saveUsedCalls, 0);
+  });
 }

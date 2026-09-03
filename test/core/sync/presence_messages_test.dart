@@ -278,6 +278,17 @@ void main() {
       );
     });
 
+    test('a dead candidate during a public walk is not a failed join', () {
+      expect(
+        isFailedInitialJoin(
+          status: SyncConnectionStatus.error,
+          everConnected: false,
+          lookingForServer: true,
+        ),
+        isFalse,
+      );
+    });
+
     test('connecting and handshaking are not a failed join', () {
       expect(
         isFailedInitialJoin(

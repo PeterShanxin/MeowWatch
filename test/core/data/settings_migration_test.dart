@@ -22,10 +22,10 @@ void main() {
     expect(row.value, 'noir');
   });
 
-  test('schemaVersion is 6', () {
+  test('schemaVersion is 7', () {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    expect(db.schemaVersion, 6);
+    expect(db.schemaVersion, 7);
   });
 
   test(
@@ -280,4 +280,118 @@ INSERT INTO history_entries (
     expect(legacy.contextKey, kLocalWatchContextKey);
     expect(legacy.lastPositionMs, 35000);
   });
+
+  test(
+    'v6 to v7 pins self-hosted rows and leaves public rows discoverable',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('mw-pin-mig');
+      addTearDown(() => dir.delete(recursive: true));
+      final file = File(p.join(dir.path, 't.db'));
+      final raw = sqlite3.open(file.path);
+      raw.execute('''
+CREATE TABLE profiles (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  server TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  room TEXT NOT NULL,
+  username TEXT NOT NULL,
+  password TEXT NULL,
+  is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+  last_used_at INTEGER NULL,
+  UNIQUE(server, port, room, username)
+);
+''');
+      raw.execute('''
+CREATE TABLE settings (
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY (key)
+);
+''');
+      raw.execute('''
+CREATE TABLE history_entries (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  file_path TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  file_size_bytes INTEGER NOT NULL DEFAULT 0,
+  duration_ms INTEGER NULL,
+  last_position_ms INTEGER NOT NULL DEFAULT 0,
+  played_at INTEGER NOT NULL,
+  context_key TEXT NOT NULL,
+  room TEXT NULL,
+  username TEXT NULL,
+  server TEXT NULL,
+  port INTEGER NULL,
+  UNIQUE(file_path, context_key)
+);
+''');
+      raw.execute(
+        '''
+INSERT INTO profiles (name, server, port, room, username)
+VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)
+''',
+        [
+          'public',
+          'syncplay.pl',
+          8995,
+          'public-room',
+          'lin',
+          'home',
+          'cozy.example.net',
+          8999,
+          'home-room',
+          'lin',
+        ],
+      );
+      raw.execute(
+        '''
+INSERT INTO history_entries (
+  file_path, file_name, played_at, context_key, room, username, server, port
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?)
+''',
+        [
+          r'D:\v\p.mkv',
+          'p.mkv',
+          100,
+          'synced|syncplay.pl|8995|public-room',
+          'public-room',
+          'lin',
+          'syncplay.pl',
+          8995,
+          r'D:\v\h.mkv',
+          'h.mkv',
+          101,
+          'synced|cozy.example.net|8999|home-room',
+          'home-room',
+          'lin',
+          'cozy.example.net',
+          8999,
+        ],
+      );
+      raw.execute('PRAGMA user_version = 6');
+      raw.close();
+
+      final db = AppDatabase(NativeDatabase(file));
+      addTearDown(db.close);
+      final profiles = await db.select(db.profiles).get();
+      expect(
+        profiles.firstWhere((p) => p.room == 'public-room').endpointPinned,
+        isFalse,
+      );
+      expect(
+        profiles.firstWhere((p) => p.room == 'home-room').endpointPinned,
+        isTrue,
+      );
+      final history = await db.select(db.historyEntries).get();
+      expect(
+        history.firstWhere((h) => h.filePath.endsWith('p.mkv')).endpointPinned,
+        isFalse,
+      );
+      expect(
+        history.firstWhere((h) => h.filePath.endsWith('h.mkv')).endpointPinned,
+        isTrue,
+      );
+    },
+  );
 }
