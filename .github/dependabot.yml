@@ -7,8 +7,13 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-      timezone: "Asia/Shanghai"
+      timezone: "Asia/Singapore"
     open-pull-requests-limit: 5
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -24,9 +29,14 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "09:15"
-      timezone: "Asia/Shanghai"
+      time: "09:00"
+      timezone: "Asia/Singapore"
     open-pull-requests-limit: 5
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     commit-message:
       prefix: "ci(deps)"
     groups:
