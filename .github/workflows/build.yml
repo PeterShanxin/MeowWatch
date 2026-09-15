@@ -2,7 +2,6 @@ name: Build
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
   pull_request:
     branches: [main]
@@ -25,105 +24,19 @@ concurrency:
 
 jobs:
   # ── Analyze + test ────────────────────────────────────────────────────
-  # Every `pull_request` takes GitHub-hosted `check-hosted` (`windows-2022`).
-  # That is the only PR path. `gate` stays the required check name
-  # (`Analyze & Test`).
+  # Every pull request runs entirely on GitHub-hosted Windows. `gate` keeps
+  # the stable required-check name `Analyze & Test`. Plain pushes to main do
+  # not run this workflow; release tags use the hosted release path below.
   #
-  # Pull-request code must never schedule on the self-hosted host —
-  # including trusted-admin same-repo PRs. Fork-workflow approval does
-  # not cover a future write login adding a new workflow, so remaining
-  # self-hosted jobs keep a YAML `if:` allowlist `{PeterShanxin,
-  # ianmeowmeow}` and exclude Dependabot.
-  # `check-self-hosted` is trusted-admin push-to-main analyze only.
-  # Tag Windows sign is `build-windows-x64` on hosted windows-2022
-  # (same allowlist; `environment: release`).
-  #
-  # Keep self-hosted jobs free of hosted-only composite actions:
-  # self-hosted runners prepare composite action dependencies before
-  # skipped steps are evaluated, so a `subosito/flutter-action` step here
-  # would try to set up (and fail) even when skipped — that's why hosted
-  # is a separate job.
-  #
-  # The suite is NOT cross-platform — `test/core/video/video_url_test.dart`
-  # asserts on Windows paths (`C:\…` → basename) and
-  # `test/ui/chat/chat_overlay_golden_test.dart` uses Windows-rendered goldens.
-  # Those cases skip on Linux; both paths below must still run on Windows.
-
-  check-self-hosted:
-    name: Analyze & Test (self-hosted)
-    # Push to main only. Never pull_request, never a v* tag. Write access
-    # is not host trust. Tag product release does not wait on this job.
-    if: >-
-      ${{
-        github.event_name == 'push' &&
-        github.ref == 'refs/heads/main' &&
-        contains(fromJSON('["PeterShanxin","ianmeowmeow"]'), github.actor) &&
-        github.actor != 'dependabot[bot]'
-      }}
-    runs-on: [self-hosted, windows, meowwatch-ci]
-    # Bound runaway hangs: the suite normally finishes in ~5m, but a stuck
-    # flutter_tester otherwise sits until GitHub's 6h default, wedging the
-    # self-hosted runner. See docs/AGENT_GUIDE.md → CI (runner hangs).
-    timeout-minutes: 20
-    steps:
-      # Belt-and-braces: the job `if` should already exclude these. Fail closed
-      # if a future edit lets a PR, Dependabot, or any other login reach this
-      # host. github.actor is required on every event.
-      - name: Refuse untrusted workflow actors
-        shell: pwsh
-        env:
-          ACTOR: ${{ github.actor }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          $trusted = @('PeterShanxin', 'ianmeowmeow')
-          if ($env:EVENT_NAME -eq 'pull_request') {
-            Write-Error "pull_request must never run on the self-hosted runner (actor=$($env:ACTOR))."
-            exit 1
-          }
-          if ($env:GITHUB_REF -like 'refs/tags/*') {
-            Write-Error "v* tags must not run on the self-hosted runner (actor=$($env:ACTOR))."
-            exit 1
-          }
-          if ($env:ACTOR -eq 'dependabot[bot]') {
-            Write-Error "Dependabot must never run on the self-hosted runner."
-            exit 1
-          }
-          if ($trusted -notcontains $env:ACTOR) {
-            Write-Error "Only PeterShanxin or ianmeowmeow may run on the self-hosted runner (actor=$($env:ACTOR) event=$($env:EVENT_NAME))."
-            exit 1
-          }
-
-      - uses: actions/checkout@v7
-
-      - name: Setup Flutter (self-hosted, pre-installed via Puro)
-        shell: pwsh
-        run: |
-          $flutterBin = Join-Path $env:USERPROFILE '.puro\envs\stable\flutter\bin'
-          if (-not (Test-Path (Join-Path $flutterBin 'flutter.bat'))) {
-            Write-Error "Flutter not found at $flutterBin — is Puro's stable env installed on the runner?"
-            exit 1
-          }
-          Add-Content -Path $env:GITHUB_PATH -Value $flutterBin
-          Write-Host "Using pre-installed Flutter at $flutterBin"
-
-      - name: Install dependencies
-        shell: pwsh
-        run: flutter pub get
-
-      - name: Analyze
-        shell: pwsh
-        run: flutter analyze
-
-      - name: Run tests
-        shell: pwsh
-        run: flutter test
+  # The suite is NOT cross-platform: Windows path assertions and Windows-
+  # rendered goldens require the PR verification path to stay on Windows.
 
   # Every pull_request. Standard GitHub-hosted `windows-2022`. Forks,
   # Dependabot, trusted-admin same-repo PRs, and any other login all take
   # this path. Pinned to 2022 (not 2025): hosted 2025 failed the two
   # chat-overlay goldens (run 33264970792: 0.05%/444px and 15px). That
   # image already ran untrusted PRs. Do not --update-goldens for 2025
-  # pixels. Trusted-admin push-to-main analyze stays on check-self-hosted.
+  # pixels.
   # This job must not interpolate TAURI_SIGNING_PRIVATE_KEY,
   # MEOWWATCH_RELEASE_KEY, or R2_* secrets.
   check-hosted:
