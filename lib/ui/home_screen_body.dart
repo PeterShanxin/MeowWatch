@@ -272,6 +272,9 @@ mixin _HomeBody
                             onBrowse: () => unawaited(_browse()),
                             onLoadUrl: (url) => unawaited(_load(url)),
                             onLeave: _leave,
+                            onNearby: Platform.isWindows
+                                ? () => unawaited(_openNearby())
+                                : null,
                             chatAutoDim: _chatAutoDim,
                             onChatAutoDimChanged: (val) {
                               setState(() => _chatAutoDim = val);

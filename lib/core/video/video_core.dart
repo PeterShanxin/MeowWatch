@@ -7,6 +7,17 @@ import 'playback_bar_view.dart';
 import 'playback_screen_view.dart';
 import 'playback_state.dart';
 
+/// Optional controls for revocable callers. Implementations must check again
+/// after every internal wait and immediately before dispatching native actions.
+abstract interface class GuardedVideoControls {
+  Future<void> playChecked({required void Function() checkActive});
+  Future<void> pauseChecked({required void Function() checkActive});
+  Future<void> seekChecked(
+    Duration position, {
+    required void Function() checkActive,
+  });
+}
+
 /// Abstract interface for video playback. Implementations may wrap libmpv,
 /// a fake for tests, or any other backend.
 abstract class VideoCore {
@@ -31,8 +42,9 @@ abstract class VideoCore {
   /// `StreamBuilder` resubscribes when handed a different stream, which would
   /// reset `distinct()`'s memory on every parent rebuild and let the next
   /// position tick through as a "first" event.
-  late final Stream<PlaybackScreenView> screenViewStream =
-      stateStream.map(PlaybackScreenView.of).distinct();
+  late final Stream<PlaybackScreenView> screenViewStream = stateStream
+      .map(PlaybackScreenView.of)
+      .distinct();
 
   /// Current [PlaybackBarView] projection of [state].
   PlaybackBarView get barView => PlaybackBarView.of(_state);
@@ -41,8 +53,9 @@ abstract class VideoCore {
   /// whole-second position, duration, volume), de-duplicated — sub-second
   /// position churn never surfaces here. See [PlaybackBarView] for why (#196).
   /// Cached for the same reason as [screenViewStream].
-  late final Stream<PlaybackBarView> barViewStream =
-      stateStream.map(PlaybackBarView.of).distinct();
+  late final Stream<PlaybackBarView> barViewStream = stateStream
+      .map(PlaybackBarView.of)
+      .distinct();
 
   /// True once [dispose] has run (the state stream is closed). Lets callers that
   /// await the stream avoid acting on a torn-down core (e.g. seeking after the
@@ -79,10 +92,7 @@ abstract class VideoCore {
     // URL), which still carries no duration. Without this the user would be stuck
     // on a frozen surface with no recovery buttons.
     if (isPlaybackOpen(_state) || _state.status == PlaybackStatus.error) return;
-    emit(_state.copyWith(
-      status: PlaybackStatus.error,
-      errorMessage: message,
-    ));
+    emit(_state.copyWith(status: PlaybackStatus.error, errorMessage: message));
   }
 
   /// Surface a source that failed *before* any backend load began (e.g. a
@@ -97,12 +107,14 @@ abstract class VideoCore {
   /// the user just pasted, not the previous failure's stale source.
   void failSource(String source, String message) {
     if (isPlaybackOpen(_state)) return;
-    emit(_state.copyWith(
-      status: PlaybackStatus.error,
-      fileName: source,
-      filePath: source,
-      errorMessage: message,
-    ));
+    emit(
+      _state.copyWith(
+        status: PlaybackStatus.error,
+        fileName: source,
+        filePath: source,
+        errorMessage: message,
+      ),
+    );
   }
 
   Future<void> play();
