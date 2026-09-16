@@ -418,6 +418,7 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
       _leavingRoom = true;
     }
     appLog('life: leave room (button)');
+    await _stopNearby();
     _historyTimer?.cancel();
     final inFlight = _modeSwitch;
     if (inFlight != null) {
@@ -443,6 +444,7 @@ mixin _HomeMediaState on _HomeScreenStateBase, _HomeSyncState {
   }
 
   Future<void> _finishLeaveCleanup() async {
+    await _stopNearby();
     final sync = _sync;
     if (sync != null) {
       try {
