@@ -37,7 +37,11 @@ jobs:
             -H "Accept: application/vnd.github+json"
             -H "X-GitHub-Api-Version: 2022-11-28"
           )
-          payload='{"reviewers":["PeterShanxin"]}'
+          reviewer="PeterShanxin"
+          payload="{\"reviewers\":[\"${reviewer}\"]}"
+
+          # GitHub rejects a review request for the PR's own author (HTTP 422).
+          [[ "$PR_AUTHOR" != "$reviewer" ]] || exit 0
 
           request_review() {
             curl --fail-with-body --silent --show-error "${headers[@]}" \
