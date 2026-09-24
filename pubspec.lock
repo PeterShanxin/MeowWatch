@@ -628,8 +628,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/nearby_bridge"
-      ref: "245edefcb76785fed077d39aa06a5e2be80ba58c"
-      resolved-ref: "245edefcb76785fed077d39aa06a5e2be80ba58c"
+      ref: bd931d5d6966909aad099e22b6fa8ed525ab2d56
+      resolved-ref: bd931d5d6966909aad099e22b6fa8ed525ab2d56
       url: "https://github.com/PeterShanxin/MeowWatch-Mobile.git"
     source: git
     version: "0.1.0"
@@ -637,8 +637,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/nearby_platform"
-      ref: "245edefcb76785fed077d39aa06a5e2be80ba58c"
-      resolved-ref: "245edefcb76785fed077d39aa06a5e2be80ba58c"
+      ref: bd931d5d6966909aad099e22b6fa8ed525ab2d56
+      resolved-ref: bd931d5d6966909aad099e22b6fa8ed525ab2d56
       url: "https://github.com/PeterShanxin/MeowWatch-Mobile.git"
     source: git
     version: "0.1.0"

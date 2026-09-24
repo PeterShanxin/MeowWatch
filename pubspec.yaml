@@ -54,12 +54,12 @@ dependencies:
   nearby_bridge:
     git:
       url: https://github.com/PeterShanxin/MeowWatch-Mobile.git
-      ref: 245edefcb76785fed077d39aa06a5e2be80ba58c
+      ref: bd931d5d6966909aad099e22b6fa8ed525ab2d56
       path: packages/nearby_bridge
   nearby_platform:
     git:
       url: https://github.com/PeterShanxin/MeowWatch-Mobile.git
-      ref: 245edefcb76785fed077d39aa06a5e2be80ba58c
+      ref: bd931d5d6966909aad099e22b6fa8ed525ab2d56
       path: packages/nearby_platform
   # Pure-Dart Ed25519 (RFC 8032) — verifies the release signature on the
   # auto-update path so a poisoned R2 bucket can't forge an update. No native

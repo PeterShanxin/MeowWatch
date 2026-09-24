@@ -27,6 +27,8 @@ in-app updater reads to show what changed.
 
 ### Fixed
 - Playing again after a video ends no longer jumps straight back to the end.
+- Cancelling or timing out a Nearby connection releases it immediately, and
+  pairing and disconnect confirmations finish sending before the link closes.
 
 ## [0.50.0-alpha] - 2026-09-02
 
