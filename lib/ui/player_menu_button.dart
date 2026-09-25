@@ -40,6 +40,7 @@ class PlayerMenuButton extends StatelessWidget {
     required this.onBrowse,
     required this.onLoadUrl,
     required this.onLeave,
+    this.onNearby,
     required this.chatAutoDim,
     required this.onChatAutoDimChanged,
     required this.chatWakeOnMessage,
@@ -101,6 +102,7 @@ class PlayerMenuButton extends StatelessWidget {
   final VoidCallback onBrowse;
   final void Function(String url) onLoadUrl;
   final VoidCallback onLeave;
+  final VoidCallback? onNearby;
   final bool chatAutoDim;
   final ValueChanged<bool> onChatAutoDimChanged;
   final bool chatWakeOnMessage;
@@ -186,6 +188,7 @@ class PlayerMenuButton extends StatelessWidget {
             onBrowse: onBrowse,
             onLoadUrl: onLoadUrl,
             onLeave: onLeave,
+            onNearby: onNearby,
             chatAutoDim: chatAutoDim,
             onChatAutoDimChanged: onChatAutoDimChanged,
             chatWakeOnMessage: chatWakeOnMessage,
@@ -226,6 +229,7 @@ class _MenuPanel extends StatefulWidget {
     required this.onBrowse,
     required this.onLoadUrl,
     required this.onLeave,
+    this.onNearby,
     required this.chatAutoDim,
     required this.onChatAutoDimChanged,
     required this.chatWakeOnMessage,
@@ -259,6 +263,7 @@ class _MenuPanel extends StatefulWidget {
   final VoidCallback onBrowse;
   final void Function(String url) onLoadUrl;
   final VoidCallback onLeave;
+  final VoidCallback? onNearby;
   final bool chatAutoDim;
   final ValueChanged<bool> onChatAutoDimChanged;
   final bool chatWakeOnMessage;
@@ -381,6 +386,15 @@ class _MenuPanelState extends State<_MenuPanel> {
                     : const SizedBox.shrink(),
               ),
               Divider(color: m.border, height: Spacing.lg),
+              if (widget.onNearby != null) ...[
+                _MenuAction(
+                  key: const Key('player-menu-nearby'),
+                  icon: Icons.devices_outlined,
+                  text: 'Nearby MeowWatch',
+                  onTap: widget.onNearby!,
+                ),
+                Divider(color: m.border, height: Spacing.lg),
+              ],
               label('Theme'),
               Center(
                 child: ThemeSwatches(

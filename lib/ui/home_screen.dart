@@ -20,6 +20,8 @@ import '../core/debug/debug_log.dart';
 import '../core/debug/log_archive.dart';
 import '../core/debug/log_level.dart';
 import '../core/debug/log_redact.dart';
+import '../core/nearby/desktop_companion_session.dart';
+import '../core/nearby/desktop_nearby_service.dart';
 import '../core/sync/auto_pause.dart';
 import '../core/sync/file_match.dart';
 import '../core/sync/join_prompt.dart';
@@ -69,6 +71,7 @@ import 'idle_rearm_throttle.dart';
 import 'idle_visibility.dart';
 import 'load_video_choices.dart';
 import 'notify_decision.dart';
+import 'nearby/nearby_companion_dialog.dart';
 import 'player_menu_button.dart';
 import 'reactions/floating_reactions.dart';
 import 'reactions/reaction_bar.dart';
@@ -156,6 +159,9 @@ abstract class _HomeScreenStateBase extends State<HomeScreen> {
 
   /// Implemented on [_HomeScreenState]: live Local ↔ synced switch.
   Future<void> _setEffectiveLocalMode(bool local);
+
+  Future<void> _openNearby();
+  Future<void> _stopNearby();
 
   /// In-flight [_setEffectiveLocalMode]. Leave awaits this so a toggle's
   /// persist is visible to the lobby before `_loadSettings` runs.
@@ -296,6 +302,71 @@ class _HomeScreenState extends _HomeScreenStateBase
   /// rather than the Leave button — #92). Held so dispose only clears the global
   /// when it's still ours.
   Future<void> Function()? _closeHook;
+  DesktopNearbyService? _nearbyService;
+  int _nearbyGeneration = 0;
+  bool _nearbyDialogOpen = false;
+
+  @override
+  Future<void> _openNearby() async {
+    if (!mounted || _leavingRoom || _nearbyDialogOpen) return;
+    _nearbyDialogOpen = true;
+    try {
+      final service = _nearbyService ??= DesktopNearbyService(
+        desktopName: 'MeowWatch Desktop',
+        handlerFactory:
+            ({
+              required desktopId,
+              required desktopName,
+              required sessionEpoch,
+            }) {
+              final adapter = DesktopCompanionSession(
+                video: _core,
+                desktopId: desktopId,
+                desktopName: desktopName,
+                sessionEpoch: sessionEpoch,
+                registeredGeneration: _nearbyGeneration,
+                currentGeneration: () => _nearbyGeneration,
+                currentMediaGeneration: () => _loadGeneration,
+                currentMode: () => _session.mode,
+                currentRoom: () => RoomConfig(
+                  server: _sessionServer,
+                  port: _sessionPort,
+                  room: widget.config.room,
+                  username: _username,
+                  sessionMode: _session.mode,
+                ),
+                currentUsername: () => _username,
+                acceptedSource: () => _loadedSource,
+                participants: () => <String>[_username, ..._peers],
+                currentChat: () => _chat,
+                currentSync: () => _sync,
+              );
+              return DesktopNearbyHandlerBinding(
+                handler: adapter,
+                close: adapter.dispose,
+              );
+            },
+      );
+      if (!mounted || _leavingRoom || !identical(_nearbyService, service)) {
+        return;
+      }
+      // The dialog owns initialization so loading and protected-store failures
+      // remain visible instead of escaping the menu's unawaited callback.
+      await showNearbyCompanionDialog(context, service);
+    } finally {
+      _nearbyDialogOpen = false;
+      if (mounted) _restorePlayerFocus();
+    }
+  }
+
+  @override
+  Future<void> _stopNearby() async {
+    // Invalidate borrowed player access before asynchronous socket cleanup.
+    _nearbyGeneration++;
+    final service = _nearbyService;
+    _nearbyService = null;
+    await service?.close();
+  }
 
   @override
   void initState() {
@@ -452,6 +523,7 @@ class _HomeScreenState extends _HomeScreenStateBase
     if (sync == null) return;
     _closeHook = () async {
       appLog('life: window-close hook fired (announcing leave)');
+      await _stopNearby();
       await sync.disconnectForAppClose();
       appLog('life: window-close leave sent');
     };
@@ -587,6 +659,7 @@ class _HomeScreenState extends _HomeScreenStateBase
       await _persistLocalPlayerMode(local);
       return;
     }
+    await _stopNearby();
     await _saveResumePosition(force: true);
     if (local) {
       await _tearDownCollaboration();
@@ -696,6 +769,7 @@ class _HomeScreenState extends _HomeScreenStateBase
   @override
   void dispose() {
     appLog('life: dispose home (tearing down room)');
+    unawaited(_stopNearby());
     // Invalidate any in-flight load so an async resolve/provision that is still
     // running (a page URL the user pasted right before leaving) abandons at its
     // next generation check instead of touching the now-disposed player or

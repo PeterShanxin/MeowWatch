@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -15,7 +16,7 @@ import 'video_core.dart';
 import 'video_decode_config.dart';
 import 'video_url.dart';
 
-class MediaKitVideoCore extends VideoCore {
+class MediaKitVideoCore extends VideoCore implements GuardedVideoControls {
   MediaKitVideoCore() : _player = Player() {
     // Create the render controller up front, BEFORE any media is opened. If it
     // is attached lazily (only once a VideoSurface mounts, i.e. after the first
@@ -25,6 +26,17 @@ class MediaKitVideoCore extends VideoCore {
     videoController = VideoController(_player);
     _wireListeners();
     _configureDecoding();
+  }
+
+  @visibleForTesting
+  MediaKitVideoCore.forTesting({
+    required Player player,
+    Future<void>? probeRecovery,
+  }) : // Public test injection does not expose the private player field.
+       // ignore: prefer_initializing_formals
+       _player = player,
+       _pendingProbeRecovery = probeRecovery {
+    _wireListeners();
   }
 
   final Player _player;
@@ -457,6 +469,9 @@ class MediaKitVideoCore extends VideoCore {
     appLog('trace: play');
     final recovery = _pendingProbeRecovery;
     if (recovery != null) await recovery;
+    // NativePlayer.play rewinds at EOF. That zero belongs to this replay,
+    // even if the paused-load probe never emitted its own zero position.
+    if (_player.state.completed) _pendingProbeZeroToken = null;
     await _player.play();
   }
 
@@ -479,6 +494,122 @@ class MediaKitVideoCore extends VideoCore {
   }
 
   @override
+  Future<void> playChecked({required void Function() checkActive}) =>
+      _runChecked(checkActive, (native, check) async {
+        _playbackStarted = true;
+        _publishCheckedPlaying(native, true);
+        native.isPlayingStateChangeAllowed = true;
+        if (native.state.completed) {
+          _pendingProbeZeroToken = null;
+          await _seekCheckedNative(native, Duration.zero, check);
+          check();
+          await native.command([
+            'set',
+            'playlist-pos',
+            '0',
+          ], waitForInitialization: false);
+          check();
+        }
+        await native.command([
+          'set',
+          'pause',
+          'no',
+        ], waitForInitialization: false);
+        check();
+      });
+
+  @override
+  Future<void> pauseChecked({required void Function() checkActive}) =>
+      _runChecked(checkActive, (native, check) async {
+        _publishCheckedPlaying(native, false);
+        native.isPlayingStateChangeAllowed = false;
+        native.isBufferingStateChangeAllowed = false;
+        await native.command([
+          'set',
+          'pause',
+          'yes',
+        ], waitForInitialization: false);
+        check();
+      }, waitForRecovery: false);
+
+  @override
+  Future<void> seekChecked(
+    Duration position, {
+    required void Function() checkActive,
+  }) => _runChecked(checkActive, (native, check) async {
+    _playbackStarted = true;
+    if (position <= Duration.zero) _pendingProbeZeroToken = null;
+    await _seekCheckedNative(native, position, check);
+  });
+
+  Future<void> _seekCheckedNative(
+    NativePlayer native,
+    Duration position,
+    void Function() check,
+  ) async {
+    check();
+    await native.command([
+      'seek',
+      (position.inMilliseconds / 1000).toStringAsFixed(4),
+      'absolute',
+    ], waitForInitialization: false);
+    check();
+    native.state = native.state.copyWith(completed: false);
+    // Match NativePlayer.seek's stream notification as well as its stored state.
+    // ignore: invalid_use_of_protected_member
+    final completed = native.completedController;
+    if (!completed.isClosed) completed.add(false);
+  }
+
+  void _publishCheckedPlaying(NativePlayer native, bool playing) {
+    // NativePlayer.play/pause publish this explicitly: after EOF, mpv's pause
+    // property may already be false, so replay has no property change to emit.
+    // Calling those methods here would reintroduce unchecked initialization
+    // awaits between our final guard and native dispatch.
+    native.state = native.state.copyWith(playing: playing);
+    // ignore: invalid_use_of_protected_member
+    final changes = native.playingController;
+    if (!changes.isClosed) changes.add(playing);
+  }
+
+  Future<void> _runChecked(
+    void Function() checkActive,
+    Future<void> Function(NativePlayer native, void Function() check) action, {
+    bool waitForRecovery = true,
+  }) async {
+    final token = _loadToken;
+    void check() {
+      checkActive();
+      if (isDisposed || _loadToken != token) {
+        throw StateError('Playback source changed');
+      }
+    }
+
+    check();
+    final native = _player.platform;
+    if (native is! NativePlayer) {
+      throw UnsupportedError('Guarded native playback');
+    }
+    final recovery = _pendingProbeRecovery;
+    if (waitForRecovery && recovery != null) await recovery;
+    check();
+    // media_kit's ordinary play/seek methods queue here and await initialization
+    // internally. Use its same lock, then dispatch without another hidden wait.
+    // A concurrent load/reset can invalidate the token but cannot open a new
+    // native source before this checked operation releases the lock.
+    await NativePlayer.lock.synchronized(() async {
+      check();
+      await native.waitForPlayerInitialization;
+      check();
+      await native.waitForVideoControllerInitializationIfAttached;
+      check();
+      await action(native, check);
+      check();
+    });
+    check();
+  }
+
+  @override
   Future<void> setVolume(double volume) =>
       _player.setVolume((volume.clamp(0.0, 1.0)) * 100.0);
 
@@ -496,6 +627,7 @@ class MediaKitVideoCore extends VideoCore {
   /// room as cleanly as a fresh one, and emits a blank [PlaybackState] so the
   /// next screen opens on the load view with no stale file/position.
   Future<void> reset() async {
+    _loadToken++;
     _playbackStarted = false;
     _paramsResetSeen = false;
     _pendingProbeZeroToken = null;

@@ -10,6 +10,26 @@ in-app updater reads to show what changed.
 > `### Fixed` / `### Improved` sections, and optionally lead with a `> one-line
 > summary`.
 
+## [0.51.0-alpha] - 2026-09-16
+
+### Added
+- **Nearby MeowWatch** in the player menu lets a paired Android phone control
+  the current desktop session. Enable it on a trusted Private Wi-Fi or Ethernet
+  network, scan the short-lived QR invitation, then approve the phone on the
+  desktop. If discovery is unavailable, the full invitation can be pasted.
+- See paired phones and revoke their access from the same dialog. Pairings are
+  kept in protected system storage. Leaving the room or disabling Nearby closes
+  control immediately; Public networks remain unavailable.
+
+### Improved
+- Phone playback controls are cancelled when the room or media changes, so an
+  old seek cannot jump a newly opened movie.
+
+### Fixed
+- Playing again after a video ends no longer jumps straight back to the end.
+- Cancelling or timing out a Nearby connection releases it immediately, and
+  pairing and disconnect confirmations finish sending before the link closes.
+
 ## [0.50.0-alpha] - 2026-09-02
 
 > When the public Syncplay server is down, MeowWatch finds another one itself.
