@@ -1,0 +1,99 @@
+name: Companion review package
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/companion-review-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Unsigned Windows companion review build
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+      - name: Build the normal application from locked dependencies
+        shell: pwsh
+        run: |
+          flutter pub get --enforce-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter build windows --release --target lib/main.dart
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package an isolated review copy and its source receipt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sourceCommit = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify checked-out source' }
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE 'build/windows/x64/runner/Release'
+          $packageRoot = Join-Path $env:RUNNER_TEMP 'companion-review-package'
+          $stageDir = Join-Path $packageRoot 'MeowWatch-companion-review'
+          New-Item -ItemType Directory -Path $stageDir | Out-Null
+          Copy-Item -Path "$releaseDir/*" -Destination $stageDir -Recurse
+          Copy-Item -LiteralPath LICENSE -Destination $stageDir
+          @'
+          @echo off
+          set "MEOWWATCH_DATA_DIR=%~dp0review-profile"
+          start "" "%~dp0meowwatch.exe"
+          '@ | Set-Content -LiteralPath (Join-Path $stageDir 'Start isolated review.cmd') -Encoding ascii
+          @'
+          # MeowWatch companion review build
+
+          Extract the complete ZIP and run Start isolated review.cmd. Keep the
+          executable, DLLs and data directory together. The launcher stores this
+          review's settings beside the app, separately from an installed profile.
+
+          This unsigned normal Windows x64 Release build is for review and
+          physical Nearby acceptance; it is not an updater-signed distribution.
+          Nearby requires explicit approval on a trusted Private LAN. Physical
+          Android-to-Windows pairing/control/revocation remains to be verified.
+          Do not change network trust or firewall rules just to bypass a warning.
+
+          Source and license: https://github.com/PeterShanxin/MeowWatch
+          Companion changes: https://github.com/PeterShanxin/MeowWatch/pull/279
+          AGPL-3.0-only. Exact source and binary hashes are in build-receipt.json.
+          '@ | Set-Content -LiteralPath (Join-Path $stageDir 'README.md') -Encoding utf8
+          $sdk = flutter --version --machine | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify Flutter SDK' }
+          $files = Get-ChildItem -LiteralPath $stageDir -Recurse -File | ForEach-Object {
+            [ordered]@{
+              path = [IO.Path]::GetRelativePath($stageDir, $_.FullName).Replace('\', '/')
+              bytes = $_.Length
+              sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+          }
+          [ordered]@{
+            sourceCommit = $sourceCommit
+            workflowRun = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            builtAtUtc = [DateTime]::UtcNow.ToString('o')
+            entrypoint = 'lib/main.dart'
+            buildMode = 'Release'
+            platform = 'Windows x64'
+            signedForUpdater = $false
+            flutter = $sdk
+            files = @($files)
+          } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $stageDir 'build-receipt.json') -Encoding utf8
+          $archive = Join-Path $packageRoot "MeowWatch-$($sourceCommit.Substring(0,7))-Windows-x64-review.zip"
+          Compress-Archive -Path "$stageDir/*" -DestinationPath $archive
+          "$((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($archive))" |
+            Set-Content -LiteralPath "$archive.sha256" -Encoding ascii
+      - name: Upload the installable companion review package
+        uses: actions/upload-artifact@v7
+        with:
+          name: MeowWatch-companion-review-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/companion-review-package/*.zip*
+          if-no-files-found: error
+          retention-days: 14
