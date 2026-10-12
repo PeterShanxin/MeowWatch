@@ -137,6 +137,12 @@ If hosted Actions is unavailable, use the local diagnostic fallback above and
 record any exceptional admin bypass; do not recreate a repository self-hosted
 runner as an outage workaround.
 
+The weekly yt-dlp pin workflow cannot read `actions/permissions/workflow` with
+`GITHUB_TOKEN`: that endpoint requires Administration:read. A preflight 403
+means the setting is unknown, not disabled; continue and let PR creation enforce
+the actual permission. Only an explicit `can_approve_pull_request_reviews: false`
+proves the setting is off. Do not add an administrator token for this check.
+
 ### Dependabot updates (dep-bump PRs)
 
 Dependabot is configured (#210) to open grouped PRs for compatible pub bumps, plus separate PRs for major bumps and GitHub Actions updates. Lessons from the first batch (#211–#213 → v0.44.3-alpha, 2026-07-18):
