@@ -307,6 +307,23 @@ So a `feat:` PR is a MINOR bump = 2nd digit + reset 3rd to 0. A `fix:` PR is a P
 
 Keep the `-alpha` suffix until we move off alpha. CI parses `CHANGELOG.md` → `releases/changelog.json` on R2, which the in-app updater reads — so the three files drifting out of sync breaks the updater's "what changed" view.
 
+### Local build storage and safe wrap-up
+
+Before new worktrees or large Flutter builds, at handoff, and weekly during
+active development, measure `build/`, `.dart_tool/` and free space. Suggested
+review thresholds are 20 GiB per build tree or 50 GiB combined. Below 100 GiB free,
+estimate the next build's needs and report risk; proceed if capacity is sufficient.
+Keep warm outputs; reserve `flutter clean` for a diagnosed issue within authority.
+The wrap-up steps below remain the normal release flow, subject to these checks:
+check tracked, untracked and ignored files, other active tasks and exact process
+ownership before removal. Clean Git, pushed/merged branches or age do not make
+original media, evidence, private inputs, exports or signed releases disposable.
+Preserve required local files separately and read them back (compare binary hashes).
+Follow existing user authority without asking again for covered cleanup; request
+it only where missing. This guidance grants no new deletion authority. Stop on
+uncertain ownership or failed preservation checks. Restore via the normal Puro
+build/verification flow; report recovery failures without broadening cleanup.
+
 **Release flow (the user finds this sequence helpful — follow it for every release):**
 1. Land the work on a feature/fix branch and get it **locally green** (analyze + test). **If the change has visible/UX surface, do an early local look BEFORE opening the PR:** build the Release and open it so the user can inspect/test while iteration is still cheap — no PR, bots, or gates involved yet — and fold in their feedback (possibly several rounds). Once the user is happy with the look (or for non-visual changes, right away), **open a PR to `main`.** Don't push `v*` tags from the branch. This is the *early* checkpoint; step 3's manual test is the *final* one on the shippable commit — two distinct looks.
 2. Wait for the automatic **Copilot review**, then run the `address-pr-review` skill: fix or reject each comment with a real reason, reply, resolve the threads, push.
