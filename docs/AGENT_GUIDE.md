@@ -106,8 +106,7 @@ on hosted Ubuntu. Plain pushes to `main` do not schedule redundant verification.
     exact string is the branch-protection context — **not** "Build / Analyze
     & Test", which is only the Checks-tab grouping by workflow name). It
     passes iff `check-hosted` went green. **`main` is protected to require
-    `Analyze & Test`** (`strict:false`; `enforce_admins:false` so `--admin`
-    still merges doc-only PRs that skip CI via `paths-ignore`; no required
+    `Analyze & Test`** (`strict:false`; `enforce_admins:false`; no required
     reviews — bot reviews gate by convention, not by rule), set via
     `gh api -X PUT repos/PeterShanxin/MeowWatch/branches/main/protection`.
 - **`build-windows-x64`** → GitHub-hosted **`windows-2022`**,
