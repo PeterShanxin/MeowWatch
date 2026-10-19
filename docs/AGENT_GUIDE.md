@@ -106,8 +106,7 @@ on hosted Ubuntu. Plain pushes to `main` do not schedule redundant verification.
     exact string is the branch-protection context — **not** "Build / Analyze
     & Test", which is only the Checks-tab grouping by workflow name). It
     passes iff `check-hosted` went green. **`main` is protected to require
-    `Analyze & Test`** (`strict:false`; `enforce_admins:false` so `--admin`
-    still merges doc-only PRs that skip CI via `paths-ignore`; no required
+    `Analyze & Test`** (`strict:false`; `enforce_admins:false`; no required
     reviews — bot reviews gate by convention, not by rule), set via
     `gh api -X PUT repos/PeterShanxin/MeowWatch/branches/main/protection`.
 - **`build-windows-x64`** → GitHub-hosted **`windows-2022`**,
@@ -340,3 +339,8 @@ build/verification flow; report recovery failures without broadening cleanup.
 Keep this file current. When you discover a new sharp edge (a build quirk, a test trap, a non-obvious convention) or make a structural change to the architecture above, update the relevant section in the same change — don't let it drift. Prefer fixing/expanding an existing bullet over appending duplicates.
 
 `CLAUDE.md` and `AGENTS.md` mirror a short, deliberate subset of this file — the highest-cost items agents kept missing (Puro Flutter path, the tag→R2 release chain, version lockstep, Release-build manual testing). If you change any of those four here, update the matching one-liner in **both** entrypoints in the same commit so they don't drift.
+
+## Writing clarity
+
+Follow [STE-inspired clarity](WRITING_GUIDE.md) for new or changed text and delivery
+notes. This project-wide standard applies to human contributors and agents.
