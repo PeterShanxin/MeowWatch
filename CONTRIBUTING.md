@@ -66,3 +66,9 @@ flutter build windows --release
 Linux is a local compile target for two-window testing, not a release.
 See [`docs/LINUX.md`](docs/LINUX.md) for apt packages and
 `flutter run -d linux`.
+
+## Writing clarity
+
+Human contributors and agents follow the project-wide
+[STE-inspired clarity standard](docs/WRITING_GUIDE.md) for new or changed README,
+documentation, help, error and UI text, comments, and delivery notes.
