@@ -65,9 +65,9 @@ class ToolProvisioner {
   // installed copy no longer matches (#124). The app's own updates are
   // Ed25519-signed (#189), so the trust root for every executed byte is a key
   // shipped with the app. Bump version + hash together.
-  static const ytDlpVersion = '2026.07.04';
+  static const ytDlpVersion = '2026.10.21';
   static const _kYtDlpSha256 =
-      '52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8';
+      '33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b6951c39c7d9f555';
   static const _ytDlpUrl =
       'https://github.com/yt-dlp/yt-dlp/releases/download/$ytDlpVersion/'
       'yt-dlp.exe';
